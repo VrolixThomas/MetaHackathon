@@ -92,6 +92,7 @@ export class MetaClient {
 		]);
 		let status: UsageRecord["status"] = "interrupted";
 		let usage: TokenUsage | null = null;
+		let estimatedUsd: number | null = null;
 		let responseId: string | null = null;
 		let requested = false;
 		try {
@@ -135,7 +136,7 @@ export class MetaClient {
 			);
 			if (!response.ok) {
 				status = "failed";
-				await response.body?.cancel();
+				await cancelBody(response.body, signal);
 				throw new MetaApiError(
 					`Meta request rejected (HTTP ${response.status}); check credentials, model access and quota`,
 					response.status,
@@ -143,7 +144,8 @@ export class MetaClient {
 				);
 			}
 			if (!response.headers.get("content-type")?.includes("text/event-stream") || !response.body) {
-				await response.body?.cancel();
+				status = "failed";
+				await cancelBody(response.body, signal);
 				throw new MetaApiError("Meta returned a non-streaming response");
 			}
 			for await (const payload of readSse(response.body, signal)) {
@@ -173,17 +175,27 @@ export class MetaClient {
 						String(event["type"])
 					)
 				) {
-					const final = responseSchema.parse(event["response"]);
+					status = "failed";
+					const parsed = responseSchema.safeParse(event["response"]);
+					if (!parsed.success) throw new MetaApiError("Invalid Meta terminal response");
+					const final = parsed.data;
 					assertStandardModel(final.model);
 					if (final.model !== model) throw new MetaApiError("Meta returned an unexpected model");
 					responseId = final.id;
 					if (final.usage) {
-						usage = {
+						const reportedUsage = {
 							inputTokens: final.usage.input_tokens,
 							cachedInputTokens: final.usage.input_tokens_details?.cached_tokens ?? 0,
 							outputTokens: final.usage.output_tokens,
 						};
-						estimateCostUsd(model, usage);
+						// Commit accounting only after validation so finally can always log an unknown
+						// cost when the provider supplies invalid token counts.
+						try {
+							estimatedUsd = estimateCostUsd(model, reportedUsage);
+						} catch {
+							throw new MetaApiError("Invalid Meta token usage");
+						}
+						usage = reportedUsage;
 					}
 					status =
 						event["type"] === "response.completed"
@@ -211,12 +223,16 @@ export class MetaClient {
 					model,
 					status,
 					usage,
-					estimatedUsd: usage ? estimateCostUsd(model, usage) : null,
+					estimatedUsd,
 					pricingVerifiedAt: PRICING_VERIFIED_AT,
 				});
 			}
 		}
 	}
+}
+
+async function cancelBody(body: ReadableStream<Uint8Array> | null, signal: AbortSignal) {
+	if (body) await abortable(body.cancel(), signal).catch(() => {});
 }
 
 /** SSE framing is independent of TCP/UTF-8 chunk boundaries, supports CRLF and multi-line data. */

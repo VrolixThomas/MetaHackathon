@@ -183,3 +183,40 @@ test("cancellation does not wait forever for a stream adapter's cleanup promise"
 	setTimeout(() => controller.abort(), 5);
 	await assert.rejects(result, { name: "AbortError" });
 });
+
+test("HTTP body cleanup is bounded by timeout and still records the attempt", async () => {
+	const logs: UsageRecord[] = [];
+	const client = new MetaClient({
+		getApiKey: async () => "key",
+		recordUsage: (record) => logs.push(record),
+		timeoutMs: 10,
+		fetch: async () =>
+			new Response(new ReadableStream({ cancel: () => new Promise<void>(() => {}) }), {
+				status: 429,
+			}),
+	});
+	await assert.rejects(collect(client), /HTTP 429/);
+	assert.equal(logs.length, 1);
+	assert.equal(logs[0]?.estimatedUsd, null);
+});
+
+test("invalid usage and contradictory terminal status are rejected without losing accounting", async () => {
+	for (const kind of ["usage", "status"] as const) {
+		const terminal = responseEvent();
+		if (kind === "usage") terminal.response.usage.input_tokens_details.cached_tokens = 101;
+		else terminal.response.status = "incomplete";
+		const logs: UsageRecord[] = [];
+		const client = new MetaClient({
+			getApiKey: async () => "key",
+			recordUsage: (record) => logs.push(record),
+			fetch: async () => sseResponse([terminal]),
+		});
+		await assert.rejects(collect(client));
+		assert.equal(logs.length, 1);
+		assert.equal(logs[0]?.status, "failed");
+		if (kind === "usage") {
+			assert.equal(logs[0]?.usage, null);
+			assert.equal(logs[0]?.estimatedUsd, null);
+		}
+	}
+});
