@@ -116,7 +116,7 @@ export function runLocalScenario() {
 		useReview.getState().setPanel("scenario");
 		const step = trace.after.steps[index];
 		if (step) {
-			useReview.setState({ scenarioStepId: step.id });
+			useReview.setState((state) => ({ scenarioStepId: step.id, sequence: state.sequence + 1 }));
 			await focusCodeLocation(step.location, `Executed scenario C · step ${index + 1}`);
 		}
 	});

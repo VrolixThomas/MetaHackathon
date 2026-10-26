@@ -12,6 +12,7 @@ import type {
 	Preview,
 	PullRequest,
 	ScenarioTrace,
+	ScreenContext,
 	SourceFile,
 	SourceFileRequest,
 } from "../../shared/contracts";
@@ -32,6 +33,7 @@ export type VoiceAdapter = {
 	subscribe: (listener: () => void) => () => void;
 };
 export type AgentAdapter = {
+	updateScreen?: (sessionId: string, screenContext: ScreenContext) => Promise<void>;
 	ask: (
 		input: AgentTurnInput,
 		observer: {

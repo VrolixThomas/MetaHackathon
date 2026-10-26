@@ -22,6 +22,7 @@ export const useConversation = create<{
 }>(() => ({ question: "", answer: "", state: "idle", context: "", error: "" }));
 
 type ActiveTurn = {
+	unsubscribe?: () => void;
 	input: AgentTurnInput;
 	controller: AbortController;
 	adapter: AgentAdapter;
@@ -74,7 +75,11 @@ async function applyAction(turn: ActiveTurn, input: AgentAction) {
 	const state = useReview.getState();
 	switch (action.kind) {
 		case "highlight-code":
-			await focusCodeLocation(action.location, action.note);
+			{
+				const sequence = useReview.getState().sequence;
+				const applied = await focusCodeLocation(action.location, action.note);
+				if (!valid(turn) || useReview.getState().sequence !== sequence + (applied ? 1 : 0)) return;
+			}
 			break;
 		case "show-scenario": {
 			const scenario = ScenarioTraceSchema.parse(await turn.adapter.getScenario(action.scenarioId));
@@ -94,8 +99,13 @@ async function applyAction(turn: ActiveTurn, input: AgentAction) {
 			state.setPanel("scenario");
 			const step = scenario.after.steps[index];
 			if (step) {
-				await focusCodeLocation(step.location, `Following scenario, step ${index + 1}`);
-				useReview.setState({ scenarioStepId: step.id });
+				const sequence = useReview.getState().sequence;
+				const applied = await focusCodeLocation(
+					step.location,
+					`Following scenario, step ${index + 1}`
+				);
+				if (!valid(turn) || useReview.getState().sequence !== sequence + (applied ? 1 : 0)) return;
+				useReview.setState((state) => ({ scenarioStepId: step.id, sequence: state.sequence + 1 }));
 			}
 			break;
 		}
@@ -150,6 +160,7 @@ async function stopActiveQuestion(
 	const turn = active;
 	if (!turn) return;
 	active = null;
+	turn.unsubscribe?.();
 	turn.controller.abort();
 	useConversation.setState({ state: "cancelled" });
 	try {
@@ -203,6 +214,14 @@ export async function runAgentQuestion(text: string) {
 		actions: new Set(),
 	};
 	active = turn;
+	turn.unsubscribe = useReview.subscribe((state, previous) => {
+		if (state.sequence !== previous.sequence && valid(turn) && adapter.updateScreen)
+			void adapter
+				.updateScreen(sessionId, getScreenContext())
+				.catch(() =>
+					useReview.getState().announce("The agent could not refresh its screen context.")
+				);
+	});
 	useConversation.setState({
 		question: input.text,
 		answer: "",
@@ -228,11 +247,13 @@ export async function runAgentQuestion(text: string) {
 			turn.controller.signal
 		);
 		if (valid(turn)) {
+			turn.unsubscribe?.();
 			useConversation.setState({ state: "complete" });
 			active = null;
 		}
 	} catch (error) {
 		if (valid(turn)) {
+			turn.unsubscribe?.();
 			useConversation.setState({
 				state: error instanceof DOMException && error.name === "AbortError" ? "cancelled" : "error",
 				error:

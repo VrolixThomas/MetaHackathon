@@ -151,13 +151,13 @@ export function openReviewArtifact(artifact: Artifact) {
 		const step = state.scenario.after.steps[state.scenarioIndex];
 		if (step) {
 			highlightLocation(step.location, `Following scenario C, step ${state.scenarioIndex + 1}`);
-			useReview.setState({ scenarioStepId: step.id });
+			useReview.setState((state) => ({ scenarioStepId: step.id, sequence: state.sequence + 1 }));
 		}
 	}
 	if (artifact === "preview" && state.preview?.markers[0]) {
 		const marker = state.preview.markers[0];
 		highlightLocation(marker.location, `Marker ${marker.number}: ${marker.label}`);
-		useReview.setState({ previewMarkerId: marker.id });
+		useReview.setState((state) => ({ previewMarkerId: marker.id, sequence: state.sequence + 1 }));
 	}
 }
 

@@ -21,7 +21,7 @@ beforeEach(() =>
 );
 afterEach(async () => {
 	await cancelActiveQuestion();
-	configureReviewServices({ agent: null });
+	configureReviewServices({ agent: null, sources: null });
 });
 
 function harness() {
@@ -203,6 +203,61 @@ it("accepts a preview pinned to this PR's base revision", async () => {
 	});
 	assert.equal(useReview.getState().preview?.revision, "base");
 	assert.equal(useReview.getState().panel, "preview");
+	h.finish();
+	await running;
+});
+
+it("does not adopt a new screen after an asynchronous source highlight was superseded", async () => {
+	const h = harness();
+	const resolveReads: Array<() => void> = [];
+	configureReviewServices({
+		sources: {
+			read: (input) =>
+				new Promise((resolve) =>
+					resolveReads.push(() =>
+						resolve({
+							...input,
+							repository: fixture.preparation.pr.repository,
+							commitSha:
+								input.revision === "base"
+									? fixture.preparation.pr.baseSha
+									: fixture.preparation.pr.headSha,
+							content: "caller();",
+						})
+					)
+				),
+		},
+	});
+	const running = runAgentQuestion("Explain the caller");
+	await Promise.resolve();
+	await Promise.resolve();
+	const request = h.input();
+	const location = fixture.scenario.after.steps[3]?.location;
+	assert.ok(location);
+	const identity = {
+		sessionId: request.sessionId,
+		turnId: request.turnId,
+		generation: request.generation,
+		screenSequence: request.screenContext.sequence,
+	};
+	const pending = h.observer().action({
+		...identity,
+		requestId: "async-source",
+		kind: "highlight-code",
+		location: { ...location, path: "jobs/otherCaller.ts", startLine: 1, endLine: 1 },
+		note: "Caller",
+	});
+	useReview.getState().openFile("checkout/PromoField.tsx");
+	for (const resolve of resolveReads) resolve();
+	await pending;
+	await h.observer().action({
+		...identity,
+		requestId: "following-stale-effect",
+		kind: "highlight-code",
+		location,
+		note: "Previous screen",
+	});
+	assert.equal(useReview.getState().file, "checkout/PromoField.tsx");
 	h.finish();
 	await running;
 });
