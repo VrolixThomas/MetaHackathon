@@ -39,6 +39,7 @@ test("screen-aware tool loop preserves identity and encrypted replay, requests s
 	);
 	for (const action of result.actions) {
 		assert.equal(action.sessionId, identity.sessionId);
+		assert.equal(action.turnId, identity.turnId);
 		assert.equal(action.generation, identity.generation);
 		assert.equal(action.screenSequence, ctx.fixture.screenContext.sequence);
 		AgentActionSchema.parse(action);
@@ -51,6 +52,64 @@ test("screen-aware tool loop preserves identity and encrypted replay, requests s
 	assert(replay.includes("fixture"));
 	assert.equal(ctx.postCount(), 0);
 	await service.dispose();
+});
+
+test("multiple effects across calls and rounds survive UI deduplication with stable IDs", async () => {
+	const run = async (requestId: string) => {
+		const ctx = testContext([
+			[
+				completed([
+					call("show_scenario", { scenarioId: "scenario-c", stepId: "head-4" }, "call:1"),
+					call("show_diagram", { diagramId: "diagram-callers" }, "call:2"),
+				]),
+			],
+			[completed([call("show_preview", { previewId: "preview-phone" }, "call:3")])],
+			[completed()],
+		]);
+		const service = new AgentService(ctx.client, ctx.ports);
+		const turn = { ...ctx.fixture.agentTurn, requestId };
+		const { sessionId, turnId, generation } = service.start(turn);
+		const identity = { sessionId, turnId, generation };
+		try {
+			await eventually(() => service.poll(identity).status === "completed");
+			const snapshot = service.poll(identity);
+			assert.deepEqual(
+				snapshot.actions.map((action) => action.kind),
+				["show-scenario", "highlight-code", "show-diagram", "show-preview"]
+			);
+			const ids = snapshot.actions.map((action) => action.requestId);
+			assert.equal(new Set(ids).size, 4);
+			assert(!ids.includes(requestId));
+			for (const action of snapshot.actions) {
+				assert.deepEqual(
+					{ sessionId: action.sessionId, turnId: action.turnId, generation: action.generation },
+					identity
+				);
+			}
+			const applied = new Set<string>();
+			let cursor = 0;
+			while (cursor < snapshot.sequence) {
+				const page = service.poll({ ...identity, afterSequence: cursor, limit: 2 });
+				assert(page.events.length > 0);
+				for (const event of page.events) {
+					assert(event.sequence > cursor);
+					if (event.kind === "action") applied.add(event.action.requestId);
+					cursor = event.sequence;
+				}
+			}
+			// Snapshot recovery and repeated delivery must use those same effect IDs.
+			for (const action of service.poll(identity).actions) applied.add(action.requestId);
+			assert.deepEqual([...applied], ids);
+			assert.equal(service.start(turn).status, "completed");
+			assert.equal(ctx.requests.length, 3);
+			return ids;
+		} finally {
+			await service.dispose();
+		}
+	};
+	const ids = await run("turn:request");
+	assert.deepEqual(await run("turn:request"), ids);
+	assert((await run("another:request")).every((id) => !ids.includes(id)));
 });
 
 test("interruption cancels pending tool work and discards late results from prior generation", async () => {
@@ -134,6 +193,14 @@ test("navigation while an artifact loads suppresses the stale UI effect", async 
 		[completed([call("show_preview", { previewId: "preview-phone" })])],
 		[completed()],
 	]);
+	const initialContext = structuredClone(ctx.fixture.agentTurn.screenContext);
+	let refreshes = 0;
+	ctx.ports.getScreenContext = (sessionId, fallback) => {
+		assert.equal(sessionId, ctx.fixture.agentTurn.sessionId);
+		assert.deepEqual(fallback, initialContext);
+		refreshes++;
+		return ctx.fixture.screenContext;
+	};
 	ctx.ports.getPreview = async () => {
 		ctx.fixture.screenContext.sequence++;
 		return ctx.fixture.preview;
@@ -144,6 +211,7 @@ test("navigation while an artifact loads suppresses the stale UI effect", async 
 	await eventually(() => service.poll(poll).status === "completed");
 	assert.deepEqual(service.poll(poll).actions, []);
 	assert(JSON.stringify(ctx.requests[1]).includes("screen-changed"));
+	assert(refreshes >= 4); // Before each model round, before loading, and before emitting.
 	await service.dispose();
 });
 
@@ -157,6 +225,29 @@ test("invalid screen and duplicate/stale turn identity are rejected; disposal en
 	assert.throws(() => service.start({ ...ctx.fixture.agentTurn, requestId: "changed" }), /stale/);
 	await service.dispose();
 	assert.throws(() => service.start(ctx.fixture.agentTurn), /disposed/);
+});
+
+test("releasing a normalized session ID removes turn state and request admission", async () => {
+	const ctx = testContext([[completed()]]);
+	let preparationSignal: AbortSignal | undefined;
+	ctx.ports.getPreparation = (_id, signal) => {
+		preparationSignal = signal;
+		return new Promise(() => {});
+	};
+	const service = new AgentService(ctx.client, ctx.ports);
+	const { sessionId, turnId, generation } = service.start(ctx.fixture.agentTurn);
+	const identity = { sessionId, turnId, generation };
+	try {
+		service.releaseSession(` ${sessionId} `);
+		assert.equal(preparationSignal?.aborted, true);
+		assert.equal(service.poll(identity).status, "stale");
+		ctx.ports.getPreparation = async () => ctx.fixture.preparation;
+		assert.equal(service.start(ctx.fixture.agentTurn).status, "running");
+		await eventually(() => service.poll(identity).status === "completed");
+		assert.equal(ctx.requests.length, 1);
+	} finally {
+		await service.dispose();
+	}
 });
 
 test("polling pages drain ordered events even when the full snapshot is already terminal", async () => {
@@ -186,4 +277,45 @@ test("polling pages drain ordered events even when the full snapshot is already 
 	);
 	assert.throws(() => service.poll({ ...identity, afterSequence: 1000 }));
 	await service.dispose();
+});
+
+test("polling after event compaction retains full text and earlier effects for recovery", async () => {
+	const ctx = testContext([
+		[completed([call("show_scenario", { scenarioId: "scenario-c", stepId: "head-4" })])],
+		[
+			...Array.from({ length: 600 }, () => ({ type: "response.output_text.delta", delta: "x" })),
+			completed(),
+		],
+	]);
+	const service = new AgentService(ctx.client, ctx.ports);
+	const { sessionId, turnId, generation } = service.start(ctx.fixture.agentTurn);
+	const identity = { sessionId, turnId, generation };
+	try {
+		await eventually(() => service.poll(identity).status === "completed");
+		let cursor = 0;
+		const sequences: number[] = [];
+		while (true) {
+			const page = service.poll({ ...identity, afterSequence: cursor, limit: 37 });
+			assert.equal(page.status, "completed");
+			assert.equal(page.sequence, 604);
+			assert.equal(page.text, "x".repeat(600));
+			assert.deepEqual(
+				page.actions.map((action) => action.kind),
+				["show-scenario", "highlight-code"]
+			);
+			assert.equal(new Set(page.actions.map((action) => action.requestId)).size, 2);
+			assert(!page.events.some((event) => event.kind === "action"));
+			sequences.push(...page.events.map((event) => event.sequence));
+			const last = page.events.at(-1);
+			if (!last) break;
+			assert(last.sequence > cursor);
+			cursor = last.sequence;
+		}
+		assert.deepEqual(
+			sequences,
+			Array.from({ length: 512 }, (_, index) => index + 93)
+		);
+	} finally {
+		await service.dispose();
+	}
 });

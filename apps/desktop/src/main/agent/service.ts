@@ -154,8 +154,9 @@ export class AgentService {
 		});
 	}
 
-	releaseSession(sessionId: string) {
-		const state = this.sessions.get(IdSchema.parse(sessionId));
+	releaseSession(rawSessionId: string) {
+		const sessionId = IdSchema.parse(rawSessionId);
+		const state = this.sessions.get(sessionId);
 		if (state) this.cancelState(state);
 		this.sessions.delete(sessionId);
 		for (const [requestId, value] of this.requests) {

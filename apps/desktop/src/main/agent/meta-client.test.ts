@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
+import { setImmediate } from "node:timers/promises";
 import { MetaApiError, MetaClient, type MetaRequest, type UsageRecord } from "./meta-client";
 import { assertStandardModel, estimateCostUsd, routeModel } from "./models";
 
@@ -167,6 +168,51 @@ test("cancellation stops a stalled stream and records unknown usage", async () =
 	assert(cancelled);
 	assert.equal(logs[0]?.status, "cancelled");
 	assert.equal(logs[0]?.estimatedUsd, null);
+});
+
+test("a fetch completing after cancellation is discarded and its body is cancelled without waiting", async () => {
+	const logs: UsageRecord[] = [];
+	const controller = new AbortController();
+	let deliver: (response: Response) => void = () => {};
+	const response = new Promise<Response>((resolve) => {
+		deliver = resolve;
+	});
+	let requested = false;
+	let bodyCancelled = false;
+	const client = new MetaClient({
+		getApiKey: async () => "key",
+		recordUsage: (record) => logs.push(record),
+		fetch: () => {
+			requested = true;
+			return response;
+		},
+	});
+	const pending = collect(client, request, controller.signal);
+	await setImmediate();
+	assert(requested);
+	controller.abort();
+	await assert.rejects(pending, { name: "AbortError" });
+	assert.equal(logs.length, 1);
+	assert.equal(logs[0]?.status, "cancelled");
+	assert.equal(logs[0]?.usage, null);
+	assert.equal(logs[0]?.estimatedUsd, null);
+	deliver(
+		new Response(
+			new ReadableStream({
+				start(stream) {
+					stream.enqueue(new TextEncoder().encode(`data: ${JSON.stringify(responseEvent())}\n\n`));
+				},
+				cancel() {
+					bodyCancelled = true;
+					return new Promise<void>(() => {});
+				},
+			}),
+			{ headers: { "Content-Type": "text/event-stream" } }
+		)
+	);
+	await setImmediate();
+	assert(bodyCancelled);
+	assert.equal(logs.length, 1);
 });
 
 test("cancellation does not wait forever for a stream adapter's cleanup promise", async () => {

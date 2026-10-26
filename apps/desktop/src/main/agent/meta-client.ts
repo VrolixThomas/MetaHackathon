@@ -109,31 +109,34 @@ export class MetaClient {
 				throw new MetaApiError("maxOutputTokens must be between 16 and 32768");
 			}
 			requested = true;
-			const response = await abortable(
-				(this.options.fetch ?? fetch)(MODEL_API_URL, {
-					method: "POST",
-					headers: {
-						Authorization: `Bearer ${key}`,
-						"Content-Type": "application/json",
-						Accept: "text/event-stream",
-					},
-					body: JSON.stringify({
-						model,
-						input: request.input,
-						instructions: request.instructions,
-						tools: request.tools ?? [],
-						parallel_tool_calls: false,
-						tool_choice: "auto",
-						stream: true,
-						store: false,
-						include: ["reasoning.encrypted_content"],
-						reasoning: { effort: request.workload === "quick" ? "minimal" : "high" },
-						max_output_tokens: maxOutputTokens,
-					}),
-					signal,
+			const pendingResponse = (this.options.fetch ?? fetch)(MODEL_API_URL, {
+				method: "POST",
+				headers: {
+					Authorization: `Bearer ${key}`,
+					"Content-Type": "application/json",
+					Accept: "text/event-stream",
+				},
+				body: JSON.stringify({
+					model,
+					input: request.input,
+					instructions: request.instructions,
+					tools: request.tools ?? [],
+					parallel_tool_calls: false,
+					tool_choice: "auto",
+					stream: true,
+					store: false,
+					include: ["reasoning.encrypted_content"],
+					reasoning: { effort: request.workload === "quick" ? "minimal" : "high" },
+					max_output_tokens: maxOutputTokens,
 				}),
-				signal
-			);
+				signal,
+			});
+			const response = await abortable(pendingResponse, signal).catch((error: unknown) => {
+				// An adapter may ignore abort and resolve later. Reclaim its unowned body
+				// without delaying cancellation or recording the attempt a second time.
+				void pendingResponse.then((late) => cancelBody(late.body, signal)).catch(() => {});
+				throw error;
+			});
 			if (!response.ok) {
 				status = "failed";
 				await cancelBody(response.body, signal);

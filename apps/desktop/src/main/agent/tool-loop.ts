@@ -30,7 +30,10 @@ import {
 
 export interface AgentPorts {
 	getPreparation: (prId: string, signal: AbortSignal) => Promise<PRPreparation>;
-	getScreenContext: (sessionId: string) => ScreenContext | Promise<ScreenContext>;
+	getScreenContext: (
+		sessionId: string,
+		initialContext: ScreenContext
+	) => ScreenContext | Promise<ScreenContext>;
 	getScenario: (prId: string, id: string, signal: AbortSignal) => Promise<ScenarioTrace>;
 	getDiagram: (prId: string, id: string, signal: AbortSignal) => Promise<DiagramSpec>;
 	getPreview: (prId: string, id: string, signal: AbortSignal) => Promise<Preview>;
@@ -172,6 +175,7 @@ export async function runToolLoop(
 				const latestScreen = await currentScreen(ports, input, prep);
 				output = await dispatchTool(
 					client,
+					call.call_id,
 					call.name,
 					JSON.parse(call.arguments),
 					ports,
@@ -207,7 +211,10 @@ async function currentScreen(
 	prep: PRPreparation
 ): Promise<ScreenContext> {
 	const screen = ScreenContextSchema.parse(
-		await abortable(Promise.resolve(ports.getScreenContext(input.sessionId)), input.signal)
+		await abortable(
+			Promise.resolve(ports.getScreenContext(input.sessionId, input.turn.screenContext)),
+			input.signal
+		)
 	);
 	if (screen.prId !== prep.pr.id) throw new Error("Reviewer navigated to another PR");
 	if (screen.focusedLocation) assertPrLocation(prep, screen.focusedLocation);
@@ -223,6 +230,7 @@ function assertPrLocation(prep: PRPreparation, location: CodeLocation) {
 }
 async function dispatchTool(
 	client: MetaClient,
+	callId: string,
 	name: string,
 	raw: unknown,
 	ports: AgentPorts,
@@ -403,6 +411,13 @@ async function dispatchTool(
 			message: "No UI action emitted; retry against the current screen",
 		};
 	throwIfAborted(signal);
-	for (const action of actions) input.onAction(AgentActionSchema.parse(action));
+	for (const [index, action] of actions.entries()) {
+		// UI deduplicates by requestId. Each effect needs a stable identity, including
+		// separate effects from one call; tuple encoding avoids delimiter collisions.
+		const requestId = `action-${createHash("sha256")
+			.update(JSON.stringify([turn.requestId, callId, index]))
+			.digest("hex")}`;
+		input.onAction(AgentActionSchema.parse({ ...action, requestId }));
+	}
 	return result;
 }
