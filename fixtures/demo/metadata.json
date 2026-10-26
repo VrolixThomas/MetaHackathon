@@ -1,6 +1,38 @@
 {
-	"shop": {"repository":"shop-web","number":1284,"ticket":"SHOP-482","title":"Stackable promo codes at checkout","criteria":["One promo stacks with loyalty","Discount is capped at 40%","Show the cap to shoppers"],"recordedIntent":["Implement SHOP-482. Loyalty and promo should stack, total capped at 40%.","Use the existing PromoRepository. Don't add new services."],"deliberateFindings":["Expired-code throw stops the nightly reminder batch","Unrequested PromoCache.ts has no invalidation","Unrequested delivery instructions field","Invalid code exposes Error 422","Cap note wraps and pushes Pay down on a phone"]},
-	"finance": {"repository":"finance-service","number":412,"title":"Read promo_code in the finance export","dependsOn":"shop-web#1284","column":"orders.promo_code"},
-	"fixedNow":"2026-10-26T12:00:00.000Z",
-	"scenarios":{"A":"Gold 10% + SPRING15 15%","B":"Platinum 20% + VIP30 30%, capped","C":"Expired SPRING15 stops nightly batch only on head","D":"Loyalty tier drops between quote and payment"}
+	"shop": {
+		"repository": "shop-web",
+		"number": 1284,
+		"ticket": "SHOP-482",
+		"title": "Stackable promo codes at checkout",
+		"criteria": [
+			"One promo stacks with loyalty",
+			"Discount is capped at 40%",
+			"Show the cap to shoppers"
+		],
+		"recordedIntent": [
+			"Implement SHOP-482. Loyalty and promo should stack, total capped at 40%.",
+			"Use the existing PromoRepository. Don't add new services."
+		],
+		"deliberateFindings": [
+			"Expired-code throw stops the nightly reminder batch",
+			"Unrequested PromoCache.ts has no invalidation",
+			"Unrequested delivery instructions field",
+			"Invalid code exposes Error 422",
+			"Cap note wraps and pushes Pay down on a phone"
+		]
+	},
+	"finance": {
+		"repository": "finance-service",
+		"number": 412,
+		"title": "Read promo_code in the finance export",
+		"dependsOn": "shop-web#1284",
+		"column": "orders.promo_code"
+	},
+	"fixedNow": "2026-10-26T12:00:00.000Z",
+	"scenarios": {
+		"A": "Gold 10% + SPRING15 15%",
+		"B": "Platinum 20% + VIP30 30%, capped",
+		"C": "Expired SPRING15 stops nightly batch only on head",
+		"D": "Loyalty tier drops between quote and payment"
+	}
 }

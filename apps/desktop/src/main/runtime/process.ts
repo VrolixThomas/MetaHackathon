@@ -1,4 +1,4 @@
-import { spawn } from "node:child_process";
+import { execFile, spawn } from "node:child_process";
 import { StringDecoder } from "node:string_decoder";
 
 export interface ProcessOptions {
@@ -17,6 +17,7 @@ export interface ProcessResult {
 	stderr: string;
 	timedOut: boolean;
 	aborted: boolean;
+	outputTruncated: boolean;
 	durationMs: number;
 }
 
@@ -35,6 +36,7 @@ export async function runProcess(options: ProcessOptions): Promise<ProcessResult
 			stderr: "",
 			timedOut: false,
 			aborted: true,
+			outputTruncated: false,
 			durationMs: 0,
 		};
 	}
@@ -51,8 +53,12 @@ export async function runProcess(options: ProcessOptions): Promise<ProcessResult
 		let stderr = Buffer.alloc(0);
 		let timedOut = false;
 		let aborted = false;
+		let outputTruncated = false;
 		let settled = false;
 		let escalation: ReturnType<typeof setTimeout> | undefined;
+		let deadline: ReturnType<typeof setTimeout> | undefined;
+		let stopping = false;
+		const ownedDescendants = new Map<number, string>();
 		const kill = (signal: NodeJS.Signals) => {
 			if (!child.pid) return;
 			try {
@@ -62,9 +68,48 @@ export async function runProcess(options: ProcessOptions): Promise<ProcessResult
 				if ((error as NodeJS.ErrnoException).code !== "ESRCH") child.kill(signal);
 			}
 		};
+		const signalDescendants = async (signal: NodeJS.Signals) => {
+			const current = await processSnapshot();
+			for (const [pid, birth] of ownedDescendants) {
+				if (current.get(pid)?.birth !== birth) continue;
+				try {
+					process.kill(pid, signal);
+				} catch {
+					/* Exited after the identity check. */
+				}
+			}
+		};
 		const stop = () => {
-			kill("SIGTERM");
-			escalation ??= setTimeout(() => kill("SIGKILL"), 250);
+			if (stopping) return;
+			stopping = true;
+			// A detached descendant can hold inherited pipes after its parent exits. Always settle.
+			deadline = setTimeout(() => {
+				kill("SIGKILL");
+				child.stdout.destroy();
+				child.stderr.destroy();
+				complete(child.exitCode);
+			}, 1000);
+			void (async () => {
+				const snapshot = await processSnapshot();
+				const ancestors = new Set(child.pid ? [child.pid] : []);
+				let changed = true;
+				while (changed) {
+					changed = false;
+					for (const [pid, entry] of snapshot)
+						if (!ancestors.has(pid) && ancestors.has(entry.parent)) {
+							ancestors.add(pid);
+							ownedDescendants.set(pid, entry.birth);
+							changed = true;
+						}
+				}
+				await signalDescendants("SIGTERM");
+				kill("SIGTERM");
+				if (!settled)
+					escalation = setTimeout(() => {
+						void signalDescendants("SIGKILL");
+						kill("SIGKILL");
+					}, 250);
+			})();
 		};
 		const abort = () => {
 			if (settled) return;
@@ -78,6 +123,7 @@ export async function runProcess(options: ProcessOptions): Promise<ProcessResult
 		}, timeoutMs);
 		const capture = (chunk: Buffer, destination: "stdout" | "stderr") => {
 			const slice = chunk.subarray(0, Math.max(0, maximum - bytes));
+			if (slice.length < chunk.length) outputTruncated = true;
 			bytes += slice.length;
 			if (destination === "stdout") stdout = Buffer.concat([stdout, slice]);
 			else stderr = Buffer.concat([stderr, slice]);
@@ -88,16 +134,18 @@ export async function runProcess(options: ProcessOptions): Promise<ProcessResult
 			settled = true;
 			clearTimeout(timeout);
 			if (escalation) clearTimeout(escalation);
+			if (deadline) clearTimeout(deadline);
 			options.signal?.removeEventListener("abort", abort);
 		};
 		child.once("error", (error) => {
 			finish();
 			reject(error);
 		});
-		child.once("close", (exitCode) => {
+		const complete = (exitCode: number | null) => {
 			if (settled) return;
 			// This one-shot command owns descendants even if they close stdio and outlive the leader.
 			kill("SIGKILL");
+			if (ownedDescendants.size) void signalDescendants("SIGKILL");
 			finish();
 			resolve({
 				exitCode,
@@ -106,10 +154,34 @@ export async function runProcess(options: ProcessOptions): Promise<ProcessResult
 				stderr: new StringDecoder("utf8").write(stderr),
 				timedOut,
 				aborted,
+				outputTruncated,
 				durationMs: performance.now() - started,
 			});
-		});
+		};
+		child.once("close", complete);
 		options.signal?.addEventListener("abort", abort, { once: true });
 		if (options.signal?.aborted) abort();
+	});
+}
+
+/** No command lines/environments are collected. Birth identity prevents killing a reused PID. */
+function processSnapshot(): Promise<Map<number, { parent: number; birth: string }>> {
+	if (process.platform === "win32") return Promise.resolve(new Map());
+	return new Promise((resolveSnapshot) => {
+		execFile(
+			"/bin/ps",
+			["-axo", "pid=,ppid=,lstart="],
+			{ timeout: 200, maxBuffer: 2_000_000 },
+			(error, stdout) => {
+				const rows = new Map<number, { parent: number; birth: string }>();
+				if (!error)
+					for (const line of stdout.split("\n")) {
+						const match = /^\s*(\d+)\s+(\d+)\s+(.+)$/.exec(line);
+						if (match)
+							rows.set(Number(match[1]), { parent: Number(match[2]), birth: match[3] ?? "" });
+					}
+				resolveSnapshot(rows);
+			}
+		);
 	});
 }

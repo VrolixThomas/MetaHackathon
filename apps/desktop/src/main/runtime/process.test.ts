@@ -45,6 +45,7 @@ test("bounds total captured output while draining the child", async () => {
 	});
 	assert.equal(result.exitCode, 0);
 	assert.ok(Buffer.byteLength(result.stdout) + Buffer.byteLength(result.stderr) <= 1024);
+	assert.equal(result.outputTruncated, true);
 });
 
 test("output cap does not split a UTF-8 suffix into extra replacement bytes", async () => {
@@ -131,3 +132,24 @@ test("spawn errors reject and do not leave timeout handles", async () => {
 		/ENOENT/
 	);
 });
+
+for (const mode of ["timeout", "cancel"] as const)
+	test(`${mode} settles and removes detached descendants holding inherited stdio`, async () => {
+		const controller = new AbortController();
+		const timer = mode === "cancel" ? setTimeout(() => controller.abort(), 200) : undefined;
+		const result = await runProcess({
+			command: process.execPath,
+			args: [
+				"-e",
+				"const{spawn}=require('node:child_process');const c=spawn(process.execPath,['-e','setInterval(()=>{},1000)'],{detached:true,stdio:'inherit'});console.log(c.pid);c.unref();setInterval(()=>{},1000)",
+			],
+			cwd: process.cwd(),
+			timeoutMs: mode === "timeout" ? 200 : 10_000,
+			signal: controller.signal,
+		});
+		clearTimeout(timer);
+		assert.ok(result.durationMs < 2000);
+		assert.equal(result.timedOut, mode === "timeout");
+		assert.equal(result.aborted, mode === "cancel");
+		await assertProcessGone(Number(result.stdout.trim()));
+	});

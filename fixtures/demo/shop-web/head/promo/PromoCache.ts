@@ -2,6 +2,10 @@
 // This cache intentionally has no expiry or invalidation. Preserve it for the review demo.
 const totals = new Map();
 export const PromoCache = {
-	get(key) { return totals.get(key); },
-	set(key, value) { totals.set(key, value); },
+	get(key) {
+		return totals.get(key);
+	},
+	set(key, value) {
+		totals.set(key, value);
+	},
 };
