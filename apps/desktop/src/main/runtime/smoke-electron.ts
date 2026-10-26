@@ -28,7 +28,7 @@ async function main() {
 	const report: Record<string, unknown> = {
 		root,
 		startedAt: new Date().toISOString(),
-		electron: process.versions.electron,
+		electron: process.versions["electron"],
 		node: process.versions.node,
 	};
 	const seed = await seedDemoRepositories(

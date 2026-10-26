@@ -96,7 +96,7 @@ export class ScenarioRunner {
 			timeoutMs,
 			signal,
 			maxOutputBytes: 2_000_000,
-			env: executionEnvironment(process.versions.electron ? { ELECTRON_RUN_AS_NODE: "1" } : {}),
+			env: executionEnvironment(process.versions["electron"] ? { ELECTRON_RUN_AS_NODE: "1" } : {}),
 		});
 		const completedAt = new Date().toISOString();
 		const finalSha = await runProcess({

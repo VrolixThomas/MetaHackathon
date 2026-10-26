@@ -70,7 +70,7 @@ export class PreviewRunner {
 			env: executionEnvironment({
 				PORT: "0",
 				METAHACKATHON_RUN_ID: runId,
-				...(process.versions.electron ? { ELECTRON_RUN_AS_NODE: "1" } : {}),
+				...(process.versions["electron"] ? { ELECTRON_RUN_AS_NODE: "1" } : {}),
 			}),
 		});
 		let page: PreviewPage | undefined;
@@ -143,7 +143,9 @@ export class PreviewRunner {
 				command: this.nodeExecutable,
 				args: probeArgs,
 				cwd: input.path,
-				env: executionEnvironment(process.versions.electron ? { ELECTRON_RUN_AS_NODE: "1" } : {}),
+				env: executionEnvironment(
+					process.versions["electron"] ? { ELECTRON_RUN_AS_NODE: "1" } : {}
+				),
 				timeoutMs,
 				signal: input.signal,
 			});
