@@ -45,7 +45,28 @@ test("runtime router prepares actual demo refs, serves their source/diff and exe
 			path: "promo/PromoCache.ts",
 		});
 		assert.equal(before.content, null);
+		assert.equal(before.prId, shop.id);
 		assert.match(after.content ?? "", /no expiry or invalidation/);
+		await assert.rejects(
+			caller.source({ prId: shop.id, revision: "head", path: "pricing" }),
+			/not a file/
+		);
+		const prepared = service.getPrepared(shop.id);
+		const originalSha = prepared.pr.headSha;
+		prepared.pr.headSha = "f".repeat(40);
+		await assert.rejects(
+			caller.source({ prId: shop.id, revision: "head", path: "pricing/applyDiscounts.ts" }),
+			/Could not inspect/
+		);
+		prepared.pr.headSha = originalSha;
+		assert.deepEqual(
+			(await caller.credentialStatus()).map((status) => status.provider),
+			["github", "meta", "elevenlabs"]
+		);
+		await assert.rejects(
+			caller.setCredential({ provider: "meta", secret: `${" ".repeat(20_000)}x` }),
+			(error: unknown) => (error as { code?: string }).code === "BAD_REQUEST"
+		);
 		const diff = await caller.diff({ prId: shop.id, path: "pricing/applyDiscounts.ts" });
 		assert.match(diff.patch, /throw new PromoExpiredError/);
 		const run = await caller.runScenario({

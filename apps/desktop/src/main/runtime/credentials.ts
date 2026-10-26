@@ -1,9 +1,15 @@
 import { randomUUID } from "node:crypto";
 import { mkdir, readFile, rename, rm, writeFile } from "node:fs/promises";
 import { join } from "node:path";
+import {
+	CredentialProviderSchema,
+	CredentialStatusListSchema,
+	SetCredentialInputSchema,
+} from "../../shared/contracts";
+import type { CredentialProvider } from "../../shared/contracts";
 
-export const credentialProviders = ["github", "meta", "elevenlabs"] as const;
-export type CredentialProvider = (typeof credentialProviders)[number];
+export const credentialProviders = CredentialProviderSchema.options;
+export type { CredentialProvider } from "../../shared/contracts";
 
 /** Inject Electron safeStorage after app.whenReady(). macOS uses Keychain encryption keys. */
 export interface SecretEncryption {
@@ -46,14 +52,12 @@ export class CredentialStore {
 	async status() {
 		await this.pending;
 		const values = await this.read();
-		return Object.fromEntries(
-			credentialProviders.map((provider) => [
+		return CredentialStatusListSchema.parse(
+			credentialProviders.map((provider) => ({
 				provider,
-				{
-					configured: Boolean(values[provider]),
-					storage: "os-encrypted" as const,
-				},
-			])
+				configured: Boolean(values[provider]),
+				storage: "os-encrypted" as const,
+			}))
 		);
 	}
 
@@ -66,10 +70,12 @@ export class CredentialStore {
 	}
 
 	set(provider: CredentialProvider, secret: string): Promise<void> {
-		if (!credentialProviders.includes(provider)) throw new Error("Unknown credential provider");
-		if (!secret.trim() || secret.length > 16_384) throw new Error("Invalid credential");
+		const input = SetCredentialInputSchema.parse({ provider, secret });
 		this.assertSecure();
-		return this.update(provider, this.encryption.encryptString(secret.trim()).toString("base64"));
+		return this.update(
+			input.provider,
+			this.encryption.encryptString(input.secret).toString("base64")
+		);
 	}
 
 	delete(provider: CredentialProvider): Promise<void> {

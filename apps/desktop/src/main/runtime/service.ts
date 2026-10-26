@@ -1,5 +1,5 @@
 import { join } from "node:path";
-import { PullRequestSchema, RepositoryPathSchema } from "../../shared/contracts";
+import { PullRequestSchema, RepositoryPathSchema, SourceFileSchema } from "../../shared/contracts";
 import type { PullRequest } from "../../shared/contracts";
 import type { SubmissionLedger } from "../db/runtime-state";
 import { CredentialStore, type SecretEncryption } from "./credentials";
@@ -171,6 +171,26 @@ export class RuntimeService {
 		const path = RepositoryPathSchema.parse(pathInput);
 		const { pr, worktrees } = this.getPrepared(prId);
 		const commitSha = revision === "base" ? pr.baseSha : pr.headSha;
+		const entry = await runProcess({
+			command: "git",
+			args: ["--literal-pathspecs", "ls-tree", "--full-tree", "-z", commitSha, "--", path],
+			cwd: worktrees.repositoryPath,
+			env: executionEnvironment(),
+			timeoutMs: 10_000,
+			maxOutputBytes: 16_384,
+		});
+		if (entry.exitCode !== 0 || entry.outputTruncated)
+			throw new Error("Could not inspect the committed source file");
+		if (!entry.stdout)
+			return SourceFileSchema.parse({
+				prId,
+				repository: pr.repository,
+				revision,
+				commitSha,
+				path,
+				content: null,
+			});
+		if (!/^\d+ blob /.test(entry.stdout)) throw new Error("Requested source is not a file");
 		const result = await runProcess({
 			command: "git",
 			args: ["show", "--no-ext-diff", "--no-textconv", `${commitSha}:${path}`],
@@ -179,15 +199,16 @@ export class RuntimeService {
 			timeoutMs: 10_000,
 			maxOutputBytes: 1_000_000,
 		});
-		if (result.timedOut || result.aborted || result.outputTruncated)
+		if (result.exitCode !== 0 || result.timedOut || result.aborted || result.outputTruncated)
 			throw new Error("Source read did not complete");
-		return {
+		return SourceFileSchema.parse({
+			prId,
 			repository: pr.repository,
 			revision,
 			commitSha,
 			path,
-			content: result.exitCode === 0 ? result.stdout : null,
-		};
+			content: result.stdout,
+		});
 	}
 
 	async diff(prId: string, pathInput: string) {

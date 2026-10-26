@@ -1,33 +1,35 @@
 import { z } from "zod";
 import {
+	CredentialStatusListSchema,
 	IdSchema,
 	PreviewSchema,
 	PullRequestSchema,
+	RemoveCredentialInputSchema,
 	RepositoryPathSchema,
-	RevisionSchema,
 	ScenarioTraceSchema,
+	SetCredentialInputSchema,
+	SourceFileRequestSchema,
+	SourceFileSchema,
 } from "../../shared/contracts";
 import { publicProcedure, router } from "../trpc";
-import { credentialProviders } from "./credentials";
 import type { RuntimeService } from "./service";
 
 /** Integration registers this factory's result in the root router after app.whenReady(). */
 export function createRuntimeRouter(getRuntime: () => RuntimeService) {
 	return router({
-		credentialStatus: publicProcedure.query(() => getRuntime().credentials.status()),
+		credentialStatus: publicProcedure
+			.output(CredentialStatusListSchema)
+			.query(() => getRuntime().credentials.status()),
 		setCredential: publicProcedure
-			.input(
-				z.strictObject({
-					provider: z.enum(credentialProviders),
-					secret: z.string().trim().min(1).max(16_384),
-				})
-			)
+			.input(SetCredentialInputSchema)
+			.output(CredentialStatusListSchema)
 			.mutation(async ({ input }) => {
 				await getRuntime().credentials.set(input.provider, input.secret);
 				return getRuntime().credentials.status();
 			}),
 		deleteCredential: publicProcedure
-			.input(z.strictObject({ provider: z.enum(credentialProviders) }))
+			.input(RemoveCredentialInputSchema)
+			.output(CredentialStatusListSchema)
 			.mutation(async ({ input }) => {
 				await getRuntime().credentials.delete(input.provider);
 				return getRuntime().credentials.status();
@@ -45,9 +47,8 @@ export function createRuntimeRouter(getRuntime: () => RuntimeService) {
 			.output(z.array(RepositoryPathSchema))
 			.query(({ input }) => getRuntime().changedFiles(input.prId)),
 		source: publicProcedure
-			.input(
-				z.strictObject({ prId: IdSchema, revision: RevisionSchema, path: RepositoryPathSchema })
-			)
+			.input(SourceFileRequestSchema)
+			.output(SourceFileSchema)
 			.query(({ input }) => getRuntime().source(input.prId, input.revision, input.path)),
 		diff: publicProcedure
 			.input(z.strictObject({ prId: IdSchema, path: RepositoryPathSchema }))
