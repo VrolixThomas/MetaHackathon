@@ -1,7 +1,9 @@
 import { join } from "node:path";
 import { BrowserWindow, app } from "electron";
+import electronUpdater from "electron-updater";
 import { openDatabase } from "./db";
 import { setupTRPCIPC } from "./trpc/ipc-link";
+import { startUpdateCheck } from "./updates";
 
 let mainWindow: BrowserWindow | null = null;
 let database: ReturnType<typeof openDatabase> | undefined;
@@ -40,6 +42,9 @@ app.whenReady().then(() => {
 	database = openDatabase();
 	setupTRPCIPC(() => mainWindow);
 	createWindow();
+	void startUpdateCheck(app.isPackaged, electronUpdater.autoUpdater, (error) => {
+		console.warn("Update check failed:", error instanceof Error ? error.message : "Unknown error");
+	});
 
 	app.on("activate", () => {
 		if (BrowserWindow.getAllWindows().length === 0) createWindow();
