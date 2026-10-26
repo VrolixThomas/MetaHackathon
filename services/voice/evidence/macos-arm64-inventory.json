@@ -1,0 +1,3891 @@
+{
+  "platform": "macOS-26.5.2-arm64-arm-64bit-Mach-O",
+  "architecture": "arm64",
+  "totalBytes": 314304181,
+  "fileCount": 521,
+  "machOCount": 274,
+  "files": [
+    {
+      "path": "_internal/PIL/.dylibs/libXau.6.dylib",
+      "bytes": 69584,
+      "sha256": "59c58e4a9780468f268b4553cafb7448e8c15ea55fdd12000c895a65b67852d8",
+      "machO": true,
+      "architectures": "arm64"
+    },
+    {
+      "path": "_internal/PIL/.dylibs/libavif.16.4.2.dylib",
+      "bytes": 2999136,
+      "sha256": "8a9aa2ab054f2e79b4504b354d0b0034f5247c0a9150fe2ab70a609c43835a70",
+      "machO": true,
+      "architectures": "arm64"
+    },
+    {
+      "path": "_internal/PIL/.dylibs/libjpeg.62.4.0.dylib",
+      "bytes": 701120,
+      "sha256": "057306a2b92af233f0de57e6cf668677f05c4563f61029a2d26e3dc89f13449b",
+      "machO": true,
+      "architectures": "arm64"
+    },
+    {
+      "path": "_internal/PIL/.dylibs/liblcms2.2.dylib",
+      "bytes": 421168,
+      "sha256": "a8e8efd2ca4896b76884c9b640c57494a849147196f736ab154f12da096028d6",
+      "machO": true,
+      "architectures": "arm64"
+    },
+    {
+      "path": "_internal/PIL/.dylibs/liblzma.5.dylib",
+      "bytes": 216944,
+      "sha256": "d157caef89915907f53e3f34b34a30ac8323c94e68c165762dd5eaf94c31cca1",
+      "machO": true,
+      "architectures": "arm64"
+    },
+    {
+      "path": "_internal/PIL/.dylibs/libopenjp2.2.5.4.dylib",
+      "bytes": 430576,
+      "sha256": "f99bbb6ff10dd5b3fb7bdba864effee82dddcc9d9eb8d4956a212d5d2647de8b",
+      "machO": true,
+      "architectures": "arm64"
+    },
+    {
+      "path": "_internal/PIL/.dylibs/libsharpyuv.0.dylib",
+      "bytes": 85856,
+      "sha256": "8ad8748b62925d6b31d82273ae1406afe8f099497ffda3f023a46e3ed82d9fd7",
+      "machO": true,
+      "architectures": "arm64"
+    },
+    {
+      "path": "_internal/PIL/.dylibs/libtiff.6.dylib",
+      "bytes": 572544,
+      "sha256": "2339a12b26582ea8ac0ba8510a6c97d9526cbc0d20f7b6c5596a4fa13aec30a5",
+      "machO": true,
+      "architectures": "arm64"
+    },
+    {
+      "path": "_internal/PIL/.dylibs/libwebp.7.dylib",
+      "bytes": 512672,
+      "sha256": "13e29093a737485fa1ad9898560a671718dda10bfdf00431e300795edf3124d2",
+      "machO": true,
+      "architectures": "arm64"
+    },
+    {
+      "path": "_internal/PIL/.dylibs/libwebpdemux.2.dylib",
+      "bytes": 69616,
+      "sha256": "49edb93048e21510331f771517fc3e7434321c2cafcc03c58d6b99cb7b2f738f",
+      "machO": true,
+      "architectures": "arm64"
+    },
+    {
+      "path": "_internal/PIL/.dylibs/libwebpmux.3.dylib",
+      "bytes": 105792,
+      "sha256": "8fe5e366e9990a52df2a9b86295fcaa81505b55b20162c1d2abf56166a5eca3a",
+      "machO": true,
+      "architectures": "arm64"
+    },
+    {
+      "path": "_internal/PIL/.dylibs/libxcb.1.1.0.dylib",
+      "bytes": 193760,
+      "sha256": "f2b34c9743d52dd1314be70acaf0e4cab3b8a70a69ebb2edbcc79d105b1f2ca0",
+      "machO": true,
+      "architectures": "arm64"
+    },
+    {
+      "path": "_internal/PIL/.dylibs/libz.1.3.1.zlib-ng.dylib",
+      "bytes": 176320,
+      "sha256": "5c5a029252824c5234aceb404ae79dd609c8b1741507ebe71411cc8813c87ca4",
+      "machO": true,
+      "architectures": "arm64"
+    },
+    {
+      "path": "_internal/PIL/_avif.cpython-313-darwin.so",
+      "bytes": 73648,
+      "sha256": "448c5cedff62f196a92a8615997071d921a1120023e477204e4268921dcfb985",
+      "machO": true,
+      "architectures": "arm64"
+    },
+    {
+      "path": "_internal/PIL/_imaging.cpython-313-darwin.so",
+      "bytes": 634240,
+      "sha256": "131a2044796cb1fa4f3a238e253028d48aed5beac5b779d4edcea9891ea1c7fc",
+      "machO": true,
+      "architectures": "arm64"
+    },
+    {
+      "path": "_internal/PIL/_imagingcms.cpython-313-darwin.so",
+      "bytes": 97824,
+      "sha256": "32aa3a1881337d1e2bfb92e860d5772e10918b16008cb6608791a4971dc3b454",
+      "machO": true,
+      "architectures": "arm64"
+    },
+    {
+      "path": "_internal/PIL/_imagingtk.cpython-313-darwin.so",
+      "bytes": 70592,
+      "sha256": "c94b308829390903c3b38b146b4aa4bbd5b4b25a149540cd1741a5fc3def68bf",
+      "machO": true,
+      "architectures": "arm64"
+    },
+    {
+      "path": "_internal/PIL/_webp.cpython-313-darwin.so",
+      "bytes": 75728,
+      "sha256": "9f38bf9f277a21d71a77c97303147ebb2de80bacfdd649389f13309483d304a6",
+      "machO": true,
+      "architectures": "arm64"
+    },
+    {
+      "path": "_internal/Python.framework/Versions/3.13/Python",
+      "bytes": 5050800,
+      "sha256": "11c302ad42cb1a2039e642f3f328ff911c5e19bcaefce98dff8dd11cf75d2dbe",
+      "machO": true,
+      "architectures": "arm64"
+    },
+    {
+      "path": "_internal/Python.framework/Versions/3.13/Resources/Info.plist",
+      "bytes": 972,
+      "sha256": "2dd4cd7a62ced7cf60dca3c892c62ecdfe96475ec0da20d1bc36ce3f67f59f4d",
+      "machO": false
+    },
+    {
+      "path": "_internal/_cffi_backend.cpython-313-darwin.so",
+      "bytes": 246256,
+      "sha256": "9458afd44af1953c2618e5acc0929e46fe766d74433590d48cffcd83d90e4612",
+      "machO": true,
+      "architectures": "arm64"
+    },
+    {
+      "path": "_internal/aiohttp-3.14.5.dist-info/INSTALLER",
+      "bytes": 4,
+      "sha256": "ceebae7b8927a3227e5303cf5e0f1f7b34bb542ad7250ac03fbcde36ec2f1508",
+      "machO": false
+    },
+    {
+      "path": "_internal/aiohttp-3.14.5.dist-info/METADATA",
+      "bytes": 8277,
+      "sha256": "50b29a2268649f7ce5b22c0a41b60896d246fee58e2a74b468f66848e469834c",
+      "machO": false
+    },
+    {
+      "path": "_internal/aiohttp-3.14.5.dist-info/RECORD",
+      "bytes": 8905,
+      "sha256": "d3f654c8e5ab01cfebfef39ebe5de6deaad5ef52d7ac5474977e2b790e231dd8",
+      "machO": false
+    },
+    {
+      "path": "_internal/aiohttp-3.14.5.dist-info/WHEEL",
+      "bytes": 136,
+      "sha256": "5bdbcdb311edb8f8c16abead5b2d3c887060fe334af958323a9a32a0d3f01efd",
+      "machO": false
+    },
+    {
+      "path": "_internal/aiohttp-3.14.5.dist-info/licenses/LICENSE.txt",
+      "bytes": 11313,
+      "sha256": "2e4be5fc6c4c72a466fcb665d726e049a6891981fe536c4f04b6366749461d23",
+      "machO": false
+    },
+    {
+      "path": "_internal/aiohttp-3.14.5.dist-info/licenses/vendor/llhttp/LICENSE",
+      "bytes": 1069,
+      "sha256": "628168d68bb5a8a17e0bbefb3bd74e326e1edc20583d76f52f457c82c921867d",
+      "machO": false
+    },
+    {
+      "path": "_internal/aiohttp-3.14.5.dist-info/top_level.txt",
+      "bytes": 8,
+      "sha256": "8aff8921a69c99397e852868dd09a985c2a76d1458c75b2de3bca3cffd7bf11a",
+      "machO": false
+    },
+    {
+      "path": "_internal/aiohttp/_http_parser.cpython-313-darwin.so",
+      "bytes": 576896,
+      "sha256": "1151699f92dcc4ed988824aba40787bef5b4d7732962e8489efc1d4ae6bf5720",
+      "machO": true,
+      "architectures": "arm64"
+    },
+    {
+      "path": "_internal/aiohttp/_http_writer.cpython-313-darwin.so",
+      "bytes": 109168,
+      "sha256": "354ba728bd5372786c427eaa3d1c4415cf6e69d521f81bcafb8229ec38cf12f6",
+      "machO": true,
+      "architectures": "arm64"
+    },
+    {
+      "path": "_internal/aiohttp/_websocket/mask.cpython-313-darwin.so",
+      "bytes": 103584,
+      "sha256": "01380d49a4e589d5ec1ed92b9de14fb4121b8b9a0d604d5ed120c9a5a68b445c",
+      "machO": true,
+      "architectures": "arm64"
+    },
+    {
+      "path": "_internal/aiohttp/_websocket/reader_c.cpython-313-darwin.so",
+      "bytes": 266208,
+      "sha256": "6ed3d7b55c0418863e80ad400e9cbbc042778f81b26708e0adf95a95153cf150",
+      "machO": true,
+      "architectures": "arm64"
+    },
+    {
+      "path": "_internal/attrs-26.1.0.dist-info/INSTALLER",
+      "bytes": 4,
+      "sha256": "ceebae7b8927a3227e5303cf5e0f1f7b34bb542ad7250ac03fbcde36ec2f1508",
+      "machO": false
+    },
+    {
+      "path": "_internal/attrs-26.1.0.dist-info/METADATA",
+      "bytes": 8754,
+      "sha256": "4cd40e690f23bf37cbcad34efd6758e062df1df07c86833f7e3ce95bf1fa38cc",
+      "machO": false
+    },
+    {
+      "path": "_internal/attrs-26.1.0.dist-info/RECORD",
+      "bytes": 3556,
+      "sha256": "d5e36b4e3a4f8f4eef148e133178740d9291a00515eb59ad678ade2474f85d30",
+      "machO": false
+    },
+    {
+      "path": "_internal/attrs-26.1.0.dist-info/WHEEL",
+      "bytes": 87,
+      "sha256": "41c708c5adba6e097513ab8ccb9f1d7865a2fb469e22491a9e01dcc64da459fc",
+      "machO": false
+    },
+    {
+      "path": "_internal/attrs-26.1.0.dist-info/licenses/LICENSE",
+      "bytes": 1109,
+      "sha256": "882115c95dfc2af1eeb6714f8ec6d5cbcabf667caff8729f42420da63f714e9f",
+      "machO": false
+    },
+    {
+      "path": "_internal/audioop/_audioop.abi3.so",
+      "bytes": 110624,
+      "sha256": "7189f498d2273ef946f10fdca32d9f5743a05c80717111db0f0a8724ac322a72",
+      "machO": true,
+      "architectures": "arm64"
+    },
+    {
+      "path": "_internal/av/.dylibs/libSvtAv1Enc.4.1.0.dylib",
+      "bytes": 3772464,
+      "sha256": "01275c3e14560430c4abb586d287b52df0a54eb7ee29f5147e5b0c4e5f41c24a",
+      "machO": true,
+      "architectures": "arm64"
+    },
+    {
+      "path": "_internal/av/.dylibs/libavcodec.62.28.101.dylib",
+      "bytes": 12820672,
+      "sha256": "212b44f1088d0a38b51e16ba4495affa0d6b1dd21f7443daf800d901413feb7a",
+      "machO": true,
+      "architectures": "arm64"
+    },
+    {
+      "path": "_internal/av/.dylibs/libavdevice.62.3.101.dylib",
+      "bytes": 116928,
+      "sha256": "69ac73ff9220a1136aa33c2de62c6242d6490266450266fa8aee2606e331e851",
+      "machO": true,
+      "architectures": "arm64"
+    },
+    {
+      "path": "_internal/av/.dylibs/libavfilter.11.14.101.dylib",
+      "bytes": 3656624,
+      "sha256": "df825d75d87a3e12fdcd2285942633849bdaf5dde2121ea3384391a374c2a923",
+      "machO": true,
+      "architectures": "arm64"
+    },
+    {
+      "path": "_internal/av/.dylibs/libavformat.62.12.101.dylib",
+      "bytes": 2575968,
+      "sha256": "8dfaf7cc6b9ee554fb53aac516097d8afffa113ed655a25ed4a6920ef474e226",
+      "machO": true,
+      "architectures": "arm64"
+    },
+    {
+      "path": "_internal/av/.dylibs/libavutil.60.26.101.dylib",
+      "bytes": 739728,
+      "sha256": "3392b7a9bca355dc98c771822b69f0c4b980b9b764387841fe59a8e20886793b",
+      "machO": true,
+      "architectures": "arm64"
+    },
+    {
+      "path": "_internal/av/.dylibs/libdav1d.7.dylib",
+      "bytes": 729632,
+      "sha256": "13b1ade3084df2cc3215ec37c0791d0564374388137557be43043bacffa522a1",
+      "machO": true,
+      "architectures": "arm64"
+    },
+    {
+      "path": "_internal/av/.dylibs/libmp3lame.0.dylib",
+      "bytes": 363136,
+      "sha256": "c39034d0f147f61e0a2c710fa5afa8150de5d6cc81e23dd05ef6e4522c0f6b8a",
+      "machO": true,
+      "architectures": "arm64"
+    },
+    {
+      "path": "_internal/av/.dylibs/libopencore-amrnb.0.dylib",
+      "bytes": 266224,
+      "sha256": "f1db2c99974f9ffef2b79617504610405d977003be32956c0693f1cc892d5189",
+      "machO": true,
+      "architectures": "arm64"
+    },
+    {
+      "path": "_internal/av/.dylibs/libopencore-amrwb.0.dylib",
+      "bytes": 134128,
+      "sha256": "fd1cf2491c07f967e18840e7c49dedbb1e7c814ef5a13a0852f527ec12619811",
+      "machO": true,
+      "architectures": "arm64"
+    },
+    {
+      "path": "_internal/av/.dylibs/libopus.0.dylib",
+      "bytes": 633216,
+      "sha256": "79aba2d2f23766a24b720bafad32b5a61b81bc46626692623c2ec1238f9c5253",
+      "machO": true,
+      "architectures": "arm64"
+    },
+    {
+      "path": "_internal/av/.dylibs/libsharpyuv.0.1.2.dylib",
+      "bytes": 85040,
+      "sha256": "2978374c46c5b784a54226eb7cc9774253f2daff7f543aea45ba9f1079b06d9f",
+      "machO": true,
+      "architectures": "arm64"
+    },
+    {
+      "path": "_internal/av/.dylibs/libswresample.6.3.101.dylib",
+      "bytes": 121024,
+      "sha256": "d36620f3579bf4b6df64243429d91c213193d43427051705978187c9e9e2ab40",
+      "machO": true,
+      "architectures": "arm64"
+    },
+    {
+      "path": "_internal/av/.dylibs/libswscale.9.5.101.dylib",
+      "bytes": 1045936,
+      "sha256": "33c0821b3cde581f1c51bbbf16c4e436752abe5063184eb26f81084c95162e92",
+      "machO": true,
+      "architectures": "arm64"
+    },
+    {
+      "path": "_internal/av/.dylibs/libvpx.12.dylib",
+      "bytes": 1701200,
+      "sha256": "6b44d32b90d3aa833d317b95dbb39098a662fc876b8e92bdab0466a5830231c4",
+      "machO": true,
+      "architectures": "arm64"
+    },
+    {
+      "path": "_internal/av/.dylibs/libwebp.7.2.0.dylib",
+      "bytes": 469008,
+      "sha256": "76f65dc9d804d7de7fc2db34c68f5e2fd8cbb13f80a129ad1f6eeba86c19c896",
+      "machO": true,
+      "architectures": "arm64"
+    },
+    {
+      "path": "_internal/av/.dylibs/libwebpmux.3.1.2.dylib",
+      "bytes": 87728,
+      "sha256": "57e64b003b96380b37029dd320d4066d88369836ef87b72b98d1e95150030fd1",
+      "machO": true,
+      "architectures": "arm64"
+    },
+    {
+      "path": "_internal/av/.dylibs/libx264.165.dylib",
+      "bytes": 1536832,
+      "sha256": "91db14f7252dec9c296c67d56febf392599fe7977f9dd130dcbba5331e9be64f",
+      "machO": true,
+      "architectures": "arm64"
+    },
+    {
+      "path": "_internal/av/.dylibs/libx265.216.dylib",
+      "bytes": 6827632,
+      "sha256": "bf3bd4bf5746bc404ec473c0c0ab90d3b90887c97de6b974257bdb625e2ea6f8",
+      "machO": true,
+      "architectures": "arm64"
+    },
+    {
+      "path": "_internal/av/_core.abi3.so",
+      "bytes": 94512,
+      "sha256": "74e6e2a85eead56fa3f53e5d0dd4a5b6f07bc1590008ac6913827835cd1e8d35",
+      "machO": true,
+      "architectures": "arm64"
+    },
+    {
+      "path": "_internal/av/audio/codeccontext.abi3.so",
+      "bytes": 113904,
+      "sha256": "7692a60c3f89cf00264b532fe14b68a7a88005821106674a47c6dc6ed46d64e3",
+      "machO": true,
+      "architectures": "arm64"
+    },
+    {
+      "path": "_internal/av/audio/fifo.abi3.so",
+      "bytes": 115424,
+      "sha256": "cf1c8e3e028a99326389eb432bf304cb853e38a2af3c4de3ac89e46fcd4aa79e",
+      "machO": true,
+      "architectures": "arm64"
+    },
+    {
+      "path": "_internal/av/audio/format.abi3.so",
+      "bytes": 96816,
+      "sha256": "76af31f95f70a7e2ac3240ff94e53add15cf674a504a4be0531efb936033ccf3",
+      "machO": true,
+      "architectures": "arm64"
+    },
+    {
+      "path": "_internal/av/audio/frame.abi3.so",
+      "bytes": 134768,
+      "sha256": "0d6b88403ec63357e782cd8e036f36d72bc1ab47cf6194a09dd5ec4c0a1a4402",
+      "machO": true,
+      "architectures": "arm64"
+    },
+    {
+      "path": "_internal/av/audio/layout.abi3.so",
+      "bytes": 120000,
+      "sha256": "02a0df9fa7f7c9aebb2f7d5b94c67cf31b30180cf9e9d127704faf4432f68c04",
+      "machO": true,
+      "architectures": "arm64"
+    },
+    {
+      "path": "_internal/av/audio/plane.abi3.so",
+      "bytes": 111632,
+      "sha256": "185bb96e869a75490a4e07fd318578cf7c7be7ba43e339af175bdf30f10e453d",
+      "machO": true,
+      "architectures": "arm64"
+    },
+    {
+      "path": "_internal/av/audio/resampler.abi3.so",
+      "bytes": 132768,
+      "sha256": "e43aacc47f7f124fe671b614cc85aa2dd4f9bb2fc8b404739f4c5b47e4fe6632",
+      "machO": true,
+      "architectures": "arm64"
+    },
+    {
+      "path": "_internal/av/audio/stream.abi3.so",
+      "bytes": 113200,
+      "sha256": "ff3adf96bc77ec20b1fb2fc9946486434566568db5e787abe45d535e7aa63129",
+      "machO": true,
+      "architectures": "arm64"
+    },
+    {
+      "path": "_internal/av/bitstream.abi3.so",
+      "bytes": 112208,
+      "sha256": "61d4305a2ea88086ba56e9bc3788025d9ee64a0377d6f48a243c3c0bbe41dc13",
+      "machO": true,
+      "architectures": "arm64"
+    },
+    {
+      "path": "_internal/av/buffer.abi3.so",
+      "bytes": 115584,
+      "sha256": "71501dc388c25e95b1e34e54ad243ad85034b44f065b734fedce87163565e6f5",
+      "machO": true,
+      "architectures": "arm64"
+    },
+    {
+      "path": "_internal/av/codec/codec.abi3.so",
+      "bytes": 137648,
+      "sha256": "b57434aa9c186d4fccd1368f7cae2cbc4489fd55938b5e66a700d50855593e75",
+      "machO": true,
+      "architectures": "arm64"
+    },
+    {
+      "path": "_internal/av/codec/context.abi3.so",
+      "bytes": 199616,
+      "sha256": "1749f8b66166ef2d8e9afa06ff3a92859e9f9df74d0a77026aba98beb438e567",
+      "machO": true,
+      "architectures": "arm64"
+    },
+    {
+      "path": "_internal/av/codec/hwaccel.abi3.so",
+      "bytes": 137488,
+      "sha256": "87fe248715771e873852eff17684ceea23aae84add2a97c8c17e0922723c9e61",
+      "machO": true,
+      "architectures": "arm64"
+    },
+    {
+      "path": "_internal/av/container/core.abi3.so",
+      "bytes": 177936,
+      "sha256": "bde20827bd7a41d61793da9061ac29b0c558a19372b76773bfed1e1257f56ef8",
+      "machO": true,
+      "architectures": "arm64"
+    },
+    {
+      "path": "_internal/av/container/input.abi3.so",
+      "bytes": 157056,
+      "sha256": "1b4c6220b77743e4bd45ebfa93762903aba371f5f305c6cb6c11f4f62fb3ebc3",
+      "machO": true,
+      "architectures": "arm64"
+    },
+    {
+      "path": "_internal/av/container/output.abi3.so",
+      "bytes": 155184,
+      "sha256": "5f960f2334b128d73498455ef40aac61877624ee22fc3094d164d0efa0eddff3",
+      "machO": true,
+      "architectures": "arm64"
+    },
+    {
+      "path": "_internal/av/container/pyio.abi3.so",
+      "bytes": 113024,
+      "sha256": "8e8494ee10644cfd7b2de3f354dc4182794b953b5498639daa213b45c56241c9",
+      "machO": true,
+      "architectures": "arm64"
+    },
+    {
+      "path": "_internal/av/container/streams.abi3.so",
+      "bytes": 158608,
+      "sha256": "cb33e03c3e0920c1eb22f7cc9a9f78c3306a00fbf823649c4e25887940ef9205",
+      "machO": true,
+      "architectures": "arm64"
+    },
+    {
+      "path": "_internal/av/device.abi3.so",
+      "bytes": 136320,
+      "sha256": "9a0e4f0f089643967142b95bc713a6221beab92964b9bfc0a20afe9d1e515689",
+      "machO": true,
+      "architectures": "arm64"
+    },
+    {
+      "path": "_internal/av/dictionary.abi3.so",
+      "bytes": 137616,
+      "sha256": "bb818471e25ef2528697f9b32b389e646a3d716eba6e56a23e02a2801f958e49",
+      "machO": true,
+      "architectures": "arm64"
+    },
+    {
+      "path": "_internal/av/error.abi3.so",
+      "bytes": 208576,
+      "sha256": "f45ce7cf1592de2ff4f2042ca526b8fb6ee269e2b6724daafb6f1bdfea970bdf",
+      "machO": true,
+      "architectures": "arm64"
+    },
+    {
+      "path": "_internal/av/filter/context.abi3.so",
+      "bytes": 215744,
+      "sha256": "207e9b870380c69255616e379619cef33db1eba73ca40061f93d7b0018f8f9bf",
+      "machO": true,
+      "architectures": "arm64"
+    },
+    {
+      "path": "_internal/av/filter/filter.abi3.so",
+      "bytes": 95808,
+      "sha256": "86a59b2ea1180a3423ea7e3cdbd699751e4723d8ed8a64d3c2aff3cef2a29df3",
+      "machO": true,
+      "architectures": "arm64"
+    },
+    {
+      "path": "_internal/av/filter/graph.abi3.so",
+      "bytes": 153392,
+      "sha256": "f8c9f4a11ced725bcda1129c040e791c1b937a2f21da9b6294568f1ead45ef6e",
+      "machO": true,
+      "architectures": "arm64"
+    },
+    {
+      "path": "_internal/av/filter/link.abi3.so",
+      "bytes": 117712,
+      "sha256": "3b02d71c583fd30c4e35eeff112d7a2d9de179d7af31dfeba168642ea8c85b4b",
+      "machO": true,
+      "architectures": "arm64"
+    },
+    {
+      "path": "_internal/av/filter/loudnorm.abi3.so",
+      "bytes": 113136,
+      "sha256": "20f29005085315e9bb07464f4fda7dd7a1c704b63a352c58f913624c3f92769a",
+      "machO": true,
+      "architectures": "arm64"
+    },
+    {
+      "path": "_internal/av/format.abi3.so",
+      "bytes": 115488,
+      "sha256": "9535f1f26f4ce88badc2970c0543670ac9881c045c6bbdc1a41fb8020a2e3b92",
+      "machO": true,
+      "architectures": "arm64"
+    },
+    {
+      "path": "_internal/av/frame.abi3.so",
+      "bytes": 115472,
+      "sha256": "fa62f6010714e783948e1924c87b25880e01d78e54e37705ba4fe6424547ab09",
+      "machO": true,
+      "architectures": "arm64"
+    },
+    {
+      "path": "_internal/av/index.abi3.so",
+      "bytes": 138560,
+      "sha256": "1a6fa558e06e7ee6997adc08bcf0211a75b17c4b17f0a685454400647cf13a16",
+      "machO": true,
+      "architectures": "arm64"
+    },
+    {
+      "path": "_internal/av/logging.abi3.so",
+      "bytes": 136912,
+      "sha256": "7d0e1826aa37b765dee166c1785cfd54918ee63d7fe2b55fbb8ce368b74e16c1",
+      "machO": true,
+      "architectures": "arm64"
+    },
+    {
+      "path": "_internal/av/opaque.abi3.so",
+      "bytes": 95200,
+      "sha256": "b04225679dc1478d7f43709f92ff6bfb85ca195f77a3c6b4a963b1907fc7df33",
+      "machO": true,
+      "architectures": "arm64"
+    },
+    {
+      "path": "_internal/av/packet.abi3.so",
+      "bytes": 162288,
+      "sha256": "e448bc1e3cc1013944220535c0037a9124f0002236d7ce7fa990801e0e164293",
+      "machO": true,
+      "architectures": "arm64"
+    },
+    {
+      "path": "_internal/av/plane.abi3.so",
+      "bytes": 111952,
+      "sha256": "781a597b4b80e9e00db17e78200d88e4256cb3d5ec93aed5a5536829b93a826c",
+      "machO": true,
+      "architectures": "arm64"
+    },
+    {
+      "path": "_internal/av/sidedata/encparams.abi3.so",
+      "bytes": 134368,
+      "sha256": "354e63a53ec3b13646d7f167c104485645816c16804c010e12f5a9bd52450aa0",
+      "machO": true,
+      "architectures": "arm64"
+    },
+    {
+      "path": "_internal/av/sidedata/motionvectors.abi3.so",
+      "bytes": 140976,
+      "sha256": "9cfa9d7113d366d72bec5da8fe5e4f824f5599d60205ad9e8f2352e12449e14a",
+      "machO": true,
+      "architectures": "arm64"
+    },
+    {
+      "path": "_internal/av/sidedata/sidedata.abi3.so",
+      "bytes": 136000,
+      "sha256": "b4352813d001970cbebe40c4ba4e3367ab31f3e83457239103b5e37327d6b97d",
+      "machO": true,
+      "architectures": "arm64"
+    },
+    {
+      "path": "_internal/av/stream.abi3.so",
+      "bytes": 136496,
+      "sha256": "f4d29ad331fce27fd7dad3f1212473657180fa2038ec16bd00606da12453cf1b",
+      "machO": true,
+      "architectures": "arm64"
+    },
+    {
+      "path": "_internal/av/subtitles/codeccontext.abi3.so",
+      "bytes": 113520,
+      "sha256": "d02009c4821e4ae151d96a7b6e018057b5155f48d17e9b70f1e546725487bbd7",
+      "machO": true,
+      "architectures": "arm64"
+    },
+    {
+      "path": "_internal/av/subtitles/stream.abi3.so",
+      "bytes": 95200,
+      "sha256": "6f8dedd665928193b0a3e4154c6c4faa82f43c86aabf8652bdab05c13a14bb7e",
+      "machO": true,
+      "architectures": "arm64"
+    },
+    {
+      "path": "_internal/av/subtitles/subtitle.abi3.so",
+      "bytes": 166224,
+      "sha256": "1e079b0d6ec351311d24fc0b43d470d2ce68ffa5abc00be532246c5a5e85455b",
+      "machO": true,
+      "architectures": "arm64"
+    },
+    {
+      "path": "_internal/av/utils.abi3.so",
+      "bytes": 93952,
+      "sha256": "adf48015d7f84f0a427f9f584a33cd06b781319fd6d9a8ab4faaf78589a9a573",
+      "machO": true,
+      "architectures": "arm64"
+    },
+    {
+      "path": "_internal/av/video/codeccontext.abi3.so",
+      "bytes": 137264,
+      "sha256": "8c30c1a2daef87557370bcadf7b4187011a1088acf0fa1118ff35c401d9d09bb",
+      "machO": true,
+      "architectures": "arm64"
+    },
+    {
+      "path": "_internal/av/video/format.abi3.so",
+      "bytes": 142080,
+      "sha256": "ee44e0c31884d9103fbde6f89cf6cb2199a9efae10f762e27ab9e50902c93892",
+      "machO": true,
+      "architectures": "arm64"
+    },
+    {
+      "path": "_internal/av/video/frame.abi3.so",
+      "bytes": 392848,
+      "sha256": "455e318b4fc0725e05610283a8ed5bea3755e71bac058322f7b1199b33654c97",
+      "machO": true,
+      "architectures": "arm64"
+    },
+    {
+      "path": "_internal/av/video/plane.abi3.so",
+      "bytes": 116480,
+      "sha256": "e4ea452ee8585b2681e5e8504557c5853f6fac2a8cc2ffb99aa7c7ae01b82d38",
+      "machO": true,
+      "architectures": "arm64"
+    },
+    {
+      "path": "_internal/av/video/reformatter.abi3.so",
+      "bytes": 130560,
+      "sha256": "99dc1007a22d93d69e380d2ee2f8141c9014ff0c1ce55137e2489a468f5d0b0f",
+      "machO": true,
+      "architectures": "arm64"
+    },
+    {
+      "path": "_internal/av/video/stream.abi3.so",
+      "bytes": 134032,
+      "sha256": "104221dd5424571f4616d49810aa03d85ca20a3cafaca3d9703497f33ad8de09",
+      "machO": true,
+      "architectures": "arm64"
+    },
+    {
+      "path": "_internal/base_library.zip",
+      "bytes": 1399388,
+      "sha256": "b9de365cb0fd38467a2c4f647de6420fd5e180dcb321cf7afac99bd0ae9a992a",
+      "machO": false
+    },
+    {
+      "path": "_internal/click-8.5.0.dist-info/INSTALLER",
+      "bytes": 4,
+      "sha256": "ceebae7b8927a3227e5303cf5e0f1f7b34bb542ad7250ac03fbcde36ec2f1508",
+      "machO": false
+    },
+    {
+      "path": "_internal/click-8.5.0.dist-info/METADATA",
+      "bytes": 2567,
+      "sha256": "e87bce0bd194de70dfb8e708e0a6b0483009f25611804eaf87bfeb63e6c20501",
+      "machO": false
+    },
+    {
+      "path": "_internal/click-8.5.0.dist-info/RECORD",
+      "bytes": 2533,
+      "sha256": "a1b9c48c5e3a6f8574e990cef8f3f21cd9d81a9d74d7c31a63c29def36e47c7b",
+      "machO": false
+    },
+    {
+      "path": "_internal/click-8.5.0.dist-info/WHEEL",
+      "bytes": 82,
+      "sha256": "1b68144734c4b66791f27add5d425f3620775585718a03d0f9b110ba3a4d88db",
+      "machO": false
+    },
+    {
+      "path": "_internal/click-8.5.0.dist-info/licenses/LICENSE.txt",
+      "bytes": 1475,
+      "sha256": "9a8ad106a394e853bfe21f42f4e72d592819a22805d991b5f3275029292b658d",
+      "machO": false
+    },
+    {
+      "path": "_internal/cryptography-50.0.2.dist-info/INSTALLER",
+      "bytes": 4,
+      "sha256": "ceebae7b8927a3227e5303cf5e0f1f7b34bb542ad7250ac03fbcde36ec2f1508",
+      "machO": false
+    },
+    {
+      "path": "_internal/cryptography-50.0.2.dist-info/METADATA",
+      "bytes": 4394,
+      "sha256": "047cfc71226409de4318b360aef15c63a2adf609731e3dcf7fe932f14ea042ee",
+      "machO": false
+    },
+    {
+      "path": "_internal/cryptography-50.0.2.dist-info/RECORD",
+      "bytes": 17871,
+      "sha256": "885dea69c355912af697487df561c734b0ade115f46b159101bdda78afc3c55e",
+      "machO": false
+    },
+    {
+      "path": "_internal/cryptography-50.0.2.dist-info/WHEEL",
+      "bytes": 104,
+      "sha256": "96f985b465650f71b86992fc892c82e72b15557fbb9855563b0c8a6b1fa6d712",
+      "machO": false
+    },
+    {
+      "path": "_internal/cryptography-50.0.2.dist-info/licenses/LICENSE",
+      "bytes": 197,
+      "sha256": "3e0c7c091a948b82533ba98fd7cbb40432d6f1a9acbf85f5922d2f99a93ae6bb",
+      "machO": false
+    },
+    {
+      "path": "_internal/cryptography-50.0.2.dist-info/licenses/LICENSE.APACHE",
+      "bytes": 11360,
+      "sha256": "aac73b3148f6d1d7111dbca32099f68d26c644c6813ae1e4f05f6579aa2663fe",
+      "machO": false
+    },
+    {
+      "path": "_internal/cryptography-50.0.2.dist-info/licenses/LICENSE.BSD",
+      "bytes": 1532,
+      "sha256": "602c4c7482de6479dd2e9793cda275e5e63d773dacd1eca689232ab7008fb4fb",
+      "machO": false
+    },
+    {
+      "path": "_internal/cryptography-50.0.2.dist-info/sboms/cryptography-rust.cyclonedx.json",
+      "bytes": 45993,
+      "sha256": "3e83e46564396b435608932504bdf782a7156b841c3b98c16c98c5c82ce6dc90",
+      "machO": false
+    },
+    {
+      "path": "_internal/cryptography-50.0.2.dist-info/sboms/sbom.json",
+      "bytes": 1205,
+      "sha256": "eae61c5ad3197e6c0a30adb3eeab20fa085f1068607667b1137fccf458fe7958",
+      "machO": false
+    },
+    {
+      "path": "_internal/cryptography/hazmat/bindings/_rust.abi3.so",
+      "bytes": 10403008,
+      "sha256": "d38d1937a5e8ffacf9b5f7b7841529388c7a8b81f77178727c5ed99c7f476500",
+      "machO": true,
+      "architectures": "arm64"
+    },
+    {
+      "path": "_internal/cv2/.dylibs/libSDL2-2.0.0.dylib",
+      "bytes": 1521168,
+      "sha256": "cb8f16811bcf9bd71ec09ead9047d11622ca1e14efc244117295153344498a39",
+      "machO": true,
+      "architectures": "arm64"
+    },
+    {
+      "path": "_internal/cv2/.dylibs/libSvtAv1Enc.3.0.2.dylib",
+      "bytes": 3150048,
+      "sha256": "b206869aeff11ef44ebb6de8c0701527a442f474af04c0feff7d0a8da17d9371",
+      "machO": true,
+      "architectures": "arm64"
+    },
+    {
+      "path": "_internal/cv2/.dylibs/libX11.6.dylib",
+      "bytes": 1019680,
+      "sha256": "84eaeef4f302f06efd1521ae2885d4ac6ba852b8d66c57e545b5531f328a3034",
+      "machO": true,
+      "architectures": "arm64"
+    },
+    {
+      "path": "_internal/cv2/.dylibs/libXau.6.dylib",
+      "bytes": 53120,
+      "sha256": "5cb62bafbab5581db590caacbfdfe2c4907a2ba40574409f2da64d6a4b4a24f9",
+      "machO": true,
+      "architectures": "arm64"
+    },
+    {
+      "path": "_internal/cv2/.dylibs/libXdmcp.6.dylib",
+      "bytes": 54032,
+      "sha256": "be51c9e9722a44d54764eeb7c2490b31886bbc9ad01566c00250b392b1a71802",
+      "machO": true,
+      "architectures": "arm64"
+    },
+    {
+      "path": "_internal/cv2/.dylibs/libaom.3.12.1.dylib",
+      "bytes": 3915312,
+      "sha256": "76da094fabf074c94dea9f3724c49496ab9c50f9c1f6ec9a0b9b12970ed6c5eb",
+      "machO": true,
+      "architectures": "arm64"
+    },
+    {
+      "path": "_internal/cv2/.dylibs/libarchive.13.dylib",
+      "bytes": 702752,
+      "sha256": "21e50611909e85e41f5d135885cdc95395dd411c6c6d1b99b19f18d19bffe81c",
+      "machO": true,
+      "architectures": "arm64"
+    },
+    {
+      "path": "_internal/cv2/.dylibs/libaribb24.0.dylib",
+      "bytes": 122144,
+      "sha256": "b7742b50837d096eff15d7f5470e926f97bcf28b56164e9f111329106c5d9f9e",
+      "machO": true,
+      "architectures": "arm64"
+    },
+    {
+      "path": "_internal/cv2/.dylibs/libass.9.dylib",
+      "bytes": 245664,
+      "sha256": "a7688201e441733093f537fce3f5a8f967e1fed150a802e365bc73da74639df2",
+      "machO": true,
+      "architectures": "arm64"
+    },
+    {
+      "path": "_internal/cv2/.dylibs/libavcodec.61.19.101.dylib",
+      "bytes": 10238496,
+      "sha256": "a828186c3c941ba0dc50ce2a92035320a0cbc60e77dd75efaf4774bbcf8b5d4e",
+      "machO": true,
+      "architectures": "arm64"
+    },
+    {
+      "path": "_internal/cv2/.dylibs/libavdevice.61.3.100.dylib",
+      "bytes": 205376,
+      "sha256": "240cc2cdc79d27b7dfcd30cd3f2866489177b1861ab4a40b719cad06b8519559",
+      "machO": true,
+      "architectures": "arm64"
+    },
+    {
+      "path": "_internal/cv2/.dylibs/libavfilter.10.4.100.dylib",
+      "bytes": 3143088,
+      "sha256": "35db003f0b57413ad6376534fecc9abb9e4399663ec08b7bad9ef650dcf5a061",
+      "machO": true,
+      "architectures": "arm64"
+    },
+    {
+      "path": "_internal/cv2/.dylibs/libavformat.61.7.100.dylib",
+      "bytes": 2350592,
+      "sha256": "d643756fa10243c3eef6d6f3455988b9c1e5ddb675940ad3587405303e3c937e",
+      "machO": true,
+      "architectures": "arm64"
+    },
+    {
+      "path": "_internal/cv2/.dylibs/libavif.16.3.0.dylib",
+      "bytes": 220880,
+      "sha256": "8fbd0b2c042e990857c2bc199606b6b588f3410c2520949d7b7d30a5c2bec22b",
+      "machO": true,
+      "architectures": "arm64"
+    },
+    {
+      "path": "_internal/cv2/.dylibs/libavutil.59.39.100.dylib",
+      "bytes": 639600,
+      "sha256": "111c0b543e977648485b542f17addae4fed3ef9491f1b524f1b2b2d54f45a6d4",
+      "machO": true,
+      "architectures": "arm64"
+    },
+    {
+      "path": "_internal/cv2/.dylibs/libb2.1.dylib",
+      "bytes": 85904,
+      "sha256": "b600e22c2cc6882db723f6d7be757a27f4adca813c878112ad21ab62d73f1256",
+      "machO": true,
+      "architectures": "arm64"
+    },
+    {
+      "path": "_internal/cv2/.dylibs/libbluray.2.dylib",
+      "bytes": 344320,
+      "sha256": "31824e0bdc354e455fe9ecf4213a1d072502b459a3a3d78ba319cac1fd0d50df",
+      "machO": true,
+      "architectures": "arm64"
+    },
+    {
+      "path": "_internal/cv2/.dylibs/libbrotlicommon.1.1.0.dylib",
+      "bytes": 183728,
+      "sha256": "c631f27d6cfc742f00606de9c6906f1671a9c0442ab96b7493f10c25b81f6769",
+      "machO": true,
+      "architectures": "arm64"
+    },
+    {
+      "path": "_internal/cv2/.dylibs/libbrotlidec.1.1.0.dylib",
+      "bytes": 104064,
+      "sha256": "eed165db4852c669ae8a7253ffc12f31d51b732a4162f70539cbf97dc2292d71",
+      "machO": true,
+      "architectures": "arm64"
+    },
+    {
+      "path": "_internal/cv2/.dylibs/libbrotlienc.1.1.0.dylib",
+      "bytes": 652096,
+      "sha256": "6f0a129737a2f27943be40a926c53a87aae4eab21a14119ea4c14d5a83aeb654",
+      "machO": true,
+      "architectures": "arm64"
+    },
+    {
+      "path": "_internal/cv2/.dylibs/libcjson.1.7.18.dylib",
+      "bytes": 73472,
+      "sha256": "6da1661d7fb6ebb5a18543ecd15b7469c54e084e363eb9f39df70fc10ee55cde",
+      "machO": true,
+      "architectures": "arm64"
+    },
+    {
+      "path": "_internal/cv2/.dylibs/libcrypto.3.dylib",
+      "bytes": 4824192,
+      "sha256": "59a2e5605af2c7abfd81e81362671a28b74581af8a4e3a0d55266337dce2264a",
+      "machO": true,
+      "architectures": "arm64"
+    },
+    {
+      "path": "_internal/cv2/.dylibs/libdav1d.7.dylib",
+      "bytes": 784112,
+      "sha256": "a24387c3c778c7d1aa452ff571f85d5a1c77d7b97312841a230e2a74ad9d4da0",
+      "machO": true,
+      "architectures": "arm64"
+    },
+    {
+      "path": "_internal/cv2/.dylibs/libfontconfig.1.dylib",
+      "bytes": 304384,
+      "sha256": "021280c9bde97410f1b1badc7740e300c93f4d3c8b07f89f263ac6412e53b072",
+      "machO": true,
+      "architectures": "arm64"
+    },
+    {
+      "path": "_internal/cv2/.dylibs/libfreetype.6.dylib",
+      "bytes": 638064,
+      "sha256": "f064784600dccac04b10735ac00ba954d148bdf8b69c2f4cadfd0169a736b3eb",
+      "machO": true,
+      "architectures": "arm64"
+    },
+    {
+      "path": "_internal/cv2/.dylibs/libfribidi.0.dylib",
+      "bytes": 171024,
+      "sha256": "c88e67b2516a38fc2b9a0167596ed246b0cebba65f9ccc4a025d67d086fa0467",
+      "machO": true,
+      "architectures": "arm64"
+    },
+    {
+      "path": "_internal/cv2/.dylibs/libgif.7.2.0.dylib",
+      "bytes": 72496,
+      "sha256": "5b27749ca54577c28d6a109a09ee6f6539d20c287ccb6f4f75a8b826ee65f5fa",
+      "machO": true,
+      "architectures": "arm64"
+    },
+    {
+      "path": "_internal/cv2/.dylibs/libglib-2.0.0.dylib",
+      "bytes": 1227936,
+      "sha256": "5022abba1cba02dde5779e790de068a6b1d7e237e3cd7f497d0c13590bc556c9",
+      "machO": true,
+      "architectures": "arm64"
+    },
+    {
+      "path": "_internal/cv2/.dylibs/libgmp.10.dylib",
+      "bytes": 450384,
+      "sha256": "9f85699f9498189f60b379d63dd16fbc5c043816159bc6cca16706c4f8cc9f06",
+      "machO": true,
+      "architectures": "arm64"
+    },
+    {
+      "path": "_internal/cv2/.dylibs/libgnutls.30.dylib",
+      "bytes": 1895936,
+      "sha256": "75f57df9032c8f5a8c8cd0d7cbd8b3666034d5d454e3573a82cd9ffce13d8c98",
+      "machO": true,
+      "architectures": "arm64"
+    },
+    {
+      "path": "_internal/cv2/.dylibs/libgraphite2.3.2.1.dylib",
+      "bytes": 154400,
+      "sha256": "ec701ce09d26cae6155e160303143ab4a17994452484b0670170f69b68641df1",
+      "machO": true,
+      "architectures": "arm64"
+    },
+    {
+      "path": "_internal/cv2/.dylibs/libharfbuzz.0.dylib",
+      "bytes": 1271920,
+      "sha256": "8a1a6faeaf9f27e4091ea36c2f4125769304481dd07567e301c54d8fb1b0dc13",
+      "machO": true,
+      "architectures": "arm64"
+    },
+    {
+      "path": "_internal/cv2/.dylibs/libhogweed.6.10.dylib",
+      "bytes": 314784,
+      "sha256": "2e14943f6760a2d2bbd7614c62403a7f06e58fd623a2399b58c4e68355c3e7c0",
+      "machO": true,
+      "architectures": "arm64"
+    },
+    {
+      "path": "_internal/cv2/.dylibs/libhwy.1.2.0.dylib",
+      "bytes": 95888,
+      "sha256": "f793c67e0bfff45b5859674c8a27bc1d54387743948927638fd326783d150bbd",
+      "machO": true,
+      "architectures": "arm64"
+    },
+    {
+      "path": "_internal/cv2/.dylibs/libidn2.0.dylib",
+      "bytes": 257984,
+      "sha256": "c4d46e0ff4e9d09e05d200f9dd2345eb8425846d06733a13c6184ea9c7a224c4",
+      "machO": true,
+      "architectures": "arm64"
+    },
+    {
+      "path": "_internal/cv2/.dylibs/libintl.8.dylib",
+      "bytes": 228864,
+      "sha256": "b58165ae3f37f3bdb28c663fc32103a978418ed3c0b79987256a04b5acc90e7a",
+      "machO": true,
+      "architectures": "arm64"
+    },
+    {
+      "path": "_internal/cv2/.dylibs/libjpeg.8.3.2.dylib",
+      "bytes": 470560,
+      "sha256": "aeea9f23de17f93408bb5292531f600acad214bf027c8bf4ba227e7faf076024",
+      "machO": true,
+      "architectures": "arm64"
+    },
+    {
+      "path": "_internal/cv2/.dylibs/libjxl.0.11.1.dylib",
+      "bytes": 1704416,
+      "sha256": "5e57c104c8b0b9bc8ec5d004a18673a5dda3d95522f57476b3d69ca962736628",
+      "machO": true,
+      "architectures": "arm64"
+    },
+    {
+      "path": "_internal/cv2/.dylibs/libjxl_cms.0.11.1.dylib",
+      "bytes": 110784,
+      "sha256": "89f304434a4e15b760976a370c545c60c245d9bd9efbc78b83bc21049363ab46",
+      "machO": true,
+      "architectures": "arm64"
+    },
+    {
+      "path": "_internal/cv2/.dylibs/libjxl_threads.0.11.1.dylib",
+      "bytes": 56528,
+      "sha256": "820794ba878f65be9e860cc8eac9969fcfdc134d3da622d4707af6e4f3e1053c",
+      "machO": true,
+      "architectures": "arm64"
+    },
+    {
+      "path": "_internal/cv2/.dylibs/liblcms2.2.dylib",
+      "bytes": 372096,
+      "sha256": "01e3fe08f952d44057b2a052babd0af4a413b0811c867d70c33e94873dfa123e",
+      "machO": true,
+      "architectures": "arm64"
+    },
+    {
+      "path": "_internal/cv2/.dylibs/libleptonica.6.dylib",
+      "bytes": 2224912,
+      "sha256": "422ccc62dd07550d775a2e4f9258c036e902cf3c5adaa841a6dc8ef0e655fd36",
+      "machO": true,
+      "architectures": "arm64"
+    },
+    {
+      "path": "_internal/cv2/.dylibs/liblz4.1.10.0.dylib",
+      "bytes": 176032,
+      "sha256": "d656132420343505952f4662c2980fcbdf685637d1851830e77f87cb641e1d6f",
+      "machO": true,
+      "architectures": "arm64"
+    },
+    {
+      "path": "_internal/cv2/.dylibs/liblzma.5.dylib",
+      "bytes": 184560,
+      "sha256": "ce1925d52ffead24081e6f8625a399c9bbd09f43dc958f507b15f74bce72d31e",
+      "machO": true,
+      "architectures": "arm64"
+    },
+    {
+      "path": "_internal/cv2/.dylibs/libmbedcrypto.3.6.3.dylib",
+      "bytes": 528560,
+      "sha256": "c6db1bad88ecf92b0ccb958f2db7c06c0539c657eb98ad4bce6f5f6a8939c9d2",
+      "machO": true,
+      "architectures": "arm64"
+    },
+    {
+      "path": "_internal/cv2/.dylibs/libmp3lame.0.dylib",
+      "bytes": 320912,
+      "sha256": "25173d236258350d7d1fac61e01783b112ab6dd56c234e68e24c7e4695bcad48",
+      "machO": true,
+      "architectures": "arm64"
+    },
+    {
+      "path": "_internal/cv2/.dylibs/libnettle.8.10.dylib",
+      "bytes": 332240,
+      "sha256": "6b2c8760e128c0d6924a7e33873ee1ec9e8d541e9715da7d67bc2d30249873a5",
+      "machO": true,
+      "architectures": "arm64"
+    },
+    {
+      "path": "_internal/cv2/.dylibs/libogg.0.dylib",
+      "bytes": 88240,
+      "sha256": "5372e1a2b8afa548ee83a5dcfd083a9557fadcbf5626c7c2bf5d9a1ec5915568",
+      "machO": true,
+      "architectures": "arm64"
+    },
+    {
+      "path": "_internal/cv2/.dylibs/libopencore-amrnb.0.dylib",
+      "bytes": 193968,
+      "sha256": "e39cd7711ddef7613c16a4f87eb2d75e5d884ab07d876e154710a666f2b0f40f",
+      "machO": true,
+      "architectures": "arm64"
+    },
+    {
+      "path": "_internal/cv2/.dylibs/libopencore-amrwb.0.dylib",
+      "bytes": 122016,
+      "sha256": "0815960bc3ea4196a11627619f96a624b3409d7e7aff59b2bf36845fe6517053",
+      "machO": true,
+      "architectures": "arm64"
+    },
+    {
+      "path": "_internal/cv2/.dylibs/libopenjp2.2.5.3.dylib",
+      "bytes": 324176,
+      "sha256": "c313a31865556da02c469c88d5273d7077427173e07f6402a5de9e72545abd99",
+      "machO": true,
+      "architectures": "arm64"
+    },
+    {
+      "path": "_internal/cv2/.dylibs/libopus.0.dylib",
+      "bytes": 355600,
+      "sha256": "f9a2194b6ce4694a56ec5efb9ae4b5b0eba399a7f894b5644c3082cecf61a40d",
+      "machO": true,
+      "architectures": "arm64"
+    },
+    {
+      "path": "_internal/cv2/.dylibs/libp11-kit.0.dylib",
+      "bytes": 1460720,
+      "sha256": "ff5a990fb6da4c98b750c6848a8c128b8ff28474b2de28f0c27213a0ae108b7b",
+      "machO": true,
+      "architectures": "arm64"
+    },
+    {
+      "path": "_internal/cv2/.dylibs/libpcre2-8.0.dylib",
+      "bytes": 577008,
+      "sha256": "4d1c32c52001f736ec4168e62fc2fc52b323a75423a33e17b8fb5c799b1f0c9d",
+      "machO": true,
+      "architectures": "arm64"
+    },
+    {
+      "path": "_internal/cv2/.dylibs/libpng16.16.dylib",
+      "bytes": 208272,
+      "sha256": "809003d6d5a338abceebe08920840744835ac95c92152e8c1dbd1ec8f50e34d2",
+      "machO": true,
+      "architectures": "arm64"
+    },
+    {
+      "path": "_internal/cv2/.dylibs/libpostproc.58.3.100.dylib",
+      "bytes": 85488,
+      "sha256": "0c435664dff50584023b909a944683d1828f1caf74bd741efd80e62ef97a5127",
+      "machO": true,
+      "architectures": "arm64"
+    },
+    {
+      "path": "_internal/cv2/.dylibs/librav1e.0.8.0.dylib",
+      "bytes": 2968928,
+      "sha256": "f5cd902e2da6cb5855571c4a3974853cc4877ffca2464637abafd23d2781abef",
+      "machO": true,
+      "architectures": "arm64"
+    },
+    {
+      "path": "_internal/cv2/.dylibs/librist.4.dylib",
+      "bytes": 187232,
+      "sha256": "362e2f26103515be2c2084b73639e8efddf4c1830fcccf2f356a5681b31f1c55",
+      "machO": true,
+      "architectures": "arm64"
+    },
+    {
+      "path": "_internal/cv2/.dylibs/librubberband.3.dylib",
+      "bytes": 401520,
+      "sha256": "814639b1c0f94188efdeffe64dd22ec2a4a8eba6b1e5c2afcfacbd5ffac3d89a",
+      "machO": true,
+      "architectures": "arm64"
+    },
+    {
+      "path": "_internal/cv2/.dylibs/libsamplerate.0.2.2.dylib",
+      "bytes": 1547856,
+      "sha256": "4bb7dd5f122b433fae9e8a9150e962f33e1be969633251f4f82a0274c5ece653",
+      "machO": true,
+      "architectures": "arm64"
+    },
+    {
+      "path": "_internal/cv2/.dylibs/libsharpyuv.0.1.1.dylib",
+      "bytes": 69584,
+      "sha256": "f3a2c1f892dfb12cccdc390779b5c87b463f26e8ff7c2c529fc34e64d6833a8d",
+      "machO": true,
+      "architectures": "arm64"
+    },
+    {
+      "path": "_internal/cv2/.dylibs/libsnappy.1.2.2.dylib",
+      "bytes": 79040,
+      "sha256": "4046f52bd54593dccbd5c0b189fc0e3b0d56588d344d82cdcae14fa5df5f3e8b",
+      "machO": true,
+      "architectures": "arm64"
+    },
+    {
+      "path": "_internal/cv2/.dylibs/libsodium.26.dylib",
+      "bytes": 288976,
+      "sha256": "45e65cd1139ed12c89dc44701e7d87c5fd1839df4a855bee2fe70db0b920092c",
+      "machO": true,
+      "architectures": "arm64"
+    },
+    {
+      "path": "_internal/cv2/.dylibs/libsoxr.0.1.2.dylib",
+      "bytes": 192880,
+      "sha256": "c1bc34f2152e67f9077dc6ac6a2cbca57054047fd3a8a4189b6cd34fbafbdf68",
+      "machO": true,
+      "architectures": "arm64"
+    },
+    {
+      "path": "_internal/cv2/.dylibs/libspeex.1.dylib",
+      "bytes": 142128,
+      "sha256": "46b78814ab984471ebbe7d60eaf5b863bc0b3f8dd3c28b77424fda7badf224ca",
+      "machO": true,
+      "architectures": "arm64"
+    },
+    {
+      "path": "_internal/cv2/.dylibs/libsrt.1.5.4.dylib",
+      "bytes": 725904,
+      "sha256": "8f2b9fb0d6ff98dcb578876ddb8442feeb0ae245f9feb8edf41563d4b66579ba",
+      "machO": true,
+      "architectures": "arm64"
+    },
+    {
+      "path": "_internal/cv2/.dylibs/libssh.4.10.1.dylib",
+      "bytes": 477680,
+      "sha256": "038c38effb94546581d162217eafa8a2543e17192b35c34afd25b4585363c8c8",
+      "machO": true,
+      "architectures": "arm64"
+    },
+    {
+      "path": "_internal/cv2/.dylibs/libssl.3.dylib",
+      "bytes": 895056,
+      "sha256": "68e9cd4faad8fd82c45bd0c384040f8c2f7852278379fd1c18dc2faffe88cfa9",
+      "machO": true,
+      "architectures": "arm64"
+    },
+    {
+      "path": "_internal/cv2/.dylibs/libswresample.5.3.100.dylib",
+      "bytes": 121488,
+      "sha256": "15cdffd80e4945bb8508632c0281b50380763f5193bce4079a88bae19bf50281",
+      "machO": true,
+      "architectures": "arm64"
+    },
+    {
+      "path": "_internal/cv2/.dylibs/libswscale.8.3.100.dylib",
+      "bytes": 450992,
+      "sha256": "73cad66cdb0bd6e6fa1068aa6dea5af6ff0159cc145083f796fe5ff93fd41ca9",
+      "machO": true,
+      "architectures": "arm64"
+    },
+    {
+      "path": "_internal/cv2/.dylibs/libtasn1.6.dylib",
+      "bytes": 107728,
+      "sha256": "ed06862b09672b71d938a1380c1a21aec46aa7f2d5f6c5fdd070ff1b2a439b9a",
+      "machO": true,
+      "architectures": "arm64"
+    },
+    {
+      "path": "_internal/cv2/.dylibs/libtesseract.5.dylib",
+      "bytes": 2881920,
+      "sha256": "afb8f7e81479f9b722d48a1a70a7107040827bcc12eb64acdfe733b317c86fd4",
+      "machO": true,
+      "architectures": "arm64"
+    },
+    {
+      "path": "_internal/cv2/.dylibs/libtheoradec.1.dylib",
+      "bytes": 108176,
+      "sha256": "25df6899e50ae39bb193a880f0342fff89c328f925eafa18ea4ff2bb7329389c",
+      "machO": true,
+      "architectures": "arm64"
+    },
+    {
+      "path": "_internal/cv2/.dylibs/libtheoraenc.1.dylib",
+      "bytes": 209984,
+      "sha256": "cdf43e8d4a42ab2def1c2ef33cc161efbf84aca3f2eeeabd27fb20389bbd04af",
+      "machO": true,
+      "architectures": "arm64"
+    },
+    {
+      "path": "_internal/cv2/.dylibs/libtiff.6.dylib",
+      "bytes": 540048,
+      "sha256": "3751be0d810b3f40a0c5c42e1c65ac198c2b355bc8d214a07e622313c7e86558",
+      "machO": true,
+      "architectures": "arm64"
+    },
+    {
+      "path": "_internal/cv2/.dylibs/libunibreak.6.dylib",
+      "bytes": 169680,
+      "sha256": "518e83e5eb5ebb82ab498c25d88ec4303bec4882b227677eb1d86cd797dcee97",
+      "machO": true,
+      "architectures": "arm64"
+    },
+    {
+      "path": "_internal/cv2/.dylibs/libunistring.5.dylib",
+      "bytes": 2006768,
+      "sha256": "6d1cec7073656fdd80a5621866c753e83c1da4b1c10354736ec3a7a8f9979f53",
+      "machO": true,
+      "architectures": "arm64"
+    },
+    {
+      "path": "_internal/cv2/.dylibs/libvidstab.1.2.dylib",
+      "bytes": 111872,
+      "sha256": "04ef87830dd180371055f5fa5661e8b22d9ed75c6d1339ebcc39b55c1b742570",
+      "machO": true,
+      "architectures": "arm64"
+    },
+    {
+      "path": "_internal/cv2/.dylibs/libvmaf.3.dylib",
+      "bytes": 743104,
+      "sha256": "fef03a6023028a254bf65138865fcac2be71fb720fbc9ca791e95414029ea368",
+      "machO": true,
+      "architectures": "arm64"
+    },
+    {
+      "path": "_internal/cv2/.dylibs/libvorbis.0.dylib",
+      "bytes": 209456,
+      "sha256": "135656224b59f041db66b94059b8df29780e624a5225c88adfb6294faac3945a",
+      "machO": true,
+      "architectures": "arm64"
+    },
+    {
+      "path": "_internal/cv2/.dylibs/libvorbisenc.2.dylib",
+      "bytes": 727456,
+      "sha256": "a1dec18ac8bc60ee2bc791d862c588f3893aae4cff786bffaa877371ea5ffeb5",
+      "machO": true,
+      "architectures": "arm64"
+    },
+    {
+      "path": "_internal/cv2/.dylibs/libvpx.11.dylib",
+      "bytes": 1748016,
+      "sha256": "199439d3ba11cc28d44b9f02736762d3d30d62480716cd860dec7a1ed614987b",
+      "machO": true,
+      "architectures": "arm64"
+    },
+    {
+      "path": "_internal/cv2/.dylibs/libwebp.7.1.10.dylib",
+      "bytes": 351952,
+      "sha256": "6d0374b4e93bb9fab25d1d525a9dd40986ea61fabbcdb90fca2b07ac496f6df4",
+      "machO": true,
+      "architectures": "arm64"
+    },
+    {
+      "path": "_internal/cv2/.dylibs/libwebpmux.3.1.1.dylib",
+      "bytes": 73232,
+      "sha256": "353a7e4bb85b452dae337425207c6848e430dba6bf7e4fc548b250746b969fdf",
+      "machO": true,
+      "architectures": "arm64"
+    },
+    {
+      "path": "_internal/cv2/.dylibs/libx264.164.dylib",
+      "bytes": 1304880,
+      "sha256": "e389499f0c00e75547dd5bb6728cd6554a7f6d43757d62fd22f9a0b7416c9445",
+      "machO": true,
+      "architectures": "arm64"
+    },
+    {
+      "path": "_internal/cv2/.dylibs/libx265.215.dylib",
+      "bytes": 4925872,
+      "sha256": "006561b74f0c8077b42314d1f464b143bf854aec6ff449e6080031c203ca1ec8",
+      "machO": true,
+      "architectures": "arm64"
+    },
+    {
+      "path": "_internal/cv2/.dylibs/libxcb-shape.0.0.0.dylib",
+      "bytes": 71040,
+      "sha256": "b7c53fafae8beed953e07d51021873a575ea200c9a2b7afbf26f1e9eed1584c2",
+      "machO": true,
+      "architectures": "arm64"
+    },
+    {
+      "path": "_internal/cv2/.dylibs/libxcb-shm.0.0.0.dylib",
+      "bytes": 70144,
+      "sha256": "62fec6878c5d599c9e03200a91b117b4b15b0f7eb145cacef8689f542cbee3d9",
+      "machO": true,
+      "architectures": "arm64"
+    },
+    {
+      "path": "_internal/cv2/.dylibs/libxcb-xfixes.0.0.0.dylib",
+      "bytes": 80640,
+      "sha256": "0835b193672d24feda7a6719bd1504b710e21ba9a58d8b4d6fc533275f5f4a2a",
+      "machO": true,
+      "architectures": "arm64"
+    },
+    {
+      "path": "_internal/cv2/.dylibs/libxcb.1.1.0.dylib",
+      "bytes": 193744,
+      "sha256": "44f5ab4469d401b9f7e69662aa6588dca79b35b26fa99b22e47ed230720a4cae",
+      "machO": true,
+      "architectures": "arm64"
+    },
+    {
+      "path": "_internal/cv2/.dylibs/libzimg.2.dylib",
+      "bytes": 396800,
+      "sha256": "73603f84a06daa4468313ced8d3e2d4ee3d52c574e6d0b2bd9220d606b35589f",
+      "machO": true,
+      "architectures": "arm64"
+    },
+    {
+      "path": "_internal/cv2/.dylibs/libzmq.5.dylib",
+      "bytes": 647248,
+      "sha256": "09199bb4962fbe2957f75ea43bba0d3cb5ea6a2dd05ae949633a40bb0fbd89f4",
+      "machO": true,
+      "architectures": "arm64"
+    },
+    {
+      "path": "_internal/cv2/.dylibs/libzstd.1.5.7.dylib",
+      "bytes": 666320,
+      "sha256": "541cc70fdd9881ee5dbcfc619b7cdeaefe9f99b31bfc15a3016892a8791c5e6c",
+      "machO": true,
+      "architectures": "arm64"
+    },
+    {
+      "path": "_internal/cv2/__init__.py",
+      "bytes": 6630,
+      "sha256": "69192904dead3ada37c8b305ee850ac7474924730881a9d5e0b2390944eb5aae",
+      "machO": false
+    },
+    {
+      "path": "_internal/cv2/config-3.py",
+      "bytes": 724,
+      "sha256": "9a7aadf724b822001f5e963b01fd4e375d45e2cbbe328d2ca7b42a440c083a1c",
+      "machO": false
+    },
+    {
+      "path": "_internal/cv2/config.py",
+      "bytes": 109,
+      "sha256": "1db3463a96f58a82123a847d1507228d9e8a80006de67401ae835917658ebe87",
+      "machO": false
+    },
+    {
+      "path": "_internal/cv2/cv2.abi3.so",
+      "bytes": 35446064,
+      "sha256": "fc7b98f6a6e2218c27e62dc764ad787d2c9921e66fde4ff84403509a532510a0",
+      "machO": true,
+      "architectures": "arm64"
+    },
+    {
+      "path": "_internal/cv2/data/__init__.py",
+      "bytes": 70,
+      "sha256": "d76e4f72d7bf3ad079e59c635a0e64a3cba0a67a20675b113323f8f1db4108cc",
+      "machO": false
+    },
+    {
+      "path": "_internal/cv2/gapi/__init__.py",
+      "bytes": 10298,
+      "sha256": "e960408dfab51428910038185c600a2131dd041eadd3f8d9f2191353c062cfe3",
+      "machO": false
+    },
+    {
+      "path": "_internal/cv2/load_config_py3.py",
+      "bytes": 244,
+      "sha256": "9c22766454a9ac2f6869d37830b2efc699e7b8c3125484e9976c6e677c066029",
+      "machO": false
+    },
+    {
+      "path": "_internal/cv2/mat_wrapper/__init__.py",
+      "bytes": 1124,
+      "sha256": "8b627063a9260cbfeced85f3225f8966e582315624462e05ea3eb45b78f83fd0",
+      "machO": false
+    },
+    {
+      "path": "_internal/cv2/misc/__init__.py",
+      "bytes": 37,
+      "sha256": "cabf4f9312ac97145cf3b861b482519f94689a63fd8daaa4b18afe643ba3edc5",
+      "machO": false
+    },
+    {
+      "path": "_internal/cv2/misc/version.py",
+      "bytes": 90,
+      "sha256": "893131ab58f01a002fde3b58407448f294a999fccfb23906f5baec1f46dd6219",
+      "machO": false
+    },
+    {
+      "path": "_internal/cv2/typing/__init__.py",
+      "bytes": 5365,
+      "sha256": "e7914cc4eb2ff8378e4e82d6a528dad3fb96b776519687bc930716beb873044a",
+      "machO": false
+    },
+    {
+      "path": "_internal/cv2/utils/__init__.py",
+      "bytes": 330,
+      "sha256": "7eec381871ce5ecc7129cf8069d00438a42afc8d46af81b7c8c951bc06d33f7d",
+      "machO": false
+    },
+    {
+      "path": "_internal/cv2/version.py",
+      "bytes": 92,
+      "sha256": "ffa4c71f0016abee4a3fdf524df7af91e21d2d1217407772db12acab1f00b02e",
+      "machO": false
+    },
+    {
+      "path": "_internal/frozenlist/_frozenlist.cpython-313-darwin.so",
+      "bytes": 161184,
+      "sha256": "02382344fe9e244b9acb14467e06fc1c600a2a1094aadf433a12f9625aebeaa0",
+      "machO": true,
+      "architectures": "arm64"
+    },
+    {
+      "path": "_internal/google_crc32c/.dylibs/libcrc32c.1.1.0.dylib",
+      "bytes": 35280,
+      "sha256": "f9cfbcf25144946b727dd70401ad85460d4b6c5c1485b3dae99fe17497ed466b",
+      "machO": true,
+      "architectures": "arm64"
+    },
+    {
+      "path": "_internal/google_crc32c/_crc32c.cpython-313-darwin.so",
+      "bytes": 68896,
+      "sha256": "a30190133ec2c274ac8dff72383fe2462a0aa86983a692b2ae558719cf02d32f",
+      "machO": true,
+      "architectures": "arm64"
+    },
+    {
+      "path": "_internal/httpcore2-2.16.0.dist-info/INSTALLER",
+      "bytes": 4,
+      "sha256": "ceebae7b8927a3227e5303cf5e0f1f7b34bb542ad7250ac03fbcde36ec2f1508",
+      "machO": false
+    },
+    {
+      "path": "_internal/httpcore2-2.16.0.dist-info/METADATA",
+      "bytes": 27552,
+      "sha256": "c073bd68b2bd543fbc2bab3763b42ed1e70666536d32c1bf39ef2764fd50b0a4",
+      "machO": false
+    },
+    {
+      "path": "_internal/httpcore2-2.16.0.dist-info/RECORD",
+      "bytes": 4837,
+      "sha256": "743b5aa1997901312b9e583b8633395b733966dc0cc94163fcf341461dc2abc0",
+      "machO": false
+    },
+    {
+      "path": "_internal/httpcore2-2.16.0.dist-info/WHEEL",
+      "bytes": 87,
+      "sha256": "5b77e4a649bbfb07fdbc123967eeecd1e5a478cfaca6eefc23c35e6fdf037848",
+      "machO": false
+    },
+    {
+      "path": "_internal/httpcore2-2.16.0.dist-info/licenses/LICENSE.md",
+      "bytes": 1599,
+      "sha256": "c4df125c807b0613501e943a5c92496dd11d2c16604ce396097a8dde396304d9",
+      "machO": false
+    },
+    {
+      "path": "_internal/httpx2-2.16.0.dist-info/INSTALLER",
+      "bytes": 4,
+      "sha256": "ceebae7b8927a3227e5303cf5e0f1f7b34bb542ad7250ac03fbcde36ec2f1508",
+      "machO": false
+    },
+    {
+      "path": "_internal/httpx2-2.16.0.dist-info/METADATA",
+      "bytes": 10019,
+      "sha256": "192f20046200ff50911a7278c21dfbee1e1a4c6fa7943227afe9231d28defc3f",
+      "machO": false
+    },
+    {
+      "path": "_internal/httpx2-2.16.0.dist-info/RECORD",
+      "bytes": 4659,
+      "sha256": "ff185eed633ca6aa6da3dd9b01ee8944cdc95c43e1d5f59aec9d3bf42922dfee",
+      "machO": false
+    },
+    {
+      "path": "_internal/httpx2-2.16.0.dist-info/WHEEL",
+      "bytes": 87,
+      "sha256": "5b77e4a649bbfb07fdbc123967eeecd1e5a478cfaca6eefc23c35e6fdf037848",
+      "machO": false
+    },
+    {
+      "path": "_internal/httpx2-2.16.0.dist-info/entry_points.txt",
+      "bytes": 45,
+      "sha256": "dee899a2b4509500053681da0f1b8cb2691d8eddeb5139ae073f35b4b5c57506",
+      "machO": false
+    },
+    {
+      "path": "_internal/httpx2-2.16.0.dist-info/licenses/LICENSE.md",
+      "bytes": 1589,
+      "sha256": "7e7d6dbaf7fe160d39fd6e84fd02c33cab96bcbea34d36998d545bceb4a19c30",
+      "machO": false
+    },
+    {
+      "path": "_internal/jiter/jiter.cpython-313-darwin.so",
+      "bytes": 710144,
+      "sha256": "e6d62ca437d2911959554320bb9ef510145f2fbe501942f593d53e1d904b25f1",
+      "machO": true,
+      "architectures": "arm64"
+    },
+    {
+      "path": "_internal/libmpdec.4.dylib",
+      "bytes": 188480,
+      "sha256": "c95d10170fcca3f5cdef2a671440bf604d5df4ef4539bdb0aa1617779ddfe03e",
+      "machO": true,
+      "architectures": "arm64"
+    },
+    {
+      "path": "_internal/loudness.cpython-313-darwin.so",
+      "bytes": 258752,
+      "sha256": "9b40d924d3120a3dc641fa805ec13479de2043236ca929d444aa6272564e8f8b",
+      "machO": true,
+      "architectures": "arm64"
+    },
+    {
+      "path": "_internal/multidict/_multidict.cpython-313-darwin.so",
+      "bytes": 233712,
+      "sha256": "56ddb3ecd644ba602db922d78b4c81c86c4528aa298d4c6d64e90fc3d415d004",
+      "machO": true,
+      "architectures": "arm64"
+    },
+    {
+      "path": "_internal/numpy-2.5.4.dist-info/INSTALLER",
+      "bytes": 4,
+      "sha256": "ceebae7b8927a3227e5303cf5e0f1f7b34bb542ad7250ac03fbcde36ec2f1508",
+      "machO": false
+    },
+    {
+      "path": "_internal/numpy-2.5.4.dist-info/METADATA",
+      "bytes": 6635,
+      "sha256": "e2b909d6a37d76c2bc130f528d7fed0c517322bce16dc7846b6a6df30e200403",
+      "machO": false
+    },
+    {
+      "path": "_internal/numpy-2.5.4.dist-info/RECORD",
+      "bytes": 111004,
+      "sha256": "a50621e61e904c7549990cceb56762a35d18bc3f7c9de3218b107768b370e412",
+      "machO": false
+    },
+    {
+      "path": "_internal/numpy-2.5.4.dist-info/WHEEL",
+      "bytes": 122,
+      "sha256": "a5fa49ef7bbd7f99f88dd454c0b7e2e5eec792738810217a54e384f4e4eebab6",
+      "machO": false
+    },
+    {
+      "path": "_internal/numpy-2.5.4.dist-info/entry_points.txt",
+      "bytes": 220,
+      "sha256": "ec26fade0c8bdac211a6c1dd003a65eb16885b925395423e93fcaa115af4052c",
+      "machO": false
+    },
+    {
+      "path": "_internal/numpy-2.5.4.dist-info/licenses/LICENSE.txt",
+      "bytes": 46826,
+      "sha256": "649a589ab31076e79e9ce62ba24eae9959598124176640dbc95f87bd10f34fcf",
+      "machO": false
+    },
+    {
+      "path": "_internal/numpy-2.5.4.dist-info/licenses/numpy/_core/include/numpy/libdivide/LICENSE.txt",
+      "bytes": 1018,
+      "sha256": "fbc539f47d0cf83bc61378080fb873d5c14630126cacbfe754035c3926daa5ec",
+      "machO": false
+    },
+    {
+      "path": "_internal/numpy-2.5.4.dist-info/licenses/numpy/_core/src/common/pythoncapi-compat/COPYING",
+      "bytes": 690,
+      "sha256": "3f2c1ffa76383a55ae0aac01c9737cd70050dff63e1f026694fbe9d662573c98",
+      "machO": false
+    },
+    {
+      "path": "_internal/numpy-2.5.4.dist-info/licenses/numpy/_core/src/highway/LICENSE",
+      "bytes": 20785,
+      "sha256": "e340270d4f64384569a91d546acb5b094d69ce47f0c015db77abb74dc6f815af",
+      "machO": false
+    },
+    {
+      "path": "_internal/numpy-2.5.4.dist-info/licenses/numpy/_core/src/multiarray/dragon4_LICENSE.txt",
+      "bytes": 1414,
+      "sha256": "f7b14309e5f54e5022b26448eefd419988ada2aec01d3c1162d84a0ea8f21f2c",
+      "machO": false
+    },
+    {
+      "path": "_internal/numpy-2.5.4.dist-info/licenses/numpy/_core/src/npysort/x86-simd-sort/LICENSE.md",
+      "bytes": 1514,
+      "sha256": "211e7d737d6179a08f791ebb0a99897ce7cd2457410c542876d125576edfe910",
+      "machO": false
+    },
+    {
+      "path": "_internal/numpy-2.5.4.dist-info/licenses/numpy/_core/src/umath/svml/LICENSE",
+      "bytes": 1543,
+      "sha256": "c17011467b4fe6e20fbfbeda4df09e58c2bca5480a063e55735a4000a379aad9",
+      "machO": false
+    },
+    {
+      "path": "_internal/numpy-2.5.4.dist-info/licenses/numpy/fft/pocketfft/LICENSE.md",
+      "bytes": 1498,
+      "sha256": "a85ca13fdf90160b64a0698215868c13b74d835ad0a4e2ba44713b8c5058a056",
+      "machO": false
+    },
+    {
+      "path": "_internal/numpy-2.5.4.dist-info/licenses/numpy/linalg/lapack_lite/LICENSE.txt",
+      "bytes": 2266,
+      "sha256": "a14cc25e10d40a3aa705b7de2fb764a6535d8ee9b2db4e1724900585457dfd55",
+      "machO": false
+    },
+    {
+      "path": "_internal/numpy-2.5.4.dist-info/licenses/numpy/ma/LICENSE",
+      "bytes": 1593,
+      "sha256": "05f3b88351988ecfad10abe92c0c50e5875c6452d5009a0084cc291551ffcca6",
+      "machO": false
+    },
+    {
+      "path": "_internal/numpy-2.5.4.dist-info/licenses/numpy/random/LICENSE.md",
+      "bytes": 3511,
+      "sha256": "103166b62b80443afb9eb3488e052ea06be0cff566b908f199e561fde49af19f",
+      "machO": false
+    },
+    {
+      "path": "_internal/numpy-2.5.4.dist-info/licenses/numpy/random/src/distributions/LICENSE.md",
+      "bytes": 2745,
+      "sha256": "469778be8f33d54e1bcaab28c281cc472916d2d273f835e55bc487d30503face",
+      "machO": false
+    },
+    {
+      "path": "_internal/numpy-2.5.4.dist-info/licenses/numpy/random/src/mt19937/LICENSE.md",
+      "bytes": 2926,
+      "sha256": "0e111337b25494a773106695f0e799f642b8567aaacca4f116a74a8177179156",
+      "machO": false
+    },
+    {
+      "path": "_internal/numpy-2.5.4.dist-info/licenses/numpy/random/src/pcg64/LICENSE.md",
+      "bytes": 1154,
+      "sha256": "e7d4f4fb20358f314210a892ae17351e04993813646f697ec387385ca2a36918",
+      "machO": false
+    },
+    {
+      "path": "_internal/numpy-2.5.4.dist-info/licenses/numpy/random/src/philox/LICENSE.md",
+      "bytes": 1509,
+      "sha256": "6f5828a57223d4cc7f8ea505a2623e7b978b242752c1515e355f46ba2cec1800",
+      "machO": false
+    },
+    {
+      "path": "_internal/numpy-2.5.4.dist-info/licenses/numpy/random/src/sfc64/LICENSE.md",
+      "bytes": 1226,
+      "sha256": "9d4098846018319cd68e228ee6220361787f73bccbf00237a85e4fc9621b998f",
+      "machO": false
+    },
+    {
+      "path": "_internal/numpy-2.5.4.dist-info/licenses/numpy/random/src/splitmix64/LICENSE.md",
+      "bytes": 332,
+      "sha256": "268b0ca06759d31ea3ca68dd35f20e877916e927b1c2a835e4592a3c4354b1f9",
+      "machO": false
+    },
+    {
+      "path": "_internal/numpy/_core/_multiarray_tests.cpython-313-darwin.so",
+      "bytes": 138416,
+      "sha256": "f07b7966d73b2d0aa27b8c41c376dea3978f79e67041689eea3444582d02f60f",
+      "machO": true,
+      "architectures": "arm64"
+    },
+    {
+      "path": "_internal/numpy/_core/_multiarray_umath.cpython-313-darwin.so",
+      "bytes": 3990608,
+      "sha256": "bea65d78f7c8c83ecdfa15715984af4b3d80264f33f21a2082c14ed01f57b3ca",
+      "machO": true,
+      "architectures": "arm64"
+    },
+    {
+      "path": "_internal/numpy/fft/_pocketfft_umath.cpython-313-darwin.so",
+      "bytes": 346096,
+      "sha256": "36d1a4c890c270ae25d0c09d292bce7e978b824fadac941de1faf08e47e33145",
+      "machO": true,
+      "architectures": "arm64"
+    },
+    {
+      "path": "_internal/numpy/linalg/_umath_linalg.cpython-313-darwin.so",
+      "bytes": 172096,
+      "sha256": "e64f1925999a1da6eebe0058796cdf82d877528d5b6b2464a1b8e69d9df6e012",
+      "machO": true,
+      "architectures": "arm64"
+    },
+    {
+      "path": "_internal/numpy/random/_bounded_integers.cpython-313-darwin.so",
+      "bytes": 314240,
+      "sha256": "b3e6ed173a631ad10477194070471afd56715888226f8737d843093169383b73",
+      "machO": true,
+      "architectures": "arm64"
+    },
+    {
+      "path": "_internal/numpy/random/_common.cpython-313-darwin.so",
+      "bytes": 267296,
+      "sha256": "c1972540f9eb2e44cba4739c3a93d7f47163ef3aa0a899f66d59ef75092bf803",
+      "machO": true,
+      "architectures": "arm64"
+    },
+    {
+      "path": "_internal/numpy/random/_generator.cpython-313-darwin.so",
+      "bytes": 705040,
+      "sha256": "8ba0508adfd7ec4144f8821c0d21b4f5ca464b99909f633a75ff5d66b055d504",
+      "machO": true,
+      "architectures": "arm64"
+    },
+    {
+      "path": "_internal/numpy/random/_mt19937.cpython-313-darwin.so",
+      "bytes": 150816,
+      "sha256": "8f5d0e1a0f2db7a1e92d443f72ef16073005fa066a0baca7884ef2a3265ef83c",
+      "machO": true,
+      "architectures": "arm64"
+    },
+    {
+      "path": "_internal/numpy/random/_pcg64.cpython-313-darwin.so",
+      "bytes": 169680,
+      "sha256": "7ddf16b5a105f8044dc25b4a92c3382de89df4e63d01689dee6e5dbdc8586a5d",
+      "machO": true,
+      "architectures": "arm64"
+    },
+    {
+      "path": "_internal/numpy/random/_philox.cpython-313-darwin.so",
+      "bytes": 151024,
+      "sha256": "96028489bbb01812b4b4de2ce51f806c47651d925e5fb340f3a1093b39722c64",
+      "machO": true,
+      "architectures": "arm64"
+    },
+    {
+      "path": "_internal/numpy/random/_sfc64.cpython-313-darwin.so",
+      "bytes": 115696,
+      "sha256": "94254f20ca79c8802e555420bb7747bb3e48e07ca1d12fc035420fc31fed6d86",
+      "machO": true,
+      "architectures": "arm64"
+    },
+    {
+      "path": "_internal/numpy/random/bit_generator.cpython-313-darwin.so",
+      "bytes": 226864,
+      "sha256": "3594acaafb17f5e538f74546c9efca14d27bd91b42119ce5983076ba3da3b18f",
+      "machO": true,
+      "architectures": "arm64"
+    },
+    {
+      "path": "_internal/numpy/random/mtrand.cpython-313-darwin.so",
+      "bytes": 595696,
+      "sha256": "2b6e72299896d8a01e950f8f82d168ec25092e6cb0b8769373b1a71e22beaa2b",
+      "machO": true,
+      "architectures": "arm64"
+    },
+    {
+      "path": "_internal/onnxruntime/capi/libonnxruntime.1.31.1.dylib",
+      "bytes": 32863344,
+      "sha256": "fc003b1a3446af95ee64f1347bce30253d38d4d58e311cccaf22d1c610ef6b2d",
+      "machO": true,
+      "architectures": "arm64"
+    },
+    {
+      "path": "_internal/onnxruntime/capi/onnxruntime_pybind11_state.so",
+      "bytes": 40552752,
+      "sha256": "347fa0401d2b19f7430206c66d22b1e0eb40a4acb60288c5e8e9de748dc43a1c",
+      "machO": true,
+      "architectures": "arm64"
+    },
+    {
+      "path": "_internal/opentelemetry_api-1.45.1.dist-info/INSTALLER",
+      "bytes": 4,
+      "sha256": "ceebae7b8927a3227e5303cf5e0f1f7b34bb542ad7250ac03fbcde36ec2f1508",
+      "machO": false
+    },
+    {
+      "path": "_internal/opentelemetry_api-1.45.1.dist-info/METADATA",
+      "bytes": 1411,
+      "sha256": "5bc71e90cb421be92a43bf5ad5b0f25dccfa2a24ddceaa2877779879962a4c9e",
+      "machO": false
+    },
+    {
+      "path": "_internal/opentelemetry_api-1.45.1.dist-info/RECORD",
+      "bytes": 6381,
+      "sha256": "24152f0832199f87da45b9513d8f560f19d0d48798cdd32f76fc5afcc6a95cdb",
+      "machO": false
+    },
+    {
+      "path": "_internal/opentelemetry_api-1.45.1.dist-info/WHEEL",
+      "bytes": 87,
+      "sha256": "5b77e4a649bbfb07fdbc123967eeecd1e5a478cfaca6eefc23c35e6fdf037848",
+      "machO": false
+    },
+    {
+      "path": "_internal/opentelemetry_api-1.45.1.dist-info/entry_points.txt",
+      "bytes": 573,
+      "sha256": "7713ead1845b4034b097c42447e23d037f2b6db7ca406e61dae3458e9bd4e95e",
+      "machO": false
+    },
+    {
+      "path": "_internal/opentelemetry_api-1.45.1.dist-info/licenses/LICENSE",
+      "bytes": 11357,
+      "sha256": "c71d239df91726fc519c6eb72d318ec65820627232b2f796219e87dcf35d0ab4",
+      "machO": false
+    },
+    {
+      "path": "_internal/pipecat/audio/dtmf/dtmf-0.wav",
+      "bytes": 8078,
+      "sha256": "37076820c10f93ec3d307f34effcd973a59785c9c0ad2017e6e2880b48743e8d",
+      "machO": false
+    },
+    {
+      "path": "_internal/pipecat/audio/dtmf/dtmf-1.wav",
+      "bytes": 8078,
+      "sha256": "4d76a35085293345346785876de2dcee5614cd7f74d50e84ea296448cf663ee6",
+      "machO": false
+    },
+    {
+      "path": "_internal/pipecat/audio/dtmf/dtmf-2.wav",
+      "bytes": 8078,
+      "sha256": "4bc40efffcdc69252740c15cb445c9425d2a338abf220c279672b4b298cc5976",
+      "machO": false
+    },
+    {
+      "path": "_internal/pipecat/audio/dtmf/dtmf-3.wav",
+      "bytes": 8078,
+      "sha256": "68428681b58628e3af6a2f092dd9d3f2600ece06b9db3fa2cd70b286665df720",
+      "machO": false
+    },
+    {
+      "path": "_internal/pipecat/audio/dtmf/dtmf-4.wav",
+      "bytes": 8078,
+      "sha256": "56cb063a2e83a78f8dd47c3c1dc7035198de9e6561a4ef53dd6dc2c670986b4c",
+      "machO": false
+    },
+    {
+      "path": "_internal/pipecat/audio/dtmf/dtmf-5.wav",
+      "bytes": 8078,
+      "sha256": "941a6e4b2957db78f32303e127f05289aadb37b72958d1b4c18e23169d4231e6",
+      "machO": false
+    },
+    {
+      "path": "_internal/pipecat/audio/dtmf/dtmf-6.wav",
+      "bytes": 8078,
+      "sha256": "f4088688922f68d2548e3eabaafcdb8d6b822cd8fe8e9922ca81c9668ea56c43",
+      "machO": false
+    },
+    {
+      "path": "_internal/pipecat/audio/dtmf/dtmf-7.wav",
+      "bytes": 8078,
+      "sha256": "a6732c0025133e8445d7ddb0292eb06b2961b29fa8c876d7504cb5d2753a6bec",
+      "machO": false
+    },
+    {
+      "path": "_internal/pipecat/audio/dtmf/dtmf-8.wav",
+      "bytes": 8078,
+      "sha256": "fc46cc2d74b6a328e6a6ce2c58296eaee4c0f803efa3f2da88ee0480ba0164fa",
+      "machO": false
+    },
+    {
+      "path": "_internal/pipecat/audio/dtmf/dtmf-9.wav",
+      "bytes": 8078,
+      "sha256": "054c6be7c93cbcb2b87d596f97c3370d6760dc80a55e33428714559b893d0e9e",
+      "machO": false
+    },
+    {
+      "path": "_internal/pipecat/audio/dtmf/dtmf-pound.wav",
+      "bytes": 8078,
+      "sha256": "c64a44506405b808545939d123bd7c77910834cb458e0dd1292ea95278e3162c",
+      "machO": false
+    },
+    {
+      "path": "_internal/pipecat/audio/dtmf/dtmf-star.wav",
+      "bytes": 8078,
+      "sha256": "9a642572e39be493f93055eea52a789969c686e0b400c3cd3d6d757b2aefb57b",
+      "machO": false
+    },
+    {
+      "path": "_internal/pipecat/audio/turn/smart_turn/data/smart-turn-v3.2-cpu.onnx",
+      "bytes": 8679182,
+      "sha256": "2bb026316b14a660486a75b1733cd3fbab8c2fd0314dc9af7be49f8cca967e4f",
+      "machO": false
+    },
+    {
+      "path": "_internal/pipecat/audio/vad/data/silero_vad.onnx",
+      "bytes": 2327524,
+      "sha256": "1a153a22f4509e292a94e67d6f9b85e8deb25b4988682b7e174c65279d8788e3",
+      "machO": false
+    },
+    {
+      "path": "_internal/pipecat/cli/agent_templates/AGENTS.md",
+      "bytes": 34980,
+      "sha256": "b5b477694b9d225287edb58a26750772fc7f7209f5753f1f4bcae7136f09a10f",
+      "machO": false
+    },
+    {
+      "path": "_internal/pipecat/cli/agent_templates/CLAUDE.md",
+      "bytes": 11,
+      "sha256": "336cc4fbf19beaada7ccf9986414fa91851a8d7a07dfb3ccbe800a69eed0ab49",
+      "machO": false
+    },
+    {
+      "path": "_internal/pipecat/cli/agent_templates/GETTING_STARTED.md",
+      "bytes": 3997,
+      "sha256": "1322b159fd9a194b6632caa8bc9f73f9807e4693430bf361e2e5ebf996761111",
+      "machO": false
+    },
+    {
+      "path": "_internal/pipecat/cli/templates/README.md.jinja2",
+      "bytes": 10974,
+      "sha256": "47be185170f03693bac3e6919824a5d7a12e7b5f28e6362564c88be7e5c9e649",
+      "machO": false
+    },
+    {
+      "path": "_internal/pipecat/cli/templates/_readme_blocks/how_it_works_daily_pstn.jinja2",
+      "bytes": 1037,
+      "sha256": "47adbfd8e7ed759e9851ed96c9b10af485f315265629b0db8e5fac277a0ae938",
+      "machO": false
+    },
+    {
+      "path": "_internal/pipecat/cli/templates/_readme_blocks/how_it_works_twilio_daily_sip.jinja2",
+      "bytes": 1188,
+      "sha256": "5f828a008351abd52c8a8225eac7e902a8d4898796fcb1afded3dd7038da7375",
+      "machO": false
+    },
+    {
+      "path": "_internal/pipecat/cli/templates/_readme_blocks/project_structure_daily_pstn.jinja2",
+      "bytes": 1818,
+      "sha256": "71cf9b2c91c454ae86b98cb30a2cca2e9ccb534b487b81b87818cef53aeec86c",
+      "machO": false
+    },
+    {
+      "path": "_internal/pipecat/cli/templates/_readme_blocks/project_structure_twilio_daily_sip.jinja2",
+      "bytes": 2401,
+      "sha256": "622250fd073e04d0d39cc837d1fd974baf9cc2538cf5faf431fbd7a92238b23c",
+      "machO": false
+    },
+    {
+      "path": "_internal/pipecat/cli/templates/_readme_blocks/setup_daily_pstn.jinja2",
+      "bytes": 3549,
+      "sha256": "b8f348a823d388a85875fb7dd3eac44e6151f073612ceaca57c54dd9801727c6",
+      "machO": false
+    },
+    {
+      "path": "_internal/pipecat/cli/templates/_readme_blocks/setup_telnyx.jinja2",
+      "bytes": 2133,
+      "sha256": "d6184aa76b7531a18e800f343ce7c06bcad8c06b9f536ff62814fa71553926e3",
+      "machO": false
+    },
+    {
+      "path": "_internal/pipecat/cli/templates/_readme_blocks/setup_twilio.jinja2",
+      "bytes": 1467,
+      "sha256": "df20813737339bb034991acd2706838b78b349a2c0c94ee12d5ee199c162b388",
+      "machO": false
+    },
+    {
+      "path": "_internal/pipecat/cli/templates/_readme_blocks/setup_twilio_daily_sip.jinja2",
+      "bytes": 5350,
+      "sha256": "10b5170edcc444f146ae20e9248c0cd7ebf85ee530a9c11aaa48188aadb6f3c1",
+      "machO": false
+    },
+    {
+      "path": "_internal/pipecat/cli/templates/client/_pipecat_ui/dependencies.json",
+      "bytes": 707,
+      "sha256": "bb21d501366d4441fc2385bbace92e3f10a642ef5accb2f458ac8af7c8496ba6",
+      "machO": false
+    },
+    {
+      "path": "_internal/pipecat/cli/templates/client/_pipecat_ui/src/components/pipecat/audio-visualizer-bar.tsx",
+      "bytes": 15536,
+      "sha256": "f6f357647383398ff43cb02bb3cab0e937ab76cb466c7432d1484706a9b506fa",
+      "machO": false
+    },
+    {
+      "path": "_internal/pipecat/cli/templates/client/_pipecat_ui/src/components/pipecat/bot-audio.tsx",
+      "bytes": 10165,
+      "sha256": "548969c8e2104db45b00a2823a4bc5d028cfb5fed504b7b3982bd96b113994a3",
+      "machO": false
+    },
+    {
+      "path": "_internal/pipecat/cli/templates/client/_pipecat_ui/src/components/pipecat/client-status.tsx",
+      "bytes": 3223,
+      "sha256": "fd637d7ea8e1c8f3e1ac31eaa8d129d3659ffa8781ed0f27bb175e509d37ddbd",
+      "machO": false
+    },
+    {
+      "path": "_internal/pipecat/cli/templates/client/_pipecat_ui/src/components/pipecat/connect-button.tsx",
+      "bytes": 8496,
+      "sha256": "5864b01d9650ff2d3819887d4c99fcb37f5223b9b54ba5555377430b4d951b98",
+      "machO": false
+    },
+    {
+      "path": "_internal/pipecat/cli/templates/client/_pipecat_ui/src/components/pipecat/console/bot-audio-panel.tsx",
+      "bytes": 2331,
+      "sha256": "bee4714ef6e4df37ec378bfcc01d7d68f8a126f28ae8ea7ffd5117ae0a2547f1",
+      "machO": false
+    },
+    {
+      "path": "_internal/pipecat/cli/templates/client/_pipecat_ui/src/components/pipecat/console/bot-video-panel.tsx",
+      "bytes": 1653,
+      "sha256": "b89d306542bce6686f9f2a28cff75901a3791e985148d96a87aa0312af5ee862",
+      "machO": false
+    },
+    {
+      "path": "_internal/pipecat/cli/templates/client/_pipecat_ui/src/components/pipecat/console/codec-setter.tsx",
+      "bytes": 1426,
+      "sha256": "63894b87cb57e575dbd9344e5878078f96f373b8eeeb4362ad10e102e38b9fac",
+      "machO": false
+    },
+    {
+      "path": "_internal/pipecat/cli/templates/client/_pipecat_ui/src/components/pipecat/console/console.tsx",
+      "bytes": 25199,
+      "sha256": "477eee1daafebf8a48af3aaff183ff5a74026cfd9f0252c2dc9f6e7b542b901d",
+      "machO": false
+    },
+    {
+      "path": "_internal/pipecat/cli/templates/client/_pipecat_ui/src/components/pipecat/console/conversation-panel.tsx",
+      "bytes": 4949,
+      "sha256": "164a325826640b4183754dc87be750b3a1cd1a918e2d74aa853e13ae5af73b8f",
+      "machO": false
+    },
+    {
+      "path": "_internal/pipecat/cli/templates/client/_pipecat_ui/src/components/pipecat/console/events-panel.tsx",
+      "bytes": 7665,
+      "sha256": "ee97a450d6f397f720dfa0b00a28e7383c56c45c4b42dee57382e094e122c60a",
+      "machO": false
+    },
+    {
+      "path": "_internal/pipecat/cli/templates/client/_pipecat_ui/src/components/pipecat/console/info-panel.tsx",
+      "bytes": 5088,
+      "sha256": "a5d69463bd9dd28c3f250d9445f20e10292bf9bcb81c71b0642327d2502aae86",
+      "machO": false
+    },
+    {
+      "path": "_internal/pipecat/cli/templates/client/_pipecat_ui/src/components/pipecat/console/keypad-toggle.tsx",
+      "bytes": 2174,
+      "sha256": "7ede1e40ce343ecb7814b86579210c3226568e7c689a2c088c9fd35ab0ce2fc6",
+      "machO": false
+    },
+    {
+      "path": "_internal/pipecat/cli/templates/client/_pipecat_ui/src/components/pipecat/console/logo.tsx",
+      "bytes": 1948,
+      "sha256": "6787e2f01ad85de4d9014a332961056074e321b241ad5e08f83220f425570697",
+      "machO": false
+    },
+    {
+      "path": "_internal/pipecat/cli/templates/client/_pipecat_ui/src/components/pipecat/console/panel.tsx",
+      "bytes": 2753,
+      "sha256": "9a0061fad1bfdec0e2e702916e92bc123675cbd875227496fa9adff60ce00de9",
+      "machO": false
+    },
+    {
+      "path": "_internal/pipecat/cli/templates/client/_pipecat_ui/src/components/pipecat/conversation-message.tsx",
+      "bytes": 12456,
+      "sha256": "cc8adaf2dffa317d6812773f31348f91b0e27a9e76cfc0f063cc44509d374293",
+      "machO": false
+    },
+    {
+      "path": "_internal/pipecat/cli/templates/client/_pipecat_ui/src/components/pipecat/conversation.tsx",
+      "bytes": 6049,
+      "sha256": "cc2dfbbcdd3458ed4059d43210fdd5f4c0e53c02b52429db8b7614bd8dc79d72",
+      "machO": false
+    },
+    {
+      "path": "_internal/pipecat/cli/templates/client/_pipecat_ui/src/components/pipecat/device-select.tsx",
+      "bytes": 14205,
+      "sha256": "d58f128c295d09a62176b5c09cf2f72471ee9f21827774118cc6f461b939ceb5",
+      "machO": false
+    },
+    {
+      "path": "_internal/pipecat/cli/templates/client/_pipecat_ui/src/components/pipecat/dtmf-keypad.tsx",
+      "bytes": 9766,
+      "sha256": "222f3b7f915552e579dc5440bd1a0e07d36644944e676b8fadc17e66ab66d04f",
+      "machO": false
+    },
+    {
+      "path": "_internal/pipecat/cli/templates/client/_pipecat_ui/src/components/pipecat/metric.tsx",
+      "bytes": 1931,
+      "sha256": "ba2fa8c750d13328680dfc0c5956ae54b8c1998630cfe763463b8ed730739514",
+      "machO": false
+    },
+    {
+      "path": "_internal/pipecat/cli/templates/client/_pipecat_ui/src/components/pipecat/metrics/chart.tsx",
+      "bytes": 4597,
+      "sha256": "304047c44c3f4d51ed702bc5b762331632521191561526a3ae4a3e0d47865d71",
+      "machO": false
+    },
+    {
+      "path": "_internal/pipecat/cli/templates/client/_pipecat_ui/src/components/pipecat/metrics/metrics.tsx",
+      "bytes": 3028,
+      "sha256": "6091f276f4a75396ee707e4bbedb590a73d8727b0bc66343550de282d87f4c69",
+      "machO": false
+    },
+    {
+      "path": "_internal/pipecat/cli/templates/client/_pipecat_ui/src/components/pipecat/metrics/performance.tsx",
+      "bytes": 3548,
+      "sha256": "49355886fd239cb814bdfb74a465e08ef633773fd504d6afdc6b98f41adf7179",
+      "machO": false
+    },
+    {
+      "path": "_internal/pipecat/cli/templates/client/_pipecat_ui/src/components/pipecat/metrics/usage.tsx",
+      "bytes": 4420,
+      "sha256": "6ce001b46a31df16caad08b91d597c1a9816eda72c7ab48ca2f1d90f4d17b545",
+      "machO": false
+    },
+    {
+      "path": "_internal/pipecat/cli/templates/client/_pipecat_ui/src/components/pipecat/session-info.tsx",
+      "bytes": 5216,
+      "sha256": "07f32cb4c066032a8ed6bc36d36a8a0765d0e94a22d29a7060b254cf1f58eea8",
+      "machO": false
+    },
+    {
+      "path": "_internal/pipecat/cli/templates/client/_pipecat_ui/src/components/pipecat/text-input.tsx",
+      "bytes": 6182,
+      "sha256": "a36f2e0ce14227a30be3a423f1304d8603c50301771c16403ca9f15026f99fc2",
+      "machO": false
+    },
+    {
+      "path": "_internal/pipecat/cli/templates/client/_pipecat_ui/src/components/pipecat/user-audio-control.tsx",
+      "bytes": 26870,
+      "sha256": "cfefaae12f93abf754ad43a8e18ae45b188fe99065a73b8ba663e53b3b049c30",
+      "machO": false
+    },
+    {
+      "path": "_internal/pipecat/cli/templates/client/_pipecat_ui/src/components/pipecat/user-screen-control.tsx",
+      "bytes": 7187,
+      "sha256": "92d258ca35656f0b782394a1af79009dcf4e10bd5cd9daff2d10683219127796",
+      "machO": false
+    },
+    {
+      "path": "_internal/pipecat/cli/templates/client/_pipecat_ui/src/components/pipecat/user-video-control.tsx",
+      "bytes": 10582,
+      "sha256": "36d502cd98ddd374b626cf3968cf1b6cfb16f17d6ceb331119be7a7775bab0f6",
+      "machO": false
+    },
+    {
+      "path": "_internal/pipecat/cli/templates/client/_pipecat_ui/src/components/ui/LICENSE-shadcn.md",
+      "bytes": 1224,
+      "sha256": "c5c48691ba12e60209afa808112e3cac9395757129b137435986cc8775181a73",
+      "machO": false
+    },
+    {
+      "path": "_internal/pipecat/cli/templates/client/_pipecat_ui/src/components/ui/alert.tsx",
+      "bytes": 2038,
+      "sha256": "f253568242c1c69b343f12474002fdbe229f603158171c59e21c491ab79f2e6e",
+      "machO": false
+    },
+    {
+      "path": "_internal/pipecat/cli/templates/client/_pipecat_ui/src/components/ui/button-group.tsx",
+      "bytes": 2471,
+      "sha256": "8c091198a9a4fe7fa3359834087727addfd5ac4c1259689632220389215b33c1",
+      "machO": false
+    },
+    {
+      "path": "_internal/pipecat/cli/templates/client/_pipecat_ui/src/components/ui/button.tsx",
+      "bytes": 3230,
+      "sha256": "313353436d0fcc8e44ab470adb614b9fd013d28626f624328ea0d66d41a6c81b",
+      "machO": false
+    },
+    {
+      "path": "_internal/pipecat/cli/templates/client/_pipecat_ui/src/components/ui/card.tsx",
+      "bytes": 2620,
+      "sha256": "8ad3a18d36bda0598dc0e9aa96ea22854944d5443ee4946f1d173815e115375f",
+      "machO": false
+    },
+    {
+      "path": "_internal/pipecat/cli/templates/client/_pipecat_ui/src/components/ui/chart.tsx",
+      "bytes": 10477,
+      "sha256": "3903f6406cd3267d6ffb3502a43369c15f3c193a811f1a7ec77ce7c74ba9410f",
+      "machO": false
+    },
+    {
+      "path": "_internal/pipecat/cli/templates/client/_pipecat_ui/src/components/ui/collapsible.tsx",
+      "bytes": 644,
+      "sha256": "3de60b605e64c835588cecc189fbcf907eb602b0158f970d614b067e868b491e",
+      "machO": false
+    },
+    {
+      "path": "_internal/pipecat/cli/templates/client/_pipecat_ui/src/components/ui/drawer.tsx",
+      "bytes": 11346,
+      "sha256": "40ebfe5567a498da849addbfb1e966fd147c0b7503523fb1c3ebad9df077a02d",
+      "machO": false
+    },
+    {
+      "path": "_internal/pipecat/cli/templates/client/_pipecat_ui/src/components/ui/dropdown-menu.tsx",
+      "bytes": 8726,
+      "sha256": "ffd69006ed9c79e16ffefffbf8a9ebbf1c34ca38f40cb9939c946a71943127d7",
+      "machO": false
+    },
+    {
+      "path": "_internal/pipecat/cli/templates/client/_pipecat_ui/src/components/ui/input-group.tsx",
+      "bytes": 5241,
+      "sha256": "492310e6d519441c3e2a3b11330b3f35da71bd37630672f749271b9585a88e64",
+      "machO": false
+    },
+    {
+      "path": "_internal/pipecat/cli/templates/client/_pipecat_ui/src/components/ui/input.tsx",
+      "bytes": 1030,
+      "sha256": "dab990dfefa0ba78854ab6602ad074270dba9d7d1262184d9bfbb62bd990903b",
+      "machO": false
+    },
+    {
+      "path": "_internal/pipecat/cli/templates/client/_pipecat_ui/src/components/ui/kbd.tsx",
+      "bytes": 828,
+      "sha256": "d17724eb15923ea4f0432cd1cf22538addb14a386f4f9326661efcce7f97e33b",
+      "machO": false
+    },
+    {
+      "path": "_internal/pipecat/cli/templates/client/_pipecat_ui/src/components/ui/popover.tsx",
+      "bytes": 2550,
+      "sha256": "5fecff622f4eecc06e8be32bface11c59d529be5c0a1484c78c9e40530b2b7d0",
+      "machO": false
+    },
+    {
+      "path": "_internal/pipecat/cli/templates/client/_pipecat_ui/src/components/ui/resizable.tsx",
+      "bytes": 1661,
+      "sha256": "c45c4e1a32aefb83d60406366e2368b9d8a6e772406f8b964154e7202d6304f7",
+      "machO": false
+    },
+    {
+      "path": "_internal/pipecat/cli/templates/client/_pipecat_ui/src/components/ui/select.tsx",
+      "bytes": 6631,
+      "sha256": "d3c275e0212325c0bba459800fb155839783d33d5c91d363b5b974973aa7e9e0",
+      "machO": false
+    },
+    {
+      "path": "_internal/pipecat/cli/templates/client/_pipecat_ui/src/components/ui/separator.tsx",
+      "bytes": 521,
+      "sha256": "8a1d9397433ccf70631104f377b0e778754582a74c93a57cf13a2f2dcba778bf",
+      "machO": false
+    },
+    {
+      "path": "_internal/pipecat/cli/templates/client/_pipecat_ui/src/components/ui/slider.tsx",
+      "bytes": 1864,
+      "sha256": "1fd32ee03ddaa382aabccce0bd88669aa8f91e4fe487622a68745d2ed1d5f5b9",
+      "machO": false
+    },
+    {
+      "path": "_internal/pipecat/cli/templates/client/_pipecat_ui/src/components/ui/spinner.tsx",
+      "bytes": 313,
+      "sha256": "6916679a40ad1c7624520de5eaa7b337635e81f9a76413201267f8619844646f",
+      "machO": false
+    },
+    {
+      "path": "_internal/pipecat/cli/templates/client/_pipecat_ui/src/components/ui/switch.tsx",
+      "bytes": 1787,
+      "sha256": "367ad27cfe2f4ce5648fd3941410d3c3504876ee23e4360a220f1e6cd05f5c2d",
+      "machO": false
+    },
+    {
+      "path": "_internal/pipecat/cli/templates/client/_pipecat_ui/src/components/ui/tabs.tsx",
+      "bytes": 3473,
+      "sha256": "04c251a62bddfe55d09bf157ce150b1fc527b1fcfdbb10d51188b1e36dd3e3c0",
+      "machO": false
+    },
+    {
+      "path": "_internal/pipecat/cli/templates/client/_pipecat_ui/src/components/ui/textarea.tsx",
+      "bytes": 832,
+      "sha256": "82601c91ffc6c727d924162c78d7cb853114bcced4e2eb922a68ca12d4239c0f",
+      "machO": false
+    },
+    {
+      "path": "_internal/pipecat/cli/templates/client/_pipecat_ui/src/components/ui/tooltip.tsx",
+      "bytes": 2836,
+      "sha256": "f83d5f511812573f4ac98b866d397a46fda0f27eeb0af0ea89af01969eefbc5a",
+      "machO": false
+    },
+    {
+      "path": "_internal/pipecat/cli/templates/client/_pipecat_ui/src/hooks/use-pipecat-app.ts",
+      "bytes": 9336,
+      "sha256": "0a82d2ffefe52e9bd6602953d3ed2151ee5c498120b0ccb0d8de187ad4a9024f",
+      "machO": false
+    },
+    {
+      "path": "_internal/pipecat/cli/templates/client/_pipecat_ui/src/hooks/use-pipecat-event-stream.ts",
+      "bytes": 9470,
+      "sha256": "18b22fe2ef999b3778a1379c6a3398522bf8abc1b77de8809ac9fab3b03748c4",
+      "machO": false
+    },
+    {
+      "path": "_internal/pipecat/cli/templates/client/_pipecat_ui/src/hooks/use-pipecat-metrics.ts",
+      "bytes": 10102,
+      "sha256": "aa23413128a404f95fef6cb079f20eef59000a4ed942d1edd6cba69363acf372",
+      "machO": false
+    },
+    {
+      "path": "_internal/pipecat/cli/templates/client/_pipecat_ui/src/lib/transports.ts",
+      "bytes": 2622,
+      "sha256": "f4d84ae7f970632027b5d24ee7e08548b686705463833d9252caae0c201a2ef7",
+      "machO": false
+    },
+    {
+      "path": "_internal/pipecat/cli/templates/client/_pipecat_ui/src/lib/utils.ts",
+      "bytes": 24,
+      "sha256": "14300d758170c270c75b057f38fedb3793a5920ea872f0477e29fb131185e8a7",
+      "machO": false
+    },
+    {
+      "path": "_internal/pipecat/cli/templates/client/_pipecat_ui/src/lib/visualizer.ts",
+      "bytes": 3373,
+      "sha256": "9ae89d5b11eb76a510df3b38f1d9573deb31a0ef579afb5e3d531c536038a7c8",
+      "machO": false
+    },
+    {
+      "path": "_internal/pipecat/cli/templates/client/react-nextjs/.gitignore",
+      "bytes": 480,
+      "sha256": "207e265ff4901f9ad9f96d8ce08530e04f9fc600815472a66d0a446096d654cd",
+      "machO": false
+    },
+    {
+      "path": "_internal/pipecat/cli/templates/client/react-nextjs/components.json",
+      "bytes": 577,
+      "sha256": "5f8c8bc52d7467711a34adc277b43c7a80a00606f986fdc23fdc82fa40fd29f9",
+      "machO": false
+    },
+    {
+      "path": "_internal/pipecat/cli/templates/client/react-nextjs/env.example",
+      "bytes": 276,
+      "sha256": "6f8e48b3f64330eb31ef101d8cd766e2e96094afe8205143d7e35f8ce5f89e4f",
+      "machO": false
+    },
+    {
+      "path": "_internal/pipecat/cli/templates/client/react-nextjs/eslint.config.mjs",
+      "bytes": 749,
+      "sha256": "282b8dc54c74613370cbafcba3aa7cc98989d41795761de12dfba833cdec8244",
+      "machO": false
+    },
+    {
+      "path": "_internal/pipecat/cli/templates/client/react-nextjs/next.config.ts",
+      "bytes": 133,
+      "sha256": "614bce25b089c3f19b1e17a6346c74b858034040154c6621e7d35303004767cc",
+      "machO": false
+    },
+    {
+      "path": "_internal/pipecat/cli/templates/client/react-nextjs/package.json.jinja2",
+      "bytes": 806,
+      "sha256": "1bc9c4ca9740b076b59be805c8fcc2b92ddfeb19d11a4287f26752356ca5e449",
+      "machO": false
+    },
+    {
+      "path": "_internal/pipecat/cli/templates/client/react-nextjs/postcss.config.mjs",
+      "bytes": 81,
+      "sha256": "141ef24ca27a99d08962210fdf20212d3435fdcfa21b46cd88b44d22f751dfae",
+      "machO": false
+    },
+    {
+      "path": "_internal/pipecat/cli/templates/client/react-nextjs/public/pipecat.svg",
+      "bytes": 1124,
+      "sha256": "636414e535b7680231133e72c186076e4a03a38fe617ee88edd13747c05af90f",
+      "machO": false
+    },
+    {
+      "path": "_internal/pipecat/cli/templates/client/react-nextjs/src/app/api/sessions/[sessionId]/[...path]/route.ts",
+      "bytes": 1547,
+      "sha256": "4030eb1931cdbf1c2cf1e72ac28b10bf46f824174741ca7c4dd5d15c8cae4535",
+      "machO": false
+    },
+    {
+      "path": "_internal/pipecat/cli/templates/client/react-nextjs/src/app/api/start/route.ts",
+      "bytes": 1249,
+      "sha256": "40671f494116eed088a6d5c1847ac0e258f471ddfd255ce567e1bc649bdc5c87",
+      "machO": false
+    },
+    {
+      "path": "_internal/pipecat/cli/templates/client/react-nextjs/src/app/components/TransportSelect.tsx",
+      "bytes": 1170,
+      "sha256": "10885b252c12653fcec37109be173442c0228fcca49132ee8e401bd24f345359",
+      "machO": false
+    },
+    {
+      "path": "_internal/pipecat/cli/templates/client/react-nextjs/src/app/globals.css",
+      "bytes": 6204,
+      "sha256": "88ba21ded80dfbe20fcda3ec23b21b6625a56a1ee2a1d391e6bb00d26b474ae7",
+      "machO": false
+    },
+    {
+      "path": "_internal/pipecat/cli/templates/client/react-nextjs/src/app/layout.tsx",
+      "bytes": 910,
+      "sha256": "839cca5e7ed3f3c865c2585cf271f56001298cf223c574b94a68e80991f40cdc",
+      "machO": false
+    },
+    {
+      "path": "_internal/pipecat/cli/templates/client/react-nextjs/src/app/page.tsx",
+      "bytes": 1422,
+      "sha256": "748c40d98b379ceff052fd12c84d077e278a723b71d95d23c3fb95f1fe017aa3",
+      "machO": false
+    },
+    {
+      "path": "_internal/pipecat/cli/templates/client/react-nextjs/src/config.ts.jinja2",
+      "bytes": 3665,
+      "sha256": "a8e1a69d2fb7854fc068ccf7ce578460992ac6b9ae20ab63fe45dc2f4d2d62bb",
+      "machO": false
+    },
+    {
+      "path": "_internal/pipecat/cli/templates/client/react-nextjs/tsconfig.json",
+      "bytes": 654,
+      "sha256": "6afbf461bfa7cc2cd8f894505561821e61d8ae7efb0edc147ed27d3f4ace9224",
+      "machO": false
+    },
+    {
+      "path": "_internal/pipecat/cli/templates/client/react-vite/.gitignore",
+      "bytes": 253,
+      "sha256": "fe718e7babb14f3cbad2d97f08889b9ce5215ed3fe0e43b2b8cfbfb3b9b844e8",
+      "machO": false
+    },
+    {
+      "path": "_internal/pipecat/cli/templates/client/react-vite/components.json",
+      "bytes": 572,
+      "sha256": "9ae936258ad4a705289d80fdf5c686a12c8e8fc3cf7333f0ef2e4856de5ec41e",
+      "machO": false
+    },
+    {
+      "path": "_internal/pipecat/cli/templates/client/react-vite/env.example",
+      "bytes": 441,
+      "sha256": "632a125b685af5090f67bbe442017eb03d3d22ee58aa386b266871f877b76d98",
+      "machO": false
+    },
+    {
+      "path": "_internal/pipecat/cli/templates/client/react-vite/eslint.config.js",
+      "bytes": 1029,
+      "sha256": "8f55d17502c744b2b17c7eaa777d7bec7e3236e5274f680f51b6e0923716196f",
+      "machO": false
+    },
+    {
+      "path": "_internal/pipecat/cli/templates/client/react-vite/index.html",
+      "bytes": 770,
+      "sha256": "ebb05b2e58751299e53971689d3a4fd73898e5b35d8dff8c2ed7a61d08406af0",
+      "machO": false
+    },
+    {
+      "path": "_internal/pipecat/cli/templates/client/react-vite/package.json.jinja2",
+      "bytes": 945,
+      "sha256": "524f0c7464f3877af2ec0659d95dd412c4845c4cfc0d4a50ce7658c5f13187f8",
+      "machO": false
+    },
+    {
+      "path": "_internal/pipecat/cli/templates/client/react-vite/public/favicon.svg",
+      "bytes": 1124,
+      "sha256": "636414e535b7680231133e72c186076e4a03a38fe617ee88edd13747c05af90f",
+      "machO": false
+    },
+    {
+      "path": "_internal/pipecat/cli/templates/client/react-vite/src/components/TransportSelect.tsx",
+      "bytes": 1155,
+      "sha256": "9edad392a00f1db067a7c4e4915c3c64d681c43d29f60ad6643e31b534781a36",
+      "machO": false
+    },
+    {
+      "path": "_internal/pipecat/cli/templates/client/react-vite/src/config.ts.jinja2",
+      "bytes": 4146,
+      "sha256": "efa7355a29a2a41f7719d80ee28e85132dcdaaa04546be34ade292731a919352",
+      "machO": false
+    },
+    {
+      "path": "_internal/pipecat/cli/templates/client/react-vite/src/index.css",
+      "bytes": 6204,
+      "sha256": "88ba21ded80dfbe20fcda3ec23b21b6625a56a1ee2a1d391e6bb00d26b474ae7",
+      "machO": false
+    },
+    {
+      "path": "_internal/pipecat/cli/templates/client/react-vite/src/main.tsx",
+      "bytes": 1585,
+      "sha256": "e8e7633b3019cb24d5295c4574e6c9613f8d6f3708ee11640351db6575a4b2aa",
+      "machO": false
+    },
+    {
+      "path": "_internal/pipecat/cli/templates/client/react-vite/tsconfig.app.json",
+      "bytes": 779,
+      "sha256": "d6a6c1e6cde494a59f6c0b4be2016e08647beab4511ad9dd7080bc8812229300",
+      "machO": false
+    },
+    {
+      "path": "_internal/pipecat/cli/templates/client/react-vite/tsconfig.json",
+      "bytes": 193,
+      "sha256": "23c57da26bcec4996c4168f01187840c8ec08a1d60c2dd0edad6d984f5c33680",
+      "machO": false
+    },
+    {
+      "path": "_internal/pipecat/cli/templates/client/react-vite/tsconfig.node.json",
+      "bytes": 653,
+      "sha256": "c3dd0fb522feba3596713f51b95bd53d781d845d24aedbfa2ac093d8b39c5120",
+      "machO": false
+    },
+    {
+      "path": "_internal/pipecat/cli/templates/client/react-vite/vite.config.ts",
+      "bytes": 348,
+      "sha256": "b93dcdbb9dd25e83e4e3620da4d0198ce83926e7a91ebbdc298b74b061561973",
+      "machO": false
+    },
+    {
+      "path": "_internal/pipecat/cli/templates/client/vanilla-js-vite/env.example",
+      "bytes": 441,
+      "sha256": "632a125b685af5090f67bbe442017eb03d3d22ee58aa386b266871f877b76d98",
+      "machO": false
+    },
+    {
+      "path": "_internal/pipecat/cli/templates/client/vanilla-js-vite/index.html",
+      "bytes": 2715,
+      "sha256": "ff5214e5b679c7026e1d531502445e301d56b21539c00d771cb4908b54566c06",
+      "machO": false
+    },
+    {
+      "path": "_internal/pipecat/cli/templates/client/vanilla-js-vite/package.json.jinja2",
+      "bytes": 503,
+      "sha256": "7ad5f9eacb4894339f37fa0b211cfcb985ddd0d4c46c7eeab06a93b75f636a9e",
+      "machO": false
+    },
+    {
+      "path": "_internal/pipecat/cli/templates/client/vanilla-js-vite/src/app.js",
+      "bytes": 7718,
+      "sha256": "f232edd7a2f3eadee69b29ada925add9e29159ff2b26787c4ac5d65dfe9f1489",
+      "machO": false
+    },
+    {
+      "path": "_internal/pipecat/cli/templates/client/vanilla-js-vite/src/config.js.jinja2",
+      "bytes": 2991,
+      "sha256": "e9c08b2c494bc308edf7950861007e1990b4f0fcda5386da27c1c7a79251f80a",
+      "machO": false
+    },
+    {
+      "path": "_internal/pipecat/cli/templates/client/vanilla-js-vite/src/style.css",
+      "bytes": 6459,
+      "sha256": "212b926c16991968cf77da59a345ca8477849609b247a6413012c8543f6b61e4",
+      "machO": false
+    },
+    {
+      "path": "_internal/pipecat/cli/templates/gitignore.jinja2",
+      "bytes": 4812,
+      "sha256": "abe414c0018ee0d69d6d72b2399fca1b1d71469e35a281643f80346bdf9b6f94",
+      "machO": false
+    },
+    {
+      "path": "_internal/pipecat/cli/templates/server/Dockerfile.jinja2",
+      "bytes": 866,
+      "sha256": "d7b946c871975ff8c7349e6c39b1067a99254aa81422e2a3812290b0bc2adb20",
+      "machO": false
+    },
+    {
+      "path": "_internal/pipecat/cli/templates/server/_blocks/bot_entry_daily_pstn.jinja2",
+      "bytes": 2562,
+      "sha256": "4559a6f16d5ae0c93d51bf236deb46d39c3447e1d62ad56c8fc4c28530a20ba0",
+      "machO": false
+    },
+    {
+      "path": "_internal/pipecat/cli/templates/server/_blocks/bot_entry_twilio_daily_sip.jinja2",
+      "bytes": 2536,
+      "sha256": "8d2e9d3548a44106a9cd0462071d5cb2033e9ef8b60d87379b826848c9bdb953",
+      "machO": false
+    },
+    {
+      "path": "_internal/pipecat/cli/templates/server/_blocks/run_bot_logic_cascade.jinja2",
+      "bytes": 5837,
+      "sha256": "548c88eecafa1060c5cf78cc514d8e6f0465be9bb939a29863dd8405d2f56b44",
+      "machO": false
+    },
+    {
+      "path": "_internal/pipecat/cli/templates/server/_blocks/run_bot_logic_realtime.jinja2",
+      "bytes": 5255,
+      "sha256": "5f683c976047702345cf9ede53bb24b8554598b9431f6d84f3dccbe910d68430",
+      "machO": false
+    },
+    {
+      "path": "_internal/pipecat/cli/templates/server/_macros/event_handlers.jinja2",
+      "bytes": 6642,
+      "sha256": "b2cbe92aef82d1118a88a3196eb53b6676eeefd327cdafd683d2d57af86bb0f2",
+      "machO": false
+    },
+    {
+      "path": "_internal/pipecat/cli/templates/server/_macros/helper_functions.jinja2",
+      "bytes": 5837,
+      "sha256": "6887ed40c6dd1ab4d3f83bfb882f410bb28a0730b68cb07e45f9b1c9fd95e3cc",
+      "machO": false
+    },
+    {
+      "path": "_internal/pipecat/cli/templates/server/_macros/pipeline_components.jinja2",
+      "bytes": 1720,
+      "sha256": "de400c22f2b38e3beccaf634c74b5d70dd46dcc8158dcc12a55d7c6f9a88ad76",
+      "machO": false
+    },
+    {
+      "path": "_internal/pipecat/cli/templates/server/_macros/transport_setup.jinja2",
+      "bytes": 3414,
+      "sha256": "b34ffea9bfca0085a39b2c503596ebbd8645e24da17bd16238336bc2c48c9d38",
+      "machO": false
+    },
+    {
+      "path": "_internal/pipecat/cli/templates/server/bot_cascade.py.jinja2",
+      "bytes": 5248,
+      "sha256": "1d892943b2a92ff574f9217d759012ea1995bdb44c8226b25b19bec1e6abe955",
+      "machO": false
+    },
+    {
+      "path": "_internal/pipecat/cli/templates/server/bot_realtime.py.jinja2",
+      "bytes": 5087,
+      "sha256": "681439e515451dcdb76fe3f0a0b55524a308fe42d37c7e6c1f49dcac7f84e48f",
+      "machO": false
+    },
+    {
+      "path": "_internal/pipecat/cli/templates/server/env.example.jinja2",
+      "bytes": 12830,
+      "sha256": "6c8d9bff96e5df84290cfdafb0a65c49f7183012a3923696a0e07db05eb96d74",
+      "machO": false
+    },
+    {
+      "path": "_internal/pipecat/cli/templates/server/evals/starter_audio.yaml.jinja2",
+      "bytes": 2017,
+      "sha256": "c256527eeb773bd5a7a11bef39c58781bae40e24ed357351f2a6eb13e8bf976f",
+      "machO": false
+    },
+    {
+      "path": "_internal/pipecat/cli/templates/server/evals/starter_text.yaml.jinja2",
+      "bytes": 1869,
+      "sha256": "b0d4b56bd0fc19f06905cab6178d624a6f086b16800b1bde7b6e82720952cef7",
+      "machO": false
+    },
+    {
+      "path": "_internal/pipecat/cli/templates/server/pcc-deploy.toml.jinja2",
+      "bytes": 300,
+      "sha256": "335bea1ea5f8bd4d614e670586232aecb92f5815804dd0ab233b9d7a857d5c11",
+      "machO": false
+    },
+    {
+      "path": "_internal/pipecat/cli/templates/server/pyproject.toml.jinja2",
+      "bytes": 533,
+      "sha256": "8eeda651293c173d4e1d3f1999ac8b4ffa1d7cfbf33561a3ad8aae8910f97506",
+      "machO": false
+    },
+    {
+      "path": "_internal/pipecat/cli/templates/server/server_pstn_dialout.py.jinja2",
+      "bytes": 3752,
+      "sha256": "cf5d2b04ce4bd6488d5bc06fc5c6a80579189450ee953419a328ec4b3d69db3f",
+      "machO": false
+    },
+    {
+      "path": "_internal/pipecat/cli/templates/server/server_twilio_daily_sip_dialin.py.jinja2",
+      "bytes": 4194,
+      "sha256": "29c9f1d3de05267f3d851efb4815ae3f8d15ede42736150d18f5a5121f31ac29",
+      "machO": false
+    },
+    {
+      "path": "_internal/pipecat/cli/templates/server/server_twilio_daily_sip_dialout.py.jinja2",
+      "bytes": 3559,
+      "sha256": "be977fa404f5f7b3439a9ecf14b02d243b87e340cbb3d668eabfc8b64b5b26b0",
+      "machO": false
+    },
+    {
+      "path": "_internal/pipecat/cli/templates/server/server_utils_pstn_dialout.py.jinja2",
+      "bytes": 6092,
+      "sha256": "42a4abf2a62d98cc658d5a8cc6ee56530f278851fc07c154573be3c855c7d200",
+      "machO": false
+    },
+    {
+      "path": "_internal/pipecat/cli/templates/server/server_utils_twilio_daily_sip_dialin.py.jinja2",
+      "bytes": 5284,
+      "sha256": "883861712466335ecf1aa798d303643271a276f4bba20f458e99238763175be4",
+      "machO": false
+    },
+    {
+      "path": "_internal/pipecat/cli/templates/server/server_utils_twilio_daily_sip_dialout.py.jinja2",
+      "bytes": 6203,
+      "sha256": "69cbadd1bb46dbde3bf0fd771e4753196f3d06b5b8c5655bee15d5b6bbb2dad8",
+      "machO": false
+    },
+    {
+      "path": "_internal/pipecat/flows/flow_config.schema.json",
+      "bytes": 10289,
+      "sha256": "b2bb56ec60eac36dd65cf3250b69c66325cc0c225c958589a49262d2466b2167",
+      "machO": false
+    },
+    {
+      "path": "_internal/pipecat/frames/frames.proto",
+      "bytes": 1090,
+      "sha256": "adcd346af21673d3385d075c5a662a8407584b4b04f177320609596f4dea5c37",
+      "machO": false
+    },
+    {
+      "path": "_internal/pipecat/py.typed",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "machO": false
+    },
+    {
+      "path": "_internal/pipecat/services/aws/nova_sonic/ready.wav",
+      "bytes": 23484,
+      "sha256": "a7174ac59b58455d8856feb7bfb2b510f931c95fcec6870c91a5db2ac1df6f2d",
+      "machO": false
+    },
+    {
+      "path": "_internal/pipecat_ai-1.14.0.dist-info/INSTALLER",
+      "bytes": 4,
+      "sha256": "ceebae7b8927a3227e5303cf5e0f1f7b34bb542ad7250ac03fbcde36ec2f1508",
+      "machO": false
+    },
+    {
+      "path": "_internal/pipecat_ai-1.14.0.dist-info/METADATA",
+      "bytes": 52769,
+      "sha256": "e0934c391ef9be66e865060d443dab776de3570fa074bd41fb3f897c11bdb148",
+      "machO": false
+    },
+    {
+      "path": "_internal/pipecat_ai-1.14.0.dist-info/RECORD",
+      "bytes": 130055,
+      "sha256": "9af4e29c1e5b71940adc6127c03b0ad7cfffffec3033c0781ab716d0cdf4c44e",
+      "machO": false
+    },
+    {
+      "path": "_internal/pipecat_ai-1.14.0.dist-info/REQUESTED",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "machO": false
+    },
+    {
+      "path": "_internal/pipecat_ai-1.14.0.dist-info/WHEEL",
+      "bytes": 91,
+      "sha256": "98e75747d0b7c0c568bfb71263c3d8f970b3a374a6996087bc642be5cb09a1aa",
+      "machO": false
+    },
+    {
+      "path": "_internal/pipecat_ai-1.14.0.dist-info/entry_points.txt",
+      "bytes": 75,
+      "sha256": "efe506947b76afabe52815ae3d7feb453ebdb44d473560d77668ed2cf78256e6",
+      "machO": false
+    },
+    {
+      "path": "_internal/pipecat_ai-1.14.0.dist-info/licenses/LICENSE",
+      "bytes": 1301,
+      "sha256": "e31a733ecb79cbffafd5474e964e5eca15e0a0876a42b1d7253b51b198eb61aa",
+      "machO": false
+    },
+    {
+      "path": "_internal/pipecat_ai-1.14.0.dist-info/top_level.txt",
+      "bytes": 8,
+      "sha256": "910cc6db40b119ffa74ac1e6b571f1de1636fbccc70378d883c8e4d136a3a977",
+      "machO": false
+    },
+    {
+      "path": "_internal/propcache/_helpers_c.cpython-313-darwin.so",
+      "bytes": 156128,
+      "sha256": "c282973d2e2138e2d7245881674c6268e3d5f7420e3f4b2c81615dcbeb58abf1",
+      "machO": true,
+      "architectures": "arm64"
+    },
+    {
+      "path": "_internal/pydantic-2.14.1.dist-info/INSTALLER",
+      "bytes": 4,
+      "sha256": "ceebae7b8927a3227e5303cf5e0f1f7b34bb542ad7250ac03fbcde36ec2f1508",
+      "machO": false
+    },
+    {
+      "path": "_internal/pydantic-2.14.1.dist-info/METADATA",
+      "bytes": 133006,
+      "sha256": "4d4c8e8d5e6a27d5208f0d7949f25628e6747133034969d4d1399b1ad5394036",
+      "machO": false
+    },
+    {
+      "path": "_internal/pydantic-2.14.1.dist-info/RECORD",
+      "bytes": 15439,
+      "sha256": "8593135575224a059dc9cac744998ecfc7f0009d95e8335f32077b5cecdbebcf",
+      "machO": false
+    },
+    {
+      "path": "_internal/pydantic-2.14.1.dist-info/WHEEL",
+      "bytes": 87,
+      "sha256": "5b77e4a649bbfb07fdbc123967eeecd1e5a478cfaca6eefc23c35e6fdf037848",
+      "machO": false
+    },
+    {
+      "path": "_internal/pydantic-2.14.1.dist-info/licenses/LICENSE",
+      "bytes": 1129,
+      "sha256": "a9e186f3ca16b5eef84318e7a701721351a00cb7b8ae3a4394b67b49e3529ef3",
+      "machO": false
+    },
+    {
+      "path": "_internal/pydantic_core/_pydantic_core.cpython-313-darwin.so",
+      "bytes": 4328288,
+      "sha256": "911a49552f8315402f94e2d5f46d02081455d582694d985701b2735fb39e8138",
+      "machO": true,
+      "architectures": "arm64"
+    },
+    {
+      "path": "_internal/pylibsrtp/_binding.abi3.so",
+      "bytes": 4623152,
+      "sha256": "5fa982ab3667f6374619fd88b90f731f5e1c9ada3fcc043956fc55308946645e",
+      "machO": true,
+      "architectures": "arm64"
+    },
+    {
+      "path": "_internal/python3.13/lib-dynload/_asyncio.cpython-313-darwin.so",
+      "bytes": 117760,
+      "sha256": "ad95e1e29e7a0fe641b2add3421a9fc2d8adac220c478d8d239c2cdd2db11ef7",
+      "machO": true,
+      "architectures": "arm64"
+    },
+    {
+      "path": "_internal/python3.13/lib-dynload/_bisect.cpython-313-darwin.so",
+      "bytes": 70720,
+      "sha256": "b5d4a2991ed65caac96c63a46f038f6d6f79a5a5a53f4539a605759bd2eaa83a",
+      "machO": true,
+      "architectures": "arm64"
+    },
+    {
+      "path": "_internal/python3.13/lib-dynload/_blake2.cpython-313-darwin.so",
+      "bytes": 89088,
+      "sha256": "f10995429be7a051e1c3c74d4c948618d641b01cd656fbb53feaf1c289a7dcc9",
+      "machO": true,
+      "architectures": "arm64"
+    },
+    {
+      "path": "_internal/python3.13/lib-dynload/_bz2.cpython-313-darwin.so",
+      "bytes": 72736,
+      "sha256": "66e39430b2c79653defb00e12b859b4f416246748c815d0e76ed16a72b34c982",
+      "machO": true,
+      "architectures": "arm64"
+    },
+    {
+      "path": "_internal/python3.13/lib-dynload/_codecs_cn.cpython-313-darwin.so",
+      "bytes": 185248,
+      "sha256": "26c9739038406d4be4e87a5948508b48b70bef635bce06b072ae93f605f6241d",
+      "machO": true,
+      "architectures": "arm64"
+    },
+    {
+      "path": "_internal/python3.13/lib-dynload/_codecs_hk.cpython-313-darwin.so",
+      "bytes": 201760,
+      "sha256": "b18661e1ee0c0d2356767cad9d0903f1c161a154b179b999d46afa0b9563cad7",
+      "machO": true,
+      "architectures": "arm64"
+    },
+    {
+      "path": "_internal/python3.13/lib-dynload/_codecs_iso2022.cpython-313-darwin.so",
+      "bytes": 72000,
+      "sha256": "0629a3dacf70f65725cb7292d34cee08530a6a3fe1f13419b23ef7876db40140",
+      "machO": true,
+      "architectures": "arm64"
+    },
+    {
+      "path": "_internal/python3.13/lib-dynload/_codecs_jp.cpython-313-darwin.so",
+      "bytes": 301088,
+      "sha256": "175893125f036a31c700fba05c41c7203de5ce005586f1ef883dc23ca2976b2d",
+      "machO": true,
+      "architectures": "arm64"
+    },
+    {
+      "path": "_internal/python3.13/lib-dynload/_codecs_kr.cpython-313-darwin.so",
+      "bytes": 168912,
+      "sha256": "b933923fed675a5b7f0633e26f15c2ba0fed4ef9a8ac1bfc1f22858102dc339f",
+      "machO": true,
+      "architectures": "arm64"
+    },
+    {
+      "path": "_internal/python3.13/lib-dynload/_codecs_tw.cpython-313-darwin.so",
+      "bytes": 168416,
+      "sha256": "969b573611ecc7b21ee83c6119db69b617585aa577a0969d6edbd63ef25bcc4d",
+      "machO": true,
+      "architectures": "arm64"
+    },
+    {
+      "path": "_internal/python3.13/lib-dynload/_contextvars.cpython-313-darwin.so",
+      "bytes": 68400,
+      "sha256": "24541ad5aca1fd42baf03a2341ec5eb22d73a64f8babe3c07445e2342d6ce190",
+      "machO": true,
+      "architectures": "arm64"
+    },
+    {
+      "path": "_internal/python3.13/lib-dynload/_csv.cpython-313-darwin.so",
+      "bytes": 91248,
+      "sha256": "9419723e83723b27c39baf7424df719e4fe0761a07b8595414b5ac35a8529fb7",
+      "machO": true,
+      "architectures": "arm64"
+    },
+    {
+      "path": "_internal/python3.13/lib-dynload/_ctypes.cpython-313-darwin.so",
+      "bytes": 160832,
+      "sha256": "7126116a0dda8a86f27d8a1f0eb1ce805a8444d553011fd8d979de6ca957afb3",
+      "machO": true,
+      "architectures": "arm64"
+    },
+    {
+      "path": "_internal/python3.13/lib-dynload/_curses.cpython-313-darwin.so",
+      "bytes": 159664,
+      "sha256": "b5fabd45681bf30198b918195656229a3a9cb15205c99594033fa705b1436d69",
+      "machO": true,
+      "architectures": "arm64"
+    },
+    {
+      "path": "_internal/python3.13/lib-dynload/_datetime.cpython-313-darwin.so",
+      "bytes": 134960,
+      "sha256": "07f06d7548d69c622de36c40185b9df97f39a89d1066441e5095685fd4438f34",
+      "machO": true,
+      "architectures": "arm64"
+    },
+    {
+      "path": "_internal/python3.13/lib-dynload/_decimal.cpython-313-darwin.so",
+      "bytes": 194096,
+      "sha256": "bbafa50be07bb90db1fdcbcf7abef0b16fd64600f3488dd4f3c7b6a821d5f0f3",
+      "machO": true,
+      "architectures": "arm64"
+    },
+    {
+      "path": "_internal/python3.13/lib-dynload/_elementtree.cpython-313-darwin.so",
+      "bytes": 117456,
+      "sha256": "64bcd65d4afea4449bf8a8f7bba7916f7da7be256a8945d2635a1db969d320bb",
+      "machO": true,
+      "architectures": "arm64"
+    },
+    {
+      "path": "_internal/python3.13/lib-dynload/_hashlib.cpython-313-darwin.so",
+      "bytes": 97888,
+      "sha256": "50e9c6d746257dbff1c39b561c1334b77942fc47385578f8680820d0a3d82e3d",
+      "machO": true,
+      "architectures": "arm64"
+    },
+    {
+      "path": "_internal/python3.13/lib-dynload/_heapq.cpython-313-darwin.so",
+      "bytes": 69632,
+      "sha256": "a4d513e5ddecc505fce41e52fcda8bfae159f8125c53d7cea843a8fd7834abc3",
+      "machO": true,
+      "architectures": "arm64"
+    },
+    {
+      "path": "_internal/python3.13/lib-dynload/_interpqueues.cpython-313-darwin.so",
+      "bytes": 74064,
+      "sha256": "c7d089f967771bcfe70516af0a93d8048cdb5f460ef0777cc3899db6db9adde1",
+      "machO": true,
+      "architectures": "arm64"
+    },
+    {
+      "path": "_internal/python3.13/lib-dynload/_interpreters.cpython-313-darwin.so",
+      "bytes": 93440,
+      "sha256": "33eb5a21a7b3ded04162d39599959fe9b64fc237ee384e20c93886b1b9c1b5d9",
+      "machO": true,
+      "architectures": "arm64"
+    },
+    {
+      "path": "_internal/python3.13/lib-dynload/_json.cpython-313-darwin.so",
+      "bytes": 90384,
+      "sha256": "fc810ae72ca1b15428ebcb99d6db5c855b73be51ef2592d5fc6584d32d7ae5c8",
+      "machO": true,
+      "architectures": "arm64"
+    },
+    {
+      "path": "_internal/python3.13/lib-dynload/_lzma.cpython-313-darwin.so",
+      "bytes": 92000,
+      "sha256": "fd33ae9b3c047231a594e0699e3721432343b144b5c425f3e35bfffa4fedf352",
+      "machO": true,
+      "architectures": "arm64"
+    },
+    {
+      "path": "_internal/python3.13/lib-dynload/_md5.cpython-313-darwin.so",
+      "bytes": 71472,
+      "sha256": "188571e2e896f92849a784937e5af942e5dab725eb663724c8b18794195e0622",
+      "machO": true,
+      "architectures": "arm64"
+    },
+    {
+      "path": "_internal/python3.13/lib-dynload/_multibytecodec.cpython-313-darwin.so",
+      "bytes": 96224,
+      "sha256": "30c9c7e4e909e93e0c0fbb0fa719dae2cd69b17f762166ff8688606fa4b1a1c3",
+      "machO": true,
+      "architectures": "arm64"
+    },
+    {
+      "path": "_internal/python3.13/lib-dynload/_multiprocessing.cpython-313-darwin.so",
+      "bytes": 73600,
+      "sha256": "8f4902f9cbcb85a42a4d83cf7b3789cac5ed172ef78fe30d058c5d3af98b8ba0",
+      "machO": true,
+      "architectures": "arm64"
+    },
+    {
+      "path": "_internal/python3.13/lib-dynload/_opcode.cpython-313-darwin.so",
+      "bytes": 72512,
+      "sha256": "85aae777861b51071866606cc765f5cb26562dedbbc33aa67bb90d242e661383",
+      "machO": true,
+      "architectures": "arm64"
+    },
+    {
+      "path": "_internal/python3.13/lib-dynload/_pickle.cpython-313-darwin.so",
+      "bytes": 168864,
+      "sha256": "88b1293cbc2e7b59c487dfe3a70c29e39d667e37c97236bd40d361c3d60b1f0c",
+      "machO": true,
+      "architectures": "arm64"
+    },
+    {
+      "path": "_internal/python3.13/lib-dynload/_posixshmem.cpython-313-darwin.so",
+      "bytes": 69328,
+      "sha256": "4471a1498918d9add7e78305a695249cbdf003dafa71580b0515f1d21542ac06",
+      "machO": true,
+      "architectures": "arm64"
+    },
+    {
+      "path": "_internal/python3.13/lib-dynload/_posixsubprocess.cpython-313-darwin.so",
+      "bytes": 72400,
+      "sha256": "7f41e2473874bd282857da1efe7b3a6b46ebb1de2e7035e63e54f3941a0d98df",
+      "machO": true,
+      "architectures": "arm64"
+    },
+    {
+      "path": "_internal/python3.13/lib-dynload/_queue.cpython-313-darwin.so",
+      "bytes": 71936,
+      "sha256": "d4c04074004d6f82d9bb9e7108484a3c56c7e1d76ecf8679e1ab180b094847f2",
+      "machO": true,
+      "architectures": "arm64"
+    },
+    {
+      "path": "_internal/python3.13/lib-dynload/_random.cpython-313-darwin.so",
+      "bytes": 71616,
+      "sha256": "48c79a9d45f75c9b0e7c2ce6556597e1c4a292383b60e403e603ff7696debc77",
+      "machO": true,
+      "architectures": "arm64"
+    },
+    {
+      "path": "_internal/python3.13/lib-dynload/_scproxy.cpython-313-darwin.so",
+      "bytes": 71056,
+      "sha256": "7c82eb838597cb1fb107cf756f0e52f2b9da7bef5bf300e1ab5b17af935e8c60",
+      "machO": true,
+      "architectures": "arm64"
+    },
+    {
+      "path": "_internal/python3.13/lib-dynload/_sha1.cpython-313-darwin.so",
+      "bytes": 71456,
+      "sha256": "bf3e987ede24a99a7ad46372a18fb65d66530cf12e79040b838d9c7676870462",
+      "machO": true,
+      "architectures": "arm64"
+    },
+    {
+      "path": "_internal/python3.13/lib-dynload/_sha2.cpython-313-darwin.so",
+      "bytes": 89520,
+      "sha256": "32faca9ef7ad628778ca608be47aff3a117ec694e63b532323e620a9c3645ce3",
+      "machO": true,
+      "architectures": "arm64"
+    },
+    {
+      "path": "_internal/python3.13/lib-dynload/_sha3.cpython-313-darwin.so",
+      "bytes": 73136,
+      "sha256": "667cc91d2713bfa1bf61243c526cbd35ea634714aa321ae11ca4482d5ebbda98",
+      "machO": true,
+      "architectures": "arm64"
+    },
+    {
+      "path": "_internal/python3.13/lib-dynload/_socket.cpython-313-darwin.so",
+      "bytes": 132752,
+      "sha256": "71b96cbb012acdc5e3292e23230a91284f0cf8f68fc84f501e793c9a1116b8e3",
+      "machO": true,
+      "architectures": "arm64"
+    },
+    {
+      "path": "_internal/python3.13/lib-dynload/_ssl.cpython-313-darwin.so",
+      "bytes": 221440,
+      "sha256": "f1ba7ec9a50e102eff5a5faa14ef7b4c0fde06da65a82a23237d5d3e26150f63",
+      "machO": true,
+      "architectures": "arm64"
+    },
+    {
+      "path": "_internal/python3.13/lib-dynload/_statistics.cpython-313-darwin.so",
+      "bytes": 68528,
+      "sha256": "cd8905dad3e8d15c1332f361e0bd3125cc6c41c5d240d88d33e9a7d3c5d05074",
+      "machO": true,
+      "architectures": "arm64"
+    },
+    {
+      "path": "_internal/python3.13/lib-dynload/_struct.cpython-313-darwin.so",
+      "bytes": 94496,
+      "sha256": "e433df3c8b4418b8212a930c7aacd84c97b23260f087c60415a0e5084b83eadf",
+      "machO": true,
+      "architectures": "arm64"
+    },
+    {
+      "path": "_internal/python3.13/lib-dynload/_uuid.cpython-313-darwin.so",
+      "bytes": 68352,
+      "sha256": "951c82db2a063239d6ab82cee3ffbf4258d4830ec37ece38f68d3b6b67779f0a",
+      "machO": true,
+      "architectures": "arm64"
+    },
+    {
+      "path": "_internal/python3.13/lib-dynload/_zoneinfo.cpython-313-darwin.so",
+      "bytes": 91488,
+      "sha256": "3e298aab35d74d8de9e21a6bfec80aa1586e8e88d7b1ea9d6c7893212993df12",
+      "machO": true,
+      "architectures": "arm64"
+    },
+    {
+      "path": "_internal/python3.13/lib-dynload/array.cpython-313-darwin.so",
+      "bytes": 97344,
+      "sha256": "9facf2c56f474b7c6d4c0278a4ca059a9a174cb20c0be13c39f366c761aebd20",
+      "machO": true,
+      "architectures": "arm64"
+    },
+    {
+      "path": "_internal/python3.13/lib-dynload/binascii.cpython-313-darwin.so",
+      "bytes": 72048,
+      "sha256": "0c5216956ee40342091fbbdc9779a30b3104367c5c5db43aa675cc6d353d4d44",
+      "machO": true,
+      "architectures": "arm64"
+    },
+    {
+      "path": "_internal/python3.13/lib-dynload/fcntl.cpython-313-darwin.so",
+      "bytes": 70336,
+      "sha256": "53c694b26a9949b5b5460eee8ef7709f7ac786900c015ca021db4d9a1692692e",
+      "machO": true,
+      "architectures": "arm64"
+    },
+    {
+      "path": "_internal/python3.13/lib-dynload/grp.cpython-313-darwin.so",
+      "bytes": 70848,
+      "sha256": "e715500c8864e7813ec09213427dfec62ca253c9c2d8d8656abb5f36117c237c",
+      "machO": true,
+      "architectures": "arm64"
+    },
+    {
+      "path": "_internal/python3.13/lib-dynload/math.cpython-313-darwin.so",
+      "bytes": 111248,
+      "sha256": "54e50edec9d3f0c3714438aa042c6e3cc055beff9a17f9b8227a3f679111f8c4",
+      "machO": true,
+      "architectures": "arm64"
+    },
+    {
+      "path": "_internal/python3.13/lib-dynload/mmap.cpython-313-darwin.so",
+      "bytes": 73360,
+      "sha256": "c3fcb09acc1023dcca98665a635ed3c060cfe39f93b045ee3df8968285b717e4",
+      "machO": true,
+      "architectures": "arm64"
+    },
+    {
+      "path": "_internal/python3.13/lib-dynload/pyexpat.cpython-313-darwin.so",
+      "bytes": 99168,
+      "sha256": "08db987e3dcdc638375f8ed958f96d9b4e69cce28b48a450b345021a235f21e5",
+      "machO": true,
+      "architectures": "arm64"
+    },
+    {
+      "path": "_internal/python3.13/lib-dynload/readline.cpython-313-darwin.so",
+      "bytes": 94608,
+      "sha256": "fdd178d21f707efa456eb71f2e1f825484e03f8e9d51a361f6076e029653ee73",
+      "machO": true,
+      "architectures": "arm64"
+    },
+    {
+      "path": "_internal/python3.13/lib-dynload/resource.cpython-313-darwin.so",
+      "bytes": 70608,
+      "sha256": "2db827c3969fa69acdf1b66c66a5ca0c524df18ce46810bb3cf579237401d3d2",
+      "machO": true,
+      "architectures": "arm64"
+    },
+    {
+      "path": "_internal/python3.13/lib-dynload/select.cpython-313-darwin.so",
+      "bytes": 92464,
+      "sha256": "af60de969378ae229192483c8c38af0da17e95653b703ac4f69913bcd3d5498b",
+      "machO": true,
+      "architectures": "arm64"
+    },
+    {
+      "path": "_internal/python3.13/lib-dynload/syslog.cpython-313-darwin.so",
+      "bytes": 70352,
+      "sha256": "b0713dd4a95725096eb9f0e19b94686fc8144d2fc5129c9d028f053500058dd0",
+      "machO": true,
+      "architectures": "arm64"
+    },
+    {
+      "path": "_internal/python3.13/lib-dynload/termios.cpython-313-darwin.so",
+      "bytes": 71520,
+      "sha256": "ed3349e4d36a1d81f016a53be8e4f4d54c1b2a31cc83ed4aa436197011978479",
+      "machO": true,
+      "architectures": "arm64"
+    },
+    {
+      "path": "_internal/python3.13/lib-dynload/unicodedata.cpython-313-darwin.so",
+      "bytes": 747568,
+      "sha256": "49d55ed7cc8a8498715149cb8161caf5c1b487fa681a1bd2ae91504d0aeb1509",
+      "machO": true,
+      "architectures": "arm64"
+    },
+    {
+      "path": "_internal/python3.13/lib-dynload/zlib.cpython-313-darwin.so",
+      "bytes": 93584,
+      "sha256": "69dda58194d577cd47e54a0dbba41b203c045e8fa64382683d0ff598b5a46a1b",
+      "machO": true,
+      "architectures": "arm64"
+    },
+    {
+      "path": "_internal/sentencex/sentencex.cpython-313-darwin.so",
+      "bytes": 3346304,
+      "sha256": "312b8ccbc9eb8b36e9bff4a9a6c83f6ed387174404f90dca4507b9bb7103caa8",
+      "machO": true,
+      "architectures": "arm64"
+    },
+    {
+      "path": "_internal/setuptools/_vendor/jaraco/text/Lorem ipsum.txt",
+      "bytes": 1335,
+      "sha256": "37fedcffbf73c4eb9f058f47677cb33203a436ff9390e4d38a8e01c9dad28e0b",
+      "machO": false
+    },
+    {
+      "path": "_internal/soxr/soxr_ext.abi3.so",
+      "bytes": 367040,
+      "sha256": "466a8b68eeda73a3c5eeb3cf3347ee6c13de057eadf07b57dae07f6d4e7b0a85",
+      "machO": true,
+      "architectures": "arm64"
+    },
+    {
+      "path": "_internal/websockets-17.3.dist-info/INSTALLER",
+      "bytes": 4,
+      "sha256": "ceebae7b8927a3227e5303cf5e0f1f7b34bb542ad7250ac03fbcde36ec2f1508",
+      "machO": false
+    },
+    {
+      "path": "_internal/websockets-17.3.dist-info/METADATA",
+      "bytes": 6336,
+      "sha256": "009da5d5f96cd7290c0095c4f87e6cdf18e1ea0da5f3b34d8d5cdfac44ffaf72",
+      "machO": false
+    },
+    {
+      "path": "_internal/websockets-17.3.dist-info/RECORD",
+      "bytes": 8166,
+      "sha256": "52ec196efafd3c58cbed1c57b5815d9b8b7c8b490e5e69ed91c670aed8eabb5b",
+      "machO": false
+    },
+    {
+      "path": "_internal/websockets-17.3.dist-info/WHEEL",
+      "bytes": 136,
+      "sha256": "5bdbcdb311edb8f8c16abead5b2d3c887060fe334af958323a9a32a0d3f01efd",
+      "machO": false
+    },
+    {
+      "path": "_internal/websockets-17.3.dist-info/entry_points.txt",
+      "bytes": 51,
+      "sha256": "0e7867e1d9b912c23864c02c1e574617a0b005766b1979d1edc9cadbe5d1ef36",
+      "machO": false
+    },
+    {
+      "path": "_internal/websockets-17.3.dist-info/licenses/LICENSE",
+      "bytes": 1514,
+      "sha256": "3d6a0c050d8bec52fabad502e45fb25bd02bcadbd70dea34d447b6a0ff4e6da8",
+      "machO": false
+    },
+    {
+      "path": "_internal/websockets-17.3.dist-info/top_level.txt",
+      "bytes": 11,
+      "sha256": "08ca5d2a49712acbd980283296dc5458e1e26d95d9d6e60856971af71b10f079",
+      "machO": false
+    },
+    {
+      "path": "_internal/websockets/speedups.cpython-313-darwin.so",
+      "bytes": 69184,
+      "sha256": "9f082bb6ad3860ee0357789658fad28b3a9d80d005a413a72c30333fbea70730",
+      "machO": true,
+      "architectures": "arm64"
+    },
+    {
+      "path": "_internal/yaml/_yaml.cpython-313-darwin.so",
+      "bytes": 397104,
+      "sha256": "27d278d47f203186c5a79157828561ecbd4e4d9aff848c272a8db8c20f8f5023",
+      "machO": true,
+      "architectures": "arm64"
+    },
+    {
+      "path": "_internal/yarl/_quoting_c.cpython-313-darwin.so",
+      "bytes": 144960,
+      "sha256": "bcbaa009e42108703a6a9b912e4cacfbcfcff77d0884495c745d7f410f7ecafa",
+      "machO": true,
+      "architectures": "arm64"
+    },
+    {
+      "path": "metahackathon-voice",
+      "bytes": 15471232,
+      "sha256": "b64598f5c4ae9083e37e533ccd57907ee2f6fe97328d10329914d15f96207298",
+      "machO": true,
+      "architectures": "arm64"
+    }
+  ],
+  "symlinks": [
+    {
+      "path": "_internal/Python",
+      "target": "Python.framework/Versions/3.13/Python"
+    },
+    {
+      "path": "_internal/Python.framework/Python",
+      "target": "Versions/Current/Python"
+    },
+    {
+      "path": "_internal/Python.framework/Resources",
+      "target": "Versions/Current/Resources"
+    },
+    {
+      "path": "_internal/Python.framework/Versions/Current",
+      "target": "3.13"
+    },
+    {
+      "path": "_internal/libSDL2-2.0.0.dylib",
+      "target": "cv2/.dylibs/libSDL2-2.0.0.dylib"
+    },
+    {
+      "path": "_internal/libSvtAv1Enc.3.0.2.dylib",
+      "target": "cv2/.dylibs/libSvtAv1Enc.3.0.2.dylib"
+    },
+    {
+      "path": "_internal/libSvtAv1Enc.4.1.0.dylib",
+      "target": "av/.dylibs/libSvtAv1Enc.4.1.0.dylib"
+    },
+    {
+      "path": "_internal/libX11.6.dylib",
+      "target": "cv2/.dylibs/libX11.6.dylib"
+    },
+    {
+      "path": "_internal/libXau.6.dylib",
+      "target": "PIL/.dylibs/libXau.6.dylib"
+    },
+    {
+      "path": "_internal/libXdmcp.6.dylib",
+      "target": "cv2/.dylibs/libXdmcp.6.dylib"
+    },
+    {
+      "path": "_internal/libaom.3.12.1.dylib",
+      "target": "cv2/.dylibs/libaom.3.12.1.dylib"
+    },
+    {
+      "path": "_internal/libarchive.13.dylib",
+      "target": "cv2/.dylibs/libarchive.13.dylib"
+    },
+    {
+      "path": "_internal/libaribb24.0.dylib",
+      "target": "cv2/.dylibs/libaribb24.0.dylib"
+    },
+    {
+      "path": "_internal/libass.9.dylib",
+      "target": "cv2/.dylibs/libass.9.dylib"
+    },
+    {
+      "path": "_internal/libavcodec.61.19.101.dylib",
+      "target": "cv2/.dylibs/libavcodec.61.19.101.dylib"
+    },
+    {
+      "path": "_internal/libavcodec.62.28.101.dylib",
+      "target": "av/.dylibs/libavcodec.62.28.101.dylib"
+    },
+    {
+      "path": "_internal/libavdevice.61.3.100.dylib",
+      "target": "cv2/.dylibs/libavdevice.61.3.100.dylib"
+    },
+    {
+      "path": "_internal/libavdevice.62.3.101.dylib",
+      "target": "av/.dylibs/libavdevice.62.3.101.dylib"
+    },
+    {
+      "path": "_internal/libavfilter.10.4.100.dylib",
+      "target": "cv2/.dylibs/libavfilter.10.4.100.dylib"
+    },
+    {
+      "path": "_internal/libavfilter.11.14.101.dylib",
+      "target": "av/.dylibs/libavfilter.11.14.101.dylib"
+    },
+    {
+      "path": "_internal/libavformat.61.7.100.dylib",
+      "target": "cv2/.dylibs/libavformat.61.7.100.dylib"
+    },
+    {
+      "path": "_internal/libavformat.62.12.101.dylib",
+      "target": "av/.dylibs/libavformat.62.12.101.dylib"
+    },
+    {
+      "path": "_internal/libavif.16.3.0.dylib",
+      "target": "cv2/.dylibs/libavif.16.3.0.dylib"
+    },
+    {
+      "path": "_internal/libavif.16.4.2.dylib",
+      "target": "PIL/.dylibs/libavif.16.4.2.dylib"
+    },
+    {
+      "path": "_internal/libavutil.59.39.100.dylib",
+      "target": "cv2/.dylibs/libavutil.59.39.100.dylib"
+    },
+    {
+      "path": "_internal/libavutil.60.26.101.dylib",
+      "target": "av/.dylibs/libavutil.60.26.101.dylib"
+    },
+    {
+      "path": "_internal/libb2.1.dylib",
+      "target": "cv2/.dylibs/libb2.1.dylib"
+    },
+    {
+      "path": "_internal/libbluray.2.dylib",
+      "target": "cv2/.dylibs/libbluray.2.dylib"
+    },
+    {
+      "path": "_internal/libbrotlicommon.1.1.0.dylib",
+      "target": "cv2/.dylibs/libbrotlicommon.1.1.0.dylib"
+    },
+    {
+      "path": "_internal/libbrotlidec.1.1.0.dylib",
+      "target": "cv2/.dylibs/libbrotlidec.1.1.0.dylib"
+    },
+    {
+      "path": "_internal/libbrotlienc.1.1.0.dylib",
+      "target": "cv2/.dylibs/libbrotlienc.1.1.0.dylib"
+    },
+    {
+      "path": "_internal/libcjson.1.7.18.dylib",
+      "target": "cv2/.dylibs/libcjson.1.7.18.dylib"
+    },
+    {
+      "path": "_internal/libcrc32c.1.1.0.dylib",
+      "target": "google_crc32c/.dylibs/libcrc32c.1.1.0.dylib"
+    },
+    {
+      "path": "_internal/libcrypto.3.dylib",
+      "target": "cv2/.dylibs/libcrypto.3.dylib"
+    },
+    {
+      "path": "_internal/libdav1d.7.dylib",
+      "target": "av/.dylibs/libdav1d.7.dylib"
+    },
+    {
+      "path": "_internal/libfontconfig.1.dylib",
+      "target": "cv2/.dylibs/libfontconfig.1.dylib"
+    },
+    {
+      "path": "_internal/libfreetype.6.dylib",
+      "target": "cv2/.dylibs/libfreetype.6.dylib"
+    },
+    {
+      "path": "_internal/libfribidi.0.dylib",
+      "target": "cv2/.dylibs/libfribidi.0.dylib"
+    },
+    {
+      "path": "_internal/libgif.7.2.0.dylib",
+      "target": "cv2/.dylibs/libgif.7.2.0.dylib"
+    },
+    {
+      "path": "_internal/libglib-2.0.0.dylib",
+      "target": "cv2/.dylibs/libglib-2.0.0.dylib"
+    },
+    {
+      "path": "_internal/libgmp.10.dylib",
+      "target": "cv2/.dylibs/libgmp.10.dylib"
+    },
+    {
+      "path": "_internal/libgnutls.30.dylib",
+      "target": "cv2/.dylibs/libgnutls.30.dylib"
+    },
+    {
+      "path": "_internal/libgraphite2.3.2.1.dylib",
+      "target": "cv2/.dylibs/libgraphite2.3.2.1.dylib"
+    },
+    {
+      "path": "_internal/libharfbuzz.0.dylib",
+      "target": "cv2/.dylibs/libharfbuzz.0.dylib"
+    },
+    {
+      "path": "_internal/libhogweed.6.10.dylib",
+      "target": "cv2/.dylibs/libhogweed.6.10.dylib"
+    },
+    {
+      "path": "_internal/libhwy.1.2.0.dylib",
+      "target": "cv2/.dylibs/libhwy.1.2.0.dylib"
+    },
+    {
+      "path": "_internal/libidn2.0.dylib",
+      "target": "cv2/.dylibs/libidn2.0.dylib"
+    },
+    {
+      "path": "_internal/libintl.8.dylib",
+      "target": "cv2/.dylibs/libintl.8.dylib"
+    },
+    {
+      "path": "_internal/libjpeg.62.4.0.dylib",
+      "target": "PIL/.dylibs/libjpeg.62.4.0.dylib"
+    },
+    {
+      "path": "_internal/libjpeg.8.3.2.dylib",
+      "target": "cv2/.dylibs/libjpeg.8.3.2.dylib"
+    },
+    {
+      "path": "_internal/libjxl.0.11.1.dylib",
+      "target": "cv2/.dylibs/libjxl.0.11.1.dylib"
+    },
+    {
+      "path": "_internal/libjxl_cms.0.11.1.dylib",
+      "target": "cv2/.dylibs/libjxl_cms.0.11.1.dylib"
+    },
+    {
+      "path": "_internal/libjxl_threads.0.11.1.dylib",
+      "target": "cv2/.dylibs/libjxl_threads.0.11.1.dylib"
+    },
+    {
+      "path": "_internal/liblcms2.2.dylib",
+      "target": "PIL/.dylibs/liblcms2.2.dylib"
+    },
+    {
+      "path": "_internal/libleptonica.6.dylib",
+      "target": "cv2/.dylibs/libleptonica.6.dylib"
+    },
+    {
+      "path": "_internal/liblz4.1.10.0.dylib",
+      "target": "cv2/.dylibs/liblz4.1.10.0.dylib"
+    },
+    {
+      "path": "_internal/liblzma.5.dylib",
+      "target": "cv2/.dylibs/liblzma.5.dylib"
+    },
+    {
+      "path": "_internal/libmbedcrypto.3.6.3.dylib",
+      "target": "cv2/.dylibs/libmbedcrypto.3.6.3.dylib"
+    },
+    {
+      "path": "_internal/libmp3lame.0.dylib",
+      "target": "av/.dylibs/libmp3lame.0.dylib"
+    },
+    {
+      "path": "_internal/libnettle.8.10.dylib",
+      "target": "cv2/.dylibs/libnettle.8.10.dylib"
+    },
+    {
+      "path": "_internal/libogg.0.dylib",
+      "target": "cv2/.dylibs/libogg.0.dylib"
+    },
+    {
+      "path": "_internal/libopencore-amrnb.0.dylib",
+      "target": "av/.dylibs/libopencore-amrnb.0.dylib"
+    },
+    {
+      "path": "_internal/libopencore-amrwb.0.dylib",
+      "target": "av/.dylibs/libopencore-amrwb.0.dylib"
+    },
+    {
+      "path": "_internal/libopenjp2.2.5.3.dylib",
+      "target": "cv2/.dylibs/libopenjp2.2.5.3.dylib"
+    },
+    {
+      "path": "_internal/libopenjp2.2.5.4.dylib",
+      "target": "PIL/.dylibs/libopenjp2.2.5.4.dylib"
+    },
+    {
+      "path": "_internal/libopus.0.dylib",
+      "target": "av/.dylibs/libopus.0.dylib"
+    },
+    {
+      "path": "_internal/libp11-kit.0.dylib",
+      "target": "cv2/.dylibs/libp11-kit.0.dylib"
+    },
+    {
+      "path": "_internal/libpcre2-8.0.dylib",
+      "target": "cv2/.dylibs/libpcre2-8.0.dylib"
+    },
+    {
+      "path": "_internal/libpng16.16.dylib",
+      "target": "cv2/.dylibs/libpng16.16.dylib"
+    },
+    {
+      "path": "_internal/libpostproc.58.3.100.dylib",
+      "target": "cv2/.dylibs/libpostproc.58.3.100.dylib"
+    },
+    {
+      "path": "_internal/librav1e.0.8.0.dylib",
+      "target": "cv2/.dylibs/librav1e.0.8.0.dylib"
+    },
+    {
+      "path": "_internal/librist.4.dylib",
+      "target": "cv2/.dylibs/librist.4.dylib"
+    },
+    {
+      "path": "_internal/librubberband.3.dylib",
+      "target": "cv2/.dylibs/librubberband.3.dylib"
+    },
+    {
+      "path": "_internal/libsamplerate.0.2.2.dylib",
+      "target": "cv2/.dylibs/libsamplerate.0.2.2.dylib"
+    },
+    {
+      "path": "_internal/libsharpyuv.0.1.1.dylib",
+      "target": "cv2/.dylibs/libsharpyuv.0.1.1.dylib"
+    },
+    {
+      "path": "_internal/libsharpyuv.0.1.2.dylib",
+      "target": "av/.dylibs/libsharpyuv.0.1.2.dylib"
+    },
+    {
+      "path": "_internal/libsharpyuv.0.dylib",
+      "target": "PIL/.dylibs/libsharpyuv.0.dylib"
+    },
+    {
+      "path": "_internal/libsnappy.1.2.2.dylib",
+      "target": "cv2/.dylibs/libsnappy.1.2.2.dylib"
+    },
+    {
+      "path": "_internal/libsodium.26.dylib",
+      "target": "cv2/.dylibs/libsodium.26.dylib"
+    },
+    {
+      "path": "_internal/libsoxr.0.1.2.dylib",
+      "target": "cv2/.dylibs/libsoxr.0.1.2.dylib"
+    },
+    {
+      "path": "_internal/libspeex.1.dylib",
+      "target": "cv2/.dylibs/libspeex.1.dylib"
+    },
+    {
+      "path": "_internal/libsrt.1.5.4.dylib",
+      "target": "cv2/.dylibs/libsrt.1.5.4.dylib"
+    },
+    {
+      "path": "_internal/libssh.4.10.1.dylib",
+      "target": "cv2/.dylibs/libssh.4.10.1.dylib"
+    },
+    {
+      "path": "_internal/libssl.3.dylib",
+      "target": "cv2/.dylibs/libssl.3.dylib"
+    },
+    {
+      "path": "_internal/libswresample.5.3.100.dylib",
+      "target": "cv2/.dylibs/libswresample.5.3.100.dylib"
+    },
+    {
+      "path": "_internal/libswresample.6.3.101.dylib",
+      "target": "av/.dylibs/libswresample.6.3.101.dylib"
+    },
+    {
+      "path": "_internal/libswscale.8.3.100.dylib",
+      "target": "cv2/.dylibs/libswscale.8.3.100.dylib"
+    },
+    {
+      "path": "_internal/libswscale.9.5.101.dylib",
+      "target": "av/.dylibs/libswscale.9.5.101.dylib"
+    },
+    {
+      "path": "_internal/libtasn1.6.dylib",
+      "target": "cv2/.dylibs/libtasn1.6.dylib"
+    },
+    {
+      "path": "_internal/libtesseract.5.dylib",
+      "target": "cv2/.dylibs/libtesseract.5.dylib"
+    },
+    {
+      "path": "_internal/libtheoradec.1.dylib",
+      "target": "cv2/.dylibs/libtheoradec.1.dylib"
+    },
+    {
+      "path": "_internal/libtheoraenc.1.dylib",
+      "target": "cv2/.dylibs/libtheoraenc.1.dylib"
+    },
+    {
+      "path": "_internal/libtiff.6.dylib",
+      "target": "PIL/.dylibs/libtiff.6.dylib"
+    },
+    {
+      "path": "_internal/libunibreak.6.dylib",
+      "target": "cv2/.dylibs/libunibreak.6.dylib"
+    },
+    {
+      "path": "_internal/libunistring.5.dylib",
+      "target": "cv2/.dylibs/libunistring.5.dylib"
+    },
+    {
+      "path": "_internal/libvidstab.1.2.dylib",
+      "target": "cv2/.dylibs/libvidstab.1.2.dylib"
+    },
+    {
+      "path": "_internal/libvmaf.3.dylib",
+      "target": "cv2/.dylibs/libvmaf.3.dylib"
+    },
+    {
+      "path": "_internal/libvorbis.0.dylib",
+      "target": "cv2/.dylibs/libvorbis.0.dylib"
+    },
+    {
+      "path": "_internal/libvorbisenc.2.dylib",
+      "target": "cv2/.dylibs/libvorbisenc.2.dylib"
+    },
+    {
+      "path": "_internal/libvpx.11.dylib",
+      "target": "cv2/.dylibs/libvpx.11.dylib"
+    },
+    {
+      "path": "_internal/libvpx.12.dylib",
+      "target": "av/.dylibs/libvpx.12.dylib"
+    },
+    {
+      "path": "_internal/libwebp.7.1.10.dylib",
+      "target": "cv2/.dylibs/libwebp.7.1.10.dylib"
+    },
+    {
+      "path": "_internal/libwebp.7.2.0.dylib",
+      "target": "av/.dylibs/libwebp.7.2.0.dylib"
+    },
+    {
+      "path": "_internal/libwebp.7.dylib",
+      "target": "PIL/.dylibs/libwebp.7.dylib"
+    },
+    {
+      "path": "_internal/libwebpdemux.2.dylib",
+      "target": "PIL/.dylibs/libwebpdemux.2.dylib"
+    },
+    {
+      "path": "_internal/libwebpmux.3.1.1.dylib",
+      "target": "cv2/.dylibs/libwebpmux.3.1.1.dylib"
+    },
+    {
+      "path": "_internal/libwebpmux.3.1.2.dylib",
+      "target": "av/.dylibs/libwebpmux.3.1.2.dylib"
+    },
+    {
+      "path": "_internal/libwebpmux.3.dylib",
+      "target": "PIL/.dylibs/libwebpmux.3.dylib"
+    },
+    {
+      "path": "_internal/libx264.164.dylib",
+      "target": "cv2/.dylibs/libx264.164.dylib"
+    },
+    {
+      "path": "_internal/libx264.165.dylib",
+      "target": "av/.dylibs/libx264.165.dylib"
+    },
+    {
+      "path": "_internal/libx265.215.dylib",
+      "target": "cv2/.dylibs/libx265.215.dylib"
+    },
+    {
+      "path": "_internal/libx265.216.dylib",
+      "target": "av/.dylibs/libx265.216.dylib"
+    },
+    {
+      "path": "_internal/libxcb-shape.0.0.0.dylib",
+      "target": "cv2/.dylibs/libxcb-shape.0.0.0.dylib"
+    },
+    {
+      "path": "_internal/libxcb-shm.0.0.0.dylib",
+      "target": "cv2/.dylibs/libxcb-shm.0.0.0.dylib"
+    },
+    {
+      "path": "_internal/libxcb-xfixes.0.0.0.dylib",
+      "target": "cv2/.dylibs/libxcb-xfixes.0.0.0.dylib"
+    },
+    {
+      "path": "_internal/libxcb.1.1.0.dylib",
+      "target": "PIL/.dylibs/libxcb.1.1.0.dylib"
+    },
+    {
+      "path": "_internal/libz.1.3.1.zlib-ng.dylib",
+      "target": "PIL/.dylibs/libz.1.3.1.zlib-ng.dylib"
+    },
+    {
+      "path": "_internal/libzimg.2.dylib",
+      "target": "cv2/.dylibs/libzimg.2.dylib"
+    },
+    {
+      "path": "_internal/libzmq.5.dylib",
+      "target": "cv2/.dylibs/libzmq.5.dylib"
+    },
+    {
+      "path": "_internal/libzstd.1.5.7.dylib",
+      "target": "cv2/.dylibs/libzstd.1.5.7.dylib"
+    }
+  ]
+}
