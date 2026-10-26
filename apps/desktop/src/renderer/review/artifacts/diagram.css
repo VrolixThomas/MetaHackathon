@@ -1,0 +1,164 @@
+.diagram-artifact {
+	min-width: 0;
+	color: var(--text, #e5e8ee);
+}
+.diagram-artifact h3 {
+	margin: 0 0 8px;
+	font-size: 14px;
+	line-height: 1.5;
+	overflow-wrap: anywhere;
+}
+.diagram-origin,
+.diagram-hint {
+	margin: 0 0 10px;
+	font-size: 11px;
+	line-height: 1.6;
+	color: #a4b1c8;
+}
+.diagram-origin[data-evidence-kind="fixture"] {
+	color: var(--amber, #edb06a);
+}
+.diagram-viewport {
+	max-width: 100%;
+	max-height: min(55vh, 540px);
+	overflow: auto;
+	border: 1px solid var(--line, #2c2f38);
+	border-radius: 8px;
+	background: #14181f;
+	overscroll-behavior: contain;
+}
+.diagram-canvas {
+	position: relative;
+	margin-inline: auto;
+}
+.diagram-connectors {
+	position: absolute;
+	inset: 0;
+	pointer-events: none;
+	fill: #a6b8db;
+}
+.diagram-connector {
+	fill: none;
+	stroke: #8ea6cf;
+	stroke-width: 1.5;
+	stroke-linejoin: round;
+}
+.diagram-connectors circle {
+	fill: #202c42;
+	stroke: #718ab5;
+}
+.diagram-connectors text {
+	font: 10px "SFMono-Regular", Consolas, monospace;
+}
+.diagram-source-box {
+	position: absolute;
+	box-sizing: border-box;
+	display: flex;
+	flex-direction: column;
+	justify-content: center;
+	gap: 6px;
+	padding: 12px;
+	border: 1px solid #4e6286;
+	border-radius: 7px;
+	background: #1e2532;
+	color: #e5e8ee;
+	text-align: left;
+	cursor: pointer;
+	scroll-margin: 14px;
+}
+.diagram-source-box:hover {
+	border-color: #96b0ff;
+	background: #263450;
+}
+.diagram-source-box:focus-visible,
+.diagram-viewport:focus-visible,
+.diagram-export:focus-visible,
+.diagram-evidence summary:focus-visible {
+	outline: 2px solid var(--blue, #96b0ff);
+	outline-offset: 3px;
+}
+.diagram-source-box strong,
+.diagram-source-path {
+	white-space: pre-wrap;
+	overflow-wrap: anywhere;
+	font-family: "SFMono-Regular", Consolas, monospace;
+}
+.diagram-source-box strong {
+	font-size: 12px;
+	font-weight: 500;
+	line-height: 18px;
+}
+.diagram-source-path {
+	font-size: 10px;
+	line-height: 15px;
+	color: #aebbd0;
+}
+.diagram-source-revision {
+	display: flex;
+	justify-content: space-between;
+	color: #9fb8ed;
+	font-size: 10px;
+	line-height: 16px;
+}
+.diagram-relationships {
+	font-size: 11px;
+	line-height: 1.6;
+	color: #aebbd0;
+}
+.diagram-relationships > p {
+	margin: 12px 0 8px;
+}
+.diagram-relationships ol {
+	list-style: decimal;
+	padding-left: 24px;
+	margin: 0;
+}
+.diagram-relationships li {
+	padding: 4px 0 4px 3px;
+	overflow-wrap: anywhere;
+}
+.diagram-relationships li::marker {
+	color: #9fb8ed;
+}
+.diagram-relationships strong {
+	display: block;
+	color: #d5deef;
+	font-weight: 500;
+}
+.diagram-evidence {
+	border-top: 1px solid var(--line, #2c2f38);
+	margin-top: 15px;
+	padding-top: 10px;
+	color: #aebbd0;
+	font-size: 11px;
+}
+.diagram-evidence summary {
+	cursor: pointer;
+	padding: 4px 0;
+}
+.diagram-evidence dl {
+	display: grid;
+	grid-template-columns: 65px minmax(0, 1fr);
+	gap: 7px;
+	margin: 10px 0;
+}
+.diagram-evidence dt {
+	color: #8e9db5;
+}
+.diagram-evidence dd {
+	margin: 0;
+	overflow-wrap: anywhere;
+}
+.diagram-export {
+	display: inline-block;
+	margin-top: 12px;
+	padding: 7px 9px;
+	border: 1px solid #4e6286;
+	border-radius: 5px;
+	color: #b5c8f4;
+	font-size: 11px;
+	text-decoration: none;
+}
+.diagram-export:hover {
+	background: #263450;
+}
