@@ -62,6 +62,10 @@ local seeded repositories and no live provider credentials or GitHub writes.
 - `AgentTurnInput` always includes `ScreenContext`. `AgentAction` describes UI effects or
   scenario requests; lane modules export routers from their owned directories. Integration
   alone registers routers in `main/trpc/routers/index.ts` and wires main/preload lifecycle.
+- Send `screen.update({sessionId, screenContext})` before starting a turn and after screen changes.
+  It returns the latest validated snapshot; older updates cannot overwrite it and equal-sequence
+  conflicts reject. `screen.release` clears a retired session. Each action request ID identifies
+  one effect; session/turn/generation fields correlate effects with the originating turn.
 - Use the existing `window.electron.trpc.request` transport; bootstrap exposes
   `bootstrap.contract` and `bootstrap.fixture`. IPC supports query/mutation, not subscriptions.
   Request event/stream or lifecycle wiring through integration before implementing it.

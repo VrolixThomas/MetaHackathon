@@ -65,6 +65,33 @@ const portOpen = (port) =>
 	assert.equal(source.prId, pr.id);
 	assert.equal(source.commitSha, pr.headSha);
 	assert.ok(source.content.includes("throw new PromoExpiredError"));
+	const screenContext = {
+		prId: pr.id,
+		sequence: 1,
+		panel: "diff",
+		focusedLocation: {
+			repository: pr.repository,
+			revision: "head",
+			commitSha: pr.headSha,
+			path: source.path,
+			startLine: 1,
+			endLine: 1,
+		},
+	};
+	const screenInput = { sessionId: "integrated-screen", screenContext };
+	assert.equal(value(await rpc("mutation", "screen.update", screenInput)).sequence, 1);
+	assert.equal(
+		value(
+			await rpc("mutation", "screen.update", {
+				...screenInput,
+				screenContext: { ...screenContext, sequence: 2, panel: "why" },
+			})
+		).sequence,
+		2
+	);
+	assert.equal(value(await rpc("mutation", "screen.update", screenInput)).sequence, 2);
+	value(await rpc("mutation", "screen.release", { sessionId: screenInput.sessionId }));
+	assert.equal(value(await rpc("mutation", "screen.update", screenInput)).sequence, 1);
 	const absent = value(
 		await rpc("query", "runtime.source", {
 			prId: pr.id,

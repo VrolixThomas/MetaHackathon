@@ -17,6 +17,10 @@ export const TurnIdentitySchema = z.strictObject({
 	turnId: IdSchema,
 	generation: z.int().nonnegative(),
 });
+export const ScreenContextUpdateSchema = z.strictObject({
+	sessionId: IdSchema,
+	screenContext: ScreenContextSchema,
+});
 export const AgentTurnInputSchema = z.strictObject({
 	...TurnIdentitySchema.shape,
 	requestId: IdSchema,
@@ -88,6 +92,7 @@ export const CancelTurnResultSchema = z.strictObject({
 });
 
 export type ScreenContext = z.infer<typeof ScreenContextSchema>;
+export type ScreenContextUpdate = z.infer<typeof ScreenContextUpdateSchema>;
 export type TurnIdentity = z.infer<typeof TurnIdentitySchema>;
 export type AgentTurnInput = z.infer<typeof AgentTurnInputSchema>;
 export type AgentAction = z.infer<typeof AgentActionSchema>;
