@@ -1,109 +1,97 @@
 {
-  "recordedAt": "2026-10-26T21:46:35.667284+00:00",
-  "sourceCommit": "57232235bb70c08b257e55e06d76cf6944a91d06",
-  "baseCommit": "041732d261042bd581090c4247bbb376986b457c",
-  "branch": "hack/voice-python",
-  "platform": "macOS-26.5.2-arm64-arm-64bit-Mach-O",
-  "python": "3.13.3",
-  "pyinstaller": "6.22.3",
-  "behavior": {
-    "command": "/tmp/met-voice-venv/bin/python -m unittest discover -s services/voice/tests -v",
-    "exitCode": 0,
-    "tests": 12,
-    "seconds": 9.386,
-    "log": "behavior-tests.txt",
-    "realLocalAiortc": true,
-    "providers": "mocked"
-  },
-  "sourceSelfTest": {
-    "ok": true,
-    "python": "3.13.3",
-    "arch": "arm64",
-    "frozen": false,
-    "pcmBytes": 960,
-    "pipecat": "1.14.0",
-    "capabilities": [
-      "smallwebrtc",
-      "pipeline",
-      "pcm24k",
-      "elevenlabs",
-      "system-tls"
-    ]
-  },
-  "freeze": {
-    "command": "/tmp/met-voice-venv/bin/python services/voice/scripts/freeze.py",
-    "exitCode": 0,
-    "bundle": "dist/metahackathon-voice",
-    "executable": "dist/metahackathon-voice/metahackathon-voice",
-    "logicalBytes": 314304181,
-    "diskKiB": 308060,
-    "files": 521,
-    "machOFiles": 274,
-    "symlinks": 120,
-    "inventory": "macos-arm64-inventory.json",
-    "signing": "PyInstaller local ad-hoc; no Developer ID/notarization/DMG acceptance"
-  },
-  "coldServerLaunch": {
-    "ok": true,
-    "launchSeconds": 127.376,
-    "readiness": "single JSON port line",
-    "authPathsChecked": 7,
-    "cancelBeforeOffer": true,
-    "portClosedAfterExit": true,
-    "liveProviders": false
-  },
-  "warmServerLaunch": {
-    "ok": true,
-    "launchSeconds": 0.493,
-    "readiness": "single JSON port line",
-    "authPathsChecked": 7,
-    "cancelBeforeOffer": true,
-    "portClosedAfterExit": true,
-    "liveProviders": false
-  },
-  "frozenSelfTestAfterLaunches": {
-    "ok": true,
-    "python": "3.13.3",
-    "arch": "arm64",
-    "frozen": true,
-    "pcmBytes": 960,
-    "pipecat": "1.14.0",
-    "capabilities": [
-      "smallwebrtc",
-      "pipeline",
-      "pcm24k",
-      "elevenlabs",
-      "system-tls"
-    ],
-    "elapsedSeconds": 0.485
-  },
-  "coldLoadHistory": {
-    "initialProbeTimeoutSeconds": 60,
-    "subsequentRebuiltColdProbeSeconds": 109.272,
-    "sampleObservation": "Native dyld dlopen/fcntl during AV module loading on retry; no Gatekeeper changes",
-    "recommendedSupervisorStartupSeconds": 180,
-    "preparation": "Use main VoiceSidecar.prepare at app/settings ready; default 30s can reject cold boots"
-  },
-  "limitations": [
-    "No live Meta or ElevenLabs request",
-    "No browser microphone acceptance",
-    "No Electron integration acceptance by this worker",
-    "No clean-machine or signed release launch guarantee",
-    "No ticket Done or push"
-  ],
-  "sourceSha256": {
-    "scripts/freeze.py": "7af11e04b91a10ba0c8a9ed8d44d118bd4607fe7356ba4ab4803718c53fbf1cc",
-    "scripts/inventory.py": "d35933e3f9349d96aa32c2e5fdada8baeb9937a6429e83e44663d0daa0ffc34b",
-    "scripts/launch_smoke.py": "1f34fe2b586f7701591fb883c1917cee10f6ab7337ab8b9a0325ce60d52c440b",
-    "sidecar.py": "e1391ffe47b7dca163d3f623425f4afb0a17e5edabe4e93fbb8a100fa48c1f65",
-    "tests/test_voice.py": "331242af5144e434aded89c9986e461a6cc9d05a4eee3f378d5ee69b2208d2bd",
-    "voice_sidecar/__init__.py": "dfe40287c5f04d5b345b529f0537c42b675cb302c1291089831d4571e04639ee",
-    "voice_sidecar/probe.py": "d82618d2a2e777cd1d36b72ade59880f73f8d59019173c049f63c4034ca6e5c7",
-    "voice_sidecar/protocol.py": "565cc3a906721976d1bb9b3ef6f58fea55a23ee354d884c88f9c8be2f2f0fc5f",
-    "voice_sidecar/providers.py": "c1396acc86d1c4479e72b54135aa8fd0e97ea904a52b312354c6a5c256f05010",
-    "voice_sidecar/server.py": "fe91c26bb9998a54578ab420abbba3a56ffa64326f56cfc6df743808bc608388",
-    "voice_sidecar/session.py": "dc55bb75c5ec41de33d7afcdf06e93eaa1af51d077c08d916de66e031534971b"
-  },
-  "requirementsLockSha256": "1d64aa27b3c054dde462bb6c46d458d887e6acac4f5a046ad771644fcc704931",
-  "typescriptProtocolSha256": "eeadcd146ddb9ab3288900534e9709712feebd8e4ed03ec7d3b887278e1a5c5f"
+	"recordedAt": "2026-10-26T21:46:35.667284+00:00",
+	"sourceCommit": "57232235bb70c08b257e55e06d76cf6944a91d06",
+	"baseCommit": "041732d261042bd581090c4247bbb376986b457c",
+	"branch": "hack/voice-python",
+	"platform": "macOS-26.5.2-arm64-arm-64bit-Mach-O",
+	"python": "3.13.3",
+	"pyinstaller": "6.22.3",
+	"behavior": {
+		"command": "/tmp/met-voice-venv/bin/python -m unittest discover -s services/voice/tests -v",
+		"exitCode": 0,
+		"tests": 12,
+		"seconds": 9.386,
+		"log": "behavior-tests.txt",
+		"realLocalAiortc": true,
+		"providers": "mocked"
+	},
+	"sourceSelfTest": {
+		"ok": true,
+		"python": "3.13.3",
+		"arch": "arm64",
+		"frozen": false,
+		"pcmBytes": 960,
+		"pipecat": "1.14.0",
+		"capabilities": ["smallwebrtc", "pipeline", "pcm24k", "elevenlabs", "system-tls"]
+	},
+	"freeze": {
+		"command": "/tmp/met-voice-venv/bin/python services/voice/scripts/freeze.py",
+		"exitCode": 0,
+		"bundle": "dist/metahackathon-voice",
+		"executable": "dist/metahackathon-voice/metahackathon-voice",
+		"logicalBytes": 314304181,
+		"diskKiB": 308060,
+		"files": 521,
+		"machOFiles": 274,
+		"symlinks": 120,
+		"inventory": "macos-arm64-inventory.json",
+		"signing": "PyInstaller local ad-hoc; no Developer ID/notarization/DMG acceptance"
+	},
+	"coldServerLaunch": {
+		"ok": true,
+		"launchSeconds": 127.376,
+		"readiness": "single JSON port line",
+		"authPathsChecked": 7,
+		"cancelBeforeOffer": true,
+		"portClosedAfterExit": true,
+		"liveProviders": false
+	},
+	"warmServerLaunch": {
+		"ok": true,
+		"launchSeconds": 0.493,
+		"readiness": "single JSON port line",
+		"authPathsChecked": 7,
+		"cancelBeforeOffer": true,
+		"portClosedAfterExit": true,
+		"liveProviders": false
+	},
+	"frozenSelfTestAfterLaunches": {
+		"ok": true,
+		"python": "3.13.3",
+		"arch": "arm64",
+		"frozen": true,
+		"pcmBytes": 960,
+		"pipecat": "1.14.0",
+		"capabilities": ["smallwebrtc", "pipeline", "pcm24k", "elevenlabs", "system-tls"],
+		"elapsedSeconds": 0.485
+	},
+	"coldLoadHistory": {
+		"initialProbeTimeoutSeconds": 60,
+		"subsequentRebuiltColdProbeSeconds": 109.272,
+		"sampleObservation": "Native dyld dlopen/fcntl during AV module loading on retry; no Gatekeeper changes",
+		"recommendedSupervisorStartupSeconds": 180,
+		"preparation": "Use main VoiceSidecar.prepare at app/settings ready; default 30s can reject cold boots"
+	},
+	"limitations": [
+		"No live Meta or ElevenLabs request",
+		"No browser microphone acceptance",
+		"No Electron integration acceptance by this worker",
+		"No clean-machine or signed release launch guarantee",
+		"No ticket Done or push"
+	],
+	"sourceSha256": {
+		"scripts/freeze.py": "7af11e04b91a10ba0c8a9ed8d44d118bd4607fe7356ba4ab4803718c53fbf1cc",
+		"scripts/inventory.py": "d35933e3f9349d96aa32c2e5fdada8baeb9937a6429e83e44663d0daa0ffc34b",
+		"scripts/launch_smoke.py": "1f34fe2b586f7701591fb883c1917cee10f6ab7337ab8b9a0325ce60d52c440b",
+		"sidecar.py": "e1391ffe47b7dca163d3f623425f4afb0a17e5edabe4e93fbb8a100fa48c1f65",
+		"tests/test_voice.py": "331242af5144e434aded89c9986e461a6cc9d05a4eee3f378d5ee69b2208d2bd",
+		"voice_sidecar/__init__.py": "dfe40287c5f04d5b345b529f0537c42b675cb302c1291089831d4571e04639ee",
+		"voice_sidecar/probe.py": "d82618d2a2e777cd1d36b72ade59880f73f8d59019173c049f63c4034ca6e5c7",
+		"voice_sidecar/protocol.py": "565cc3a906721976d1bb9b3ef6f58fea55a23ee354d884c88f9c8be2f2f0fc5f",
+		"voice_sidecar/providers.py": "c1396acc86d1c4479e72b54135aa8fd0e97ea904a52b312354c6a5c256f05010",
+		"voice_sidecar/server.py": "fe91c26bb9998a54578ab420abbba3a56ffa64326f56cfc6df743808bc608388",
+		"voice_sidecar/session.py": "dc55bb75c5ec41de33d7afcdf06e93eaa1af51d077c08d916de66e031534971b"
+	},
+	"requirementsLockSha256": "1d64aa27b3c054dde462bb6c46d458d887e6acac4f5a046ad771644fcc704931",
+	"typescriptProtocolSha256": "eeadcd146ddb9ab3288900534e9709712feebd8e4ed03ec7d3b887278e1a5c5f"
 }
