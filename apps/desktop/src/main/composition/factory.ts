@@ -71,7 +71,10 @@ export function createAgentComposition(options: AgentCompositionOptions) {
 			jobs.run(async (signal) => {
 				const response = await (options.fetch ?? fetch)(input, { ...init, signal });
 				if (signal.aborted) {
-					await response.body?.cancel().catch(() => {});
+					// Best effort: a late body's cleanup must not hold shutdown open.
+					void Promise.resolve()
+						.then(() => response.body?.cancel())
+						.catch(() => {});
 					signal.throwIfAborted();
 				}
 				return response;

@@ -373,6 +373,62 @@ test("cancel rejects late provider effects and disposal waits for ignored transp
 	}
 });
 
+for (const cleanup of ["never settles", "rejects"] as const) {
+	test(`disposal completes after a late fetch when body cancellation ${cleanup}`, async () => {
+		const response = deferred<Response>();
+		let dispatched = false;
+		let cancellationStarted = false;
+		let transportSignal: AbortSignal | null | undefined;
+		let timeout: ReturnType<typeof setTimeout> | undefined;
+		const h = await mockHarness({
+			fetch: async (_input, init) => {
+				dispatched = true;
+				transportSignal = init?.signal;
+				return response.promise;
+			},
+		});
+		try {
+			h.composition.service.start(h.runtime.fixture.agentTurn);
+			await until(() => dispatched);
+			let disposed = false;
+			const disposal = h.composition.dispose().then(() => {
+				disposed = true;
+			});
+			await delay(10);
+			assert(transportSignal?.aborted);
+			assert.equal(disposed, false, "Shutdown still awaits the ignored-abort fetch");
+			response.resolve(
+				new Response(
+					new ReadableStream<Uint8Array>({
+						cancel() {
+							cancellationStarted = true;
+							return cleanup === "never settles"
+								? new Promise<void>(() => {})
+								: Promise.reject(new Error("Body cleanup failed"));
+						},
+					})
+				)
+			);
+			await Promise.race([
+				disposal,
+				new Promise<never>((_resolve, reject) => {
+					timeout = setTimeout(() => reject(new Error("Body cleanup blocked disposal")), 1000);
+				}),
+			]);
+			assert(cancellationStarted, "Late body cleanup was attempted");
+			assert.equal(disposed, true);
+			await delay(0); // Let any unobserved cleanup rejection reach the test runner.
+		} finally {
+			clearTimeout(timeout);
+			response.resolve(transport([completed()]));
+			// A regression must fail promptly even when its cleanup promise never settles.
+			void h.composition.dispose().catch(() => {});
+			await h.runtime.dispose();
+			await rm(h.root, { recursive: true });
+		}
+	});
+}
+
 test("catalog rejects foreign identity, out-of-bounds lines, stale revisions and cancelled late validation", async () => {
 	const h = await mockHarness();
 	try {
