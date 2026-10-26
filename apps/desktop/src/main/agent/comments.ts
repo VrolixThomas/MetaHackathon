@@ -77,8 +77,9 @@ export class CommentDrafts {
 			throw new Error("Draft already submitted; reconcile the original posting attempt");
 		throwIfAborted(signal);
 		this.posting.add(draft.id);
-		const result = this.post(draft, input.requestId, signal);
-		// Keep successful AND failed attempts: a network failure may have happened after the write.
+		// Install the attempt before invoking adapters, including synchronous failures.
+		const result = Promise.resolve().then(() => this.post(draft, input.requestId, signal));
+		// Retain submitted/ambiguous attempts; known pre-write failures remove their attempt.
 		this.attempts.set(input.requestId, { fingerprint, result });
 		return result;
 	}
@@ -86,6 +87,7 @@ export class CommentDrafts {
 	private async post(draft: DraftedComment, requestId: string, signal: AbortSignal) {
 		let submissionStarted = false;
 		try {
+			throwIfAborted(signal);
 			const pr = PullRequestSchema.parse(
 				await abortable(this.port.getPullRequest(draft.prId, signal), signal)
 			);
@@ -114,7 +116,10 @@ export class CommentDrafts {
 			return { url: url.toString() };
 		} catch (error) {
 			// Only failures known to precede the external write may unlock the draft.
-			if (!submissionStarted) this.posting.delete(draft.id);
+			if (!submissionStarted) {
+				this.posting.delete(draft.id);
+				this.attempts.delete(requestId);
+			}
 			throw error;
 		}
 	}

@@ -127,3 +127,89 @@ test("fixture drafts are blocked at the main confirmation boundary", () => {
 	);
 	assert.equal(ctx.posts(), 0);
 });
+
+test("a known pre-write lookup failure permits the same confirmation request to retry", async () => {
+	const fixture = getReviewFixture();
+	let reads = 0;
+	let posts = 0;
+	const drafts = new CommentDrafts({
+		getPullRequest: () => {
+			if (++reads === 1) throw new Error("Temporary lookup failure");
+			return Promise.resolve(fixture.preparation.pr);
+		},
+		postConfirmedComment: async () => {
+			posts++;
+			return { url: "https://example.test/comment" };
+		},
+	});
+	const { id: _id, revision: _revision, ...fields } = fixture.draftComment;
+	const draft = drafts.create({
+		...fields,
+		evidence: {
+			kind: "source",
+			url: "https://example.test/source",
+			retrievedAt: "2026-10-26T20:00:00Z",
+		},
+	});
+	const input = {
+		requestId: "retryable-preflight",
+		draftId: draft.id,
+		draftRevision: draft.revision,
+		headSha: draft.headSha,
+		body: draft.body,
+		confirmed: true,
+	};
+	await assert.rejects(drafts.confirmAndPost(input, signal()), /Temporary/);
+	await drafts.confirmAndPost(input, signal());
+	assert.equal(reads, 2);
+	assert.equal(posts, 1);
+});
+
+test("cancellation during head lookup never enters the write port with an aborted signal", async () => {
+	const fixture = getReviewFixture();
+	for (let depth = 0; depth <= 8; depth++) {
+		const controller = new AbortController();
+		let resolveRead: (pr: typeof fixture.preparation.pr) => void = () => {};
+		const read = new Promise<typeof fixture.preparation.pr>((resolve) => {
+			resolveRead = resolve;
+		});
+		const enteredAborted: boolean[] = [];
+		const drafts = new CommentDrafts({
+			getPullRequest: () => read,
+			postConfirmedComment: async (_input, sig) => {
+				enteredAborted.push(sig.aborted);
+				return { url: "https://example.test/comment" };
+			},
+		});
+		const { id: _id, revision: _revision, ...fields } = fixture.draftComment;
+		const draft = drafts.create({
+			...fields,
+			evidence: {
+				kind: "source",
+				url: "https://example.test/source",
+				retrievedAt: "2026-10-26T20:00:00Z",
+			},
+		});
+		const pending = drafts
+			.confirmAndPost(
+				{
+					requestId: "racy-confirmation",
+					draftId: draft.id,
+					draftRevision: draft.revision,
+					headSha: draft.headSha,
+					body: draft.body,
+					confirmed: true,
+				},
+				controller.signal
+			)
+			.catch(() => {});
+		resolveRead(fixture.preparation.pr);
+		const tick = (remaining: number) => {
+			if (!remaining) controller.abort();
+			else queueMicrotask(() => tick(remaining - 1));
+		};
+		tick(depth);
+		await pending;
+		assert(!enteredAborted.includes(true));
+	}
+});
