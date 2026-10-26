@@ -97,6 +97,15 @@ describe("review navigation and source identity", () => {
 });
 
 describe("unified diff source mapping", () => {
+	it("keeps unchanged context around a large file's small change", () => {
+		const before = Array.from({ length: 3000 }, (_, index) => `line ${index}`);
+		const after = [...before];
+		after[1500] = "changed";
+		const diff = parseDiff(before.join("\n"), after.join("\n"));
+		assert.equal(diff.filter((line) => line.kind === "add").length, 1);
+		assert.equal(diff.filter((line) => line.kind === "remove").length, 1);
+		assert.equal(diff.find((line) => line.kind === "add")?.newLine, 1501);
+	});
 	it("keeps old and new numbers accurate across an insert, replacement and removal", () => {
 		const result = parseDiff("one\ntwo\nthree\nfour", "zero\none\nTWO\nfour");
 		assert.deepEqual(

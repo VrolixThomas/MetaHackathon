@@ -10,6 +10,7 @@ import type {
 	DiagramSpec,
 	DraftedComment,
 	Preview,
+	PullRequest,
 	ScenarioTrace,
 	SourceFile,
 	SourceFileRequest,
@@ -46,7 +47,11 @@ export type AgentAdapter = {
 	getDiagram: (id: string) => Promise<DiagramSpec>;
 };
 export type ArtifactAdapter = {
-	resizePreview: (preview: Preview, mode: "phone" | "desktop") => Promise<Preview>;
+	resizePreview: (
+		preview: Preview,
+		mode: "phone" | "desktop",
+		signal?: AbortSignal
+	) => Promise<Preview>;
 	keepScenarioAsTest?: (scenario: ScenarioTrace) => Promise<void>;
 	draftComment?: (originalWords: string, location: CodeLocation | null) => Promise<DraftedComment>;
 };
@@ -55,6 +60,17 @@ export type DraftAdapter = {
 	confirm: (input: ConfirmCommentInput) => Promise<{ url: string }>;
 };
 export type SourceAdapter = { read: (request: SourceFileRequest) => Promise<SourceFile> };
+export type RuntimeAdapter = {
+	prepareDemo: () => Promise<PullRequest[]>;
+	changedFiles: (prId: string) => Promise<string[]>;
+	runScenario: (
+		prId: string,
+		scenarioId: "A" | "B" | "C" | "D",
+		signal?: AbortSignal
+	) => Promise<ScenarioTrace>;
+	startPreview: (prId: string, mode: "phone" | "desktop", signal?: AbortSignal) => Promise<Preview>;
+	stopPreview: (id: string) => Promise<void>;
+};
 export const useServices = create<{
 	settings: SettingsAdapter | null;
 	voice: VoiceAdapter | null;
@@ -62,6 +78,7 @@ export const useServices = create<{
 	artifacts: ArtifactAdapter | null;
 	drafts: DraftAdapter | null;
 	sources: SourceAdapter | null;
+	runtime: RuntimeAdapter | null;
 }>(() => ({
 	settings: null,
 	voice: null,
@@ -69,6 +86,7 @@ export const useServices = create<{
 	artifacts: null,
 	drafts: null,
 	sources: null,
+	runtime: null,
 }));
 export function configureReviewServices(
 	services: Partial<ReturnType<typeof useServices.getState>>

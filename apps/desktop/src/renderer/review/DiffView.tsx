@@ -36,6 +36,7 @@ export function DiffView() {
 	const {
 		files,
 		preparation,
+		sourceMode,
 		file,
 		seen,
 		why,
@@ -62,6 +63,7 @@ export function DiffView() {
 				? note.provenance.explanation
 				: note.provenance.sources.map((source) => `${source.kind}: ${source.excerpt}`).join(" · "),
 		provenance: note.provenance.kind,
+		sources: note.provenance.sources,
 		attention: note.provenance.kind === "inferred",
 	}));
 	const scrollRef = useRef<HTMLDivElement>(null);
@@ -152,7 +154,8 @@ export function DiffView() {
 					<Icon name="code" size={15} />
 					<span>{file}</span>
 					<span className="reference-label">
-						{preparation.evidence.kind === "fixture" ? "REFERENCE EXCERPT" : "PINNED SOURCE"}
+						{source.lines.some((line) => line.id.startsWith("coarse-")) && "COARSE COMPARISON · "}
+						{sourceMode === "reference" ? "REFERENCE EXCERPT" : "PINNED SOURCE"}
 					</span>
 				</div>
 				<div className="diff-lines" aria-label={`Unified diff for ${file}`}>
@@ -206,7 +209,44 @@ export function DiffView() {
 												<Icon name="chevron" size={12} />
 											</span>
 										</button>
-										{expandedNote === note.id && <p>{note.body}</p>}
+										{expandedNote === note.id && (
+											<div className="why-details">
+												<p>{note.body}</p>
+												{note.sources.map((source) => (
+													<div className="why-citation" key={`${source.kind}:${source.url}`}>
+														<strong>
+															{source.kind} ·{" "}
+															{source.evidence.kind === "fixture"
+																? "fixture citation"
+																: "source citation"}
+														</strong>
+														<a
+															href={/^https?:/.test(source.url) ? source.url : undefined}
+															target="_blank"
+															rel="noreferrer"
+														>
+															{source.url}
+														</a>
+														<button
+															type="button"
+															className="text-button"
+															onClick={() => {
+																void navigator.clipboard
+																	.writeText(source.url)
+																	.then(() => useReview.getState().announce("Source URL copied."))
+																	.catch(() =>
+																		useReview
+																			.getState()
+																			.announce("Select and copy the source URL above.")
+																	);
+															}}
+														>
+															Copy source URL
+														</button>
+													</div>
+												))}
+											</div>
+										)}
 									</div>
 								))}
 							</div>
@@ -244,9 +284,9 @@ export function DiffView() {
 			<footer className="code-footer">
 				<span>
 					<span className="dot amber" />{" "}
-					{preparation.evidence.kind === "fixture" ? "Fixture workspace" : "Repository review"}{" "}
+					{sourceMode === "reference" ? "Fixture workspace" : "Repository review"}{" "}
 					<span className="footer-detail">
-						{preparation.evidence.kind === "fixture"
+						{sourceMode === "reference"
 							? "· no builds or scenarios executed"
 							: `· ${preparation.pr.headSha.slice(0, 7)}`}
 					</span>
@@ -254,6 +294,7 @@ export function DiffView() {
 				<button
 					type="button"
 					className="text-button"
+					data-agent-trigger
 					onClick={() => setPanel(panel ? null : "conversation")}
 				>
 					<Icon name="agent" size={14} />

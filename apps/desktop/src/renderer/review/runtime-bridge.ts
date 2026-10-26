@@ -1,13 +1,23 @@
 import superjson from "superjson";
 import {
 	CredentialStatusListSchema,
+	PreviewSchema,
+	PullRequestSchema,
 	RemoveCredentialInputSchema,
+	RepositoryPathSchema,
+	ScenarioTraceSchema,
 	SetCredentialInputSchema,
 	SourceFileRequestSchema,
 	SourceFileSchema,
 } from "../../shared/contracts";
 import type { TrpcRequest, TrpcResponse } from "../../shared/types";
-import { type SettingsAdapter, type SourceAdapter, configureReviewServices } from "./services";
+import {
+	type ArtifactAdapter,
+	type RuntimeAdapter,
+	type SettingsAdapter,
+	type SourceAdapter,
+	configureReviewServices,
+} from "./services";
 
 type Request = (input: TrpcRequest) => Promise<TrpcResponse>;
 
@@ -45,7 +55,47 @@ export function createRuntimeBridge(request: Request) {
 				await call("query", "runtime.source", SourceFileRequestSchema.parse(input))
 			),
 	};
-	return { settings, sources };
+	const mutation = async (path: string, input: Record<string, unknown>, signal?: AbortSignal) => {
+		signal?.throwIfAborted();
+		const requestId = crypto.randomUUID();
+		const cancel = () => {
+			void call("mutation", "runtime.cancel", { requestId }).catch(() => {});
+		};
+		signal?.addEventListener("abort", cancel, { once: true });
+		try {
+			const value = await call("mutation", path, { ...input, requestId });
+			signal?.throwIfAborted();
+			return value;
+		} finally {
+			signal?.removeEventListener("abort", cancel);
+		}
+	};
+	const runtime: RuntimeAdapter = {
+		prepareDemo: async () =>
+			PullRequestSchema.array().parse(await call("mutation", "runtime.prepareDemo")),
+		changedFiles: async (prId) =>
+			RepositoryPathSchema.array().parse(await call("query", "runtime.changedFiles", { prId })),
+		runScenario: async (prId, scenarioId, signal) => {
+			const result = await mutation("runtime.runScenario", { prId, scenarioId }, signal);
+			if (typeof result !== "object" || !result || !("trace" in result))
+				throw new Error("Missing scenario trace");
+			return ScenarioTraceSchema.parse(result.trace);
+		},
+		startPreview: async (prId, mode, signal) =>
+			PreviewSchema.parse(await mutation("runtime.startPreview", { prId, mode }, signal)),
+		stopPreview: async (id) => {
+			await call("mutation", "runtime.stopPreview", { id });
+		},
+	};
+	const artifacts: ArtifactAdapter = {
+		resizePreview: async (preview, mode, signal) => {
+			signal?.throwIfAborted();
+			await runtime.stopPreview(preview.id);
+			signal?.throwIfAborted();
+			return runtime.startPreview(preview.prId, mode, signal);
+		},
+	};
+	return { settings, sources, runtime, artifacts };
 }
 
 export function connectAvailableRuntime() {

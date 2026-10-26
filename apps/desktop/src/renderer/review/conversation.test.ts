@@ -1,12 +1,24 @@
 import assert from "node:assert/strict";
-import { afterEach, it } from "node:test";
+import { afterEach, beforeEach, it } from "node:test";
 import type { AgentAction, AgentTurnInput } from "../../shared/contracts";
 import { getReviewFixture } from "../../shared/fixtures/review";
 import { useReview } from "./controller";
 import { cancelActiveQuestion, runAgentQuestion, useConversation } from "./conversation";
 import { type AgentAdapter, configureReviewServices } from "./services";
+import { initialFiles } from "./workspace-data";
 
 const fixture = getReviewFixture();
+beforeEach(() =>
+	useReview.setState({
+		preparation: fixture.preparation,
+		files: initialFiles,
+		file: "pricing/applyDiscounts.ts",
+		panel: null,
+		selection: null,
+		sequence: 0,
+		sourceMode: "reference",
+	})
+);
 afterEach(async () => {
 	await cancelActiveQuestion();
 	configureReviewServices({ agent: null });
@@ -159,6 +171,38 @@ it("rejects a diagram whose nodes belong to a stale revision", async () => {
 	});
 	assert.equal(useReview.getState().panel, "conversation");
 	assert.equal(useReview.getState().diagram, null);
+	h.finish();
+	await running;
+});
+
+it("accepts a preview pinned to this PR's base revision", async () => {
+	const h = harness();
+	const preview = structuredClone(fixture.preview);
+	preview.revision = "base";
+	preview.commitSha = fixture.preparation.pr.baseSha;
+	for (const marker of preview.markers) {
+		marker.location.revision = "base";
+		marker.location.commitSha = preview.commitSha;
+	}
+	const { useServices } = await import("./services");
+	const adapter = useServices.getState().agent;
+	assert.ok(adapter);
+	adapter.getPreview = async () => preview;
+	const running = runAgentQuestion("Show before this PR");
+	await Promise.resolve();
+	await Promise.resolve();
+	const request = h.input();
+	await h.observer().action({
+		sessionId: request.sessionId,
+		turnId: request.turnId,
+		generation: request.generation,
+		requestId: "base-preview",
+		screenSequence: request.screenContext.sequence,
+		kind: "show-preview",
+		previewId: preview.id,
+	});
+	assert.equal(useReview.getState().preview?.revision, "base");
+	assert.equal(useReview.getState().panel, "preview");
 	h.finish();
 	await running;
 });

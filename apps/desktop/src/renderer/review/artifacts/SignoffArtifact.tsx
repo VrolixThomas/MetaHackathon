@@ -187,10 +187,13 @@ export function SignoffArtifact({
 			<header className="signoff-summary">
 				<span className="signoff-label">From your session</span>
 				<h3>
-					{coverage.viewed} of {coverage.total} files viewed
+					{coverage.viewed} of {coverage.total} files marked seen
 				</h3>
 				<progress value={coverage.viewed} max={coverage.total || 1} aria-label="Files viewed" />
-				<p className="signoff-note">Opening a file records a visit, not a test or an approval.</p>
+				<p className="signoff-note">
+					Use “Mark as seen” in the code view to record your coverage. Coverage does not imply
+					passing tests or approval.
+				</p>
 			</header>
 			<div className="signoff-coverage">
 				<h4>
@@ -210,7 +213,9 @@ export function SignoffArtifact({
 					</ul>
 				) : (
 					<p className="signoff-note">
-						{coverage.total ? "Every listed file has been opened." : "No files are available yet."}
+						{coverage.total
+							? "Every listed file has been marked seen."
+							: "No files are available yet."}
 					</p>
 				)}
 			</div>

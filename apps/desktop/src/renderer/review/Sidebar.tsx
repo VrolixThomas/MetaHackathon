@@ -1,6 +1,8 @@
 import { useState } from "react";
 import { Icon } from "./Icons";
 import { useReview } from "./controller";
+import { cancelRuntimeAction, loadLocalDemo, useRuntimeAction } from "./runtime-actions";
+import { useServices } from "./services";
 import { readingRoute } from "./workspace-data";
 
 export function Sidebar({
@@ -14,13 +16,16 @@ export function Sidebar({
 	onTalkStart: () => void;
 	onTalkEnd: () => void;
 }) {
-	const { preparation, files, file, cursor, seen, openFile, setPanel, announce } = useReview();
+	const { sourceMode, preparation, files, file, cursor, seen, openFile, setPanel, announce } =
+		useReview();
 	const [expanded, setExpanded] = useState(true);
 	const [showSeen, setShowSeen] = useState(false);
 	const [showMechanical, setShowMechanical] = useState(false);
 	const route = readingRoute(files);
 	const mechanical = preparation.files.filter((f) => f.category.startsWith("mechanical"));
-	const isFixture = preparation.evidence.kind === "fixture";
+	const isFixture = sourceMode === "reference";
+	const runtime = useServices((state) => state.runtime);
+	const action = useRuntimeAction();
 	const checked = route.filter((f) => seen.includes(f.path));
 	return (
 		<aside className="sidebar" aria-label="Review sidebar">
@@ -32,6 +37,27 @@ export function Sidebar({
 				<span className="brand-tag">VOICE FIRST</span>
 			</div>
 			<div className="sidebar-scroll">
+				{runtime && (
+					<div className="runtime-entry">
+						<button
+							type="button"
+							className="button"
+							disabled={action.busy}
+							onClick={() => void loadLocalDemo()}
+						>
+							{action.busy
+								? "Working…"
+								: sourceMode === "reference"
+									? "Load local demo"
+									: "Reload local demo"}
+						</button>
+						{action.busy && (
+							<button type="button" className="text-button" onClick={cancelRuntimeAction}>
+								Cancel
+							</button>
+						)}
+					</div>
+				)}
 				<div className="section-label">
 					<span>Needs you</span>
 					<span>{isFixture ? 3 : 1}</span>

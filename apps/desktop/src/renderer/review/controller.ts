@@ -15,6 +15,7 @@ import type { Artifact, CodeSelection, ReviewFile } from "./model";
 import { fixture, initialFiles, orderedFiles, readingRoute } from "./workspace-data";
 
 type ReviewState = {
+	sourceMode: "reference" | "repository";
 	preparation: PRPreparation;
 	scenario: ScenarioTrace | null;
 	preview: Preview | null;
@@ -49,6 +50,7 @@ type ReviewState = {
 };
 
 export const useReview = create<ReviewState>((set, get) => ({
+	sourceMode: "reference",
 	preparation: fixture.preparation,
 	scenario: fixture.scenario,
 	preview: fixture.preview,
@@ -238,6 +240,7 @@ export function installPreparedReview(
 		throw new Error("Source revisions do not match preparation");
 	const files = orderedFiles(preparation, source.files);
 	useReview.setState((state) => ({
+		sourceMode: "repository",
 		preparation,
 		files,
 		file: files[0]?.path ?? "",

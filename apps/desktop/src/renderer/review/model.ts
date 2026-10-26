@@ -40,25 +40,62 @@ export type CodeSelection = {
 export type Artifact = "conversation" | "scenario" | "preview" | "diagram" | "signoff";
 
 export function parseDiff(before: string, after: string): DiffLine[] {
-	const old = before ? before.split("\n") : [];
-	const next = after ? after.split("\n") : [];
-	// Bound quadratic work. Large replacements retain correct source line identities.
+	const allOld = before ? before.split("\n") : [];
+	const allNext = after ? after.split("\n") : [];
+	let prefix = 0;
+	while (prefix < allOld.length && prefix < allNext.length && allOld[prefix] === allNext[prefix])
+		prefix++;
+	let suffix = 0;
+	while (
+		suffix < allOld.length - prefix &&
+		suffix < allNext.length - prefix &&
+		allOld[allOld.length - suffix - 1] === allNext[allNext.length - suffix - 1]
+	)
+		suffix++;
+	const prefixLines = allOld.slice(0, prefix).map(
+		(text, index): DiffLine => ({
+			id: `prefix-${index}`,
+			kind: "context",
+			oldLine: index + 1,
+			newLine: index + 1,
+			text,
+		})
+	);
+	const suffixLines = allOld.slice(allOld.length - suffix).map(
+		(text, index): DiffLine => ({
+			id: `suffix-${index}`,
+			kind: "context",
+			oldLine: allOld.length - suffix + index + 1,
+			newLine: allNext.length - suffix + index + 1,
+			text,
+		})
+	);
+	const old = allOld.slice(prefix, allOld.length - suffix);
+	const next = allNext.slice(prefix, allNext.length - suffix);
+	// Bound quadratic work only for the changed region; retain unchanged prefix/suffix.
 	if (old.length * next.length > 2_000_000)
 		return [
+			...prefixLines,
 			...old.map(
 				(text, index): DiffLine => ({
-					id: `old-${index}`,
+					id: `coarse-old-${index}`,
 					kind: "remove",
-					oldLine: index + 1,
+					oldLine: prefix + index + 1,
 					text,
 				})
 			),
 			...next.map(
-				(text, index): DiffLine => ({ id: `new-${index}`, kind: "add", newLine: index + 1, text })
+				(text, index): DiffLine => ({
+					id: `coarse-new-${index}`,
+					kind: "add",
+					newLine: prefix + index + 1,
+					text,
+				})
 			),
+			...suffixLines,
 		];
 	const lengths = Array.from({ length: old.length + 1 }, () => new Uint32Array(next.length + 1));
-	for (let i = old.length - 1; i >= 0; i--) {
+	for (let i = old.length - 1; i >= 0; i--)
 		for (let j = next.length - 1; j >= 0; j--) {
 			const row = lengths[i];
 			if (!row) continue;
@@ -67,22 +104,27 @@ export function parseDiff(before: string, after: string): DiffLine[] {
 					? (lengths[i + 1]?.[j + 1] ?? 0) + 1
 					: Math.max(lengths[i + 1]?.[j] ?? 0, lengths[i]?.[j + 1] ?? 0);
 		}
-	}
-	const lines: DiffLine[] = [];
+	const lines: DiffLine[] = [...prefixLines];
 	let i = 0;
 	let j = 0;
 	while (i < old.length || j < next.length) {
-		const id = `${i}-${j}`;
+		const id = `change-${i}-${j}`;
 		if (i < old.length && j < next.length && old[i] === next[j]) {
-			lines.push({ id, kind: "context", oldLine: ++i, newLine: ++j, text: old[i - 1] ?? "" });
+			lines.push({
+				id,
+				kind: "context",
+				oldLine: prefix + ++i,
+				newLine: prefix + ++j,
+				text: old[i - 1] ?? "",
+			});
 		} else if (
 			i < old.length &&
 			(j === next.length || (lengths[i + 1]?.[j] ?? 0) >= (lengths[i]?.[j + 1] ?? 0))
 		) {
-			lines.push({ id, kind: "remove", oldLine: ++i, text: old[i - 1] ?? "" });
+			lines.push({ id, kind: "remove", oldLine: prefix + ++i, text: old[i - 1] ?? "" });
 		} else {
-			lines.push({ id, kind: "add", newLine: ++j, text: next[j - 1] ?? "" });
+			lines.push({ id, kind: "add", newLine: prefix + ++j, text: next[j - 1] ?? "" });
 		}
 	}
-	return lines;
+	return [...lines, ...suffixLines];
 }

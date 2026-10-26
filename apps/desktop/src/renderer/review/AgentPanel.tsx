@@ -1,9 +1,13 @@
 import { Icon } from "./Icons";
+import { DiagramArtifact } from "./artifacts/DiagramArtifact";
 import { PreviewArtifact } from "./artifacts/PreviewArtifact";
 import { ScenarioArtifact } from "./artifacts/ScenarioArtifact";
+import { SignoffArtifact } from "./artifacts/SignoffArtifact";
 import { openReviewArtifact, useReview } from "./controller";
 import { cancelActiveQuestion, runAgentQuestion, useConversation } from "./conversation";
 import type { Artifact } from "./model";
+import { resizeActivePreview } from "./preview-session";
+import { runLocalScenario, startLocalPreview, useRuntimeAction } from "./runtime-actions";
 import { useServices } from "./services";
 import { focusCodeLocation } from "./source-adapter";
 
@@ -16,10 +20,42 @@ const titles: Record<Artifact, string> = {
 };
 
 export function AgentPanel() {
-	const { panel, setPanel, file, scenario, scenarioIndex, preview, preparation } = useReview();
+	const {
+		sourceMode,
+		panel,
+		setPanel,
+		file,
+		scenario,
+		scenarioIndex,
+		preview,
+		diagram,
+		drafts,
+		files,
+		seen,
+		openFile,
+		preparation,
+	} = useReview();
 	const conversation = useConversation();
+	const copy = panelCopy(preparation, sourceMode, panel, conversation);
 	const artifacts = useServices((state) => state.artifacts);
-	const isFixture = preparation.evidence.kind === "fixture";
+	const draftAdapter = useServices((state) => state.drafts);
+	const isFixture = sourceMode === "reference" && preparation.evidence.kind === "fixture";
+	const runtime = useServices((state) => state.runtime);
+	const agent = useServices((state) => state.agent);
+	const runtimeAction = useRuntimeAction();
+	const isOpen = panel !== null;
+	useEffect(() => {
+		if (!isOpen) return;
+		const opener = document.activeElement;
+		return () => {
+			if (opener instanceof HTMLElement && opener.isConnected)
+				opener.focus({ preventScroll: true });
+			else
+				document
+					.querySelector<HTMLButtonElement>("[data-agent-trigger]")
+					?.focus({ preventScroll: true });
+		};
+	}, [isOpen]);
 	if (!panel) return null;
 	return (
 		<aside className="agent-panel" aria-label={titles[panel]}>
@@ -38,41 +74,34 @@ export function AgentPanel() {
 				</button>
 			</header>
 			<nav className="panel-tabs" aria-label="Artifacts">
-				{(["conversation", "scenario", "preview"] as const).map((tab) => (
+				{(["conversation", "scenario", "preview", "diagram"] as const).map((tab) => (
 					<button
 						type="button"
 						key={tab}
 						className={panel === tab ? "active" : ""}
 						onClick={() => openReviewArtifact(tab)}
 					>
-						{tab === "conversation" ? "Ask" : tab === "scenario" ? "Scenario C" : "Preview"}
+						{
+							{
+								conversation: "Ask",
+								scenario: "Scenario C",
+								preview: "Preview",
+								diagram: "Context",
+							}[tab]
+						}
 					</button>
 				))}
 			</nav>
 			<div
 				className={`panel-scroll ${panel === "scenario" ? "scenario-panel" : ""} ${panel !== "conversation" ? "artifact-panel" : ""}`}
 			>
-				<div className="exchange-label">{conversation.question ? "You" : "Reference prompt"}</div>
-				<p className="user-words">
-					{conversation.question ||
-						(panel === "scenario"
-							? "What happens in scenario C? Show me."
-							: panel === "preview"
-								? "Show me the checkout when the cap applies."
-								: "What should I look at here?")}
-				</p>
-				<p className="agent-answer">
-					{conversation.question
-						? conversation.answer ||
-							(conversation.state === "working"
-								? "Looking at the code in context…"
-								: "No response yet.")
-						: panel === "scenario"
-							? "The nightly job hits an expired code. Both versions follow the same path until step 4. Then they split."
-							: panel === "preview"
-								? "A Platinum shopper, VIP30, and a €120 cart. On a phone, the cap note wraps and Pay moves below the fold."
-								: "Start with the discount rule. Follow the change through the order, then check the checkout states. The expired-code path needs a closer look."}
-				</p>
+				{panel !== "signoff" && (
+					<>
+						<div className="exchange-label">{copy.label}</div>
+						<p className="user-words">{copy.question}</p>
+						<p className="agent-answer">{copy.answer}</p>
+					</>
+				)}
 				{isFixture && panel === "conversation" && (
 					<span className="evidence-label">
 						<span className="dot amber" />
@@ -89,10 +118,34 @@ export function AgentPanel() {
 						Stop reply
 					</button>
 				)}
+				{sourceMode === "repository" && runtime && (
+					<div className="runtime-artifact-actions">
+						<button
+							type="button"
+							className="button"
+							disabled={runtimeAction.busy}
+							onClick={() => void runLocalScenario()}
+						>
+							Run scenario C
+						</button>
+						<button
+							type="button"
+							className="button"
+							disabled={runtimeAction.busy}
+							onClick={() => void startLocalPreview()}
+						>
+							Open live preview
+						</button>
+						{runtimeAction.busy && <output>{runtimeAction.message}</output>}
+					</div>
+				)}
 				{panel === "conversation" && (
 					<>
 						<p className="artifact-note">
-							In context: <code>{file}</code>. Live agent responses are pending the agent adapter.
+							In context: <code>{file}</code>.{" "}
+							{agent
+								? "This context accompanies your question."
+								: "Live agent replies are not connected."}
 						</p>
 						<div className="suggestions">
 							<button type="button" onClick={() => openReviewArtifact("scenario")}>
@@ -143,20 +196,44 @@ export function AgentPanel() {
 								void focusCodeLocation(marker.location, `Marker ${marker.number}: ${marker.label}`);
 							}}
 							onViewportChange={
-								artifacts
-									? async (mode) => {
-											const refreshed = await artifacts.resizePreview(preview, mode);
-											useReview.setState({ preview: refreshed });
-											return refreshed;
-										}
-									: undefined
+								artifacts ? (mode) => resizeActivePreview(artifacts, mode) : undefined
 							}
 						/>
 					) : (
 						<p className="artifact-note">No preview is available for this review.</p>
 					))}
-				{(panel === "signoff" || panel === "diagram") && (
-					<p className="artifact-note">This interface follows the Must scope.</p>
+				{panel === "diagram" &&
+					(diagram ? (
+						<DiagramArtifact
+							diagram={diagram}
+							onSelect={(location) => void focusCodeLocation(location, "Opened from the diagram")}
+						/>
+					) : (
+						<p className="artifact-note">No codebase diagram is available for this review.</p>
+					))}
+				{panel === "signoff" && (
+					<SignoffArtifact
+						preparation={preparation}
+						files={files}
+						seen={seen}
+						drafts={drafts}
+						onOpenFile={openFile}
+						adapter={draftAdapter}
+						onDraftChange={(draft) =>
+							useReview.setState((current) =>
+								draft.prId === current.preparation.pr.id &&
+								draft.headSha === current.preparation.pr.headSha
+									? {
+											drafts: current.drafts.map((existing) =>
+												existing.id === draft.id && draft.revision > existing.revision
+													? draft
+													: existing
+											),
+										}
+									: {}
+							)
+						}
+					/>
 				)}
 			</div>
 			<form
@@ -183,3 +260,5 @@ export function AgentPanel() {
 		</aside>
 	);
 }
+import { useEffect } from "react";
+import { panelCopy } from "./panel-copy";

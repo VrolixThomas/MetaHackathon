@@ -105,7 +105,10 @@ async function applyAction(turn: ActiveTurn, input: AgentAction) {
 				!currentScreen(turn, action) ||
 				preview.id !== action.previewId ||
 				preview.prId !== state.preparation.pr.id ||
-				preview.commitSha !== state.preparation.pr.headSha ||
+				preview.commitSha !==
+					(preview.revision === "base"
+						? state.preparation.pr.baseSha
+						: state.preparation.pr.headSha) ||
 				preview.markers.some((marker) => !locationMatchesReview(marker.location))
 			)
 				return;

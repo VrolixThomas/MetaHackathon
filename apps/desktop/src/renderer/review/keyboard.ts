@@ -1,5 +1,7 @@
 import { useEffect } from "react";
 import { useReview } from "./controller";
+import { cancelActiveQuestion } from "./conversation";
+import { cancelRuntimeAction } from "./runtime-actions";
 
 export function isInteractiveTarget(target: EventTarget | null) {
 	return (
@@ -32,6 +34,9 @@ export function useReviewKeyboard({
 		};
 		const down = (event: KeyboardEvent) => {
 			if (event.key === "Escape") {
+				endCapture();
+				cancelRuntimeAction();
+				void cancelActiveQuestion("escape");
 				release();
 				if (modalOpen) closeModal();
 				else useReview.getState().setPanel(null);

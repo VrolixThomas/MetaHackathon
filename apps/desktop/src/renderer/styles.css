@@ -1471,3 +1471,44 @@ strong {
 .source-unavailable {
 	margin: 24px;
 }
+.why-citation {
+	padding: 0 12px 10px;
+	display: flex;
+	flex-direction: column;
+	gap: 4px;
+	white-space: normal;
+	font-size: 10px;
+	color: #9aacca;
+}
+.why-citation a {
+	color: var(--blue);
+	overflow-wrap: anywhere;
+	text-decoration: underline;
+}
+.why-citation .text-button {
+	padding: 2px 0;
+	width: auto;
+	font-size: 9px;
+}
+.runtime-entry {
+	display: flex;
+	gap: 10px;
+	align-items: center;
+	padding: 0 8px 12px;
+}
+.runtime-entry .button {
+	flex: 1;
+	font-size: 10px;
+}
+.runtime-artifact-actions {
+	display: flex;
+	gap: 8px;
+	flex-wrap: wrap;
+	margin: 0 0 12px;
+	flex-shrink: 0;
+}
+.runtime-artifact-actions output {
+	color: var(--muted);
+	font-size: 10px;
+	width: 100%;
+}
