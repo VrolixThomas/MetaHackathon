@@ -29,11 +29,7 @@ export class ScreenContextStore {
 	}
 
 	get(sessionId: string, initialContext: ScreenContext): ScreenContext {
-		IdSchema.parse(sessionId);
-		const current = this.contexts.get(sessionId);
-		return current
-			? structuredClone(current)
-			: this.update({ sessionId, screenContext: initialContext });
+		return this.update({ sessionId, screenContext: initialContext });
 	}
 
 	release(sessionId: string): void {

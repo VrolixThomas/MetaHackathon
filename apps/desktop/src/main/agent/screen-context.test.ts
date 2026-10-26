@@ -18,6 +18,8 @@ test("screen snapshots initialize from the turn and reject out-of-order or confl
 	const copy = store.get("session", initial);
 	copy.prId = "mutated";
 	assert.equal(store.get("session", initial).prId, initial.prId);
+	const newerTurn = { ...next, sequence: next.sequence + 1, panel: "why" as const };
+	assert.deepEqual(store.get("session", newerTurn), newerTurn);
 	await caller.release({ sessionId: "session" });
 	assert.deepEqual(store.get("session", initial), initial);
 });
