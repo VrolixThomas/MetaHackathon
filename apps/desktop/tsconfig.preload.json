@@ -1,0 +1,8 @@
+{
+	"extends": "@metahackathon/typescript-config/node.json",
+	"compilerOptions": {
+		"outDir": "dist/preload",
+		"lib": ["ES2022", "DOM"]
+	},
+	"include": ["src/preload/**/*", "src/shared/**/*"]
+}

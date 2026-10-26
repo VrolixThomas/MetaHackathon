@@ -1,0 +1,3 @@
+[install]
+# Keep workspace dependencies local so Electron packaging includes runtime modules.
+linker = "hoisted"

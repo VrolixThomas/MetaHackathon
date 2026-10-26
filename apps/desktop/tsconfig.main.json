@@ -1,0 +1,7 @@
+{
+	"extends": "@metahackathon/typescript-config/node.json",
+	"compilerOptions": {
+		"outDir": "dist/main"
+	},
+	"include": ["src/main/**/*", "src/shared/**/*", "electron.vite.config.ts", "drizzle.config.ts"]
+}
