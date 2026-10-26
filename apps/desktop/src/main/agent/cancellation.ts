@@ -4,6 +4,9 @@ export function throwIfAborted(signal: AbortSignal): void {
 
 /** Also bounds adapters that fail to observe the signal. Late results are discarded. */
 export async function abortable<T>(operation: Promise<T>, signal: AbortSignal): Promise<T> {
+	// The caller has already started operation. Observe rejection even when cancellation
+	// won before entry, otherwise an adapter can trigger an unhandled rejection.
+	if (signal.aborted) void operation.catch(() => {});
 	throwIfAborted(signal);
 	let onAbort: () => void = () => {};
 	const cancelled = new Promise<never>((_, reject) => {
