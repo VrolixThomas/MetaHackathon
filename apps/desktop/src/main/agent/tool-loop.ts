@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import { z } from "zod";
 import {
 	type AgentAction,
@@ -20,6 +21,12 @@ import { abortable, throwIfAborted } from "./cancellation";
 import type { CommentDrafts } from "./comments";
 import type { FunctionTool, MetaClient, MetaCompletion, MetaItem } from "./meta-client";
 import type { Workload } from "./models";
+import { type ScenarioTarget, proposeScenarios } from "./scenario-proposals";
+import {
+	type GeneratedScenario,
+	type GeneratedTestRuntime,
+	requestScenarioExecution,
+} from "./scenarios";
 
 export interface AgentPorts {
 	getPreparation: (prId: string, signal: AbortSignal) => Promise<PRPreparation>;
@@ -30,6 +37,13 @@ export interface AgentPorts {
 	/** Read-only runtime validation including repository, revision, path and line bounds. */
 	validateLocation: (prId: string, location: CodeLocation, signal: AbortSignal) => Promise<boolean>;
 	drafts: CommentDrafts;
+	scenarioAuthoring?: {
+		getTargets: (prId: string, signal: AbortSignal) => Promise<ScenarioTarget[]>;
+		saveGenerated: (generated: GeneratedScenario, signal: AbortSignal) => Promise<void>;
+		getGenerated: (prId: string, id: string, signal: AbortSignal) => Promise<GeneratedScenario>;
+		saveTrace: (trace: ScenarioTrace, signal: AbortSignal) => Promise<void>;
+		runtime: GeneratedTestRuntime;
+	};
 }
 
 const id = z.string().min(1).max(200);
@@ -42,6 +56,8 @@ const toolArguments = {
 		body: z.string().min(1).max(20000),
 		location: CodeLocationSchema.optional(),
 	}),
+	write_scenarios: z.strictObject({}),
+	run_generated_scenario: z.strictObject({ scenarioId: id }),
 };
 const descriptions: Record<keyof typeof toolArguments, string> = {
 	show_scenario:
@@ -51,6 +67,10 @@ const descriptions: Record<keyof typeof toolArguments, string> = {
 	highlight_code: "Request UI to highlight a validated code location in the current PR.",
 	draft_comment:
 		"Save a draft from the reviewer's original words for confirmation. Never posts to GitHub.",
+	write_scenarios:
+		"Propose and write traced tests from the current reviewer request using inspected code targets. Generated tests have not run.",
+	run_generated_scenario:
+		"Ask runtime to execute a generated scenario on both pinned PR revisions and return actual trace evidence.",
 };
 export const AGENT_TOOLS: FunctionTool[] = Object.entries(toolArguments).map(([name, schema]) => ({
 	type: "function",
@@ -125,7 +145,11 @@ export async function runToolLoop(
 				workload: input.workload,
 				instructions: REVIEW_INSTRUCTIONS,
 				input: history,
-				tools: AGENT_TOOLS,
+				tools: ports.scenarioAuthoring
+					? AGENT_TOOLS
+					: AGENT_TOOLS.filter(
+							(tool) => !["write_scenarios", "run_generated_scenario"].includes(tool.name)
+						),
 			},
 			signal
 		)) {
@@ -147,6 +171,7 @@ export async function runToolLoop(
 			try {
 				const latestScreen = await currentScreen(ports, input, prep);
 				output = await dispatchTool(
+					client,
 					call.name,
 					JSON.parse(call.arguments),
 					ports,
@@ -197,6 +222,7 @@ function assertPrLocation(prep: PRPreparation, location: CodeLocation) {
 	}
 }
 async function dispatchTool(
+	client: MetaClient,
 	name: string,
 	raw: unknown,
 	ports: AgentPorts,
@@ -294,6 +320,77 @@ async function dispatchTool(
 			});
 			actions.push({ ...fields, kind: "draft-comment", draft });
 			result = { status: "drafted-awaiting-confirmation", draft };
+			break;
+		}
+		case "write_scenarios": {
+			toolArguments.write_scenarios.parse(raw);
+			const authoring = ports.scenarioAuthoring;
+			if (!authoring) throw new Error("Scenario authoring is unavailable");
+			const targets = await abortable(authoring.getTargets(prep.pr.id, signal), signal);
+			const generated = await proposeScenarios(
+				client,
+				{
+					requestId: `${turn.requestId}:scenarios`,
+					pr: prep.pr,
+					screenContext: screen,
+					targets,
+					briefs: [
+						{
+							id: `reviewer-${createHash("sha256").update(turn.requestId).digest("hex").slice(0, 16)}`,
+							text: turn.text,
+							origin: { kind: "reviewer", requestId: turn.requestId, originalWords: turn.text },
+						},
+					],
+				},
+				signal
+			);
+			for (const scenario of generated)
+				await abortable(authoring.saveGenerated(scenario, signal), signal);
+			result = {
+				status: "generated-not-run",
+				scenarios: generated.map((g) => ({
+					id: g.plan.id,
+					title: g.plan.title,
+					origin: g.plan.origin,
+					filename: g.filename,
+					sourceSha256: g.sourceSha256,
+				})),
+			};
+			break;
+		}
+		case "run_generated_scenario": {
+			const args = toolArguments.run_generated_scenario.parse(raw);
+			const authoring = ports.scenarioAuthoring;
+			if (!authoring) throw new Error("Scenario execution is unavailable");
+			const generated = await abortable(
+				authoring.getGenerated(prep.pr.id, args.scenarioId, signal),
+				signal
+			);
+			if (
+				generated.plan.id !== args.scenarioId ||
+				generated.plan.pr.id !== prep.pr.id ||
+				generated.plan.pr.headSha !== prep.pr.headSha ||
+				generated.plan.pr.baseSha !== prep.pr.baseSha
+			)
+				throw new Error("Stale generated scenario");
+			const execution = await requestScenarioExecution(generated, authoring.runtime, signal);
+			await abortable(authoring.saveTrace(execution.trace, signal), signal);
+			actions.push({ ...fields, kind: "show-scenario", scenarioId: execution.trace.id });
+			const step = execution.trace.after.steps[execution.trace.divergenceIndex ?? 0];
+			if (step) {
+				await validate(step.location);
+				actions.push({
+					...fields,
+					kind: "highlight-code",
+					location: step.location,
+					note: step.label,
+				});
+			}
+			result = {
+				status: "runtime-returned-results",
+				trace: execution.trace,
+				results: execution.results,
+			};
 			break;
 		}
 		default:

@@ -189,6 +189,7 @@ export class MetaClient {
 								? "failed"
 								: "incomplete";
 					if (status !== "completed" || final.status !== "completed") {
+						if (status === "completed") status = "failed";
 						throw new MetaApiError(`Meta response ${status}; partial output cannot execute tools`);
 					}
 					yield { type: "completed", response: { id: final.id, model, output: final.output } };

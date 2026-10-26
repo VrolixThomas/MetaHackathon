@@ -158,3 +158,32 @@ test("invalid screen and duplicate/stale turn identity are rejected; disposal en
 	await service.dispose();
 	assert.throws(() => service.start(ctx.fixture.agentTurn), /disposed/);
 });
+
+test("polling pages drain ordered events even when the full snapshot is already terminal", async () => {
+	const deltas = Array.from({ length: 130 }, () => ({
+		type: "response.output_text.delta",
+		delta: "x",
+	}));
+	const ctx = testContext([[...deltas, completed()]]);
+	const service = new AgentService(ctx.client, ctx.ports);
+	const turn = service.start(ctx.fixture.agentTurn);
+	const identity = { sessionId: turn.sessionId, turnId: turn.turnId, generation: turn.generation };
+	await eventually(() => service.poll(identity).status === "completed");
+	let cursor = 0;
+	const sequences: number[] = [];
+	while (true) {
+		const page = service.poll({ ...identity, afterSequence: cursor, limit: 10 });
+		assert.equal(page.text.length, 130);
+		assert(page.events.length <= 10);
+		sequences.push(...page.events.map((event) => event.sequence));
+		const last = page.events.at(-1);
+		if (!last) break;
+		cursor = last.sequence;
+	}
+	assert.deepEqual(
+		sequences,
+		Array.from({ length: 132 }, (_, i) => i + 1)
+	);
+	assert.throws(() => service.poll({ ...identity, afterSequence: 1000 }));
+	await service.dispose();
+});

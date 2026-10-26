@@ -2,25 +2,23 @@ import { z } from "zod";
 import {
 	type AgentAction,
 	AgentTurnInputSchema,
+	type AgentTurnStatus,
 	CancelTurnInputSchema,
 	CancelTurnResultSchema,
 	IdSchema,
+	PollTurnResultSchema,
+	PollTurnSchema,
 } from "../../shared/contracts";
 import { type AgentEvent, AgentEventSchema } from "./events";
 import type { MetaClient } from "./meta-client";
 import { type AgentPorts, runToolLoop } from "./tool-loop";
 
-// Event polling and workload stay module-owned until the MET-8 event contract lands.
+// Workload is a local execution preference; turn identity and polling use MET-8 contracts.
 export const StartTurnSchema = AgentTurnInputSchema.extend({
 	workload: z.enum(["quick", "deep"]).default("quick"),
 });
 export type StartTurn = z.infer<typeof StartTurnSchema>;
-export const PollTurnSchema = z.strictObject({
-	sessionId: IdSchema,
-	turnId: IdSchema,
-	generation: z.int().nonnegative(),
-	afterSequence: z.int().nonnegative().default(0),
-});
+export { PollTurnSchema } from "../../shared/contracts";
 type EventPayload =
 	| { kind: "acknowledgement"; text: string }
 	| { kind: "text-delta"; delta: string }
@@ -29,7 +27,7 @@ type EventPayload =
 	| { kind: "cancelled" }
 	| { kind: "error"; message: string };
 export type { AgentEvent } from "./events";
-type TurnStatus = "running" | "completed" | "cancelled" | "error";
+type TurnStatus = AgentTurnStatus;
 interface TurnState {
 	input: StartTurn;
 	fingerprint: string;
@@ -105,7 +103,7 @@ export class AgentService {
 			state.input.turnId !== input.turnId ||
 			state.input.generation !== input.generation
 		) {
-			return {
+			return PollTurnResultSchema.parse({
 				sessionId: input.sessionId,
 				turnId: input.turnId,
 				generation: input.generation,
@@ -114,14 +112,16 @@ export class AgentService {
 				events: [] as AgentEvent[],
 				text: "",
 				actions: [] as AgentAction[],
-			};
+			});
 		}
 		if (input.afterSequence > state.sequence)
 			throw new Error("Event cursor is ahead of the current turn");
-		return structuredClone({
+		return PollTurnResultSchema.parse({
 			...this.identity(state),
 			sequence: state.sequence,
-			events: state.events.filter((event) => event.sequence > input.afterSequence),
+			events: state.events
+				.filter((event) => event.sequence > input.afterSequence)
+				.slice(0, input.limit),
 			// Full snapshots let clients recover after the bounded event window is compacted.
 			text: state.text,
 			actions: state.actions,
