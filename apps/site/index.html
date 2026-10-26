@@ -1,0 +1,22 @@
+<!doctype html>
+<html lang="en">
+<head>
+ <meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+ <meta name="description" content="A voice-first pull request review workspace. Follow intent, ask about the change, and inspect the evidence.">
+ <title>MetaHackathon — Review out loud</title><link rel="stylesheet" href="styles.css">
+</head>
+<body>
+ <a class="skip" href="#main">Skip to content</a>
+ <header><a class="brand" href="index.html">M<span aria-hidden="true"> / </span>MetaHackathon</a><nav aria-label="Main"><a href="#walkthrough">The review</a><a href="setup.html">Setup</a><a href="https://github.com/VrolixThomas/MetaHackathon">Repository</a></nav></header>
+ <main id="main">
+  <section class="hero"><div class="eyebrow"><span class="dot"></span> Built for the Meta AI hackathon</div><h1>Review out loud.<br><span>Keep the code in view.</span></h1><p class="lede">Move from a pull request to the reason behind a change. Ask a question, inspect a scenario, and leave a review grounded in what actually happened.</p><div class="actions"><a class="button" href="#demo">Demo status <span aria-hidden="true">↗</span></a><a id="download" class="secondary" href="https://github.com/VrolixThomas/MetaHackathon/releases/latest">Latest release <span aria-hidden="true">↗</span></a></div><p class="fine" id="release-status">Signed download pending. The repository currently requires access.</p></section>
+  <section id="walkthrough" class="walkthrough" aria-labelledby="walkthrough-title"><div class="section-head"><span class="eyebrow">01 / From question to evidence</span><h2 id="walkthrough-title">A diff starts the conversation.</h2></div>
+   <div class="review-example"><div class="file-list"><span class="label">Illustrative review route</span><strong>shop-web / promo stacking</strong><p><span class="check">✓</span> pricing/applyDiscounts.ts</p><p class="selected">↳ jobs/cartReminder.ts</p><p>orders/finalizeOrder.ts</p><p class="warning">? pricing/PromoCache.ts</p><span class="footnote">Example content, not a live run</span></div><div class="scenario"><div class="scenario-title"><span class="label">Scenario C</span><span class="tag">Expired promotion</span></div><blockquote>“Show me scenario C.”</blockquote><div class="comparison"><div><span class="label">Before</span><strong>2 reminders</strong><p>The batch continues to the next cart.</p></div><div><span class="label">After</span><strong class="warning">PromoExpiredError</strong><p>The expired code stops the batch.</p></div></div><p class="evidence-note">The review flow connects scenario steps to the relevant code. Execution results stay distinct from fixtures and generated plans.</p></div></div>
+   <div class="steps"><article><span>01</span><h3>Find your route</h3><p>Start with the files that explain the change. Keep a reading route beside the diff.</p></article><article><span>02</span><h3>Ask why</h3><p>Keep recorded author intent separate from the agent’s inference. Follow each explanation back to its evidence.</p></article><article><span>03</span><h3>Review the consequence</h3><p>Inspect a scenario and phone preview, then edit the review draft. Posting requires your explicit confirmation.</p></article></div>
+  </section>
+  <section id="demo" class="demo" aria-labelledby="demo-title"><div><span class="eyebrow">02 / See the workflow</span><h2 id="demo-title">Three minutes.<br>One pull request.</h2><p>The demo follows the sidebar, Why lens, live scenario C, phone preview and sign-off.</p></div><div class="video-panel" id="video-panel"><span class="record-light" aria-hidden="true"></span><h3>Recording pending</h3><p>The live demo will appear here after it has been recorded and reviewed.</p><a href="setup.html">Explore the setup guide →</a></div></section>
+  <section class="start"><span class="eyebrow">03 / Get ready</span><h2>Your microphone.<br>Your review judgment.</h2><p>The desktop workflow uses Meta speech recognition and agent models, with ElevenLabs speech output. Provider credentials and a selected voice are required.</p><a class="button" href="setup.html">Read setup requirements <span aria-hidden="true">↗</span></a></section>
+ </main>
+ <footer><span>MetaHackathon · Built during the hackathon</span><a href="https://github.com/VrolixThomas/MetaHackathon">Source and project status ↗</a></footer>
+ <script src="site.js"></script>
+</body></html>
