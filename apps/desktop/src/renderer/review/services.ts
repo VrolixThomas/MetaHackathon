@@ -1,11 +1,19 @@
 import { create } from "zustand";
+import type {
+	AgentAction,
+	AgentTurnInput,
+	CancelTurnInput,
+	CodeLocation,
+	ConfirmCommentInput,
+	CredentialProvider,
+	CredentialStatus,
+	DiagramSpec,
+	DraftedComment,
+	Preview,
+	ScenarioTrace,
+} from "../../shared/contracts";
 
-export type CredentialProvider = "meta" | "elevenlabs" | "github";
-export type CredentialStatus = {
-	provider: CredentialProvider;
-	configured: boolean;
-	storage: string;
-};
+export type { CredentialProvider, CredentialStatus } from "../../shared/contracts";
 /** Runtime composition port: deliberately exposes no key getter. */
 export type SettingsAdapter = {
 	status: () => Promise<CredentialStatus[]>;
@@ -20,9 +28,37 @@ export type VoiceAdapter = {
 	getPhase: () => string;
 	subscribe: (listener: () => void) => () => void;
 };
-export const useServices = create<{ settings: SettingsAdapter | null; voice: VoiceAdapter | null }>(
-	() => ({ settings: null, voice: null })
-);
+export type AgentAdapter = {
+	ask: (
+		input: AgentTurnInput,
+		observer: {
+			text: (delta: string) => void;
+			replaceText: (text: string) => void;
+			action: (action: AgentAction) => Promise<void>;
+		},
+		signal: AbortSignal
+	) => Promise<void>;
+	cancel: (input: CancelTurnInput) => Promise<void>;
+	getScenario: (id: string) => Promise<ScenarioTrace>;
+	getPreview: (id: string) => Promise<Preview>;
+	getDiagram: (id: string) => Promise<DiagramSpec>;
+};
+export type ArtifactAdapter = {
+	resizePreview: (preview: Preview, mode: "phone" | "desktop") => Promise<Preview>;
+	keepScenarioAsTest?: (scenario: ScenarioTrace) => Promise<void>;
+	draftComment?: (originalWords: string, location: CodeLocation | null) => Promise<DraftedComment>;
+};
+export type DraftAdapter = {
+	edit: (draftId: string, body: string) => Promise<DraftedComment>;
+	confirm: (input: ConfirmCommentInput) => Promise<{ url: string }>;
+};
+export const useServices = create<{
+	settings: SettingsAdapter | null;
+	voice: VoiceAdapter | null;
+	agent: AgentAdapter | null;
+	artifacts: ArtifactAdapter | null;
+	drafts: DraftAdapter | null;
+}>(() => ({ settings: null, voice: null, agent: null, artifacts: null, drafts: null }));
 export function configureReviewServices(
 	services: Partial<ReturnType<typeof useServices.getState>>
 ) {

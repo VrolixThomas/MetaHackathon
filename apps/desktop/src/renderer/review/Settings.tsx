@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+import { CredentialStatusListSchema } from "../../shared/contracts";
 import { Icon } from "./Icons";
 import { type CredentialProvider, type CredentialStatus, useServices } from "./services";
 
@@ -8,6 +9,7 @@ export function Settings({ onClose }: { onClose: () => void }) {
 	const [editing, setEditing] = useState<CredentialProvider | null>(null);
 	const [message, setMessage] = useState("");
 	const [busy, setBusy] = useState(false);
+	const busyRef = useRef(false);
 	const dialog = useRef<HTMLDialogElement>(null);
 	useEffect(() => {
 		const previous = document.activeElement;
@@ -21,7 +23,7 @@ export function Settings({ onClose }: { onClose: () => void }) {
 		adapter
 			?.status()
 			.then((value) => {
-				if (active) setStatuses(value);
+				if (active) setStatuses(CredentialStatusListSchema.parse(value));
 			})
 			.catch(() => {
 				if (active) setMessage("Credential status is unavailable. Try again.");
@@ -31,17 +33,19 @@ export function Settings({ onClose }: { onClose: () => void }) {
 		};
 	}, [adapter]);
 	const run = async (action: () => Promise<void>) => {
-		if (!adapter || busy) return;
+		if (!adapter || busyRef.current) return;
+		busyRef.current = true;
 		setBusy(true);
 		setMessage("");
 		try {
 			await action();
-			setStatuses(await adapter.status());
+			setStatuses(CredentialStatusListSchema.parse(await adapter.status()));
 			setEditing(null);
 			setMessage("Settings updated by the runtime.");
 		} catch {
 			setMessage("The runtime could not update settings. Check the connection and retry.");
 		} finally {
+			busyRef.current = false;
 			setBusy(false);
 		}
 	};
@@ -84,7 +88,7 @@ export function Settings({ onClose }: { onClose: () => void }) {
 									<p>
 										{status
 											? status.configured
-												? `Connected · ${status.storage}`
+												? `Key saved · ${status.storage}`
 												: "Not configured"
 											: "Runtime unavailable"}
 									</p>
@@ -127,9 +131,9 @@ export function Settings({ onClose }: { onClose: () => void }) {
 										const input = event.currentTarget.elements.namedItem("credential");
 										if (!(input instanceof HTMLInputElement) || !input.value || !adapter) return;
 										// Uncontrolled input, cleared synchronously. Never cache credentials in state or storage.
-										const pending = adapter.set(provider, input.value);
+										const secret = input.value;
 										input.value = "";
-										void run(() => pending);
+										void run(() => adapter.set(provider, secret));
 									}}
 								>
 									<label htmlFor={`key-${provider}`}>{name} API key</label>
@@ -139,6 +143,7 @@ export function Settings({ onClose }: { onClose: () => void }) {
 										type="password"
 										autoComplete="off"
 										spellCheck={false}
+										disabled={busy}
 										required
 									/>
 									<button className="button primary" type="submit" disabled={busy}>

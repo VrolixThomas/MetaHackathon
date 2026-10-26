@@ -10,7 +10,7 @@ export type DiffLine = {
 export type ReviewFile = {
 	path: string;
 	purpose: string;
-	attention: "read" | "skim" | "decide" | "context";
+	attention: "read" | "skim" | "preview" | "decide" | "context" | "mechanical";
 	additions: number;
 	deletions: number;
 	lines: DiffLine[];

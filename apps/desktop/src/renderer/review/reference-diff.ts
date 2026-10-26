@@ -1,4 +1,4 @@
-import { type ReviewFile, type WhyNote, parseDiff } from "./model";
+import { type ReviewFile, parseDiff } from "./model";
 
 // Code excerpts transcribed from the design reference, never executed evidence.
 // Metadata and artifacts use the integration lane's shared fixture when available.
@@ -150,54 +150,4 @@ export function getPromo(code, load) {
   }
 }`
 	),
-];
-
-export const referenceNotes: WhyNote[] = [
-	{
-		id: "cap",
-		file: "pricing/applyDiscounts.ts",
-		start: 5,
-		end: 5,
-		title: "Criterion 2 · the 40% cap",
-		body: "The ticket caps the combined discount at 40% of the subtotal. This excerpt illustrates that criterion.",
-		provenance: "recorded",
-	},
-	{
-		id: "expired",
-		file: "pricing/applyDiscounts.ts",
-		start: 12,
-		end: 12,
-		title: "No reason in the author's session",
-		body: "The expired-code path now throws. The reference session provides no reason for this change; the nightly reminder caller has no catch. Fixture analysis, not a verified run.",
-		provenance: "inferred",
-		attention: true,
-	},
-	{
-		id: "stack",
-		file: "pricing/applyDiscounts.ts",
-		start: 14,
-		end: 17,
-		title: "Criterion 1 · from Noor's session",
-		body: "SHOP-482 asks for one promo code to stack with the loyalty discount, up to the cap. Recorded source as described by the design reference.",
-		provenance: "recorded",
-	},
-	{
-		id: "checkout",
-		file: "checkout/PromoField.tsx",
-		start: 10,
-		end: 12,
-		title: "Criterion 3 · make the cap visible",
-		body: "The capped state is visible to the shopper. On a phone, verify wrapping and the payment button's position.",
-		provenance: "inferred",
-	},
-	{
-		id: "cache",
-		file: "promo/PromoCache.ts",
-		start: 3,
-		end: 6,
-		title: "Not asked for",
-		body: "The ticket and reference session do not request a new cache. Ask the author whether it is needed and how entries expire.",
-		provenance: "inferred",
-		attention: true,
-	},
 ];

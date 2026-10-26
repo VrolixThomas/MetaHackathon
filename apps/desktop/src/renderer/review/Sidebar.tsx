@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { Icon } from "./Icons";
 import { useReview } from "./controller";
+import { readingRoute } from "./workspace-data";
 
 export function Sidebar({
 	onSettings,
@@ -13,11 +14,13 @@ export function Sidebar({
 	onTalkStart: () => void;
 	onTalkEnd: () => void;
 }) {
-	const { files, file, cursor, seen, openFile, setPanel, announce } = useReview();
+	const { preparation, files, file, cursor, seen, openFile, setPanel, announce } = useReview();
 	const [expanded, setExpanded] = useState(true);
 	const [showSeen, setShowSeen] = useState(false);
 	const [showMechanical, setShowMechanical] = useState(false);
-	const route = files.filter((f) => f.attention !== "context");
+	const route = readingRoute(files);
+	const mechanical = preparation.files.filter((f) => f.category.startsWith("mechanical"));
+	const isFixture = preparation.evidence.kind === "fixture";
 	const checked = route.filter((f) => seen.includes(f.path));
 	return (
 		<aside className="sidebar" aria-label="Review sidebar">
@@ -31,7 +34,7 @@ export function Sidebar({
 			<div className="sidebar-scroll">
 				<div className="section-label">
 					<span>Needs you</span>
-					<span>3</span>
+					<span>{isFixture ? 3 : 1}</span>
 				</div>
 				<button
 					type="button"
@@ -44,11 +47,12 @@ export function Sidebar({
 					</span>
 					<span className="pr-info">
 						<span className="pr-meta">
-							shop-web <span>#1284</span>
+							{preparation.pr.repository.split("/").at(-1)} <span>#{preparation.pr.number}</span>
 						</span>
-						<strong>Stackable promo codes</strong>
+						<strong>{preparation.pr.title}</strong>
 						<span className="attention-text">
-							<span className="dot amber" /> Breaks a nightly job
+							<span className="dot amber" />{" "}
+							{isFixture ? "Breaks a nightly job · fixture" : preparation.status}
 						</span>
 					</span>
 				</button>
@@ -61,9 +65,15 @@ export function Sidebar({
 							</span>
 						</div>
 						{route
-							.filter((f) => !seen.includes(f.path) || showSeen || f.path === file)
+							.filter(
+								(f) =>
+									!seen.includes(f.path) ||
+									showSeen ||
+									f.path === file ||
+									route[cursor]?.path === f.path
+							)
 							.map((f) => {
-								const index = files.indexOf(f);
+								const index = route.indexOf(f);
 								return (
 									<button
 										type="button"
@@ -105,114 +115,150 @@ export function Sidebar({
 							<span className={showMechanical ? "chevron down" : "chevron"}>
 								<Icon name="chevron" size={13} />
 							</span>
-							33 mechanical files
+							{mechanical.length} mechanical{" "}
+							{mechanical.every((f) => f.category === "mechanical-verified")
+								? "checked"
+								: "candidate"}
 						</button>
 						{showMechanical && (
 							<div className="mechanical-detail">
-								The reference groups types, renames, snapshots, and tests here. Build equivalence
-								has not been verified in fixture mode.
+								{mechanical.map((item) => (
+									<div key={item.path}>
+										<button
+											type="button"
+											className="text-button"
+											onClick={() => openFile(item.path)}
+										>
+											{item.path}
+										</button>
+										<p>{item.reason}</p>
+									</div>
+								))}
 							</div>
 						)}
 					</nav>
 				)}
-				<button
-					type="button"
-					className="pr-row other-pr"
-					onClick={() =>
-						announce(
-							"Finance #412 depends on #1284 adding orders.promo_code. This is reference fixture metadata."
-						)
-					}
-				>
-					<Icon name="chevron" size={14} />
-					<span className="pr-info">
-						<span className="pr-meta">
-							finance-service <span>#412</span>
-						</span>
-						<strong>Read promo_code in export</strong>
-						<span className="blue-text">Merge after #1284</span>
-					</span>
-				</button>
-				<button
-					type="button"
-					className="pr-row other-pr"
-					onClick={() =>
-						announce(
-							"#1291 is a reference fixture for a mechanical dependency update. No review data is connected yet."
-						)
-					}
-				>
-					<Icon name="chevron" size={14} />
-					<span className="pr-info">
-						<span className="pr-meta">
-							shop-web <span>#1291</span>
-						</span>
-						<strong>Bump image library to 3.2</strong>
-						<span className="muted">Nothing needs you</span>
-					</span>
-				</button>
-				<div className="section-label updates-label">
-					<span>Updates</span>
-					<span>2</span>
-				</div>
-				<button
-					type="button"
-					className="update-row"
-					onClick={() => {
-						setPanel("conversation");
-						announce("Reference update: Noor replied, ‘Good catch. I'll skip expired codes.’");
-					}}
-				>
-					<span className="dot blue" />
-					<span>
-						<strong>Noor replied on #1284</strong>
-						<span>“Good catch. I'll skip expired codes.”</span>
-					</span>
-				</button>
-				<button
-					type="button"
-					className="update-row"
-					onClick={() => {
-						setPanel("conversation");
-						announce("Reference update: Product answered, ‘The quoted price should hold.’");
-					}}
-				>
-					<span className="dot dim" />
-					<span>
-						<strong>Product answered on #1284</strong>
-						<span>“The quoted price should hold.”</span>
-					</span>
-				</button>
-				<div className="section-label">
-					<span>Preparing</span>
-					<span>1</span>
-				</div>
-				<div className="preparing-row">
-					<span className="pr-meta">
-						shop-web <span>#1288</span>
-					</span>
-					<strong>Retry failed webhooks</strong>
-					<span>Reference preparation · 3 of 6</span>
-					<div className="progress-track">
-						<span />
-					</div>
-				</div>
+				{isFixture ? (
+					<>
+						<button
+							type="button"
+							className="pr-row other-pr"
+							onClick={() =>
+								announce(
+									"Finance #412 depends on #1284 adding orders.promo_code. This is reference fixture metadata."
+								)
+							}
+						>
+							<Icon name="chevron" size={14} />
+							<span className="pr-info">
+								<span className="pr-meta">
+									finance-service <span>#412</span>
+								</span>
+								<strong>Read promo_code in export</strong>
+								<span className="blue-text">Merge after #1284</span>
+							</span>
+						</button>
+						<button
+							type="button"
+							className="pr-row other-pr"
+							onClick={() =>
+								announce(
+									"#1291 is a reference fixture for a mechanical dependency update. No review data is connected yet."
+								)
+							}
+						>
+							<Icon name="chevron" size={14} />
+							<span className="pr-info">
+								<span className="pr-meta">
+									shop-web <span>#1291</span>
+								</span>
+								<strong>Bump image library to 3.2</strong>
+								<span className="muted">Nothing needs you</span>
+							</span>
+						</button>
+						<div className="section-label updates-label">
+							<span>Updates</span>
+							<span>2</span>
+						</div>
+						<button
+							type="button"
+							className="update-row"
+							onClick={() => {
+								setPanel("conversation");
+								announce("Reference update: Noor replied, ‘Good catch. I'll skip expired codes.’");
+							}}
+						>
+							<span className="dot blue" />
+							<span>
+								<strong>Noor replied on #1284</strong>
+								<span>“Good catch. I'll skip expired codes.”</span>
+							</span>
+						</button>
+						<button
+							type="button"
+							className="update-row"
+							onClick={() => {
+								setPanel("conversation");
+								announce("Reference update: Product answered, ‘The quoted price should hold.’");
+							}}
+						>
+							<span className="dot dim" />
+							<span>
+								<strong>Product answered on #1284</strong>
+								<span>“The quoted price should hold.”</span>
+							</span>
+						</button>
+						<div className="section-label">
+							<span>Preparing</span>
+							<span>1</span>
+						</div>
+						<div className="preparing-row">
+							<span className="pr-meta">
+								shop-web <span>#1288</span>
+							</span>
+							<strong>Retry failed webhooks</strong>
+							<span>Reference preparation · 3 of 6</span>
+							<div className="progress-track">
+								<span />
+							</div>
+						</div>
+					</>
+				) : (
+					<>
+						<div className="section-label">
+							Updates <span>0</span>
+						</div>
+						<p className="mechanical-detail">No new updates.</p>
+						<div className="section-label">
+							Preparing <span>0</span>
+						</div>
+					</>
+				)}
 			</div>
 			<div className="sidebar-bottom">
 				<button
 					type="button"
 					className={`talk-control ${voiceStatus === "Listening" ? "listening" : ""}`}
 					onPointerDown={(event) => {
+						if (event.button !== 0) return;
 						event.currentTarget.setPointerCapture(event.pointerId);
 						onTalkStart();
 					}}
 					onPointerUp={onTalkEnd}
 					onPointerCancel={onTalkEnd}
+					onLostPointerCapture={onTalkEnd}
+					onBlur={onTalkEnd}
 					onKeyDown={(event) => {
-						if (event.key === "Enter") onTalkStart();
+						if (event.key === "Enter" || event.code === "Space") {
+							event.preventDefault();
+							if (!event.repeat) onTalkStart();
+						}
 					}}
 					onKeyUp={(event) => {
-						if (event.key === "Enter") onTalkEnd();
+						if (event.key === "Enter" || event.code === "Space") {
+							event.preventDefault();
+							onTalkEnd();
+						}
 					}}
 					aria-label="Hold to talk"
 				>

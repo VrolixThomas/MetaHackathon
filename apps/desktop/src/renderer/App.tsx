@@ -1,8 +1,9 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { AgentPanel } from "./review/AgentPanel";
 import { DiffView } from "./review/DiffView";
 import { Settings } from "./review/Settings";
 import { Sidebar } from "./review/Sidebar";
+import { createCaptureGate } from "./review/capture-gate";
 import { useReview } from "./review/controller";
 import { useReviewKeyboard } from "./review/keyboard";
 import { useServices } from "./review/services";
@@ -13,21 +14,26 @@ export function App() {
 	const [voiceStatus, setVoiceStatus] = useState("Voice not connected");
 	const { status, announce } = useReview();
 	const closeSettings = useCallback(() => setSettings(false), []);
-	const startCapture = useCallback(() => {
-		if (!voice) {
-			announce("Voice capture is not connected. No microphone is active.");
-			return;
-		}
-		void Promise.resolve(
-			voice.getPhase() === "speaking" ? voice.interrupt() : voice.beginCapture()
-		).catch(() => announce("Voice capture is unavailable. Check voice settings."));
-	}, [voice, announce]);
+	const capture = useMemo(() => createCaptureGate(voice, announce), [voice, announce]);
+	const startCapture = useCallback(() => capture.press(), [capture]);
 	const endCapture = useCallback(() => {
-		if (voice)
-			void Promise.resolve(voice.endCapture()).catch(() =>
-				announce("Could not finish voice capture.")
-			);
-	}, [voice, announce]);
+		void capture.release();
+	}, [capture]);
+	useEffect(() => {
+		const hidden = () => {
+			if (document.hidden) endCapture();
+		};
+		window.addEventListener("blur", endCapture);
+		document.addEventListener("visibilitychange", hidden);
+		return () => {
+			endCapture();
+			window.removeEventListener("blur", endCapture);
+			document.removeEventListener("visibilitychange", hidden);
+		};
+	}, [endCapture]);
+	useEffect(() => {
+		if (settings) endCapture();
+	}, [settings, endCapture]);
 	useEffect(() => {
 		if (!voice) {
 			setVoiceStatus("Voice not connected");

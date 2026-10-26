@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { Icon } from "./Icons";
 import { useReview } from "./controller";
-import { referenceNotes } from "./reference-diff";
+import { readingRoute } from "./workspace-data";
 
 function Syntax({ text }: { text: string }) {
 	if (text.trim().startsWith("//") || text.trim().startsWith("--"))
@@ -35,6 +35,7 @@ function Syntax({ text }: { text: string }) {
 export function DiffView() {
 	const {
 		files,
+		preparation,
 		file,
 		seen,
 		why,
@@ -47,28 +48,39 @@ export function DiffView() {
 		setPanel,
 	} = useReview();
 	const source = files.find((f) => f.path === file) ?? files[0];
-	const index = source ? files.indexOf(source) : -1;
+	const route = readingRoute(files);
+	const index = source ? route.indexOf(source) : -1;
+	const referenceNotes = preparation.whyNotes.map((note) => ({
+		id: note.id,
+		file: note.location.path,
+		start: note.location.startLine,
+		end: note.location.endLine,
+		side: note.location.revision,
+		title: note.text,
+		body:
+			note.provenance.kind === "inferred"
+				? note.provenance.explanation
+				: note.provenance.sources.map((source) => `${source.kind}: ${source.excerpt}`).join(" · "),
+		provenance: note.provenance.kind,
+		attention: note.provenance.kind === "inferred",
+	}));
 	const scrollRef = useRef<HTMLDivElement>(null);
 	const [expandedNote, setExpandedNote] = useState<string | null>(null);
 	useEffect(() => {
-		if (selection)
+		if (selection?.file === file)
 			scrollRef.current
 				?.querySelector("[data-highlighted='true']")
 				?.scrollIntoView({ block: "center", behavior: "smooth" });
 		else scrollRef.current?.scrollTo({ top: 0 });
-	}, [selection]);
-	useEffect(() => {
-		setExpandedNote(null);
-		if (file) scrollRef.current?.scrollTo({ top: 0 });
-	}, [file]);
+	}, [selection, file]);
 	if (!source) return <main className="code-pane">No source is available.</main>;
 	return (
 		<main className={`code-pane ${panel ? "with-panel" : ""}`} aria-label="Code review">
 			<header className="code-header">
 				<div className="breadcrumb">
-					<span>shop-web</span>
+					<span>{preparation.pr.repository.split("/").at(-1)}</span>
 					<span className="slash">/</span>
-					<span>#1284</span>
+					<span>#{preparation.pr.number}</span>
 					<span className="slash">/</span>
 					<strong title={file}>{file}</strong>
 					<span className="diff-stats">
@@ -84,19 +96,25 @@ export function DiffView() {
 					<button
 						type="button"
 						className="icon-button previous"
-						disabled={index === 0}
+						disabled={index <= 0}
 						onClick={() => navigate(-1)}
 						aria-label="Previous file"
 					>
 						<Icon name="chevron" size={14} />
 					</button>
 					<span>
-						{index + 1} <span className="muted">of {files.length}</span>
+						{index < 0 ? (
+							"Context"
+						) : (
+							<>
+								{index + 1} <span className="muted">of {route.length}</span>
+							</>
+						)}
 					</span>
 					<button
 						type="button"
 						className="icon-button"
-						disabled={index === files.length - 1}
+						disabled={index === route.length - 1}
 						onClick={() => navigate(1)}
 						aria-label="Next file"
 					>
@@ -126,16 +144,16 @@ export function DiffView() {
 			</div>
 			<div className={`context-strip ${selection ? "following" : ""}`}>
 				<span className="dot blue" />
-				<span>
-					{selection ? selection.note : "One promo code + loyalty. A 40% cap. Two decisions."}
-				</span>
+				<span>{selection ? selection.note : preparation.summary}</span>
 				{!selection && <span className="attention-badge">Needs attention</span>}
 			</div>
 			<div className="diff-scroll" ref={scrollRef}>
 				<div className="diff-file-heading">
 					<Icon name="code" size={15} />
 					<span>{file}</span>
-					<span className="reference-label">REFERENCE EXCERPT</span>
+					<span className="reference-label">
+						{preparation.evidence.kind === "fixture" ? "REFERENCE EXCERPT" : "PINNED SOURCE"}
+					</span>
 				</div>
 				<div className="diff-lines" aria-label={`Unified diff for ${file}`}>
 					{source.lines.map((line) => {
@@ -150,7 +168,10 @@ export function DiffView() {
 						const notes = why
 							? referenceNotes.filter(
 									(note) =>
-										note.file === file && note.start === line.newLine && line.kind !== "remove"
+										note.file === file &&
+										(note.side === "base"
+											? note.start === line.oldLine && line.kind !== "add"
+											: note.start === line.newLine && line.kind !== "remove")
 								)
 							: [];
 						return (
@@ -192,21 +213,28 @@ export function DiffView() {
 						);
 					})}
 				</div>
+				{source.lines.length === 0 && (
+					<p className="artifact-note source-unavailable">
+						Source is not available for this file. Its reading-route entry is retained; no code or
+						checks have been invented.
+					</p>
+				)}
 				<div className="end-of-file">
 					<span>End of {source.path.split("/").at(-1)}</span>
 					<button
 						type="button"
 						className={`button ${seen.includes(file) ? "checked-button" : ""}`}
 						onClick={markSeen}
+						disabled={source.lines.length === 0}
 					>
 						<Icon name="check" size={15} />
 						{seen.includes(file) ? "Seen · mark unread" : "Mark as seen"}
 					</button>
-					{index < files.length - 1 && (
+					{index < route.length - 1 && (
 						<button
 							type="button"
 							className="text-button"
-							onClick={() => openFile(files[index + 1]?.path ?? file)}
+							onClick={() => openFile(route[index + 1]?.path ?? file)}
 						>
 							Next file <Icon name="arrow" size={14} />
 						</button>
@@ -215,8 +243,13 @@ export function DiffView() {
 			</div>
 			<footer className="code-footer">
 				<span>
-					<span className="dot amber" /> Fixture workspace{" "}
-					<span className="footer-detail">· no builds or scenarios executed</span>
+					<span className="dot amber" />{" "}
+					{preparation.evidence.kind === "fixture" ? "Fixture workspace" : "Repository review"}{" "}
+					<span className="footer-detail">
+						{preparation.evidence.kind === "fixture"
+							? "· no builds or scenarios executed"
+							: `· ${preparation.pr.headSha.slice(0, 7)}`}
+					</span>
 				</span>
 				<button
 					type="button"
