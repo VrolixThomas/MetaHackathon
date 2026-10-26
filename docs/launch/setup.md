@@ -62,3 +62,10 @@ establish notarized distribution. A missing identity leaves C-1 unresolved and C
 Serve `apps/site/` from the chosen static host after the recorded video, signed release and
 public repository are verified. The download target is the repository’s `/releases/latest`.
 Follow `recording-plan.md` for E-2; recording completion requires the actual exported demo.
+
+[ElevenLabs streaming TTS](https://elevenlabs.io/docs/api-reference/text-to-speech/stream)
+accepts a voice ID, model ID and text, returning streamed audio. The sidecar uses
+`eleven_flash_v2_5` and `pcm_24000`; account voice/model availability must be checked with
+configured credentials. [Pipecat SmallWebRTC](https://docs.pipecat.ai/api-reference/server/services/transport/small-webrtc)
+provides the local peer-to-peer audio transport. These are documented capabilities, not live
+provider benchmark results.
