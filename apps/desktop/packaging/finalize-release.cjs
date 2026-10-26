@@ -2,6 +2,7 @@ const fs = require("node:fs");
 const path = require("node:path");
 const { requireSigningCredentials } = require("./credentials.cjs");
 const { command, verifyApp } = require("./verify-app.cjs");
+const { refreshUpdateInfo } = require("./refresh-update-info.cjs");
 
 requireSigningCredentials();
 const outputDir = path.resolve(process.argv[2] || "dist");
@@ -57,6 +58,7 @@ for (const name of dmgs) {
 		throw new Error(`DMG notarization was not accepted: ${result.status}; submission ${result.id}`);
 	command("/usr/bin/xcrun", ["stapler", "staple", dmg]);
 	command("/usr/bin/xcrun", ["stapler", "validate", dmg]);
+	command("/usr/bin/hdiutil", ["verify", dmg]);
 	command("/usr/sbin/spctl", [
 		"--assess",
 		"--type",
@@ -73,6 +75,7 @@ const report = {
 	app,
 	notarization,
 	updateArtifacts: zips.concat("latest-mac.yml"),
+	updateFileHashes: refreshUpdateInfo(outputDir, dmgs),
 };
 fs.writeFileSync(
 	path.join(outputDir, "signing-evidence.json"),

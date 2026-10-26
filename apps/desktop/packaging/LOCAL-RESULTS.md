@@ -30,6 +30,10 @@ The normal release config was exercised separately and correctly failed before
 packaging with the missing CI secret names. Frozen dependency install/native SQLite
 rebuild, targeted Biome checks, plist validation and diff checks passed. No dependency
 manifest or lockfile changed.
+Finalization metadata was checked separately against the real local DMG/ZIP: DMG
+blockmap/hash regeneration passed and ZIP hashes remained unchanged. A regression
+test also checks a synthetic post-build byte change and rejects wrong ZIP metadata;
+this test does not represent signing or notarization execution.
 
 Artifacts remain in the isolated `runtime-signing` checkout under
 `apps/desktop/dist/hello-probe/` and `apps/desktop/dist/hello-probe-adhoc/`.

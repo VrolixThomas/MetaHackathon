@@ -66,7 +66,10 @@ notarizes/staples the app, and submits/staples the final signed DMG. Verificatio
 requires Developer ID signatures from the expected team, hardened executable
 runtime, microphone entitlement, Gatekeeper acceptance and valid staple tickets.
 `signing-evidence.json` records verification time, binary inventory and accepted
-DMG submission IDs. The workflow uploads a reviewable artifact and does not publish.
+DMG submission IDs. Because DMG stapling changes bytes after electron-builder writes
+its metadata, finalization regenerates DMG blockmaps and manifest hashes, then
+verifies every update file hash (including the unchanged ZIP). The workflow uploads
+a reviewable artifact and does not publish.
 
 After review, publish the verified DMG, ZIP, blockmaps and `latest-mac.yml` together
 on the matching GitHub Release in `VrolixThomas/MetaHackathon`. Preserve filenames.
