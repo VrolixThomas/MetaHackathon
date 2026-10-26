@@ -1,4 +1,5 @@
 import { createHash } from "node:crypto";
+import { isDeepStrictEqual } from "node:util";
 import {
 	type GeneratedScenario,
 	GeneratedScenarioSchema,
@@ -7,7 +8,7 @@ import {
 	type ScenarioTrace,
 	ScenarioTraceSchema,
 } from "../../shared/contracts";
-import { abortable } from "./cancellation";
+import { abortable, throwIfAborted } from "./cancellation";
 export {
 	ScenarioPlanSchema,
 	type ScenarioPlan,
@@ -86,6 +87,7 @@ export async function requestScenarioExecution(
 	runtime: GeneratedTestRuntime,
 	signal: AbortSignal
 ) {
+	throwIfAborted(signal);
 	const generated = GeneratedScenarioSchema.parse(rawGenerated);
 	const verified = generateScenario(generated.plan);
 	if (
@@ -96,9 +98,10 @@ export async function requestScenarioExecution(
 		throw new Error("Generated test changed; review a fresh test");
 	const result = await abortable(
 		runtime.runGeneratedTest({
-			pr: verified.plan.pr,
+			// Keep the verification snapshot independent of adapter-owned arguments.
+			pr: structuredClone(verified.plan.pr),
 			title: verified.plan.title,
-			inputs: verified.plan.inputs,
+			inputs: structuredClone(verified.plan.inputs),
 			source: verified.source,
 			filename: verified.filename,
 			timeoutMs: 30_000,
@@ -106,6 +109,7 @@ export async function requestScenarioExecution(
 		}),
 		signal
 	);
+	throwIfAborted(signal);
 	const trace = ScenarioTraceSchema.parse(result.trace);
 	if (
 		trace.prId !== verified.plan.pr.id ||
@@ -115,5 +119,17 @@ export async function requestScenarioExecution(
 		trace.after.evidence.kind !== "execution"
 	)
 		throw new Error("Runtime must return execution evidence at both requested revisions");
+	if (
+		trace.title !== verified.plan.title ||
+		!isDeepStrictEqual(trace.inputs, verified.plan.inputs) ||
+		[trace.before, trace.after].some(
+			(run) =>
+				run.steps.some((step) => step.location.repository !== verified.plan.pr.repository) ||
+				(run.status === "completed" &&
+					run.evidence.kind === "execution" &&
+					run.evidence.exitCode !== 0)
+		)
+	)
+		throw new Error("Runtime trace does not match the requested scenario or execution outcome");
 	return { generated: verified, trace, results: result.results };
 }

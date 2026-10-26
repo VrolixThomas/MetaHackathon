@@ -3,6 +3,7 @@ import { test } from "node:test";
 import type { ExecutionEvidence } from "../../shared/contracts";
 import { getReviewFixture } from "../../shared/fixtures/review";
 import {
+	captureRecordedTrail,
 	explainIntent,
 	inferredWhyNote,
 	prepareIntentHook,
@@ -184,4 +185,123 @@ test("absent intent trail produces only inferred notes with supplied code citati
 	assert.equal(notes[0]?.provenance.kind, "inferred");
 	assert.equal(notes[0]?.evidence.kind, "fixture");
 	assert.deepEqual(notes[0]?.provenance.sources, [source]);
+});
+
+test("mechanical JSON comparison preserves number tokens, duplicate members and string whitespace", async () => {
+	const { preparation } = getReviewFixture();
+	for (const [baseContent, headContent] of [
+		['{"limit":9007199254740992}', '{"limit":9007199254740993}'],
+		['{"limit":1,"limit":2}', '{"limit":2}'],
+		['{"offset":-0}', '{"offset":0}'],
+		['{"label":"a b"}', '{"label":"ab"}'],
+	]) {
+		let builds = 0;
+		const result = await preparePullRequest(
+			{
+				pr: preparation.pr,
+				evidence: preparation.evidence,
+				files: [{ path: "config.json", baseContent, headContent, evidence: preparation.evidence }],
+			},
+			{
+				runBuilds: async () => {
+					builds++;
+					return { base: run(preparation.pr.baseSha), head: run(preparation.pr.headSha) };
+				},
+			},
+			new AbortController().signal
+		);
+		assert.equal(result.files[0]?.category, "needs-review", `${baseContent} -> ${headContent}`);
+		assert.equal(builds, 0);
+	}
+});
+
+test("cancelled preparation does not start builds or publish a ready result", async () => {
+	const { preparation } = getReviewFixture();
+	const controller = new AbortController();
+	controller.abort();
+	let builds = 0;
+	for (const headContent of ["same", "different"]) {
+		await assert.rejects(
+			preparePullRequest(
+				{
+					pr: preparation.pr,
+					evidence: preparation.evidence,
+					files: [
+						{ path: "file.ts", baseContent: "same", headContent, evidence: preparation.evidence },
+					],
+				},
+				{
+					runBuilds: async () => {
+						builds++;
+						return { base: run(preparation.pr.baseSha), head: run(preparation.pr.headSha) };
+					},
+				},
+				controller.signal
+			),
+			{ name: "AbortError" }
+		);
+	}
+	assert.equal(builds, 0);
+});
+
+test("recorded intent rejects credential patterns in metadata and validates direct provenance", () => {
+	const fixture = getReviewFixture();
+	const location = fixture.draftComment.location;
+	assert(location);
+	const entry = {
+		id: "author-entry",
+		speaker: "author" as const,
+		text: "Keep the reminder running",
+		locations: [location],
+		source: {
+			kind: "author-session" as const,
+			url: "https://example.test/session",
+			excerpt: "Keep the reminder running",
+			evidence: {
+				kind: "source" as const,
+				url: "https://example.test/session",
+				retrievedAt: "2026-10-26T20:00:00Z",
+			},
+		},
+	};
+	for (const unsafe of [
+		{ ...entry, id: "ghp_testSecretInMetadata" },
+		{ ...entry, locations: [{ ...location, path: "ghp_testSecretInPath.ts" }] },
+	]) {
+		assert.throws(() => captureRecordedTrail({ entries: [unsafe] }), /metadata/);
+	}
+	assert.throws(() =>
+		recordedWhyNote({ ...entry, source: { ...entry.source, kind: "code" } }, location)
+	);
+	assert.throws(() =>
+		recordedWhyNote({ ...entry, source: { ...entry.source, evidence: fixture.evidence } }, location)
+	);
+	assert.equal(recordedWhyNote(entry, location).provenance.kind, "recorded");
+});
+
+test("build adapters cannot change the PR revisions used for mechanical verification", async () => {
+	const { preparation } = getReviewFixture();
+	const prepared = await preparePullRequest(
+		{
+			pr: preparation.pr,
+			evidence: preparation.evidence,
+			files: [
+				{
+					path: "config.json",
+					baseContent: "{}",
+					headContent: "{ }",
+					evidence: preparation.evidence,
+				},
+			],
+		},
+		{
+			runBuilds: async (pr) => {
+				pr.baseSha = "a".repeat(40);
+				return { base: run(pr.baseSha), head: run(pr.headSha) };
+			},
+		},
+		new AbortController().signal
+	);
+	assert.deepEqual(prepared.pr, preparation.pr);
+	assert.equal(prepared.files[0]?.category, "mechanical-candidate");
 });

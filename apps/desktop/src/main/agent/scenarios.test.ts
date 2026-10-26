@@ -155,3 +155,104 @@ test("deep scenario proposals bind target and provenance to trusted briefs inste
 	assert.equal(generated[0]?.execution, "not-run");
 	assert.deepEqual(generated[0]?.plan.origin, plan.origin);
 });
+
+function executionResult() {
+	const generated = generateScenario(scenarioPlan());
+	const trace = getReviewFixture().scenario;
+	trace.title = generated.plan.title;
+	trace.inputs = generated.plan.inputs;
+	trace.after.status = "failed";
+	for (const run of [trace.before, trace.after]) {
+		run.evidence = {
+			kind: "execution",
+			runId: `mock-${run.revision}`,
+			commitSha: run.commitSha,
+			command: ["node", generated.filename],
+			startedAt: "2026-10-26T20:00:00Z",
+			completedAt: "2026-10-26T20:00:01Z",
+			exitCode: run.status === "completed" ? 0 : 1,
+			logUrl: "file:///mock-scenario-log",
+		};
+	}
+	return { trace, results: { base: null, head: null } };
+}
+
+test("runtime traces bind to the generated inputs, title and repository, with consistent success", async () => {
+	const generated = generateScenario(scenarioPlan());
+	for (const change of [
+		(result: ReturnType<typeof executionResult>) => {
+			result.trace.title = "Different scenario";
+		},
+		(result: ReturnType<typeof executionResult>) => {
+			result.trace.inputs = { expired: false };
+		},
+		(result: ReturnType<typeof executionResult>) => {
+			const step = result.trace.after.steps[0];
+			assert(step);
+			step.location.repository = "other/repository";
+		},
+		(result: ReturnType<typeof executionResult>) => {
+			assert(result.trace.before.evidence.kind === "execution");
+			result.trace.before.evidence.exitCode = 1;
+		},
+	]) {
+		const result = executionResult();
+		change(result);
+		await assert.rejects(
+			requestScenarioExecution(
+				generated,
+				{ runGeneratedTest: async () => result },
+				new AbortController().signal
+			)
+		);
+	}
+	const result = executionResult();
+	const accepted = await requestScenarioExecution(
+		generated,
+		{ runGeneratedTest: async () => result },
+		new AbortController().signal
+	);
+	assert.deepEqual(accepted.trace, result.trace);
+	assert.equal(accepted.generated.execution, "not-run");
+	assert.equal(accepted.trace.after.status, "failed");
+});
+
+test("pre-cancelled scenario execution never enters the runtime", async () => {
+	const controller = new AbortController();
+	controller.abort();
+	let executions = 0;
+	await assert.rejects(
+		requestScenarioExecution(
+			generateScenario(scenarioPlan()),
+			{
+				runGeneratedTest: async () => {
+					executions++;
+					return executionResult();
+				},
+			},
+			controller.signal
+		),
+		{ name: "AbortError" }
+	);
+	assert.equal(executions, 0);
+});
+
+test("runtime adapters cannot mutate the generated plan used to validate their result", async () => {
+	const generated = generateScenario(scenarioPlan());
+	await assert.rejects(
+		requestScenarioExecution(
+			generated,
+			{
+				runGeneratedTest: async (input) => {
+					input.inputs["expired"] = false;
+					const result = executionResult();
+					result.trace.inputs = input.inputs;
+					return result;
+				},
+			},
+			new AbortController().signal
+		),
+		/does not match/
+	);
+	assert.deepEqual(generated.plan, scenarioPlan());
+});

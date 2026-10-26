@@ -58,8 +58,8 @@ export function captureRecordedTrail(
 	const { entries } = RecordedTrailInputSchema.parse(raw);
 	for (const entry of entries) {
 		const metadata = JSON.stringify({ id: entry.id, locations: entry.locations });
-		if (knownSecrets.some((secret) => secret.length > 0 && metadata.includes(secret))) {
-			throw new Error("Known secret present in intent metadata; remove it before capture");
+		if (redactIntent(metadata, knownSecrets) !== metadata) {
+			throw new Error("Potential secret present in intent metadata; remove it before capture");
 		}
 	}
 	return {

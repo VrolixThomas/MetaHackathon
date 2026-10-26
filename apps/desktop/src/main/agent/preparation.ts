@@ -12,7 +12,7 @@ import {
 	type WhyNote,
 	WhyNoteSchema,
 } from "../../shared/contracts";
-import { abortable } from "./cancellation";
+import { abortable, throwIfAborted } from "./cancellation";
 
 const changedFileSchema = z.strictObject({
 	path: RepositoryPathSchema,
@@ -41,11 +41,14 @@ function mechanicalCheck(file: z.infer<typeof changedFileSchema>): string | null
 		return "Compared both file contents: byte-for-byte equal";
 	if (file.path.endsWith(".json")) {
 		try {
-			if (
-				JSON.stringify(JSON.parse(file.baseContent)) ===
-				JSON.stringify(JSON.parse(file.headContent))
-			) {
-				return "Parsed both JSON files: equal values and property order; formatting differs";
+			JSON.parse(file.baseContent);
+			JSON.parse(file.headContent);
+			// Parsing alone loses duplicate members, number precision and negative zero.
+			// Strip only whitespace outside strings so the original tokens must match.
+			const tokens = (content: string) =>
+				content.replace(/"(?:[^"\\]|\\.)*"|\s+/g, (token) => (token.startsWith('"') ? token : ""));
+			if (tokens(file.baseContent) === tokens(file.headContent)) {
+				return "Validated both JSON files: identical tokens; only formatting whitespace differs";
 			}
 		} catch {
 			return null;
@@ -82,6 +85,7 @@ export async function preparePullRequest(
 	runtime: PreparationRuntime,
 	signal: AbortSignal
 ): Promise<PRPreparation> {
+	throwIfAborted(signal);
 	const input = PreparationInputSchema.parse(raw);
 	if (new Set(input.files.map((file) => file.path)).size !== input.files.length)
 		throw new Error("Duplicate changed file");
@@ -89,7 +93,8 @@ export async function preparePullRequest(
 	let builds: { base: ExecutionEvidence; head: ExecutionEvidence } | undefined;
 	if ([...checks.values()].some(Boolean)) {
 		try {
-			const result = await abortable(runtime.runBuilds(input.pr, signal), signal);
+			const result = await abortable(runtime.runBuilds(structuredClone(input.pr), signal), signal);
+			throwIfAborted(signal);
 			builds = {
 				base: ExecutionEvidenceSchema.parse(result.base),
 				head: ExecutionEvidenceSchema.parse(result.head),
@@ -101,6 +106,7 @@ export async function preparePullRequest(
 			builds = undefined;
 		}
 	}
+	throwIfAborted(signal);
 	const successful = builds?.base.exitCode === 0 && builds.head.exitCode === 0;
 	const files = [...input.files]
 		.sort((a, b) => {
