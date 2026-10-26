@@ -1,0 +1,25 @@
+# Dependencies and caches
+node_modules/
+.turbo/
+*.tsbuildinfo
+
+# Build output
+out/
+dist/
+build/
+
+# Local configuration
+.env
+.env.*
+!.env.example
+.DS_Store
+.idea/
+.vscode/
+*.log
+
+# Local databases
+*.db
+*.db-shm
+*.db-wal
+*.sqlite
+*.sqlite3

@@ -1,0 +1,23 @@
+appId: com.metahackathon.app
+productName: MetaHackathon
+
+directories:
+  buildResources: resources
+  output: dist
+
+files:
+  - out/**/*
+
+asar: true
+asarUnpack:
+  - "node_modules/better-sqlite3/**/*"
+  - "out/main/db/migrations/**/*"
+
+npmRebuild: true
+
+mac:
+  category: public.app-category.developer-tools
+  identity: null
+  target:
+    - dmg
+    - zip
