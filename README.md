@@ -1,8 +1,22 @@
 # MetaHackathon
 
 A voice-enabled macOS workspace for investigating GitHub pull requests. The committed Electron
-foundation currently opens an empty window. The integration bootstrap adds shared validated
-contracts and a fixture-only tRPC router so feature lanes can build in parallel.
+foundation currently opens an empty window. Integration provides validated shared contracts,
+explicit reference fixtures, and a main-process runtime for local Git scenarios and previews.
+
+## Built during the hackathon
+
+The starting point was the committed Electron/React foundation at `d903951`. Work added on
+`hack/integration` includes:
+
+- Typed Zod contracts for PR review, Why provenance, artifacts, confirmed comment inputs,
+  agent polling, generated tests, credentials and pinned source reads.
+- Deterministic illustrative data and runnable shop/finance repositories containing the
+  intended promo regression, cache, checkout change and schema dependency.
+- Owned PR worktrees, bounded process execution, SHA-bound scenario traces, measured local
+  previews, encrypted credentials and durable submission records.
+- Root tRPC/runtime lifecycle composition, packaged update checks and reproducible native
+  Electron IPC validation. UI, agent and voice lane integration is tracked in Linear.
 
 ## Stack
 
@@ -18,11 +32,11 @@ at setup time.
 | RPC | tRPC 11.16.0 over a context-isolated Electron IPC bridge, SuperJSON, Zod |
 | Database | SQLite with better-sqlite3 12.8.0 and Drizzle ORM 0.45.2 |
 | Tooling | Bun workspaces, Turborepo 2.8.21, Biome 1.9.4 |
-| Packaging | electron-builder 26.8.1, macOS DMG and ZIP |
+| Packaging | electron-builder 26.8.1, electron-updater 6.8.11, macOS DMG and ZIP |
 
 TanStack Router is also installed to match SuperiorSwarm's dependencies. Zustand stores and
 navigation can be added when features need them. Product-specific dependencies such as
-Monaco, terminal/PTY tooling, OAuth integrations, Supabase, and updater services are omitted.
+Monaco, terminal/PTY tooling, OAuth integrations, and Supabase are omitted.
 
 ## Development
 
@@ -43,6 +57,7 @@ run `bun run --filter @metahackathon/desktop postinstall`.
 bun run type-check
 bun run lint
 bun run test:contracts
+bun run test:integration
 bun run build
 bun run format
 ```
@@ -64,10 +79,11 @@ tooling/typescript/  Shared strict TypeScript configs
 The preload compiles to CommonJS (`index.cjs`) for Electron's sandbox. Node integration is
 disabled in the renderer. IPC is restricted to the app window's main frame.
 
-The app creates an empty `metahackathon.db` in Electron's per-user application data directory.
+The app creates `metahackathon.db` in Electron's per-user application data directory, including
+runtime submission and budget records.
 Add tables in `apps/desktop/src/main/db/schema.ts`, then generate migrations with
 `bun run --filter @metahackathon/desktop db:generate`. Generated migrations are copied into
-build output; add migration execution before introducing tables that the app uses.
+build output; add migration execution before introducing additional schema-managed tables.
 
 ## Shared contracts and lane bootstrap
 
@@ -88,6 +104,21 @@ and marker bounds are illustrative. Fetching a fixture does not execute a scenar
 preview server, access a microphone or post a GitHub comment. Real execution evidence requires
 a run ID, full commit SHA, command, timestamps, exit code and log URL. Posting requires a
 separate explicit confirmation of the exact draft revision, body and PR head.
+
+## Integrated runtime validation
+
+The `runtime` router exposes local demo preparation, pinned source/diff reads, scenario A–D
+execution, measured phone/desktop previews, credential status/set/delete and GitHub reads.
+The runtime starts after Electron is ready and disposes its processes/worktrees before the
+database closes. Credentials remain in the main process; there is no secret getter or raw
+command RPC. See [runtime integration ports](apps/desktop/src/main/runtime/README.md).
+
+`bun run test:integration` builds and launches the actual app with temporary user data, calls
+these routes through the sandboxed preload bridge, checks scenario C and preview geometry,
+and verifies that app shutdown closes the remaining preview and removes owned seed repositories.
+The report is written to `apps/desktop/out/integration-smoke-report.json`. These are real local
+executions of seeded repositories. The check does not use provider credentials, voice, or
+GitHub comment writes. Signed distribution and real upgrades require separate verification.
 
 ## Local packaging
 
