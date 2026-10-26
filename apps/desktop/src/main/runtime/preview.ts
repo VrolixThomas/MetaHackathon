@@ -1,4 +1,4 @@
-import { type ChildProcess, spawn } from "node:child_process";
+import { spawn } from "node:child_process";
 import { randomUUID } from "node:crypto";
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { resolve } from "node:path";
@@ -7,7 +7,7 @@ import { z } from "zod";
 import { PreviewSchema } from "../../shared/contracts";
 import type { Preview, PullRequest } from "../../shared/contracts";
 import { executionEnvironment } from "./environment";
-import { runProcess } from "./process";
+import { runProcess, terminateOwnedProcess } from "./process";
 import { checkoutFile } from "./scenarios";
 
 export interface PreviewPage {
@@ -86,7 +86,7 @@ export class PreviewRunner {
 			stopped = true;
 			input.signal?.removeEventListener("abort", onAbort);
 			page?.close();
-			stopping = stopOwnedChild(child).finally(() => {
+			stopping = terminateOwnedProcess(child).finally(() => {
 				this.active.delete(runId);
 			});
 			return stopping;
@@ -158,8 +158,30 @@ export class PreviewRunner {
 			await withTimeout(page.loadURL(url), timeoutMs);
 			if (stopped) throw new Error("Preview cancelled");
 			const measurements = await withTimeout(page.measure(), timeoutMs);
+			if (stopped || input.signal?.aborted) throw new Error("Preview cancelled during measurement");
 			const file = "checkout/PromoField.ts";
-			const source = (await readFile(await checkoutFile(input.path, file), "utf8")).split("\n");
+			const blob = await runProcess({
+				command: "git",
+				args: ["show", "--no-ext-diff", "--no-textconv", `${input.sha}:${file}`],
+				cwd: input.path,
+				env: executionEnvironment(),
+				timeoutMs: 10_000,
+			});
+			const finalDiff = await runProcess({
+				command: "git",
+				args: ["diff", "--exit-code", input.sha, "--"],
+				cwd: input.path,
+				env: executionEnvironment(),
+				timeoutMs: 10_000,
+			});
+			if (
+				blob.exitCode !== 0 ||
+				blob.outputTruncated ||
+				finalDiff.exitCode !== 0 ||
+				(await readFile(await checkoutFile(input.path, file), "utf8")) !== blob.stdout
+			)
+				throw new Error("Preview source changed during execution");
+			const source = blob.stdout.split("\n");
 			const markers = ["cap-note", "pay-button"].map((id, index) => {
 				const rect = measurements.find((measurement) => measurement.id === id);
 				const line = source.findIndex((text) => text.includes(`data-preview-marker=\"${id}\"`)) + 1;
@@ -227,6 +249,7 @@ export class PreviewRunner {
 					logUrl: pathToFileURL(log).href,
 				},
 			});
+			if (stopped || input.signal?.aborted) throw new Error("Preview cancelled before completion");
 			return { preview, stop };
 		} catch (error) {
 			await stop();
@@ -236,39 +259,6 @@ export class PreviewRunner {
 
 	async dispose() {
 		await Promise.all([...this.active.values()].map((stop) => stop()));
-	}
-}
-
-async function stopOwnedChild(child: ChildProcess) {
-	if (!child.pid) return;
-	const pid = child.pid;
-	if (child.exitCode !== null || child.signalCode !== null) {
-		try {
-			process.kill(-pid, "SIGKILL");
-		} catch (error) {
-			if ((error as NodeJS.ErrnoException).code !== "ESRCH") throw error;
-		}
-		return;
-	}
-	const exited = new Promise<void>((resolveExit) => child.once("close", () => resolveExit()));
-	try {
-		process.kill(-pid, "SIGTERM");
-	} catch (error) {
-		if ((error as NodeJS.ErrnoException).code !== "ESRCH") throw error;
-	}
-	const timer = setTimeout(() => {
-		try {
-			process.kill(-pid, "SIGKILL");
-		} catch {
-			/* Already exited. */
-		}
-	}, 1000);
-	await exited;
-	clearTimeout(timer);
-	try {
-		process.kill(-pid, "SIGKILL");
-	} catch (error) {
-		if ((error as NodeJS.ErrnoException).code !== "ESRCH") throw error;
 	}
 }
 

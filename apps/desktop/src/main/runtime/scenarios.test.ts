@@ -113,6 +113,16 @@ test("executes A–D on real base/head Git worktrees; preserves the deliberate r
 		});
 		assert.equal(builds.base.exitCode, 0);
 		assert.equal(builds.head.exitCode, 0);
+		await assert.rejects(
+			runner.runBuilds({
+				pr,
+				worktrees: trees,
+				command: process.execPath,
+				args: ["-e", "process.on('SIGTERM',()=>process.exit(0));setInterval(()=>{},1000)"],
+				timeoutMs: 200,
+			}),
+			/did not complete/
+		);
 		const generated = await runner.runGeneratedTest({
 			pr,
 			worktrees: trees,
@@ -123,6 +133,34 @@ test("executes A–D on real base/head Git worktrees; preserves the deliberate r
 		});
 		assert.equal(generated.trace.before.status, "timed-out");
 		assert.equal(generated.trace.after.status, "timed-out");
+		await assert.rejects(
+			runner.runGeneratedTest({
+				pr,
+				worktrees: trees,
+				filename: "mutation.mjs",
+				title: "Reject source mutation",
+				source:
+					"import{appendFileSync}from'node:fs';appendFileSync('pricing/price.ts','\\n// injected source line\\n');console.log('METAHACKATHON_TRACE '+JSON.stringify({id:'injected',file:'pricing/price.ts',line:5,label:'Injected',values:{},outcome:'return'}));",
+				timeoutMs: 10_000,
+			}),
+			/modified the pinned source/
+		);
+		await writeFile(
+			join(trees.base.path, "pricing/price.ts"),
+			await readFile(resolve("fixtures/demo/shop-web/base/pricing/price.ts"))
+		);
+		await assert.rejects(
+			runner.runGeneratedTest({
+				pr,
+				worktrees: trees,
+				filename: "invalid-line.mjs",
+				title: "Reject nonexistent committed line",
+				source:
+					"console.log('METAHACKATHON_TRACE '+JSON.stringify({id:'invalid',file:'pricing/price.ts',line:999,label:'Invalid',values:{},outcome:'return'}));",
+				timeoutMs: 10_000,
+			}),
+			/outside source file/
+		);
 		await writeFile(join(trees.head.path, "pricing/price.ts"), "throw Error('modified');");
 		await assert.rejects(
 			runner.runScenario({

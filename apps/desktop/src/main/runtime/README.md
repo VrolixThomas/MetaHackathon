@@ -57,6 +57,13 @@ Trace files must be tracked in the pinned checkout. The line number must exist.
 `throw`, and `stopped`. Outputs exceeding the capture limit fail explicitly.
 These processes execute reviewed repository code with a stripped environment;
 they are not an OS sandbox for hostile programs.
+Tracked source and HEAD are checked before and after execution; trace locations
+are checked against the committed blob. Source mutation fails attribution and
+preserves the worktree for inspection. `runBuilds` rejects interrupted/truncated
+runs even when a signal handler exits 0. Scenario evidence retains the actual
+child exit code together with the run's timed-out/cancelled status. The runner
+tracks direct main-only calls too, so service disposal aborts and awaits them
+before cleaning worktrees.
 
 Preview uses an OS-assigned loopback port and checks its UUID with a separate
 readiness process. The evidence's exit code is that completed probe's actual

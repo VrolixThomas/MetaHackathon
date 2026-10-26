@@ -1,4 +1,4 @@
-import { execFile, spawn } from "node:child_process";
+import { type ChildProcess, execFile, spawn } from "node:child_process";
 import { StringDecoder } from "node:string_decoder";
 
 export interface ProcessOptions {
@@ -184,4 +184,87 @@ function processSnapshot(): Promise<Map<number, { parent: number; birth: string 
 			}
 		);
 	});
+}
+
+/** Bounded cleanup for a long-lived process owned by this runtime, including detached descendants. */
+export async function terminateOwnedProcess(child: ChildProcess): Promise<void> {
+	if (!child.pid) return;
+	const pid = child.pid;
+	let closed = child.exitCode !== null || child.signalCode !== null;
+	let closeListener: (() => void) | undefined;
+	const closing = new Promise<void>((resolveClose) => {
+		if (closed) {
+			resolveClose();
+			return;
+		}
+		closeListener = () => {
+			closed = true;
+			resolveClose();
+		};
+		child.once("close", closeListener);
+	});
+	const snapshot = await processSnapshot();
+	const rootBirth =
+		snapshot.get(pid)?.parent === process.pid ? snapshot.get(pid)?.birth : undefined;
+	const descendants = new Map<number, string>();
+	const ancestors = new Set([pid]);
+	let changed = true;
+	while (changed) {
+		changed = false;
+		for (const [candidate, entry] of snapshot)
+			if (!ancestors.has(candidate) && ancestors.has(entry.parent)) {
+				ancestors.add(candidate);
+				descendants.set(candidate, entry.birth);
+				changed = true;
+			}
+	}
+	const signalOwned = async (signal: NodeJS.Signals) => {
+		const current = await processSnapshot();
+		for (const [candidate, birth] of descendants)
+			if (current.get(candidate)?.birth === birth) {
+				try {
+					process.kill(candidate, signal);
+				} catch {
+					/* Already exited. */
+				}
+			}
+		try {
+			if (process.platform === "win32") child.kill(signal);
+			else if (
+				!current.has(pid) ||
+				(rootBirth &&
+					current.get(pid)?.birth === rootBirth &&
+					current.get(pid)?.parent === process.pid)
+			)
+				process.kill(-pid, signal);
+		} catch (error) {
+			if ((error as NodeJS.ErrnoException).code !== "ESRCH") throw error;
+		}
+	};
+	try {
+		await signalOwned("SIGTERM");
+		let timer: ReturnType<typeof setTimeout> | undefined;
+		await Promise.race([
+			closing,
+			new Promise<void>((resolveWait) => {
+				timer = setTimeout(resolveWait, 250);
+			}),
+		]);
+		clearTimeout(timer);
+		await signalOwned("SIGKILL");
+		// A pipe inherited by an unobservable reparented process cannot keep disposal pending.
+		child.stdout?.destroy();
+		child.stderr?.destroy();
+		if (!closed) {
+			await Promise.race([
+				closing,
+				new Promise<void>((resolveWait) => {
+					timer = setTimeout(resolveWait, 250);
+				}),
+			]);
+			clearTimeout(timer);
+		}
+	} finally {
+		if (closeListener) child.off("close", closeListener);
+	}
 }

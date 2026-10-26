@@ -46,6 +46,8 @@ export async function checkoutFile(checkout: string, path: string) {
 }
 
 export class ScenarioRunner {
+	private readonly shutdown = new AbortController();
+	private readonly jobs = new Set<Promise<unknown>>();
 	constructor(
 		private readonly logsDirectory: string,
 		private readonly nodeExecutable = process.execPath
@@ -97,6 +99,22 @@ export class ScenarioRunner {
 			env: executionEnvironment(process.versions.electron ? { ELECTRON_RUN_AS_NODE: "1" } : {}),
 		});
 		const completedAt = new Date().toISOString();
+		const finalSha = await runProcess({
+			command: "git",
+			args: ["rev-parse", "HEAD"],
+			cwd: tree.path,
+			env: executionEnvironment(),
+			timeoutMs: 10_000,
+		});
+		const finalDiff = await runProcess({
+			command: "git",
+			args: ["diff", "--exit-code", expected, "--"],
+			cwd: tree.path,
+			env: executionEnvironment(),
+			timeoutMs: 10_000,
+		});
+		const sourceChanged =
+			finalSha.exitCode !== 0 || finalSha.stdout.trim() !== expected || finalDiff.exitCode !== 0;
 		await mkdir(this.logsDirectory, { recursive: true, mode: 0o700 });
 		const logPath = resolve(this.logsDirectory, `${runId}.json`);
 		await writeFile(
@@ -110,6 +128,7 @@ export class ScenarioRunner {
 					completedAt,
 					command: [command, ...args],
 					...result,
+					sourceChanged,
 				},
 				null,
 				2
@@ -126,6 +145,10 @@ export class ScenarioRunner {
 			exitCode: result.exitCode ?? (result.timedOut ? 124 : result.aborted ? 130 : 1),
 			logUrl: pathToFileURL(logPath).href,
 		});
+		if (sourceChanged)
+			throw new Error(
+				`Execution modified the pinned source; preserved for inspection. See ${evidence.logUrl}`
+			);
 		return { result, evidence };
 	}
 
@@ -137,25 +160,45 @@ export class ScenarioRunner {
 		timeoutMs: number;
 		signal?: AbortSignal;
 	}): Promise<{ base: ExecutionEvidence; head: ExecutionEvidence }> {
-		const base = await this.execute(
-			input.pr,
-			input.worktrees,
-			"base",
-			input.command,
-			input.args,
-			input.timeoutMs,
-			input.signal
-		);
-		const head = await this.execute(
-			input.pr,
-			input.worktrees,
-			"head",
-			input.command,
-			input.args,
-			input.timeoutMs,
-			input.signal
-		);
-		return { base: base.evidence, head: head.evidence };
+		return this.owned(input.signal, async (signal) => {
+			const base = await this.execute(
+				input.pr,
+				input.worktrees,
+				"base",
+				input.command,
+				input.args,
+				input.timeoutMs,
+				signal
+			);
+			if (
+				base.result.timedOut ||
+				base.result.aborted ||
+				base.result.exitCode === null ||
+				base.result.outputTruncated
+			)
+				throw new Error(
+					`Base build did not complete; cannot verify mechanical changes. See ${base.evidence.logUrl}`
+				);
+			const head = await this.execute(
+				input.pr,
+				input.worktrees,
+				"head",
+				input.command,
+				input.args,
+				input.timeoutMs,
+				signal
+			);
+			if (
+				head.result.timedOut ||
+				head.result.aborted ||
+				head.result.exitCode === null ||
+				head.result.outputTruncated
+			)
+				throw new Error(
+					`Head build did not complete; cannot verify mechanical changes. See ${head.evidence.logUrl}`
+				);
+			return { base: base.evidence, head: head.evidence };
+		});
 	}
 
 	async runScenario(input: {
@@ -169,10 +212,13 @@ export class ScenarioRunner {
 	}) {
 		if (!["A", "B", "C", "D"].includes(input.scenarioId))
 			throw new Error("Unknown seeded scenario");
-		return this.runBoth({
-			...input,
-			args: ["--experimental-strip-types", "scenarios/run.mjs", input.scenarioId],
-		});
+		return this.owned(input.signal, (signal) =>
+			this.runBoth({
+				...input,
+				signal,
+				args: ["--experimental-strip-types", "scenarios/run.mjs", input.scenarioId],
+			})
+		);
 	}
 
 	/** Main-only generated test port; callers must consciously authorize execution of reviewed code. */
@@ -186,20 +232,46 @@ export class ScenarioRunner {
 		timeoutMs: number;
 		signal?: AbortSignal;
 	}) {
-		if (!/^[A-Za-z0-9_-]+\.mjs$/.test(input.filename) || input.source.length > 256_000)
-			throw new Error("Invalid generated test");
-		const name = `.metahackathon-${randomUUID()}-${input.filename}`;
-		const created: string[] = [];
-		try {
-			for (const revision of ["base", "head"] as const) {
-				const file = resolve(input.worktrees[revision].path, name);
-				await writeFile(file, input.source, { flag: "wx", mode: 0o600 });
-				created.push(file);
+		return this.owned(input.signal, async (signal) => {
+			if (!/^[A-Za-z0-9_-]+\.mjs$/.test(input.filename) || input.source.length > 256_000)
+				throw new Error("Invalid generated test");
+			const name = `.metahackathon-${randomUUID()}-${input.filename}`;
+			const created: string[] = [];
+			try {
+				for (const revision of ["base", "head"] as const) {
+					const file = resolve(input.worktrees[revision].path, name);
+					await writeFile(file, input.source, { flag: "wx", mode: 0o600 });
+					created.push(file);
+				}
+				return await this.runBoth({ ...input, signal, args: ["--experimental-strip-types", name] });
+			} finally {
+				for (const file of created) await rm(file);
 			}
-			return await this.runBoth({ ...input, args: ["--experimental-strip-types", name] });
-		} finally {
-			for (const file of created) await rm(file);
-		}
+		});
+	}
+
+	private owned<T>(
+		signal: AbortSignal | undefined,
+		work: (signal: AbortSignal) => Promise<T>
+	): Promise<T> {
+		if (this.shutdown.signal.aborted)
+			return Promise.reject(new Error("Scenario runner has shut down"));
+		const combined = signal
+			? AbortSignal.any([signal, this.shutdown.signal])
+			: this.shutdown.signal;
+		const job = Promise.resolve().then(() => work(combined));
+		this.jobs.add(job);
+		void job
+			.finally(() => {
+				this.jobs.delete(job);
+			})
+			.catch(() => {});
+		return job;
+	}
+
+	async dispose() {
+		this.shutdown.abort();
+		await Promise.allSettled([...this.jobs]);
 	}
 
 	private async runBoth(input: {
@@ -241,7 +313,18 @@ export class ScenarioRunner {
 				});
 				if (tracked.exitCode !== 0)
 					throw new Error("Trace location is not part of the pinned commit");
-				const lines = (await readFile(file, "utf8")).split("\n");
+				const blob = await runProcess({
+					command: "git",
+					args: ["show", "--no-ext-diff", "--no-textconv", `${evidence.commitSha}:${step.file}`],
+					cwd: input.worktrees[revision].path,
+					env: executionEnvironment(),
+					timeoutMs: 10_000,
+				});
+				if (blob.exitCode !== 0 || blob.outputTruncated)
+					throw new Error("Trace file is unavailable in the pinned commit");
+				const lines = blob.stdout.split("\n");
+				if ((await readFile(file, "utf8")) !== blob.stdout)
+					throw new Error("Trace source changed after execution");
 				if (step.line > lines.length) throw new Error("Trace line is outside source file");
 				steps.push({
 					id: `${step.id}-${steps.length}`,

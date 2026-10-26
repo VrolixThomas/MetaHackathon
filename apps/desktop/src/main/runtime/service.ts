@@ -261,6 +261,10 @@ export class RuntimeService {
 				mode,
 				signal,
 			});
+			if (signal.aborted) {
+				await result.stop();
+				throw new Error("Preview cancelled before registration");
+			}
 			this.previewStops.set(result.preview.id, result.stop);
 			return result.preview;
 		});
@@ -303,6 +307,7 @@ export class RuntimeService {
 		this.closed = true;
 		for (const operation of this.operations.values()) operation.controller.abort();
 		await Promise.allSettled([...this.operations.values()].map((operation) => operation.done));
+		await this.scenarios.dispose();
 		await this.demoPromise?.catch(() => undefined);
 		await this.previews.dispose();
 		const failures: unknown[] = [];
