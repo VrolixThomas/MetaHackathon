@@ -31,6 +31,11 @@ export class VoiceSidecar implements VoiceBackend {
 	private lifetime = new AbortController();
 	constructor(private options: SidecarOptions) {}
 
+	/** Main composition may warm the local executable after credentials are configured. No provider request is made. */
+	async prepare(): Promise<void> {
+		await this.start();
+	}
+
 	private start(): Promise<number> {
 		if (this.disposed) return Promise.reject(new Error("Voice service is shut down"));
 		this.starting ??= this.launch();

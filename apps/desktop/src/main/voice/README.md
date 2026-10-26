@@ -15,6 +15,8 @@ const sidecar = new VoiceSidecar({
   }),
 });
 const voice = new VoiceService(sidecar);
+// After settings are ready, warm the executable before offering capture:
+await sidecar.prepare(); // Starts only local server; no provider request.
 // Root router: voice: createVoiceRouter(voice)
 // Shutdown: await voice.dispose() before disposing credential/runtime services.
 ```
@@ -52,3 +54,8 @@ never credential values. No provider credentials or private loopback bearer reac
 identity/sequence rejection, deduplication, stale cancellation, lifecycle shutdown, real subprocess
 loopback authentication, bounded startup and sanitized HTTP errors. These checks use mock
 providers; they do not establish provider access or microphone-to-speaker latency.
+
+Cold capture must wait for media readiness. There is no preroll buffer for speech spoken before
+ICE/DTLS and provider setup complete. UI should expose the controller connecting state and
+only cue speaking once listening. Warm the executable after credential setup to keep binary
+loading out of the first push-to-talk request. This is separate from end-of-speech latency.
