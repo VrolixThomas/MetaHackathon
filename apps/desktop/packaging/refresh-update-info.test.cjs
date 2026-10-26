@@ -4,7 +4,7 @@ const fs = require("node:fs");
 const os = require("node:os");
 const path = require("node:path");
 const yaml = require("js-yaml");
-const { hashFile, refreshUpdateInfo } = require("./refresh-update-info.cjs");
+const { hashFile, refreshUpdateInfo, validateUpdateInfo } = require("./refresh-update-info.cjs");
 
 test("final DMG byte changes refresh hashes/blockmap while preserving ZIP updater metadata", (t) => {
 	// Synthetic files exercise metadata only; this does not simulate signing success.
@@ -42,4 +42,32 @@ test("final DMG byte changes refresh hashes/blockmap while preserving ZIP update
 	manifest.files[0].sha512 = "wrong";
 	fs.writeFileSync(manifestPath, yaml.dump(manifest));
 	assert.throws(() => refreshUpdateInfo(directory, []), /Update artifact hash mismatch: app.zip/);
+});
+
+test("a stray ZIP cannot satisfy a manifest that omits its updater entry", (t) => {
+	const directory = fs.mkdtempSync(path.join(os.tmpdir(), "metahackathon-missing-zip-"));
+	t.after(() => fs.rmSync(directory, { recursive: true, force: true }));
+	fs.writeFileSync(path.join(directory, "app.dmg"), "dmg bytes");
+	fs.writeFileSync(path.join(directory, "app.zip"), "zip bytes");
+	const dmgHash = hashFile(path.join(directory, "app.dmg"));
+	const zipHash = hashFile(path.join(directory, "app.zip"));
+	const manifestPath = path.join(directory, "latest-mac.yml");
+	const manifest = {
+		version: "0.1.0",
+		files: [{ url: "app.dmg", sha512: dmgHash }],
+		path: "app.dmg",
+		sha512: dmgHash,
+	};
+	fs.writeFileSync(manifestPath, yaml.dump(manifest));
+	assert.throws(() => validateUpdateInfo(directory), /updater ZIP/);
+	assert.throws(() => refreshUpdateInfo(directory, []), /updater ZIP/);
+	manifest.files.push({ url: "app.zip", sha512: zipHash });
+	fs.writeFileSync(manifestPath, yaml.dump(manifest));
+	assert.throws(() => refreshUpdateInfo(directory, []), /Legacy update path/);
+	manifest.path = "app.zip";
+	manifest.sha512 = zipHash;
+	fs.writeFileSync(manifestPath, yaml.dump(manifest));
+	assert.equal(validateUpdateInfo(directory).files.length, 2);
+	fs.writeFileSync(path.join(directory, "app.zip"), "changed zip");
+	assert.throws(() => validateUpdateInfo(directory), /hash mismatch: app.zip/);
 });

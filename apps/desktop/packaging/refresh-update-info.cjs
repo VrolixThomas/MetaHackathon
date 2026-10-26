@@ -28,10 +28,38 @@ function artifactName(url) {
 	return name;
 }
 
+function requireUpdateEntries(manifest) {
+	if (!manifest || !Array.isArray(manifest.files) || manifest.files.length === 0)
+		throw new Error("Update manifest has no files");
+	const names = manifest.files.map((entry) => artifactName(entry.url));
+	if (new Set(names).size !== names.length) throw new Error("Duplicate update artifact entries");
+	const zips = names.filter((name) => name.endsWith(".zip"));
+	if (zips.length === 0) throw new Error("Update manifest must reference the updater ZIP");
+	if (!manifest.path || !zips.includes(artifactName(manifest.path)))
+		throw new Error("Legacy update path must reference a listed updater ZIP");
+}
+
+function validateUpdateInfo(
+	outputDir,
+	manifest = yaml.load(fs.readFileSync(path.join(outputDir, "latest-mac.yml"), "utf8"))
+) {
+	requireUpdateEntries(manifest);
+	for (const entry of manifest.files) {
+		const name = artifactName(entry.url);
+		const file = path.join(outputDir, name);
+		if (hashFile(file) !== entry.sha512) throw new Error(`Update artifact hash mismatch: ${name}`);
+		if (entry.size !== undefined && fs.statSync(file).size !== entry.size)
+			throw new Error(`Update artifact size mismatch: ${name}`);
+	}
+	if (hashFile(path.join(outputDir, artifactName(manifest.path))) !== manifest.sha512)
+		throw new Error("Legacy update path/hash does not match its artifact");
+	return manifest;
+}
+
 function refreshUpdateInfo(outputDir, changedFiles) {
 	const manifestPath = path.join(outputDir, "latest-mac.yml");
 	const manifest = yaml.load(fs.readFileSync(manifestPath, "utf8"));
-	if (!Array.isArray(manifest.files)) throw new Error("Update manifest has no files");
+	requireUpdateEntries(manifest);
 	for (const name of changedFiles) {
 		const file = path.join(outputDir, artifactName(name));
 		const entry = manifest.files.find((candidate) => artifactName(candidate.url) === name);
@@ -44,18 +72,9 @@ function refreshUpdateInfo(outputDir, changedFiles) {
 		Object.assign(entry, blockmap, { sha512: hashFile(file), size: fs.statSync(file).size });
 		if (manifest.path && artifactName(manifest.path) === name) manifest.sha512 = entry.sha512;
 	}
-	for (const entry of manifest.files) {
-		const name = artifactName(entry.url);
-		if (hashFile(path.join(outputDir, name)) !== entry.sha512)
-			throw new Error(`Update artifact hash mismatch: ${name}`);
-	}
-	if (
-		!manifest.path ||
-		hashFile(path.join(outputDir, artifactName(manifest.path))) !== manifest.sha512
-	)
-		throw new Error("Legacy update path/hash does not match its artifact");
+	validateUpdateInfo(outputDir, manifest);
 	fs.writeFileSync(manifestPath, yaml.dump(manifest, { lineWidth: -1 }));
 	return manifest.files.map(({ url, sha512, size }) => ({ url, sha512, size }));
 }
 
-module.exports = { hashFile, refreshUpdateInfo };
+module.exports = { hashFile, refreshUpdateInfo, validateUpdateInfo };

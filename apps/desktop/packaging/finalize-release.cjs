@@ -2,11 +2,13 @@ const fs = require("node:fs");
 const path = require("node:path");
 const { requireSigningCredentials } = require("./credentials.cjs");
 const { command, verifyApp } = require("./verify-app.cjs");
-const { refreshUpdateInfo } = require("./refresh-update-info.cjs");
+const { refreshUpdateInfo, validateUpdateInfo } = require("./refresh-update-info.cjs");
 
 requireSigningCredentials();
 const outputDir = path.resolve(process.argv[2] || "dist");
 const appPath = path.resolve(process.argv[3] || "dist/mac-arm64/MetaHackathon.app");
+// A stray ZIP on disk cannot stand in for a usable updater manifest.
+validateUpdateInfo(outputDir);
 const app = verifyApp(appPath, process.env.APPLE_TEAM_ID);
 command("/usr/bin/xcrun", ["stapler", "validate", appPath]);
 command("/usr/sbin/spctl", ["--assess", "--type", "execute", "--verbose=4", appPath]);
