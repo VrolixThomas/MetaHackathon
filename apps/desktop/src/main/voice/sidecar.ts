@@ -89,7 +89,7 @@ export class VoiceSidecar implements VoiceBackend {
 			};
 			const timer = setTimeout(
 				() => finish(new Error("Voice sidecar startup timed out")),
-				this.options.startupTimeoutMs ?? 30_000
+				this.options.startupTimeoutMs ?? 180_000
 			);
 			const onData = (chunk: Buffer) => {
 				buffer += chunk.toString("utf8");

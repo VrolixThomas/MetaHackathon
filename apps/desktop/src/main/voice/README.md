@@ -59,3 +59,9 @@ Cold capture must wait for media readiness. There is no preroll buffer for speec
 ICE/DTLS and provider setup complete. UI should expose the controller connecting state and
 only cue speaking once listening. Warm the executable after credential setup to keep binary
 loading out of the first push-to-talk request. This is separate from end-of-speech latency.
+
+The packaging spike measured one cold native import at 109.272 seconds and warm HTTP boots
+around 1.2–1.5 seconds. The default executable startup deadline is therefore 180 seconds;
+individual HTTP operations remain bounded at 15 seconds. Composition must await prepare()
+and keep capture unavailable while warming. Cold start remains a release usability risk and
+requires clean-machine signed-app measurement; warm results are not a cold-start guarantee.
