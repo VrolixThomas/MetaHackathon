@@ -17,7 +17,14 @@ function setup() {
 		},
 	});
 	const { id: _id, revision: _revision, ...fields } = fixture.draftComment;
-	const draft = drafts.create(fields);
+	const draft = drafts.create({
+		...fields,
+		evidence: {
+			kind: "source",
+			url: "https://example.test/review-source",
+			retrievedAt: "2026-10-26T20:00:00Z",
+		},
+	});
 	const confirmation = {
 		requestId: "confirm-1",
 		draftId: draft.id,
@@ -72,6 +79,7 @@ test("moved PR head rejects before write and draft values cannot be changed thro
 		/Pull request changed/
 	);
 	assert.equal(ctx.posts(), 0);
+	assert.equal(ctx.drafts.edit(ctx.draft.id, "Revised after failed head check").revision, 2);
 });
 
 test("concurrent and repeated confirmations never double-post a draft", async () => {
@@ -98,4 +106,24 @@ test("ambiguous network failure stays unresolved and cannot trigger a blind repo
 		/already submitted/
 	);
 	assert.equal(ctx.posts(), 1);
+});
+
+test("fixture drafts are blocked at the main confirmation boundary", () => {
+	const ctx = setup();
+	const { id: _id, revision: _revision, ...fields } = getReviewFixture().draftComment;
+	const fixtureDraft = ctx.drafts.create(fields);
+	assert.throws(
+		() =>
+			ctx.drafts.confirmAndPost(
+				{
+					...ctx.confirmation,
+					draftId: fixtureDraft.id,
+					body: fixtureDraft.body,
+					draftRevision: fixtureDraft.revision,
+				},
+				signal()
+			),
+		/Fixture drafts cannot be posted/
+	);
+	assert.equal(ctx.posts(), 0);
 });

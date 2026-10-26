@@ -82,12 +82,17 @@ export interface GeneratedTestRuntime {
 	}) => Promise<{ trace: ScenarioTrace; results: { base: unknown; head: unknown } }>;
 }
 export async function requestScenarioExecution(
-	generated: GeneratedScenario,
+	rawGenerated: GeneratedScenario,
 	runtime: GeneratedTestRuntime,
 	signal: AbortSignal
 ) {
+	const generated = GeneratedScenarioSchema.parse(rawGenerated);
 	const verified = generateScenario(generated.plan);
-	if (verified.sourceSha256 !== generated.sourceSha256 || verified.source !== generated.source)
+	if (
+		verified.sourceSha256 !== generated.sourceSha256 ||
+		verified.source !== generated.source ||
+		verified.filename !== generated.filename
+	)
 		throw new Error("Generated test changed; review a fresh test");
 	const result = await abortable(
 		runtime.runGeneratedTest({

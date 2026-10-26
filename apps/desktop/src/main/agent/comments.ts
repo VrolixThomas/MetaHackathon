@@ -57,6 +57,8 @@ export class CommentDrafts {
 	confirmAndPost(raw: unknown, signal: AbortSignal): Promise<{ url: string }> {
 		const input = ConfirmCommentInputSchema.parse(raw);
 		const draft = this.get(input.draftId);
+		if (draft.evidence.kind === "fixture")
+			throw new Error("Fixture drafts cannot be posted to GitHub");
 		if (
 			input.draftRevision !== draft.revision ||
 			input.headSha !== draft.headSha ||
@@ -82,30 +84,39 @@ export class CommentDrafts {
 	}
 
 	private async post(draft: DraftedComment, requestId: string, signal: AbortSignal) {
-		const pr = PullRequestSchema.parse(
-			await abortable(this.port.getPullRequest(draft.prId, signal), signal)
-		);
-		if (
-			pr.id !== draft.prId ||
-			pr.headSha !== draft.headSha ||
-			(draft.location && draft.location.repository !== pr.repository)
-		) {
-			throw new Error("Pull request changed; refresh the draft before confirming");
-		}
-		const result = await abortable(
-			this.port.postConfirmedComment(
-				{
-					draft,
-					idempotencyKey: requestId,
-					expectedHeadSha: pr.headSha,
-				},
+		let submissionStarted = false;
+		try {
+			const pr = PullRequestSchema.parse(
+				await abortable(this.port.getPullRequest(draft.prId, signal), signal)
+			);
+			if (
+				pr.id !== draft.prId ||
+				pr.headSha !== draft.headSha ||
+				(draft.location && draft.location.repository !== pr.repository)
+			) {
+				throw new Error("Pull request changed; refresh the draft before confirming");
+			}
+			throwIfAborted(signal);
+			submissionStarted = true;
+			const result = await abortable(
+				this.port.postConfirmedComment(
+					{
+						draft,
+						idempotencyKey: requestId,
+						expectedHeadSha: pr.headSha,
+					},
+					signal
+				),
 				signal
-			),
-			signal
-		);
-		const url = new URL(result.url);
-		if (url.protocol !== "https:") throw new Error("Invalid GitHub posting receipt");
-		return { url: url.toString() };
+			);
+			const url = new URL(result.url);
+			if (url.protocol !== "https:") throw new Error("Invalid GitHub posting receipt");
+			return { url: url.toString() };
+		} catch (error) {
+			// Only failures known to precede the external write may unlock the draft.
+			if (!submissionStarted) this.posting.delete(draft.id);
+			throw error;
+		}
 	}
 
 	private assertLocation(draft: DraftedComment) {

@@ -72,6 +72,20 @@ test("generated tests retain provenance and not-run state; runtime fixtures cann
 		/changed/
 	);
 	assert.equal(executed, false);
+	await assert.rejects(
+		requestScenarioExecution(
+			{ ...generated, filename: "other.mjs" },
+			{
+				runGeneratedTest: async () => {
+					executed = true;
+					throw new Error("Must not reach runtime");
+				},
+			},
+			new AbortController().signal
+		),
+		/changed/
+	);
+	assert.equal(executed, false);
 	assert.throws(() => generateScenario({ ...scenarioPlan(), modulePath: "../private.ts" }));
 	assert.throws(() =>
 		generateScenario({

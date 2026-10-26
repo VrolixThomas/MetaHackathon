@@ -109,9 +109,12 @@ export function readRecordedTrail(body: string): RecordedTrail | null {
 }
 
 export function recordedWhyNote(
-	entry: RecordedTrail["entries"][number],
-	location: CodeLocation
+	rawEntry: RecordedTrail["entries"][number],
+	rawLocation: CodeLocation
 ): WhyNote {
+	const entry = captureRecordedTrail({ entries: [rawEntry] }).entries[0];
+	if (!entry) throw new Error("Recorded entry is missing");
+	const location = CodeLocationSchema.parse(rawLocation);
 	if (entry.speaker !== "author")
 		throw new Error("Agent-authored trail entries cannot establish author intent");
 	if (!entry.locations.some((candidate) => JSON.stringify(candidate) === JSON.stringify(location)))
