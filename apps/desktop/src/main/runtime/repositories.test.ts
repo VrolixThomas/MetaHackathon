@@ -234,3 +234,96 @@ test("ignored files and replaced worktree symlinks are preserved", async () => {
 		await rm(f.directory, { recursive: true, force: true });
 	}
 });
+
+test("cleanup preserves a moved owned worktree and a clean same-repository replacement", async () => {
+	const f = await fixture();
+	try {
+		const run = await f.manager.prepare({
+			repositoryPath: f.repository,
+			baseRef: f.base,
+			headRef: f.head,
+		});
+		const moved = join(f.directory, "moved-owned-head");
+		await git(f.repository, "worktree", "move", run.head.path, moved);
+		await git(f.repository, "worktree", "add", "--detach", run.head.path, f.base);
+		const restarted = new RepositoryManager(join(f.directory, "runtime"));
+		await assert.rejects(restarted.cleanup(run.runId), /identity|moved|replaced/i);
+		assert.equal(await readFile(join(run.head.path, "price.txt"), "utf8"), "before\n");
+		assert.equal(await readFile(join(moved, "price.txt"), "utf8"), "after\n");
+		assert.equal(await readFile(join(run.base.path, "price.txt"), "utf8"), "before\n");
+		await git(f.repository, "worktree", "remove", run.head.path);
+		await git(f.repository, "worktree", "move", moved, run.head.path);
+		await restarted.cleanup(run.runId);
+	} finally {
+		await rm(f.directory, { recursive: true, force: true });
+	}
+});
+
+test("cleanup retains ownership metadata and retries after an extra run file is removed", async () => {
+	const f = await fixture();
+	try {
+		const run = await f.manager.prepare({
+			repositoryPath: f.repository,
+			baseRef: f.base,
+			headRef: f.head,
+		});
+		const runRoot = join(f.directory, "runtime", "runs", run.runId);
+		await writeFile(join(runRoot, "run.log"), "preserve this log\n");
+		const restarted = new RepositoryManager(join(f.directory, "runtime"));
+		await assert.rejects(restarted.cleanup(run.runId));
+		assert.ok(JSON.parse(await readFile(join(runRoot, "ownership.json"), "utf8")));
+		await assert.rejects(restarted.cleanup(run.runId), /additional files/i);
+		assert.equal(await readFile(join(runRoot, "run.log"), "utf8"), "preserve this log\n");
+		assert.equal(await readFile(join(run.head.path, "price.txt"), "utf8"), "after\n");
+		await rm(join(runRoot, "run.log"));
+		await restarted.cleanup(run.runId);
+		assert.deepEqual(await readdir(join(f.directory, "runtime", "runs")), []);
+	} finally {
+		await rm(f.directory, { recursive: true, force: true });
+	}
+});
+
+test("cleanup preserves ownership when an owned tree moves without a replacement", async () => {
+	const f = await fixture();
+	try {
+		const run = await f.manager.prepare({
+			repositoryPath: f.repository,
+			baseRef: f.base,
+			headRef: f.head,
+		});
+		const moved = join(f.directory, "moved-owned-head");
+		await git(f.repository, "worktree", "move", run.head.path, moved);
+		await assert.rejects(f.manager.cleanup(run.runId), /moved/i);
+		assert.equal(await readFile(join(moved, "price.txt"), "utf8"), "after\n");
+		assert.ok(
+			JSON.parse(
+				await readFile(join(f.directory, "runtime", "runs", run.runId, "ownership.json"), "utf8")
+			)
+		);
+		await git(f.repository, "worktree", "move", moved, run.head.path);
+		await f.manager.cleanup(run.runId);
+	} finally {
+		await rm(f.directory, { recursive: true, force: true });
+	}
+});
+
+test("cleanup preserves a replacement even when Git reuses the administrative directory path", async () => {
+	const f = await fixture();
+	try {
+		const run = await f.manager.prepare({
+			repositoryPath: f.repository,
+			baseRef: f.base,
+			headRef: f.head,
+		});
+		const originalGitDirectory = await git(run.head.path, "rev-parse", "--absolute-git-dir");
+		await git(f.repository, "worktree", "remove", run.head.path);
+		await git(f.repository, "worktree", "add", "--detach", run.head.path, f.base);
+		assert.equal(await git(run.head.path, "rev-parse", "--absolute-git-dir"), originalGitDirectory);
+		await assert.rejects(f.manager.cleanup(run.runId), /identity changed/i);
+		assert.equal(await readFile(join(run.head.path, "price.txt"), "utf8"), "before\n");
+		await git(f.repository, "worktree", "remove", run.head.path);
+		await f.manager.cleanup(run.runId);
+	} finally {
+		await rm(f.directory, { recursive: true, force: true });
+	}
+});

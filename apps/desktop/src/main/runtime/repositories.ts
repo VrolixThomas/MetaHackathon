@@ -11,7 +11,7 @@ import {
 	unlink,
 	writeFile,
 } from "node:fs/promises";
-import { isAbsolute, join, resolve } from "node:path";
+import { basename, isAbsolute, join, resolve } from "node:path";
 import { runProcess } from "./process";
 
 export interface PreparedRepository {
@@ -38,7 +38,14 @@ interface OwnershipRecord {
 	ownedClone: boolean;
 	cloneComplete: boolean;
 	worktrees: string[];
+	worktreeIdentities: Record<string, WorktreeIdentity>;
 	refs: string[];
+}
+
+interface WorktreeIdentity {
+	gitDirectory: string;
+	device: number;
+	inode: number;
 }
 
 const RUN_ID = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/;
@@ -128,6 +135,7 @@ export class RepositoryManager {
 			ownedClone: Boolean(options.cloneUrl),
 			cloneComplete: false,
 			worktrees: [],
+			worktreeIdentities: {},
 			refs: [],
 		};
 		await this.save(record);
@@ -181,6 +189,13 @@ export class RepositoryManager {
 					["worktree", "add", "--detach", "--", path, sha],
 					options.signal
 				);
+				const stat = await lstat(path);
+				record.worktreeIdentities[path] = {
+					gitDirectory: await realpath(await this.git(path, ["rev-parse", "--absolute-git-dir"])),
+					device: stat.dev,
+					inode: stat.ino,
+				};
+				await this.save(record);
 			}
 			return {
 				runId,
@@ -207,32 +222,13 @@ export class RepositoryManager {
 		this.cleaning.add(runId);
 		try {
 			const record = await this.load(runId);
+			await this.assertKnownRunContents(record);
 			for (const path of record.worktrees) {
-				const stat = await lstat(path).catch(() => undefined);
-				if (stat?.isSymbolicLink()) throw new Error("Refusing to remove a replaced worktree");
-				if (stat) {
-					const dirty = await this.git(path, [
-						"status",
-						"--porcelain",
-						"--untracked-files=all",
-						"--ignored",
-					]);
-					if (dirty) throw new Error(`Owned worktree is dirty; preserving run ${runId}`);
-					const common = await this.git(path, [
-						"rev-parse",
-						"--path-format=absolute",
-						"--git-common-dir",
-					]);
-					const repositoryCommon = await this.git(record.repositoryPath, [
-						"rev-parse",
-						"--path-format=absolute",
-						"--git-common-dir",
-					]);
-					if (common !== repositoryCommon) throw new Error("Worktree repository ownership changed");
-				}
+				await this.assertWorktreeIdentity(record, path);
 			}
 			// Check all trees before removing either version, so dirty runs remain reviewable as a pair.
 			for (const path of [...record.worktrees]) {
+				await this.assertWorktreeIdentity(record, path);
 				const listed = await this.git(record.repositoryPath, [
 					"worktree",
 					"list",
@@ -249,12 +245,76 @@ export class RepositoryManager {
 			}
 			for (const ref of record.refs)
 				await this.git(record.repositoryPath, ["update-ref", "-d", ref]);
+			record.refs = [];
+			await this.save(record);
 			if (record.ownedClone) await this.removeOwnedClone(record);
+			await this.assertKnownRunContents(record, true);
 			await unlink(this.recordPath(runId));
-			await rmdir(this.runRoot(runId));
+			try {
+				await rmdir(this.runRoot(runId));
+			} catch (error) {
+				// A file can appear after preflight; retain the completed cleanup state for a retry.
+				await this.save(record);
+				throw error;
+			}
 		} finally {
 			this.cleaning.delete(runId);
 		}
+	}
+
+	private async assertKnownRunContents(record: OwnershipRecord, final = false): Promise<void> {
+		const allowed = new Set(["ownership.json"]);
+		if (!final) {
+			for (const path of record.worktrees) allowed.add(basename(path));
+			if (record.ownedClone) allowed.add("repository");
+		}
+		if ((await readdir(this.runRoot(record.runId))).some((name) => !allowed.has(name))) {
+			throw new Error(`Runtime run contains additional files; preserving run ${record.runId}`);
+		}
+	}
+
+	private async assertWorktreeIdentity(record: OwnershipRecord, path: string): Promise<void> {
+		const stat = await lstat(path).catch(() => undefined);
+		if (stat?.isSymbolicLink()) throw new Error("Refusing to remove a replaced worktree");
+		const identity = record.worktreeIdentities[path];
+		if (!identity) throw new Error("Missing owned worktree identity; preserving run");
+		const gitFile = await readFile(join(identity.gitDirectory, "gitdir"), "utf8").catch(
+			(error: NodeJS.ErrnoException) => {
+				if (error.code !== "ENOENT") throw error;
+				return undefined;
+			}
+		);
+		if (gitFile && resolve(identity.gitDirectory, gitFile.trim()) !== join(path, ".git")) {
+			throw new Error("Owned worktree moved; preserving run and replacement");
+		}
+		if (!stat) return;
+		if (stat.dev !== identity.device || stat.ino !== identity.inode) {
+			throw new Error("Owned worktree directory identity changed; preserving replacement");
+		}
+		const actualGitDirectory = await realpath(
+			await this.git(path, ["rev-parse", "--absolute-git-dir"])
+		);
+		if (actualGitDirectory !== identity.gitDirectory) {
+			throw new Error("Owned worktree Git identity changed; preserving replacement");
+		}
+		const dirty = await this.git(path, [
+			"status",
+			"--porcelain",
+			"--untracked-files=all",
+			"--ignored",
+		]);
+		if (dirty) throw new Error(`Owned worktree is dirty; preserving run ${record.runId}`);
+		const common = await this.git(path, [
+			"rev-parse",
+			"--path-format=absolute",
+			"--git-common-dir",
+		]);
+		const repositoryCommon = await this.git(record.repositoryPath, [
+			"rev-parse",
+			"--path-format=absolute",
+			"--git-common-dir",
+		]);
+		if (common !== repositoryCommon) throw new Error("Worktree repository ownership changed");
 	}
 
 	private async removeOwnedClone(record: OwnershipRecord): Promise<void> {
@@ -410,6 +470,8 @@ export class RepositoryManager {
 			throw new Error("Unknown runtime run ID");
 		});
 		const record = JSON.parse(raw) as OwnershipRecord;
+		// Older records lack sufficient identity evidence. Keep their worktrees until recovered.
+		record.worktreeIdentities ??= {};
 		if (
 			record.version !== 1 ||
 			record.runId !== runId ||
@@ -419,6 +481,8 @@ export class RepositoryManager {
 			typeof record.ownedClone !== "boolean" ||
 			typeof record.cloneComplete !== "boolean" ||
 			!Array.isArray(record.worktrees) ||
+			typeof record.worktreeIdentities !== "object" ||
+			record.worktreeIdentities === null ||
 			!Array.isArray(record.refs)
 		) {
 			throw new Error("Invalid runtime ownership record");
@@ -436,6 +500,17 @@ export class RepositoryManager {
 		}
 		if (record.ownedClone && record.repositoryPath !== join(runRoot, "repository"))
 			throw new Error("Invalid owned clone path");
+		for (const identity of Object.values(record.worktreeIdentities)) {
+			if (
+				!identity ||
+				typeof identity.gitDirectory !== "string" ||
+				!isAbsolute(identity.gitDirectory) ||
+				!Number.isSafeInteger(identity.device) ||
+				!Number.isSafeInteger(identity.inode)
+			) {
+				throw new Error("Invalid owned worktree identity");
+			}
+		}
 		return record;
 	}
 }
