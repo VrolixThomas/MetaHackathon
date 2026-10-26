@@ -1,0 +1,241 @@
+import { useState } from "react";
+import { Icon } from "./Icons";
+import { useReview } from "./controller";
+
+export function Sidebar({
+	onSettings,
+	voiceStatus,
+	onTalkStart,
+	onTalkEnd,
+}: {
+	onSettings: () => void;
+	voiceStatus: string;
+	onTalkStart: () => void;
+	onTalkEnd: () => void;
+}) {
+	const { files, file, cursor, seen, openFile, setPanel, announce } = useReview();
+	const [expanded, setExpanded] = useState(true);
+	const [showSeen, setShowSeen] = useState(false);
+	const [showMechanical, setShowMechanical] = useState(false);
+	const route = files.filter((f) => f.attention !== "context");
+	const checked = route.filter((f) => seen.includes(f.path));
+	return (
+		<aside className="sidebar" aria-label="Review sidebar">
+			<div className="sidebar-brand">
+				<span className="brand-mark">
+					<Icon name="code" size={18} />
+				</span>
+				<strong>Review</strong>
+				<span className="brand-tag">VOICE FIRST</span>
+			</div>
+			<div className="sidebar-scroll">
+				<div className="section-label">
+					<span>Needs you</span>
+					<span>3</span>
+				</div>
+				<button
+					type="button"
+					className="pr-row expanded"
+					onClick={() => setExpanded(!expanded)}
+					aria-expanded={expanded}
+				>
+					<span className={expanded ? "chevron down" : "chevron"}>
+						<Icon name="chevron" size={14} />
+					</span>
+					<span className="pr-info">
+						<span className="pr-meta">
+							shop-web <span>#1284</span>
+						</span>
+						<strong>Stackable promo codes</strong>
+						<span className="attention-text">
+							<span className="dot amber" /> Breaks a nightly job
+						</span>
+					</span>
+				</button>
+				{expanded && (
+					<nav className="file-route" aria-label="Files in reading order">
+						<div className="route-label">
+							YOUR READING ROUTE{" "}
+							<span>
+								{checked.length}/{route.length}
+							</span>
+						</div>
+						{route
+							.filter((f) => !seen.includes(f.path) || showSeen || f.path === file)
+							.map((f) => {
+								const index = files.indexOf(f);
+								return (
+									<button
+										type="button"
+										key={f.path}
+										className={`file-row ${f.path === file ? "selected" : ""} ${cursor === index ? "keyboard-current" : ""}`}
+										aria-current={f.path === file ? "page" : undefined}
+										onClick={() => openFile(f.path)}
+										title={f.path}
+									>
+										<span className={`file-number ${seen.includes(f.path) ? "seen" : ""}`}>
+											{seen.includes(f.path) ? <Icon name="check" size={14} /> : index + 1}
+										</span>
+										<span className="file-info">
+											<span className="filename">{f.path.split("/").at(-1)}</span>
+											<span className={f.attention === "decide" ? "attention-text" : "muted"}>
+												{f.purpose}
+											</span>
+										</span>
+									</button>
+								);
+							})}
+						{checked.length > 0 && (
+							<button
+								type="button"
+								className="collapse-row"
+								aria-expanded={showSeen}
+								onClick={() => setShowSeen(!showSeen)}
+							>
+								<Icon name="check" size={13} />
+								{checked.length} seen {showSeen ? "· collapse" : "· show"}
+							</button>
+						)}
+						<button
+							type="button"
+							className="collapse-row"
+							aria-expanded={showMechanical}
+							onClick={() => setShowMechanical(!showMechanical)}
+						>
+							<span className={showMechanical ? "chevron down" : "chevron"}>
+								<Icon name="chevron" size={13} />
+							</span>
+							33 mechanical files
+						</button>
+						{showMechanical && (
+							<div className="mechanical-detail">
+								The reference groups types, renames, snapshots, and tests here. Build equivalence
+								has not been verified in fixture mode.
+							</div>
+						)}
+					</nav>
+				)}
+				<button
+					type="button"
+					className="pr-row other-pr"
+					onClick={() =>
+						announce(
+							"Finance #412 depends on #1284 adding orders.promo_code. This is reference fixture metadata."
+						)
+					}
+				>
+					<Icon name="chevron" size={14} />
+					<span className="pr-info">
+						<span className="pr-meta">
+							finance-service <span>#412</span>
+						</span>
+						<strong>Read promo_code in export</strong>
+						<span className="blue-text">Merge after #1284</span>
+					</span>
+				</button>
+				<button
+					type="button"
+					className="pr-row other-pr"
+					onClick={() =>
+						announce(
+							"#1291 is a reference fixture for a mechanical dependency update. No review data is connected yet."
+						)
+					}
+				>
+					<Icon name="chevron" size={14} />
+					<span className="pr-info">
+						<span className="pr-meta">
+							shop-web <span>#1291</span>
+						</span>
+						<strong>Bump image library to 3.2</strong>
+						<span className="muted">Nothing needs you</span>
+					</span>
+				</button>
+				<div className="section-label updates-label">
+					<span>Updates</span>
+					<span>2</span>
+				</div>
+				<button
+					type="button"
+					className="update-row"
+					onClick={() => {
+						setPanel("conversation");
+						announce("Reference update: Noor replied, ‘Good catch. I'll skip expired codes.’");
+					}}
+				>
+					<span className="dot blue" />
+					<span>
+						<strong>Noor replied on #1284</strong>
+						<span>“Good catch. I'll skip expired codes.”</span>
+					</span>
+				</button>
+				<button
+					type="button"
+					className="update-row"
+					onClick={() => {
+						setPanel("conversation");
+						announce("Reference update: Product answered, ‘The quoted price should hold.’");
+					}}
+				>
+					<span className="dot dim" />
+					<span>
+						<strong>Product answered on #1284</strong>
+						<span>“The quoted price should hold.”</span>
+					</span>
+				</button>
+				<div className="section-label">
+					<span>Preparing</span>
+					<span>1</span>
+				</div>
+				<div className="preparing-row">
+					<span className="pr-meta">
+						shop-web <span>#1288</span>
+					</span>
+					<strong>Retry failed webhooks</strong>
+					<span>Reference preparation · 3 of 6</span>
+					<div className="progress-track">
+						<span />
+					</div>
+				</div>
+			</div>
+			<div className="sidebar-bottom">
+				<button
+					type="button"
+					className={`talk-control ${voiceStatus === "Listening" ? "listening" : ""}`}
+					onPointerDown={(event) => {
+						event.currentTarget.setPointerCapture(event.pointerId);
+						onTalkStart();
+					}}
+					onPointerUp={onTalkEnd}
+					onPointerCancel={onTalkEnd}
+					onKeyDown={(event) => {
+						if (event.key === "Enter") onTalkStart();
+					}}
+					onKeyUp={(event) => {
+						if (event.key === "Enter") onTalkEnd();
+					}}
+					aria-label="Hold to talk"
+				>
+					<span className="mic-circle">
+						<Icon name="mic" size={18} />
+					</span>
+					<span>
+						<strong>{voiceStatus}</strong>
+						<span>
+							Hold <kbd>space</kbd> to talk
+						</span>
+					</span>
+				</button>
+				<button
+					type="button"
+					className="icon-button"
+					title="Settings"
+					aria-label="Open settings"
+					onClick={onSettings}
+				>
+					<Icon name="settings" size={17} />
+				</button>
+			</div>
+		</aside>
+	);
+}
