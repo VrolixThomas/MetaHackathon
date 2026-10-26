@@ -17,6 +17,20 @@ const server = http.createServer((req,res) => {
 server.listen(0,'127.0.0.1',()=>console.log(JSON.stringify({port:server.address().port})));
 `;
 describe("private sidecar lifecycle", () => {
+	it("a cancellation before first offer does not start a credential-dependent child", async () => {
+		let reads = 0;
+		const sidecar = new VoiceSidecar({
+			command: "/no-such-voice-binary",
+			getCredentials: async () => {
+				reads++;
+				return {};
+			},
+		});
+		assert.deepEqual(await sidecar.request("cancel", {}), {});
+		assert.equal(reads, 0);
+		await sidecar.dispose();
+		await assert.rejects(sidecar.request("cancel", {}), /shut down/);
+	});
 	it("authenticates loopback requests, redacts failures, shuts down and rejects reuse", async () => {
 		const sidecar = new VoiceSidecar({
 			command: process.execPath,

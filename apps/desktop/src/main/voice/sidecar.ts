@@ -74,6 +74,11 @@ export class VoiceSidecar implements VoiceBackend {
 				child.stdout.resume();
 				if (error) {
 					child.kill("SIGTERM");
+					const killTimer = setTimeout(() => {
+						if (child.exitCode === null && child.signalCode === null) child.kill("SIGKILL");
+					}, 2000);
+					killTimer.unref();
+					child.once("exit", () => clearTimeout(killTimer));
 					reject(error);
 				} else resolve(port as number);
 			};
@@ -106,7 +111,9 @@ export class VoiceSidecar implements VoiceBackend {
 	async request(path: string, body: unknown, signal?: AbortSignal): Promise<unknown> {
 		if (!["offer", "release", "speak", "cancel", "poll"].includes(path))
 			throw new Error("Unknown voice operation");
+		if (this.disposed) throw new Error("Voice service is shut down");
 		signal?.throwIfAborted();
+		if (path === "cancel" && !this.starting) return {};
 		const port = await this.start();
 		if (this.disposed) throw new Error("Voice service is shut down");
 		const combined = AbortSignal.any([

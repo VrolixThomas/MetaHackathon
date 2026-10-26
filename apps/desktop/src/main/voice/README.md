@@ -7,7 +7,7 @@ registration, lifecycle and credential wiring; UI owns visible controls and the 
 import { VoiceSidecar, VoiceService, createVoiceRouter } from './voice';
 const sidecar = new VoiceSidecar({
   command: packagedVoiceExecutable, // trusted absolute path, never renderer input
-  // Development: command is venv Python; args are ['.../services/voice/main.py'].
+  // Development: command is venv Python; args are ['.../services/voice/sidecar.py'].
   getCredentials: async () => ({
     meta: await runtimeCredentials.get('meta'),
     elevenlabs: await runtimeCredentials.get('elevenlabs'),

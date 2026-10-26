@@ -25,6 +25,7 @@ const same = (a: TurnIdentity, b: TurnIdentity) =>
 export class VoiceService {
 	private sessions = new Map<string, Session>();
 	private disposed = false;
+	private disposal?: Promise<void>;
 	constructor(private backend: VoiceBackend) {}
 	private assertLive() {
 		if (this.disposed) throw new Error("Voice service is shut down");
@@ -130,7 +131,11 @@ export class VoiceService {
 		session.abort.abort();
 		await this.backend.request("cancel", input);
 	}
-	async dispose() {
+	dispose(): Promise<void> {
+		this.disposal ??= this.stop();
+		return this.disposal;
+	}
+	private async stop() {
 		if (this.disposed) return;
 		this.disposed = true;
 		for (const session of this.sessions.values()) {
