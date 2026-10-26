@@ -81,7 +81,7 @@ test("runtime router prepares actual demo refs, serves their source/diff and exe
 		assert.deepEqual(await caller.cancel({ requestId: "not-running" }), { cancelled: false });
 		assert.equal("getCredential" in caller, false);
 	} finally {
-		await service.dispose();
+		await Promise.all([service.dispose(), service.dispose()]);
 		await rm(root, { recursive: true });
 	}
 });

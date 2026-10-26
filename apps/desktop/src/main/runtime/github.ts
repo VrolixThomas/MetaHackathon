@@ -72,6 +72,7 @@ export class GitHubClient {
 		const signal = options.signal
 			? AbortSignal.any([options.signal, AbortSignal.timeout(20_000)])
 			: AbortSignal.timeout(20_000);
+		if (signal.aborted) throw new Error("GitHub request cancelled before dispatch");
 		let response: Response;
 		try {
 			response = await this.transport(`https://api.github.com${path}`, {
@@ -92,6 +93,7 @@ export class GitHubClient {
 			);
 		}
 		if (!response.ok) throw new Error(`GitHub returned HTTP ${response.status}`);
+		if (signal.aborted) throw new Error("GitHub request cancelled before completion");
 		return response.json();
 	}
 
@@ -174,12 +176,48 @@ export class GitHubClient {
 		throw new Error("GitHub file list exceeds 3000-file API limit");
 	}
 
+	/** Author intent and discussion remain source evidence; model inference must be labeled separately. */
+	async discussion(pr: PullRequest, signal?: AbortSignal) {
+		const pull = z
+			.object({ body: z.string().nullable(), html_url: z.string().url() })
+			.parse(await this.request(`${repositoryPath(pr.repository)}/pulls/${pr.number}`, { signal }));
+		const comments: { id: number; body: string; html_url: string; user: { login: string } }[] = [];
+		for (let page = 1; page <= 10; page++) {
+			const batch = z
+				.array(
+					z.object({
+						id: z.number(),
+						body: z.string(),
+						html_url: z.string().url(),
+						user: z.object({ login: z.string() }),
+					})
+				)
+				.parse(
+					await this.request(
+						`${repositoryPath(pr.repository)}/issues/${pr.number}/comments?per_page=100&page=${page}`,
+						{ signal }
+					)
+				);
+			comments.push(...batch);
+			if (batch.length < 100)
+				return {
+					description: pull.body ?? "",
+					url: pull.html_url,
+					comments,
+					retrievedAt: new Date().toISOString(),
+				};
+		}
+		throw new Error("PR discussion exceeds the bounded comment read limit");
+	}
+
 	/** The agent supplies the current authoritative draft. The renderer cannot invent one. */
 	postConfirmedComment(
 		prInput: PullRequest,
 		draftInput: DraftedComment,
-		confirmationInput: ConfirmCommentInput
+		confirmationInput: ConfirmCommentInput,
+		signal?: AbortSignal
 	) {
+		if (signal?.aborted) throw new Error("GitHub submission cancelled before dispatch");
 		const pr = PullRequestSchema.parse(prInput);
 		const draft = DraftedCommentSchema.parse(draftInput);
 		const confirmation = ConfirmCommentInputSchema.parse(confirmationInput);
@@ -210,7 +248,7 @@ export class GitHubClient {
 		}
 		const durableResult = this.ledger?.reserve(confirmation.requestId, signature);
 		if (durableResult) return Promise.resolve(durableResult);
-		const result = this.postOnce(pr, draft).then((posted) => {
+		const result = this.postOnce(pr, draft, signal).then((posted) => {
 			this.ledger?.complete(confirmation.requestId, posted);
 			return posted;
 		});
@@ -219,8 +257,8 @@ export class GitHubClient {
 		return result;
 	}
 
-	private async postOnce(pr: PullRequest, draft: DraftedComment) {
-		const current = await this.readPullRequest(pr.repository, pr.number);
+	private async postOnce(pr: PullRequest, draft: DraftedComment, signal?: AbortSignal) {
+		const current = await this.readPullRequest(pr.repository, pr.number, signal);
 		if (current.headSha !== draft.headSha)
 			throw new Error("PR head changed; review the draft again");
 		const path = `${repositoryPath(pr.repository)}/${draft.location ? `pulls/${pr.number}/comments` : `issues/${pr.number}/comments`}`;
@@ -235,7 +273,7 @@ export class GitHubClient {
 			: { body: draft.body };
 		const result = z
 			.object({ id: z.number(), html_url: z.string().url() })
-			.parse(await this.request(path, { method: "POST", body }));
+			.parse(await this.request(path, { method: "POST", body, signal }));
 		return { id: result.id, url: result.html_url };
 	}
 }

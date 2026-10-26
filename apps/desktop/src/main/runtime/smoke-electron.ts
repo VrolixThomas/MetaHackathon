@@ -22,6 +22,7 @@ async function main() {
 	await mkdir(output, { recursive: true });
 	const root = await mkdtemp(join(output, "run-"));
 	app.setPath("userData", join(root, "user-data"));
+	await mkdir(app.getPath("userData"), { recursive: true });
 	app.on("window-all-closed", () => {});
 	await app.whenReady();
 	const report: Record<string, unknown> = {

@@ -124,3 +124,38 @@ test("never repeats an ambiguous network write and rejects reused confirmation I
 	await assert.rejects(uncertain.postConfirmedComment(pr, draft, confirmation), /failed/);
 	assert.equal(posts, 1);
 });
+
+test("cancellation before or during head validation cannot dispatch a comment", async () => {
+	const controller = new AbortController();
+	let requests = 0;
+	const transport = (async (_url: string | URL | Request, init?: RequestInit) => {
+		requests++;
+		assert.equal(init?.method, "GET");
+		controller.abort();
+		return Response.json({
+			number: 1,
+			html_url: pr.url,
+			title: pr.title,
+			user: { login: pr.author },
+			base: { sha: pr.baseSha },
+			head: { sha },
+		});
+	}) as typeof fetch;
+	const client = new GitHubClient(credentials, transport);
+	await assert.rejects(
+		client.postConfirmedComment(pr, draft, confirmation, controller.signal),
+		/cancelled/
+	);
+	assert.equal(requests, 1);
+	assert.throws(
+		() =>
+			client.postConfirmedComment(
+				pr,
+				draft,
+				{ ...confirmation, requestId: "after-abort" },
+				controller.signal
+			),
+		/cancelled/
+	);
+	assert.equal(requests, 1);
+});

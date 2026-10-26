@@ -44,6 +44,7 @@ export class RuntimeService {
 	>();
 	private readonly previewStops = new Map<string, () => Promise<void>>();
 	private closed = false;
+	private disposal?: Promise<void>;
 
 	constructor(private readonly options: RuntimeOptions) {
 		this.credentials = new CredentialStore(
@@ -293,7 +294,12 @@ export class RuntimeService {
 		return done;
 	}
 
-	async dispose() {
+	dispose(): Promise<void> {
+		this.disposal ??= this.disposeOwned();
+		return this.disposal;
+	}
+
+	private async disposeOwned() {
 		this.closed = true;
 		for (const operation of this.operations.values()) operation.controller.abort();
 		await Promise.allSettled([...this.operations.values()].map((operation) => operation.done));
