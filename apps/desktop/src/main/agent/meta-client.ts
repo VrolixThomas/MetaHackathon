@@ -1,3 +1,4 @@
+import { randomUUID } from "node:crypto";
 import { z } from "zod";
 import { abortable, throwIfAborted } from "./cancellation";
 import {
@@ -49,6 +50,7 @@ export type MetaStreamEvent =
 	| { type: "text"; delta: string }
 	| { type: "completed"; response: MetaCompletion };
 export interface UsageRecord {
+	attemptId: string;
 	requestId: string;
 	responseId: string | null;
 	model: StandardModel;
@@ -82,6 +84,7 @@ export class MetaClient {
 
 	async *stream(request: MetaRequest, callerSignal: AbortSignal): AsyncGenerator<MetaStreamEvent> {
 		const model = routeModel(request.workload);
+		const attemptId = randomUUID();
 		assertStandardModel(model);
 		const signal = AbortSignal.any([
 			callerSignal,
@@ -202,6 +205,7 @@ export class MetaClient {
 			if (signal.aborted) status = "cancelled";
 			if (requested) {
 				this.options.recordUsage({
+					attemptId,
 					requestId: request.requestId,
 					responseId,
 					model,

@@ -1,0 +1,122 @@
+# Agent lane integration
+
+This module supplies agent intelligence for MET-19–26. Integration owns main composition,
+root tRPC registration, renderer/preload transport and dependency manifests. Runtime owns
+repository/GitHub operations and execution; UI renders actions; voice invokes turns and
+stops audio when cancelling. MET-27 remains Stretch.
+
+## Main composition
+
+Create one `MetaClient`, `CommentDrafts` and `AgentService`, then register
+`createAgentRouter(service, drafts)` under `agent`. Await `service.dispose()` before
+disposing runtime or closing its database. The client requires a main-only asynchronous
+`getApiKey` and a synchronous `recordUsage` sink. Runtime's credential getter can supply
+the Meta key; neither this module nor renderer RPCs expose it.
+
+`AgentPorts` supplies validated preparation, current screen context, existing scenario,
+diagram and preview lookups, code-location validation, and the comment draft store.
+Artifact lookups must resolve the requested PR/revision. UI must send current screen
+selection to main so `getScreenContext(sessionId)` reflects navigation, including while
+a turn runs. The loop refreshes it before each model request and before emitting actions.
+Runtime's source reader validates line bounds; it must compare repository and pinned SHA.
+
+## UI and voice turns
+
+- `start` takes shared `AgentTurnInput` plus optional `workload: quick|deep`. It returns
+  immediately and buffers an acknowledgement. Every new turn needs a fresh request/turn
+  ID and a higher generation for the session. Retrying the current identical request is
+  idempotent. Starting the next generation cancels pending work from the previous one.
+- `poll` takes shared `PollTurn`, including `afterSequence` and `limit` (maximum 100).
+  Advance the cursor using the last returned event's sequence. The response's `sequence`
+  describes its full snapshot, not the page cursor. Drain events even when status is
+  terminal. The bounded event history retains 512 events; full text/actions allow recovery.
+- `cancel` takes shared `CancelTurnInput`. Call it on interruption/navigation; aborting
+  the renderer's IPC request alone does not stop main work. Voice must immediately stop
+  playback, invalidate its active generation, and ignore old events. Late adapter results
+  cannot emit agent effects. Client disconnect cancels local transport; no provider-side
+  background cancellation endpoint is used or promised for ordinary streaming requests.
+- `release` removes a session; dispose ends admission and cancels all active turns.
+- Apply actions only for the active session/turn/generation and current screen sequence.
+  Action delivery is a rendering request, not evidence that UI displayed it.
+
+## Drafts and posting
+
+The model has a draft tool and no posting/confirmation tool. UI obtains/edits the draft,
+then calls `confirmComment` with the exact shared confirmation payload. A changed body,
+revision or head invalidates approval. Main checks current PR head before calling runtime.
+Runtime's posting adapter must recheck the head and persist the idempotency key before
+writing. Ambiguous failures stay unresolved and cannot blindly retry with another ID.
+`originalWords` is taken from the actual turn, never from model tool arguments.
+
+## Preparation and intent
+
+`preparePullRequest` consumes runtime-read base/head contents and calls a trusted
+`runBuilds` port when mechanical candidates exist. It only establishes exact content
+equality or equal parsed JSON values/property order. Verification requires successful
+build evidence at both requested SHAs. The reason states what was checked and explicitly
+does not claim behavior equivalence. Reading order is a deterministic path-role heuristic.
+
+`prepareIntentHook` builds a redacted recorded-session payload from allowlisted fields.
+The hook caller supplies known secret values; pattern checks additionally remove common
+credentials and URL auth/query data. This is not an exhaustive secret detector. The
+reviewed canonical payload can be sent through `publishIntentHook` and runtime's posting
+port. `readRecordedTrail` validates it. Recorded Why notes require an author excerpt linked
+to the exact location; the agent's own entries do not establish author intent. `explainIntent`
+uses inspected code citations for uncovered locations and labels every result inferred.
+
+## Scenarios
+
+`proposeScenarios` sends trusted ticket/reviewer/agent briefs and runtime-inspected code
+targets to the deep model. It cannot let model output invent provenance or targets.
+`generateScenario` produces a deterministic `.mjs` test with trace calls, an assertion,
+source digest and `execution: not-run`. A unique source anchor is resolved separately
+on each revision. Arguments/expectations are JSON data, not generated executable expressions.
+
+`requestScenarioExecution` checks the exact source and digest, then invokes runtime's
+`runGeneratedTest`. It requires execution evidence for both pinned revisions before
+returning results. Failing assertions are real failed executions, not generator failures.
+`tests/fixtures/agent/scenario-c.ts` supplies the seeded expired-promo regression plan.
+
+Optional `AgentPorts.scenarioAuthoring` enables the write/run tools. It supplies inspected
+targets, storage for generated plans and traces, and runtime execution. Runtime composition
+adds the trusted worktrees to each call. Generated plans, fixture traces and executed traces
+remain distinct. Each model request includes screen context, including deep subrequests.
+
+## Model availability and accounting
+
+Official Meta documentation checked 2026-10-26 lists `muse-spark-1.3` and
+`muse-wonder-1.0`, `POST https://api.meta.ai/v1/responses`, streamed text/tool output and
+encrypted reasoning replay. The allowlist rejects Contributor variants and unknown names.
+Account entitlement and live inference remain unverified without a configured credential.
+
+- [Models](https://dev.meta.ai/docs/models)
+- [Responses protocol](https://dev.meta.ai/docs/protocols/responses)
+- [Tool calling](https://dev.meta.ai/docs/tool-calling)
+- [Pricing](https://dev.meta.ai/docs/pricing-rate-limits)
+
+Each HTTP attempt has a unique accounting ID, even when logical request IDs repeat.
+`UsageLedger` aggregates reported usage per PR and accepts a runtime persistence sink.
+Costs use dated list-price estimates, with cached-input rates. Missing terminal usage is
+unknown, not zero. Its budget helper declines admission when previous costs are unknown;
+integration must reserve/check budgets before scheduling work. Failed requests are not
+automatically retried. No prompt/key/response content is written to the usage sink.
+
+## Optional context analysis
+
+`findCodeContext` uses TypeScript's compiler API with an in-memory host over runtime-read
+source snapshots. It reports resolved call sites, caller counts, callees and a shared diagram.
+It never reads repositories itself. Dynamic dispatch, uninspected files, external modules
+and project aliases may remain unresolved. Production use requires integration's requested
+`typescript@5.9.3` runtime dependency.
+
+`assessRequestedScope` compares changes with supplied ticket/recorded-author sources.
+Findings are inferences; conflict citations must be exact excerpts. “Untraced” means no
+link was found among inspected sources, not proof that a change was never requested.
+
+## Validation
+
+Run `bun test apps/desktop/src/main/agent`, `bun run type-check`, `bun run lint`,
+`bun run test:contracts` and `bun run build`. Simulated Meta transport tests verify protocol
+and orchestration behavior; they do not establish live provider access. Root app wiring,
+runtime-backed scenario/preview actions, voice interruption and confirmed GitHub posting
+need integrated acceptance before tickets are Done.
