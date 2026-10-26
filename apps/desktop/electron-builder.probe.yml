@@ -1,0 +1,3 @@
+extends: ./electron-builder.unsigned.yml
+# The generated hello-world app has no demo repository dependency.
+extraResources: null

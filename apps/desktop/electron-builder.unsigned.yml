@@ -1,0 +1,15 @@
+extends: ./electron-builder.yml
+
+# Explicit local mechanics probe only. The release configuration requires signing.
+forceCodeSigning: false
+afterSign: null
+publish: null
+artifactName: MetaHackathon-${version}-${arch}-UNSIGNED-LOCAL.${ext}
+directories:
+  output: dist/unsigned-local
+mac:
+  identity: null
+  hardenedRuntime: false
+  notarize: false
+dmg:
+  sign: false

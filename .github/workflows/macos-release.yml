@@ -1,0 +1,84 @@
+name: Signed macOS release candidate
+
+on:
+  workflow_dispatch:
+  push:
+    tags:
+      - v*
+
+permissions:
+  contents: read
+
+concurrency:
+  group: macos-release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  signed-arm64:
+    runs-on: macos-15
+    timeout-minutes: 60
+    environment: release
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22.12.0
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: 1.3.9
+      - name: Require signing and notarization credentials
+        run: node apps/desktop/packaging/credentials.cjs
+        env:
+          CSC_LINK: ${{ secrets.MAC_CSC_LINK }}
+          CSC_KEY_PASSWORD: ${{ secrets.MAC_CSC_KEY_PASSWORD }}
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+      - name: Install locked dependencies and rebuild native modules
+        run: bun install --frozen-lockfile
+      - name: Type check
+        run: bun run type-check
+      - name: Build desktop
+        run: bun run --cwd apps/desktop build
+      - name: Sign and notarize Apple Silicon app
+        working-directory: apps/desktop
+        run: bun x --no-install electron-builder --mac dmg zip --arm64 --publish never
+        env:
+          CSC_LINK: ${{ secrets.MAC_CSC_LINK }}
+          CSC_KEY_PASSWORD: ${{ secrets.MAC_CSC_KEY_PASSWORD }}
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+      - name: Notarize final DMG and verify all release evidence
+        working-directory: apps/desktop
+        run: node packaging/finalize-release.cjs dist dist/mac-arm64/MetaHackathon.app
+        env:
+          CSC_LINK: ${{ secrets.MAC_CSC_LINK }}
+          CSC_KEY_PASSWORD: ${{ secrets.MAC_CSC_KEY_PASSWORD }}
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+      - name: Preserve reviewed release candidate
+        uses: actions/upload-artifact@v4
+        with:
+          name: signed-macos-arm64-${{ github.sha }}
+          if-no-files-found: error
+          path: |
+            apps/desktop/dist/*.dmg
+            apps/desktop/dist/*.zip
+            apps/desktop/dist/*.blockmap
+            apps/desktop/dist/latest-mac.yml
+            apps/desktop/dist/signing-evidence.json
+          retention-days: 14
+      - name: Preserve failed notarization diagnostics
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: notarization-diagnostics-${{ github.sha }}
+          if-no-files-found: warn
+          path: apps/desktop/dist/notarization-*.json
+          retention-days: 14
+
+  # Nothing is published automatically. After reviewing the verified artifact,
+  # upload these exact DMG/ZIP/blockmap/latest-mac.yml files to a GitHub Release.
+  # Publishing that release makes it available to electron-updater.
