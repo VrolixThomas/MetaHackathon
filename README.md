@@ -1,8 +1,8 @@
 # MetaHackathon
 
-An empty Electron app using the desktop foundation from the local SuperiorSwarm repository.
-The window intentionally renders no content. There are no feature routes, database tables,
-sample data, or external service requirements.
+A voice-enabled macOS workspace for investigating GitHub pull requests. The committed Electron
+foundation currently opens an empty window. The integration bootstrap adds shared validated
+contracts and a fixture-only tRPC router so feature lanes can build in parallel.
 
 ## Stack
 
@@ -42,6 +42,7 @@ run `bun run --filter @metahackathon/desktop postinstall`.
 ```sh
 bun run type-check
 bun run lint
+bun run test:contracts
 bun run build
 bun run format
 ```
@@ -53,10 +54,10 @@ To run that production build locally, use `bun run --filter @metahackathon/deskt
 
 ```text
 apps/desktop/
-  src/main/          Electron lifecycle, SQLite, and the empty tRPC router
+  src/main/          Electron lifecycle, SQLite, and the tRPC root router
   src/preload/       Narrow, context-isolated IPC bridge
   src/renderer/      Empty React app with tRPC and TanStack Query providers
-  src/shared/        Shared IPC types
+  src/shared/        Validated review contracts, deterministic fixtures, IPC types
 tooling/typescript/  Shared strict TypeScript configs
 ```
 
@@ -67,6 +68,26 @@ The app creates an empty `metahackathon.db` in Electron's per-user application d
 Add tables in `apps/desktop/src/main/db/schema.ts`, then generate migrations with
 `bun run --filter @metahackathon/desktop db:generate`. Generated migrations are copied into
 build output; add migration execution before introducing tables that the app uses.
+
+## Shared contracts and lane bootstrap
+
+See [AGENTS.md](AGENTS.md) for ownership, ticket mapping, handoff requirements and interface rules.
+Zod schemas and inferred TypeScript types live in `apps/desktop/src/shared/contracts/`.
+`apps/desktop/src/shared/fixtures/review.ts` exports `getReviewFixture()` and its validation schema.
+It returns fresh, deterministic examples for PR preparation, triage, recorded/inferred Why notes,
+screen context, agent actions, scenario C, diagrams, phone preview markers, comment drafts and
+confirmations, voice state and cancellation.
+
+The registered `bootstrap.contract` query describes the contract version and fixture IDs.
+`bootstrap.fixture({ fixtureId: "shop-web-promo-v1" })` returns the bundle over the existing
+typed tRPC client and isolated preload bridge. Both inputs and outputs are validated.
+There are no subscriptions yet; lane routers and event transport are registered by integration.
+
+All sample evidence is explicitly marked `fixture`. The source URLs, commit hashes, code lines
+and marker bounds are illustrative. Fetching a fixture does not execute a scenario, start a
+preview server, access a microphone or post a GitHub comment. Real execution evidence requires
+a run ID, full commit SHA, command, timestamps, exit code and log URL. Posting requires a
+separate explicit confirmation of the exact draft revision, body and PR head.
 
 ## Local packaging
 
