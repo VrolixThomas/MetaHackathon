@@ -109,7 +109,12 @@ export function findCodeContext(raw: unknown) {
 		if (ts.isFunctionLike(node) && "body" in node && node.body) {
 			const name =
 				node.name?.getText() ??
-				(ts.isVariableDeclaration(node.parent) ? node.parent.name.getText() : "anonymous callback");
+				(ts.isConstructorDeclaration(node) &&
+				(ts.isClassDeclaration(node.parent) || ts.isClassExpression(node.parent))
+					? `${node.parent.name?.getText() ?? "anonymous class"} constructor`
+					: ts.isVariableDeclaration(node.parent)
+						? node.parent.name.getText()
+						: "anonymous callback");
 			nodes.set(node, makeNode(node, name));
 		}
 		ts.forEachChild(node, visitDefinitions);
