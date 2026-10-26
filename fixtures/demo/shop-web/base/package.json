@@ -1,0 +1,10 @@
+{
+	"name": "shop-web-demo",
+	"private": true,
+	"type": "module",
+	"scripts": {
+		"build": "node --experimental-strip-types scenarios/build.mjs",
+		"scenario": "node --experimental-strip-types scenarios/run.mjs",
+		"preview": "node --experimental-strip-types checkout/server.mjs"
+	}
+}

@@ -37,12 +37,16 @@ bun install --frozen-lockfile
 bun run type-check
 bun run lint
 bun run test:contracts
+bun run test:integration
 bun run build
 bun run --filter @metahackathon/desktop preview
 ```
 
 Run behavior checks appropriate to the handoff; include actual results and limitations.
 Use targeted formatting instead of formatting unrelated files. Runtime owns packaging checks.
+`test:integration` launches the built Electron app with temporary user data, exercises the
+registered runtime over the real preload/IPC bridge, and verifies shutdown cleanup. It uses
+local seeded repositories and no live provider credentials or GitHub writes.
 
 ## Shared interfaces (v1)
 
@@ -61,6 +65,10 @@ Use targeted formatting instead of formatting unrelated files. Runtime owns pack
 - Use the existing `window.electron.trpc.request` transport; bootstrap exposes
   `bootstrap.contract` and `bootstrap.fixture`. IPC supports query/mutation, not subscriptions.
   Request event/stream or lifecycle wiring through integration before implementing it.
+- `AgentEvent`, `PollTurn` and `PollTurnResult` define bounded polling (maximum 100 events).
+  Result `sequence` is the latest snapshot; page forward using the last returned event sequence.
+  `GeneratedScenario` preserves the pinned PR, origin, source and digest with `execution: "not-run"`.
+  Agent verifies source/digest before runtime executes it; router registration remains integration work.
 - Agent turns/actions, voice state and cancellation carry session ID, turn ID and generation. On interruption,
   stop audio, abort work and reject late events from the cancelled generation. Transport abort
   alone does not cancel main-process work; voice/agent must implement the cancellation RPC.
