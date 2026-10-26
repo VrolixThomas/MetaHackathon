@@ -65,7 +65,11 @@ export function createAgentComposition(options: AgentCompositionOptions) {
 	});
 	const client = new MetaClient({
 		getApiKey: () =>
-			jobs.run(async () => (await options.getRuntime().credentials.get("meta")) ?? null),
+			jobs.run(async () => {
+				const key = await options.getRuntime().credentials.get("meta");
+				if (!key) throw new Error("Meta credential unavailable. Add your key in Settings.");
+				return key;
+			}),
 		recordUsage: (record) => usage.record(accounting.getStore() ?? "unattributed", record),
 		fetch: (input, init) =>
 			jobs.run(async (signal) => {

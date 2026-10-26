@@ -1,4 +1,5 @@
-import { join } from "node:path";
+import { dirname, join } from "node:path";
+import { fileURLToPath } from "node:url";
 import { BrowserWindow, app, safeStorage } from "electron";
 import electronUpdater from "electron-updater";
 import { openDatabase } from "./db";
@@ -8,6 +9,7 @@ import { setupTRPCIPC } from "./trpc/ipc-link";
 import { startUpdateCheck } from "./updates";
 
 let mainWindow: BrowserWindow | null = null;
+const mainDirectory = dirname(fileURLToPath(import.meta.url));
 let database: ReturnType<typeof openDatabase> | undefined;
 let shuttingDown = false;
 let shutdownFinished = false;
@@ -20,7 +22,7 @@ function createWindow(): void {
 		show: false,
 		backgroundColor: "#ffffff",
 		webPreferences: {
-			preload: join(__dirname, "../preload/index.cjs"),
+			preload: join(mainDirectory, "../preload/index.cjs"),
 			contextIsolation: true,
 			nodeIntegration: false,
 			sandbox: true,
@@ -38,7 +40,7 @@ function createWindow(): void {
 	if (!app.isPackaged && rendererURL) {
 		void mainWindow.loadURL(rendererURL);
 	} else {
-		void mainWindow.loadFile(join(__dirname, "../renderer/index.html"));
+		void mainWindow.loadFile(join(mainDirectory, "../renderer/index.html"));
 	}
 }
 
@@ -50,7 +52,7 @@ app
 			userDataPath: app.getPath("userData"),
 			fixturesPath: app.isPackaged
 				? join(process.resourcesPath, "demo")
-				: join(__dirname, "../../../../fixtures/demo"),
+				: join(mainDirectory, "../../../../fixtures/demo"),
 			encryption: safeStorage,
 			createPreviewPage: createElectronPreviewPage,
 			submissionLedger: database.runtime,

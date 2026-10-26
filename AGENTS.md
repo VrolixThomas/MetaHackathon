@@ -59,6 +59,9 @@ local seeded repositories and no live provider credentials or GitHub writes.
   run ID, command, commit, timestamps, exit code and log URL. Never relabel fixtures as runs.
   Recorded Why notes require a cited intent source; inferred notes carry an explanation.
   Mechanical verification requires successful execution evidence on both PR revisions.
+- Optional `PRPreparation.sourceContext` carries bounded verbatim `CodeExcerpt` records with
+  repository/SHA/line identity. It grounds model requests without inventing semantic Why notes;
+  omitted ranges remain uninspected by that payload.
 - `AgentTurnInput` always includes `ScreenContext`. `AgentAction` describes UI effects or
   scenario requests; lane modules export routers from their owned directories. Integration
   alone registers routers in `main/trpc/routers/index.ts` and wires main/preload lifecycle.

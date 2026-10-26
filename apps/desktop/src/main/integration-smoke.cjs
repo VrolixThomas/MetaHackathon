@@ -7,6 +7,16 @@ const net = require("node:net");
 const { app, BrowserWindow } = require("electron");
 const reportPath = join(__dirname, "../../out/integration-smoke-report.json");
 rmSync(reportPath, { force: true });
+const externalRequests = [];
+const originalFetch = globalThis.fetch;
+globalThis.fetch = (input, options) => {
+	const url = new URL(typeof input === "string" || input instanceof URL ? input : input.url);
+	if (!["localhost", "127.0.0.1", "[::1]"].includes(url.hostname)) {
+		externalRequests.push(url.origin);
+		return Promise.reject(new Error("Integration smoke forbids external provider requests"));
+	}
+	return originalFetch(input, options);
+};
 const userData = mkdtempSync(join(tmpdir(), "metahackathon-integrated-"));
 app.setPath("userData", userData);
 const hardDeadline = setTimeout(() => {
@@ -112,6 +122,45 @@ const portOpen = (port) =>
 	assert.ok(Array.isArray(statuses));
 	assert.equal(statuses.length, 3);
 	assert.ok(statuses.every((row) => row.configured === false && !("secret" in row)));
+	const preparation = value(await rpc("mutation", "review.prepare", { prId: pr.id }));
+	assert.ok(
+		preparation.sourceContext.some(
+			(entry) =>
+				entry.location.path === source.path &&
+				entry.location.revision === "head" &&
+				entry.location.commitSha === pr.headSha &&
+				entry.text.includes("throw new PromoExpiredError")
+		)
+	);
+	const turn = {
+		requestId: "integrated-no-key",
+		sessionId: "integrated-agent",
+		turnId: "turn-1",
+		generation: 1,
+		text: "What changed?",
+		screenContext,
+	};
+	value(await rpc("mutation", "agent.start", turn));
+	let polled;
+	for (let attempt = 0; attempt < 100; attempt++) {
+		polled = value(
+			await rpc("query", "agent.poll", {
+				sessionId: turn.sessionId,
+				turnId: turn.turnId,
+				generation: turn.generation,
+				afterSequence: 0,
+				limit: 100,
+			})
+		);
+		if (polled.status !== "running") break;
+		await new Promise((resolve) => setTimeout(resolve, 50));
+	}
+	assert.equal(polled.status, "error");
+	assert.ok(polled.events.some((event) => event.kind === "acknowledgement"));
+	assert.ok(
+		polled.events.some((event) => event.kind === "error" && event.message.includes("credential"))
+	);
+	value(await rpc("mutation", "agent.release", { sessionId: turn.sessionId }));
 	const scenario = value(
 		await rpc("mutation", "runtime.runScenario", {
 			requestId: "integrated-scenario-c",
@@ -123,6 +172,10 @@ const portOpen = (port) =>
 	assert.equal(scenario.trace.after.evidence.kind, "execution");
 	assert.equal(scenario.trace.before.commitSha, pr.baseSha);
 	assert.equal(scenario.trace.after.commitSha, pr.headSha);
+	const catalogTrace = value(
+		await rpc("query", "artifacts.getScenario", { id: scenario.trace.id, prId: pr.id })
+	);
+	assert.deepEqual(catalogTrace, scenario.trace);
 	const thrown = scenario.trace.after.steps.find((step) => step.outcome === "throw");
 	assert.ok(thrown);
 	const throwSource = value(
@@ -153,6 +206,10 @@ const portOpen = (port) =>
 	);
 	assert.equal(phone.evidence.kind, "execution");
 	assert.equal(desktop.evidence.kind, "execution");
+	assert.deepEqual(
+		value(await rpc("query", "artifacts.getPreview", { id: phone.id, prId: pr.id })),
+		phone
+	);
 	assert.equal(phone.viewport.width, 390);
 	assert.equal(desktop.viewport.width, 1024);
 	assert.notEqual(phone.url, desktop.url);
@@ -177,6 +234,11 @@ const portOpen = (port) =>
 	assert.equal(prefs.nodeIntegration, false);
 	const report = {
 		mode: "actual-built-electron-preload-ipc",
+		agent: {
+			missingKeyRejected: polled.status === "error",
+			sourceExcerpts: preparation.sourceContext.length,
+			catalogRetrieval: true,
+		},
 		userData,
 		pr,
 		sourceLines: source.content.split("\n").length,
@@ -189,6 +251,7 @@ const portOpen = (port) =>
 		credentials: "empty temporary store, no secret getter",
 		note: "Executed against local seeded repositories; no live model, voice, or GitHub comment calls",
 	};
+	assert.deepEqual(externalRequests, []);
 	writeFileSync(reportPath, JSON.stringify(report, null, 2));
 	console.log(
 		"INTEGRATED_SMOKE_PASS: real seeded PR/source/scenario C/phone+desktop DOM previews/closed ports over sandboxed Electron IPC"

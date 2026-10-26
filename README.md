@@ -1,8 +1,9 @@
 # MetaHackathon
 
-A voice-enabled macOS workspace for investigating GitHub pull requests. The committed Electron
-foundation currently opens an empty window. Integration provides validated shared contracts,
-explicit reference fixtures, and a main-process runtime for local Git scenarios and previews.
+A macOS workspace for investigating GitHub pull requests. The renderer provides the review
+sidebar, diff/Why lens and artifacts. Integration supplies validated contracts, a real local
+Git/scenario/preview runtime, and main-process agent APIs. Live agent/voice UI bindings and
+provider acceptance remain tracked integration work.
 
 ## Built during the hackathon
 
@@ -71,7 +72,7 @@ To run that production build locally, use `bun run --filter @metahackathon/deskt
 apps/desktop/
   src/main/          Electron lifecycle, SQLite, and the tRPC root router
   src/preload/       Narrow, context-isolated IPC bridge
-  src/renderer/      Empty React app with tRPC and TanStack Query providers
+  src/renderer/      Review workspace, artifacts and typed service adapters
   src/shared/        Validated review contracts, deterministic fixtures, IPC types
 tooling/typescript/  Shared strict TypeScript configs
 ```
@@ -120,15 +121,30 @@ The report is written to `apps/desktop/out/integration-smoke-report.json`. These
 executions of seeded repositories. The check does not use provider credentials, voice, or
 GitHub comment writes. Signed distribution and real upgrades require separate verification.
 
+The `agent`, `review`, `artifacts` and `screen` routers provide main-process turns, preparation,
+catalog lookup and ordered screen updates. Preparation includes bounded, verbatim source
+excerpts pinned to repository/SHA/line ranges, so the model receives code as well as triage
+metadata. Excerpts do not claim recorded intent or execution. Without a configured Meta key,
+the native check verifies acknowledgement and the explicit setup error without an external call.
+
 ## Local packaging
 
 On macOS:
 
 ```sh
-bun run pack  # Unpacked .app
-bun run dist  # DMG and ZIP
+bun run pack  # Signed unpacked .app; requires signing credentials
+bun run dist  # Signed/notarized DMG and ZIP; requires release credentials
 ```
 
-Artifacts are written to `apps/desktop/dist`. The initial configuration builds unsigned local
-artifacts and disables publishing. Configure app identity, icons, signing, and notarization
-in `apps/desktop/electron-builder.yml` before distributing the app.
+Artifacts are written to `apps/desktop/dist`. For a local unsigned development probe, build
+the app and use the explicit unsigned profile:
+
+```sh
+bun run build
+cd apps/desktop
+METAHACKATHON_UNSIGNED_LOCAL=1 bunx --no-install electron-builder --config electron-builder.unsigned.yml --mac --dir --publish never
+```
+
+See [packaging instructions](apps/desktop/packaging/README.md) for local probes and release
+gates. Ad-hoc/local validation is separate from Developer ID, notarization and signed-update
+acceptance. Publishing is disabled during builds.

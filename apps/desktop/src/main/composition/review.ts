@@ -14,6 +14,7 @@ import type { MetaClient } from "../agent/meta-client";
 import { preparePullRequest } from "../agent/preparation";
 import type { ScreenContextStore } from "../agent/screen-context";
 import type { ArtifactCatalog } from "./catalog";
+import { sourceExcerpts } from "./excerpts";
 import type { MainJobs } from "./jobs";
 import { type PinnedSources, isSeeded, sameRevision } from "./source";
 
@@ -42,7 +43,12 @@ export class ReviewPreparation {
 			if (!prep || !sameRevision(prep.pr, pr)) {
 				const paths = await this.sources.getRuntime().changedFiles(prId);
 				active.throwIfAborted();
-				const files = [];
+				const files: {
+					path: string;
+					baseContent: string | null;
+					headContent: string | null;
+					evidence: Evidence;
+				}[] = [];
 				for (const path of paths) {
 					const base = await this.sources.source(pr, "base", path, active);
 					const head = await this.sources.source(pr, "head", path, active);
@@ -86,6 +92,16 @@ export class ReviewPreparation {
 				);
 				active.throwIfAborted();
 				this.sources.assertCurrent(pr);
+				const ordered = prep.files
+					.map((entry) => files.find((file) => file.path === entry.path))
+					.filter((file): file is (typeof files)[number] => file !== undefined);
+				prep = PRPreparationSchema.parse({
+					...prep,
+					sourceContext: sourceExcerpts(pr, ordered, (path, revision) =>
+						this.sources.evidence(pr, path, revision)
+					),
+					summary: `${prep.summary} Source context contains bounded verbatim prefixes; omitted ranges are not supplied.`,
+				});
 				this.preparations.set(prId, prep);
 			}
 			return PRPreparationSchema.parse({
