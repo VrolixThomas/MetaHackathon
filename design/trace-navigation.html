@@ -1,0 +1,27 @@
+  <div class="tr-shell">
+    <nav class="tr-rail" aria-label="Workspace tools">
+      <button type="button" aria-label="Review workspace" class="tr-rail-active" data-page="workspace"><i data-lucide="git-pull-request" aria-hidden="true"></i></button>
+      <button type="button" aria-label="Search decisions" data-page="decisions"><i data-lucide="search" aria-hidden="true"></i></button>
+      <button type="button" aria-label="Implementation decisions" data-page="decisions"><i data-lucide="files" aria-hidden="true"></i></button>
+      <button type="button" aria-label="Shared agent sessions" data-page="sessions"><i data-lucide="messages-square" aria-hidden="true"></i></button>
+      <button type="button" aria-label="Review agent conversation" data-agent-focus="true"><i data-lucide="sparkles" aria-hidden="true"></i></button>
+      <span class="tr-rail-space"></span>
+      <span class="tr-avatar" aria-label="You, reviewer">JD</span>
+    </nav>
+    <aside class="tr-sidebar" aria-label="Pull request navigation">
+      <div class="tr-side-head"><span>Reviews</span><i data-lucide="panel-left" aria-hidden="true"></i></div>
+      <div class="tr-side-item"><i data-lucide="folder-git-2" aria-hidden="true"></i><span>acme / orbit</span></div>
+      <div class="tr-side-label">Current review</div>
+      <button type="button" class="tr-side-item tr-side-active" data-page="workspace"><i data-lucide="git-pull-request" aria-hidden="true"></i><span>Project views</span><span class="tr-side-count">#128</span></button>
+      <button type="button" class="tr-side-item" data-page="decisions"><i data-lucide="git-branch" aria-hidden="true"></i><span>Decisions</span><span class="tr-side-count">3</span></button>
+      <button type="button" class="tr-side-item" data-page="sessions"><i data-lucide="messages-square" aria-hidden="true"></i><span>Agent sessions</span><span class="tr-side-count">2</span></button>
+      <div class="tr-side-label">Change walkthrough</div>
+      <button type="button" class="tr-side-item" data-file="filters" data-sidebar-file="true"><i data-lucide="braces" aria-hidden="true"></i><span>useTaskFilters.ts</span></button>
+      <button type="button" class="tr-side-item" data-file="board" data-sidebar-file="true"><i data-lucide="component" aria-hidden="true"></i><span>TaskBoard.tsx</span></button>
+      <button type="button" class="tr-side-item" data-file="tests" data-sidebar-file="true"><i data-lucide="flask-conical" aria-hidden="true"></i><span>TaskBoard.test.tsx</span></button>
+      <div class="tr-side-label">People</div>
+      <div class="tr-side-item"><span class="tr-avatar" style="width:20px;height:20px;font-size:8px">AL</span><span>Alex</span><span class="tr-side-count">Author</span></div>
+      <div class="tr-side-item"><span class="tr-avatar" style="width:20px;height:20px;font-size:8px">JD</span><span>You</span><span class="tr-side-count">Reviewer</span></div>
+      <div class="tr-side-footer">Design exploration<br>Agent and voice actions are simulated.</div>
+    </aside>
+    <main class="tr-main">

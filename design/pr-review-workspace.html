@@ -1,0 +1,264 @@
+<style>
+#trace-design{color-scheme:dark;--tr-bg:#0f0f0f;--tr-panel:#111111;--tr-ink:#e8e8e8;--tr-muted:#969696;--tr-line:#262626;--tr-soft:#1a1a1a;--tr-green:#9bccad;--tr-green-bg:#192c21;--tr-red:#e9a49c;--tr-red-bg:#33201f;--tr-purple:#b8b8b8;--tr-purple-bg:#242424;--tr-accent:#89b8ed;font-family:-apple-system,BlinkMacSystemFont,"Inter Variable","Segoe UI",sans-serif;font-size:13px;line-height:1.5;color:var(--tr-ink);background:var(--tr-bg);border:1px solid var(--tr-line);border-radius:9px;overflow:clip}
+#trace-design *{box-sizing:border-box}
+#trace-design button,#trace-design input,#trace-design textarea,#trace-design select{font:inherit}
+#trace-design button{cursor:pointer;color:inherit;border:1px solid var(--tr-line);background:var(--tr-panel);border-radius:7px;padding:6px 10px;display:inline-flex;align-items:center;justify-content:center;gap:6px;white-space:normal}
+#trace-design button:disabled{cursor:default;opacity:.38}
+#trace-design button:focus-visible,#trace-design input:focus-visible,#trace-design textarea:focus-visible,#trace-design select:focus-visible{outline:2px solid var(--tr-accent);outline-offset:3px}
+#trace-design button:hover:not(:disabled){background:#222}
+#trace-design button.tr-primary{background:#eaeaea;color:#151515;border-color:#eaeaea}
+#trace-design button.tr-primary:hover:not(:disabled){background:#fff}
+#trace-design button.tr-quiet{border-color:transparent;background:transparent;color:#aaa}
+#trace-design button.tr-quiet:hover:not(:disabled){background:#202020;color:#eee}
+#trace-design button.tr-selected{background:#242424;font-weight:500}
+#trace-design svg{flex-shrink:0;width:15px;height:15px;stroke-width:1.5}
+#trace-design .tr-row{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+#trace-design .tr-between{justify-content:space-between}
+#trace-design .tr-muted{color:var(--tr-muted)}
+#trace-design .tr-small{font-size:11px}
+#trace-design .tr-mono{font-family:"SFMono-Regular",Consolas,monospace}
+#trace-design .tr-top{padding:9px 14px;background:#101010;border-bottom:1px solid var(--tr-line);min-height:45px}
+#trace-design .tr-brand{font-weight:500;font-size:16px;letter-spacing:-.6px;gap:8px}
+#trace-design .tr-brand-mark{color:#d6d6d6;font-size:19px;line-height:1}
+#trace-design .tr-slash{color:#555;margin:0 6px}
+#trace-design .tr-avatar{width:24px;height:24px;border-radius:50%;background:#2e3037;color:#c7c9d0;display:inline-flex;justify-content:center;align-items:center;font-size:9px;font-weight:500;flex-shrink:0}
+#trace-design .tr-top .tr-avatar{background:#3b352e;color:#dfc8b0}
+#trace-design .tr-shell{display:grid;grid-template-columns:46px 190px minmax(0,1fr);align-items:stretch;min-height:790px}
+#trace-design .tr-rail{border-right:1px solid var(--tr-line);padding:10px 6px;display:flex;flex-direction:column;gap:9px;align-items:center;background:#101010}
+#trace-design .tr-rail button{border:0;background:transparent;color:#a0a0a0;width:32px;height:32px;padding:7px;border-radius:8px}
+#trace-design .tr-rail button.tr-rail-active{background:#222;color:#eee}
+#trace-design .tr-rail-space{flex:1;min-height:40px}
+#trace-design .tr-sidebar{border-right:1px solid var(--tr-line);padding:15px 9px;background:#101010;min-width:0}
+#trace-design .tr-side-head{display:flex;align-items:center;justify-content:space-between;padding:0 7px 16px;font-weight:500;font-size:12px}
+#trace-design .tr-side-label{font-size:10px;color:#808080;padding:19px 7px 7px}
+#trace-design .tr-side-item{display:flex;align-items:center;gap:8px;padding:8px 7px;color:#a9a9a9;font-size:11px;min-width:0}
+#trace-design button.tr-side-item{width:100%;justify-content:flex-start;background:transparent;border:0;border-radius:6px;text-align:left}
+#trace-design button.tr-side-item.tr-side-active{color:#eee;background:#222}
+#trace-design .tr-side-item span{min-width:0;overflow-wrap:anywhere}
+#trace-design .tr-side-count{margin-left:auto;color:#777;font-size:10px}
+#trace-design .tr-side-footer{border-top:1px solid var(--tr-line);margin:24px 5px 0;padding-top:13px;color:#777;font-size:10px}
+#trace-design .tr-main{min-width:0;background:#0f0f0f}
+#trace-design .tr-header{padding:22px 23px 0;background:#0f0f0f}
+#trace-design .tr-title{font-size:23px;line-height:1.4;font-weight:500;letter-spacing:-.75px;margin:0 0 10px;color:#f2f2f2}
+#trace-design .tr-tag{display:inline-flex;align-items:center;gap:5px;background:#222;color:#c2c2c2;font-size:10px;border-radius:4px;padding:2px 6px;white-space:nowrap}
+#trace-design #tr-pr-state{background:#1c2a21;color:#98c5a6}
+#trace-design .tr-tag.tr-lilac{background:#252525;color:#a8a8a8}
+#trace-design .tr-nav{display:flex;align-items:center;gap:20px;margin-top:19px;flex-wrap:wrap;border-bottom:1px solid var(--tr-line)}
+#trace-design .tr-nav button{padding:10px 0;border:0;border-bottom:1px solid transparent;border-radius:0;background:transparent;color:#888;font-size:12px}
+#trace-design .tr-nav button[aria-selected=true]{color:#eee;border-bottom-color:#ddd}
+#trace-design .tr-count{font-size:10px;border-radius:3px;padding:0 4px;background:#222;color:#999}
+#trace-design .tr-body{padding:16px 22px 20px}
+#trace-design .tr-walkthrough{margin:0 0 14px;display:flex;align-items:center;gap:3px;flex-wrap:wrap;border-bottom:1px solid var(--tr-line);padding-bottom:10px}
+#trace-design .tr-walkthrough button{flex:1;padding:6px 7px;font-size:11px;min-width:0;background:transparent;border-color:transparent;border-radius:5px;color:#898989;justify-content:flex-start}
+#trace-design .tr-walkthrough button[aria-pressed=true]{color:#e4e4e4;background:#222;border-color:transparent}
+#trace-design .tr-step{color:#777;font-size:10px;flex-shrink:0;margin-right:2px}
+#trace-design .tr-arrow{font-size:11px;color:#444}
+#trace-design .tr-grid{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:0;align-items:stretch;border:1px solid var(--tr-line);border-radius:7px;overflow:clip}
+#trace-design .tr-pane{background:#111;min-width:0;overflow:clip;border:0;border-radius:0;display:flex;flex-direction:column}
+#trace-design .tr-pane+.tr-pane{border-left:1px solid var(--tr-line)}
+#trace-design .tr-pane-head{border-bottom:1px solid var(--tr-line);padding:9px 11px;min-height:44px;font-size:12px;background:#151515}
+#trace-design .tr-pane-head button{font-size:10px;padding:4px 6px}
+#trace-design .tr-code-head{padding:10px 12px;background:#111;font-size:10px;border-bottom:1px solid #202020;overflow-wrap:anywhere;min-height:39px}
+#trace-design .tr-code{padding:15px 0 20px;min-height:315px;font-size:11px;line-height:1.95;flex:1;background:#101010}
+#trace-design .tr-line{display:flex;padding:0 12px 0 0;min-height:22px}
+#trace-design .tr-ln{width:37px;text-align:right;padding-right:12px;flex-shrink:0;color:#616161;user-select:none}
+#trace-design .tr-line code{background:none;border:0;border-radius:0;padding:0;color:#c7c7c7;font:inherit;white-space:pre-wrap;overflow-wrap:anywhere;min-width:0}
+#trace-design .tr-add{background:#16251b}
+#trace-design .tr-add code{color:#acd0b6}
+#trace-design .tr-remove{background:#2d1c1b}
+#trace-design .tr-remove code{color:#dca6a0}
+#trace-design .tr-kw{color:#c9afd9}
+#trace-design .tr-string{color:#b4c7a3}
+#trace-design .tr-comment{color:#6e786e}
+#trace-design .tr-code-foot{border-top:1px solid var(--tr-line);padding:8px 11px;font-size:10px;color:#787878;margin-top:auto;background:#131313}
+#trace-design .tr-preview{position:relative;padding:19px 16px;min-height:354px;background:#151515;flex:1}
+#trace-design .tr-app-brand{font-weight:500;font-size:12px;letter-spacing:2px;color:#aaa}
+#trace-design .tr-app-title{font-size:20px;font-weight:500;margin:18px 0 3px;letter-spacing:-.7px;color:#eee}
+#trace-design .tr-app-sub{font-size:10px;color:#777;margin-bottom:20px}
+#trace-design .tr-controls{display:flex;align-items:center;justify-content:space-between;gap:7px;flex-wrap:wrap;margin:13px 0 15px}
+#trace-design .tr-controls select{font-size:10px;max-width:130px;border:1px solid #343434;padding:6px 8px;border-radius:5px;background:#1b1b1b;color:#c3c3c3}
+#trace-design .tr-view-toggle{display:flex;gap:2px;border:1px solid #303030;border-radius:5px;padding:2px;background:#171717}
+#trace-design .tr-view-toggle button{padding:4px 6px;font-size:10px;border:0;border-radius:3px;color:#8a8a8a;background:transparent}
+#trace-design .tr-view-toggle button.tr-selected{background:#2b2b2b;color:#ddd}
+#trace-design .tr-tasks{display:grid;grid-template-columns:1fr 1fr;gap:9px}
+#trace-design .tr-task{border:1px solid #303030;padding:12px 10px;background:#1c1c1c;border-radius:6px;min-width:0}
+#trace-design .tr-task-label{font-size:9px;color:#8f9fb6;margin-bottom:8px}
+#trace-design .tr-task-name{font-size:11px;font-weight:500;line-height:1.5;margin-bottom:18px;color:#d8d8d8}
+#trace-design .tr-task-foot{display:flex;justify-content:space-between;align-items:center;gap:4px;font-size:9px;color:#737373}
+#trace-design .tr-task-foot .tr-avatar{width:18px;height:18px;font-size:7px}
+#trace-design .tr-tasks.tr-list{grid-template-columns:1fr}
+#trace-design .tr-tasks.tr-list .tr-task{display:flex;align-items:center;justify-content:space-between;gap:8px;padding:9px}
+#trace-design .tr-tasks.tr-list .tr-task-name,#trace-design .tr-tasks.tr-list .tr-task-label{margin:0}
+#trace-design .tr-preview.tr-annotating{outline:1px solid var(--tr-accent);outline-offset:-2px;cursor:crosshair}
+#trace-design .tr-annotation-banner{background:#1c2634;color:#a5c7ed;font-size:11px;padding:7px 11px;border-bottom:1px solid #354152}
+#trace-design .tr-pin{position:absolute;right:18px;top:140px;background:#8ab4e4;color:#132338;width:23px;height:23px;border-radius:50% 50% 50% 0;transform:rotate(-45deg);display:flex;align-items:center;justify-content:center;pointer-events:none;border:2px solid #101010}
+#trace-design .tr-pin span{transform:rotate(45deg);font-size:10px}
+#trace-design .tr-statusline{border-top:1px solid var(--tr-line);padding:8px 11px;color:#777;font-size:10px;background:#131313}
+#trace-design .tr-dot{display:inline-block;width:5px;height:5px;border-radius:50%;background:#88b79b;margin-right:4px}
+#trace-design .tr-agent{margin-top:16px;border:1px solid var(--tr-line);border-radius:8px;background:#111;overflow:clip;display:flex;flex-direction:column;min-width:0}
+#trace-design .tr-agent-head{padding:11px 13px;border-bottom:1px solid var(--tr-line);font-size:12px;background:#151515}
+#trace-design .tr-agent-logo{height:22px;width:22px;background:transparent;color:#c8c8c8;display:inline-flex;align-items:center;justify-content:center}
+#trace-design .tr-agent-content{padding:16px 15px;font-size:12px;color:#bdbdbd;flex:1}
+#trace-design .tr-agent-content p{margin:0 0 11px}
+#trace-design .tr-quick{display:flex;flex-wrap:wrap;gap:6px;margin-top:15px}
+#trace-design .tr-quick button{font-size:11px;padding:6px 8px;border-color:#303030;background:#191919;color:#a9a9a9}
+#trace-design .tr-compose{margin:0 13px 13px;border:1px solid #333;border-radius:13px;background:#1b1b1b;padding:10px 11px}
+#trace-design .tr-compose textarea{background:transparent;resize:vertical;border:0;min-height:44px;width:100%;color:#ddd;padding:7px 0;font-size:12px;line-height:1.6}
+#trace-design .tr-compose textarea::placeholder{color:#747474}
+#trace-design .tr-compose-tools{display:flex;align-items:center;justify-content:space-between;gap:7px;flex-wrap:wrap;margin-top:4px}
+#trace-design .tr-compose-tools button{font-size:11px;padding:5px 7px}
+#trace-design .tr-compose-hint{color:#929292;font-size:10px}
+#trace-design .tr-context-chips{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:10px}
+#trace-design .tr-context-chips span{font-size:10px;background:#222;padding:3px 6px;border-radius:4px;color:#999}
+#trace-design .tr-thread{padding-left:13px;margin-left:0;border-left:1px solid #373737}
+#trace-design .tr-thread-user{margin-bottom:17px}
+#trace-design .tr-proposal{border:1px solid #333;border-radius:9px;padding:12px;margin:12px 0;background:#191919}
+#trace-design .tr-proposal-title{font-weight:500;margin-bottom:7px;color:#e2e2e2}
+#trace-design .tr-proposal-actions{margin-top:13px;display:flex;gap:7px;flex-wrap:wrap}
+#trace-design .tr-proposal-actions button{font-size:11px}
+#trace-design .tr-checks{display:flex;flex-direction:column;gap:10px;padding:18px 13px;font-size:11px;min-height:354px;flex:1;background:#111}
+#trace-design .tr-check-row{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:12px 0;border-bottom:1px solid var(--tr-line)}
+#trace-design .tr-pass{color:#9bccad}
+#trace-design .tr-fail{color:#dba09a}
+#trace-design .tr-bottom{border-top:1px solid var(--tr-line);padding:12px 22px;background:#101010;font-size:11px}
+#trace-design .tr-bottom button{font-size:11px}
+#trace-design .tr-decision{border-bottom:1px solid var(--tr-line);padding:17px 2px;font-size:12px}
+#trace-design .tr-decision:last-child{border-bottom:0}
+#trace-design .tr-decision-title{font-weight:500;margin-bottom:6px}
+#trace-design .tr-decision-meta{font-size:10px;color:#777;margin-top:9px}
+#trace-design .tr-context-content{padding:17px 15px;font-size:12px;min-height:315px;flex:1}
+#trace-design .tr-context-content p{margin:0 0 15px}
+#trace-design .tr-timeline{display:flex;gap:12px;flex-wrap:wrap;font-size:10px;margin-bottom:10px;color:#777}
+#trace-design .tr-timeline .tr-done{color:#9bccad}
+#trace-design .tr-demo-label{font-size:10px;color:#888;display:flex;align-items:center;gap:4px}
+#trace-design .tr-mic-active{color:#aac9ed!important;background:#223047!important}
+#trace-design .tr-note{font-size:10px;color:#888;margin:8px 0 0}
+#trace-design [hidden]{display:none!important}
+@media(min-width:1400px){#trace-design #tr-workspace{display:grid;grid-template-columns:minmax(0,1fr) 310px;gap:0;padding:0}#trace-design .tr-walkthrough{grid-column:1/-1;margin:0;border-bottom:1px solid var(--tr-line);padding:10px 16px}#trace-design .tr-walkthrough button{flex:0 1 auto;min-width:170px}#trace-design .tr-grid{border:0;border-radius:0}#trace-design .tr-code{min-height:460px;font-size:12px}#trace-design .tr-preview{min-height:499px;padding:23px 21px}#trace-design .tr-agent{margin:0;border:0;border-left:1px solid var(--tr-line);border-radius:0}#trace-design .tr-agent-head{min-height:44px;padding:10px}#trace-design .tr-agent-head #tr-agent-status{width:100%;padding-left:29px}#trace-design .tr-agent-content{padding:17px 13px}#trace-design .tr-compose-tools .tr-row{width:100%}#trace-design .tr-compose-tools{justify-content:flex-end}#trace-design .tr-quick{display:grid;gap:8px}#trace-design .tr-quick button{justify-content:flex-start}#trace-design .tr-compose{margin:0 10px 13px}#trace-design .tr-header{padding-bottom:0}#trace-design .tr-nav{border-bottom:0}#trace-design .tr-shell{min-height:790px}#trace-design .tr-main{display:flex;flex-direction:column}#trace-design #tr-workspace{flex:1}#trace-design .tr-bottom{margin-top:auto}}
+@media(max-width:1100px){#trace-design .tr-shell{grid-template-columns:42px minmax(0,1fr)}#trace-design .tr-sidebar{display:none}#trace-design .tr-header{padding:18px 17px 0}#trace-design .tr-body{padding:13px 14px 17px}#trace-design .tr-title{font-size:20px}#trace-design .tr-rail{padding-left:4px;padding-right:4px}#trace-design .tr-repo{font-size:11px}}
+@media(max-width:700px){#trace-design .tr-shell{grid-template-columns:minmax(0,1fr)}#trace-design .tr-rail{display:none}#trace-design .tr-title{font-size:19px}#trace-design .tr-header{padding:15px 14px 0}#trace-design .tr-body{padding:12px}#trace-design .tr-repo{display:none}#trace-design .tr-preview{padding:17px 13px}#trace-design .tr-pane-head .tr-row{gap:3px}#trace-design .tr-walkthrough{gap:2px}#trace-design .tr-walkthrough button{font-size:10px}#trace-design .tr-arrow{display:none}}
+@media(max-width:570px){#trace-design .tr-grid{grid-template-columns:1fr}#trace-design .tr-pane+.tr-pane{border-left:0;border-top:1px solid var(--tr-line)}#trace-design .tr-walkthrough button{flex-basis:100%;font-size:11px}#trace-design .tr-code{min-height:0}#trace-design .tr-preview{min-height:330px}#trace-design .tr-nav{gap:15px}#trace-design .tr-context-content{min-height:0}#trace-design .tr-top{padding:9px 12px}#trace-design .tr-bottom{padding:11px 13px}#trace-design .tr-tasks{grid-template-columns:1fr 1fr}}
+@media(pointer:coarse){#trace-design button{min-height:42px}#trace-design textarea,#trace-design input,#trace-design select{font-size:16px!important}}
+</style>
+<div id="trace-design">
+  <header class="tr-top tr-row tr-between">
+    <div class="tr-row"><span class="tr-brand tr-row"><span class="tr-brand-mark">⌘</span> trace</span><span class="tr-repo tr-muted"><span class="tr-slash">/</span> acme <span class="tr-slash">/</span> orbit</span></div>
+    <div class="tr-row"><span class="tr-demo-label"><span class="tr-dot"></span> Design prototype</span><span class="tr-avatar" aria-label="You, reviewer">JD</span></div>
+  </header>
+  <div class="tr-shell">
+    <nav class="tr-rail" aria-label="Workspace tools">
+      <button type="button" aria-label="Review workspace" class="tr-rail-active" data-page="workspace"><i data-lucide="git-pull-request" aria-hidden="true"></i></button>
+      <button type="button" aria-label="Search decisions" data-page="decisions"><i data-lucide="search" aria-hidden="true"></i></button>
+      <button type="button" aria-label="Implementation decisions" data-page="decisions"><i data-lucide="files" aria-hidden="true"></i></button>
+      <button type="button" aria-label="Shared agent sessions" data-page="sessions"><i data-lucide="messages-square" aria-hidden="true"></i></button>
+      <button type="button" aria-label="Review agent conversation" data-agent-focus="true"><i data-lucide="sparkles" aria-hidden="true"></i></button>
+      <span class="tr-rail-space"></span>
+      <span class="tr-avatar" aria-label="You, reviewer">JD</span>
+    </nav>
+    <aside class="tr-sidebar" aria-label="Pull request navigation">
+      <div class="tr-side-head"><span>Reviews</span><i data-lucide="panel-left" aria-hidden="true"></i></div>
+      <div class="tr-side-item"><i data-lucide="folder-git-2" aria-hidden="true"></i><span>acme / orbit</span></div>
+      <div class="tr-side-label">Current review</div>
+      <button type="button" class="tr-side-item tr-side-active" data-page="workspace"><i data-lucide="git-pull-request" aria-hidden="true"></i><span>Project views</span><span class="tr-side-count">#128</span></button>
+      <button type="button" class="tr-side-item" data-page="decisions"><i data-lucide="git-branch" aria-hidden="true"></i><span>Decisions</span><span class="tr-side-count">3</span></button>
+      <button type="button" class="tr-side-item" data-page="sessions"><i data-lucide="messages-square" aria-hidden="true"></i><span>Agent sessions</span><span class="tr-side-count">2</span></button>
+      <div class="tr-side-label">Change walkthrough</div>
+      <button type="button" class="tr-side-item" data-file="filters" data-sidebar-file="true"><i data-lucide="braces" aria-hidden="true"></i><span>useTaskFilters.ts</span></button>
+      <button type="button" class="tr-side-item" data-file="board" data-sidebar-file="true"><i data-lucide="component" aria-hidden="true"></i><span>TaskBoard.tsx</span></button>
+      <button type="button" class="tr-side-item" data-file="tests" data-sidebar-file="true"><i data-lucide="flask-conical" aria-hidden="true"></i><span>TaskBoard.test.tsx</span></button>
+      <div class="tr-side-label">People</div>
+      <div class="tr-side-item"><span class="tr-avatar" style="width:20px;height:20px;font-size:8px">AL</span><span>Alex</span><span class="tr-side-count">Author</span></div>
+      <div class="tr-side-item"><span class="tr-avatar" style="width:20px;height:20px;font-size:8px">JD</span><span>You</span><span class="tr-side-count">Reviewer</span></div>
+      <div class="tr-side-footer">Design exploration<br>Agent and voice actions are simulated.</div>
+    </aside>
+    <main class="tr-main">
+  <section class="tr-header">
+    <div class="tr-row tr-between" style="margin-bottom:9px"><span class="tr-row tr-small tr-muted"><i data-lucide="git-pull-request" aria-hidden="true"></i> Pull request #128</span><span class="tr-tag" id="tr-pr-state">Open</span></div>
+    <h2 class="tr-title">Add board and list views to projects</h2>
+    <div class="tr-row tr-small tr-muted"><span class="tr-avatar" style="width:19px;height:19px;font-size:8px">AL</span> Alex opened this PR <span>·</span><span class="tr-mono">feat/project-views → main</span><span class="tr-tag">+86 −24</span></div>
+    <nav class="tr-nav" aria-label="Review sections"><button type="button" aria-selected="true" data-page="workspace">Workspace</button><button type="button" aria-selected="false" data-page="decisions">Decisions <span class="tr-count">3</span></button><button type="button" aria-selected="false" data-page="sessions">Agent sessions <span class="tr-count">2</span></button></nav>
+  </section>
+  <div class="tr-body" id="tr-workspace">
+    <div class="tr-walkthrough" aria-label="Dependency walkthrough">
+      <button type="button" aria-pressed="true" data-file="filters"><span class="tr-step">1</span> useTaskFilters.ts</button><span class="tr-muted tr-arrow">›</span><button type="button" aria-pressed="false" data-file="board"><span class="tr-step">2</span> TaskBoard.tsx</button><span class="tr-muted tr-arrow">›</span><button type="button" aria-pressed="false" data-file="tests"><span class="tr-step">3</span> TaskBoard.test.tsx</button>
+    </div>
+    <div class="tr-grid">
+      <section class="tr-pane" aria-label="Code review">
+        <div class="tr-pane-head tr-row tr-between"><span class="tr-row"><i data-lucide="code-2" aria-hidden="true"></i><span id="tr-code-title">Code</span></span><button type="button" class="tr-quiet" id="tr-why">Why this change? <i data-lucide="arrow-up-right" aria-hidden="true"></i></button></div>
+        <div class="tr-code-head tr-row tr-between"><span class="tr-mono" id="tr-filepath">src/hooks/useTaskFilters.ts</span><span class="tr-tag tr-lilac" id="tr-diff-badge">PR diff</span></div>
+        <div class="tr-code tr-mono" id="tr-code"></div>
+        <div class="tr-context-content" id="tr-code-context" hidden><span class="tr-tag tr-lilac" style="margin-bottom:11px">Implementation decision</span><p><strong>One filter state. Two views.</strong></p><p>Board and list should share the selected status. The author kept filters in a hook so either view can use the same state.</p><p class="tr-muted">The current effect resets that state every time the view changes. That conflicts with the original intent.</p><button type="button" id="tr-open-source">Read original session <i data-lucide="arrow-up-right" aria-hidden="true"></i></button></div>
+        <div class="tr-code-foot tr-row tr-between"><span id="tr-code-foot">Shared state → view → behavior</span><span class="tr-row"><i data-lucide="git-branch" aria-hidden="true"></i><span class="tr-mono">b7c3a9f</span></span></div>
+      </section>
+      <section class="tr-pane" aria-label="Running product and test results">
+        <div class="tr-pane-head tr-row tr-between"><div class="tr-row" style="gap:3px"><button type="button" id="tr-preview-tab" class="tr-quiet tr-selected" aria-pressed="true"><i data-lucide="panel-top" aria-hidden="true"></i> Preview</button><button type="button" id="tr-tests-tab" class="tr-quiet" aria-pressed="false"><i data-lucide="flask-conical" aria-hidden="true"></i> Tests</button></div><button type="button" id="tr-annotate"><i data-lucide="message-square-plus" aria-hidden="true"></i> Annotate</button></div>
+        <div class="tr-annotation-banner" id="tr-annotation-banner" hidden>Select a place in the preview to leave feedback.</div>
+        <div class="tr-preview" id="tr-preview">
+          <div class="tr-row tr-between"><span class="tr-app-brand">◒ ORBIT</span><div class="tr-row"><span class="tr-avatar" style="width:19px;height:19px;font-size:8px">AL</span><span class="tr-avatar" style="width:19px;height:19px;font-size:8px">JD</span></div></div>
+          <div class="tr-app-title">Website refresh</div><div class="tr-app-sub">A little less friction. A lot more flow.</div>
+          <div class="tr-controls"><label><span class="tr-small tr-muted" style="display:block;margin-bottom:3px">Status</span><select id="tr-filter" aria-label="Filter tasks by status"><option>All statuses</option><option selected>In progress</option><option>In review</option></select></label><div class="tr-view-toggle" aria-label="Task view"><button type="button" id="tr-board" class="tr-selected" aria-pressed="true"><i data-lucide="columns-2" aria-hidden="true"></i> Board</button><button type="button" id="tr-list" aria-pressed="false"><i data-lucide="list" aria-hidden="true"></i> List</button></div></div>
+          <div class="tr-tasks" id="tr-tasks"></div>
+          <div class="tr-pin" id="tr-pin" hidden><span>1</span></div>
+        </div>
+        <div class="tr-checks" id="tr-tests" hidden></div>
+        <div class="tr-statusline tr-row tr-between"><span><span class="tr-dot"></span> <span id="tr-preview-version">PR preview</span></span><span class="tr-mono">orbit.local / projects</span></div>
+      </section>
+    </div>
+    <section class="tr-agent" aria-label="Review agent">
+      <div class="tr-agent-head tr-row tr-between"><span class="tr-row"><span class="tr-agent-logo"><i data-lucide="sparkles" aria-hidden="true"></i></span><span style="font-weight:500">Review agent</span><span class="tr-tag tr-lilac">Simulated</span></span><span class="tr-small tr-muted" id="tr-agent-status">Ready when you are</span></div>
+      <div class="tr-agent-content" id="tr-agent-content" aria-live="polite">
+        <p>I’ve connected the code, preview, and the author’s decisions. Explore the product and leave feedback — I’ll prepare a fix while you keep reviewing.</p>
+        <div class="tr-quick"><button type="button" id="tr-try-issue"><i data-lucide="mouse-pointer-2" aria-hidden="true"></i> Try the filter issue</button><button type="button" id="tr-walkthrough"><i data-lucide="route" aria-hidden="true"></i> Walk me through this PR</button></div>
+      </div>
+      <form class="tr-compose" id="tr-compose">
+        <div class="tr-context-chips" id="tr-compose-context" hidden><span>▣ Preview snapshot</span><span id="tr-selected-target">↗ Status filter</span><span>↶ Reproduction steps</span></div>
+        <label for="tr-comment" class="tr-compose-hint" id="tr-input-label">Ask about this change, or leave feedback</label>
+        <textarea id="tr-comment" placeholder="This should preserve my filters when switching views…" rows="2"></textarea>
+        <div class="tr-compose-tools"><div class="tr-row"><button type="button" class="tr-quiet" id="tr-voice"><i data-lucide="mic" aria-hidden="true"></i> Voice</button><span class="tr-compose-hint" id="tr-voice-hint">Voice interaction preview</span></div><button type="button" class="tr-primary" id="tr-send">Send feedback <i data-lucide="arrow-up" aria-hidden="true"></i></button></div>
+      </form>
+    </section>
+  </div>
+  <div class="tr-body" id="tr-decisions" hidden>
+    <label for="tr-decision-search" class="tr-small tr-muted">Search implementation decisions</label><input id="tr-decision-search" placeholder="Search decisions, constraints, and questions…" style="width:100%;padding:9px 10px;border:1px solid var(--tr-line);border-radius:6px;background:var(--tr-panel);color:var(--tr-ink);margin:7px 0">
+    <div id="tr-decision-items"></div>
+  </div>
+  <div class="tr-body" id="tr-sessions" hidden>
+    <div class="tr-decision"><div class="tr-row tr-between"><span class="tr-decision-title">Building project views</span><span class="tr-tag">Author session</span></div><div class="tr-muted tr-small">Alex + coding agent · 14 messages · 3 linked files</div><div class="tr-proposal"><p><strong>Alex</strong> <span class="tr-muted tr-small">10:24</span></p><p>Filters should stay the same when I switch between board and list. We might want URL persistence later, but keep it local for this PR.</p><p><strong>Agent</strong> <span class="tr-muted tr-small">10:25</span></p><p>I’ll extract the status into <span class="tr-mono">useTaskFilters</span> so the views share the same interface. URL persistence can be a follow-up.</p></div></div>
+    <div class="tr-decision"><div class="tr-decision-title">Review investigation</div><div class="tr-muted tr-small" id="tr-review-session">No review investigation yet. Leave a comment in the workspace to start one.</div></div>
+  </div>
+  <footer class="tr-bottom tr-row tr-between"><span class="tr-row tr-muted" id="tr-approval-status"><i data-lucide="circle-dashed" aria-hidden="true"></i> Your review is in progress</span><button type="button" class="tr-primary" id="tr-approve-pr"><i data-lucide="check" aria-hidden="true"></i> Approve PR</button></footer>
+    </main>
+  </div>
+</div>
+<script>
+(()=>{
+const root=document.getElementById('trace-design');
+if(!root)return;
+const $=id=>root.querySelector('#'+id);
+const state={file:'filters',page:'workspace',view:'board',filter:'In progress',annotating:false,anchored:false,stage:'idle',fixed:false,voice:false,target:'Status filter',comment:'',timers:[],approved:false};
+const esc=s=>String(s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const icons=()=>{if(typeof lucide!=='undefined')lucide.createIcons({attrs:{width:16,height:16}})};
+const tasks=[{name:'Refine the navigation',tag:'Design',id:'ORB-24',status:'In progress',person:'AL'},{name:'Build project views',tag:'Engineering',id:'ORB-28',status:'In progress',person:'JD'},{name:'Review empty states',tag:'Design',id:'ORB-31',status:'In review',person:'MK'},{name:'Polish keyboard shortcuts',tag:'Engineering',id:'ORB-34',status:'In review',person:'AL'}];
+const decisions=[{title:'Share filter state between views',text:'Board and list should preserve the selected status. Both views consume the same hook.',meta:'Alex · Building project views · messages 8–10',key:'filters'},{title:'Keep URL persistence out of scope',text:'The filter is local to the current project. Deep links can be added in a separate PR.',meta:'Alex · Building project views · message 11',key:'url'},{title:'Open question: empty search results',text:'The author has not settled what to show when no tasks match the current filter.',meta:'Coding agent · Building project views · message 13',key:'empty'}];
+const baseLines=[['','import { useState, useEffect }'],['','  from "react";'],['',''],['','export function useTaskFilters(view) {'],['','  const [status, setStatus] ='],['','    useState("all");'],['',''],['add','  useEffect(() => {'],['add','    setStatus("all");'],['add','  }, [view]);'],['',''],['','  return { status, setStatus };'],['','}']];
+function code(){let lines=baseLines;let path='src/hooks/useTaskFilters.ts';if(state.file==='board'){path='src/components/TaskBoard.tsx';lines=[['','export function TaskBoard() {'],['','  const [view, setView] ='],['','    useState("board");'],['add','  const { status, setStatus } ='],['add','    useTaskFilters(view);'],['',''],['','  return ('],['add','    <ProjectViews'],['add','      view={view}'],['add','      filter={status}'],['add','      onViewChange={setView}'],['add','      onFilterChange={setStatus}'],['add','    />'],['','  );'],['','}']]}else if(state.file==='tests'){path='src/components/TaskBoard.test.tsx';lines=[['','describe("project views", () => {'],['add','  it("renders board tasks", () => {'],['add','    render(<TaskBoard />);'],['add','    expect(screen.getByText('],['add','      "Build project views"'],['add','    )).toBeVisible();'],['add','  });'],['',''],[state.fixed?'add':'','  // Regression coverage'],[state.fixed?'add':'','  it("preserves selected filters",'],[state.fixed?'add':'','    () => {'],[state.fixed?'add':'','      selectStatus("In progress");'],[state.fixed?'add':'','      switchView("list");'],[state.fixed?'add':'','      expectStatus("In progress");'],[state.fixed?'add':'','    });'],['','});']]}else if(state.fixed){lines=[['','import { useState } from "react";'],['',''],['','export function useTaskFilters() {'],['','  const [status, setStatus] ='],['','    useState("all");'],['',''],['remove','  useEffect(() => {'],['remove','    setStatus("all");'],['remove','  }, [view]);'],['add','  // Shared status survives view changes.'],['',''],['','  return { status, setStatus };'],['','}']]}
+$('tr-filepath').textContent=path;$('tr-code').innerHTML=lines.map(([kind,line],i)=>'<div class="tr-line '+(kind?'tr-'+kind:'')+'"><span class="tr-ln">'+(i+1)+'</span><code>'+esc(line)+'</code></div>').join('');$('tr-diff-badge').textContent=state.fixed?'Proposed patch':'PR diff';root.querySelectorAll('[data-file]').forEach(b=>b.setAttribute('aria-pressed',String(b.dataset.file===state.file)))}
+function preview(){const visible=tasks.filter(t=>state.filter==='All statuses'||t.status===state.filter);$('tr-tasks').classList.toggle('tr-list',state.view==='list');$('tr-tasks').innerHTML=visible.map(t=>'<div class="tr-task"><div><div class="tr-task-label">'+esc(t.tag)+'</div><div class="tr-task-name">'+esc(t.name)+'</div></div><div class="tr-task-foot"><span>'+esc(t.id)+'</span><span class="tr-avatar">'+esc(t.person)+'</span></div></div>').join('');$('tr-filter').value=state.filter;['board','list'].forEach(v=>{$('tr-'+v).classList.toggle('tr-selected',state.view===v);$('tr-'+v).setAttribute('aria-pressed',String(state.view===v))});$('tr-preview-version').textContent=state.fixed?'Proposed fix preview':'PR preview';tests()}
+function tests(){const checks=[['Preserves status: board → list',state.fixed],['Preserves status: list → board',state.fixed],['Renders the selected tasks',true],['Defaults to all statuses',true]];$('tr-tests').innerHTML='<div class="tr-row tr-between"><strong>Targeted checks</strong><span class="tr-tag '+(!state.fixed?'tr-lilac':'')+'">'+(state.fixed?'4 / 4 passing':'2 / 4 passing')+'</span></div>'+checks.map(([label,pass])=>'<div class="tr-check-row"><span>'+esc(label)+'</span><span class="'+(pass?'tr-pass':'tr-fail')+'">'+(pass?'✓ Pass':'× Fail')+'</span></div>').join('')+'<span class="tr-small tr-muted">Illustrative results for this design prototype.</span>'}
+function page(name){state.page=name;['workspace','decisions','sessions'].forEach(p=>{$('tr-'+p).hidden=p!==name});root.querySelectorAll('[data-page]').forEach(b=>{b.setAttribute('aria-selected',String(b.dataset.page===name));if(b.classList.contains('tr-side-item'))b.classList.toggle('tr-side-active',b.dataset.page===name)});if(name==='decisions')renderDecisions();icons()}
+function renderDecisions(){const q=$('tr-decision-search').value.toLowerCase();$('tr-decision-items').innerHTML=decisions.filter(d=>(d.title+' '+d.text).toLowerCase().includes(q)).map(d=>'<div class="tr-decision"><div class="tr-decision-title">'+esc(d.title)+'</div><div class="tr-muted">'+esc(d.text)+'</div><div class="tr-decision-meta">'+esc(d.meta)+'</div><button type="button" class="tr-quiet tr-small" style="margin-top:6px" data-session-link="'+d.key+'">View original conversation ↗</button></div>').join('')||'<p class="tr-muted">No matching decisions.</p>'}
+function showPane(which){$('tr-preview').hidden=which==='tests';$('tr-tests').hidden=which!=='tests';['preview','tests'].forEach(p=>{$('tr-'+p+'-tab').classList.toggle('tr-selected',p===which);$('tr-'+p+'-tab').setAttribute('aria-pressed',String(p===which))});$('tr-annotation-banner').hidden=which==='tests'||!state.annotating;tests()}
+function annotate(){if(state.stage!=='idle'){message('This review thread already has a proposed fix. Finish this thread before adding another in this design prototype.');return}state.annotating=!state.annotating;showPane('preview');$('tr-preview').classList.toggle('tr-annotating',state.annotating);$('tr-annotation-banner').hidden=!state.annotating;$('tr-annotate').classList.toggle('tr-selected',state.annotating)}
+function anchor(){state.anchored=true;state.annotating=false;$('tr-pin').hidden=false;$('tr-preview').classList.remove('tr-annotating');$('tr-annotation-banner').hidden=true;$('tr-compose-context').hidden=false;$('tr-input-label').textContent='Comment on '+state.target;$('tr-comment').value='This should preserve my filters when switching views.';$('tr-comment').focus();$('tr-annotate').classList.remove('tr-selected')}
+function message(text){$('tr-agent-content').innerHTML='<p>'+esc(text)+'</p>'}
+function updateFooter(){const done=state.stage==='author-approved';const busy=!['idle','author-approved'].includes(state.stage);$('tr-approve-pr').disabled=busy||state.approved;$('tr-approval-status').innerHTML=state.approved?'<span class="tr-pass">✓ PR approved · ready for the author to merge</span>':done?'<span class="tr-pass">✓ Reviewer accepted · author approved</span>':state.stage==='accepted'?'<span>✓ Reviewer accepted · waiting for author</span>':busy?'<span>1 review thread · resolve before approving</span>':'<span>Your review is in progress</span>';$('tr-send').disabled=state.stage!=='idle';$('tr-voice').disabled=state.stage!=='idle'}
+function thread(){const stages=['reproducing','fixing','verifying','proposed'];let idx=stages.indexOf(state.stage);if(['accepted','author-approved'].includes(state.stage))idx=3;const labels=['Reproduced','Patch prepared','Checks passed'];let status=state.stage==='reproducing'?'Reproducing the issue…':state.stage==='fixing'?'Preparing a fix…':state.stage==='verifying'?'Checking the proposed change…':state.stage==='accepted'?'Waiting for author':state.stage==='author-approved'?'Thread resolved':'Fix ready for review';$('tr-agent-status').textContent=status;let body='<div class="tr-thread"><div class="tr-thread-user"><div class="tr-row" style="margin-bottom:6px"><span class="tr-avatar" style="width:21px;height:21px;font-size:8px">JD</span><strong>You</strong><span class="tr-muted tr-small">on '+esc(state.target)+'</span></div><p>'+esc(state.comment)+'</p><div class="tr-context-chips"><span>▣ Preview snapshot</span><span>'+esc(state.capturedFilter)+' · '+esc(state.capturedView)+'</span><span>3 reproduction steps</span></div></div><div class="tr-timeline">'+labels.map((l,i)=>'<span class="'+(idx>i?'tr-done':'')+'">'+(idx>i?'✓ ':'○ ')+l+'</span>').join('')+'</div>';
+if(idx>=3){body+='<div class="tr-proposal"><div class="tr-row tr-between"><span class="tr-proposal-title">Preserve filters across views</span><span class="tr-tag">4 checks pass</span></div><p class="tr-muted">The view-change effect resets the status. Remove that reset and keep the filter in shared state.</p><div class="tr-row tr-small tr-muted"><span class="tr-mono">useTaskFilters.ts</span><span>·</span><span>1 regression test added</span></div><div class="tr-proposal-actions">';if(state.stage==='proposed')body+='<button type="button" class="tr-primary" data-action="accept">Accept fix</button><button type="button" data-action="inspect">Inspect patch</button><button type="button" class="tr-quiet" data-action="revise">Request a change</button>';if(state.stage==='accepted')body+='<span class="tr-tag">✓ Accepted by you</span><button type="button" class="tr-primary" data-action="author">Simulate author approval</button><button type="button" class="tr-quiet" data-action="revise">Author requests a change</button>';if(state.stage==='author-approved')body+='<span class="tr-tag">✓ Reviewer accepted</span><span class="tr-tag">✓ Author approved</span>';body+='</div></div>'}else body+='<p class="tr-muted">'+(state.stage==='reproducing'?'Switching to list resets “In progress” to “All statuses.”':state.stage==='fixing'?'Removing the reset effect and adding regression coverage.':'Checking both view changes and the default filter.')+'</p>';body+='</div>';$('tr-agent-content').innerHTML=body;$('tr-review-session').textContent='Feedback: '+state.comment+' Investigation: view-change effect resets shared state. Status: '+status;updateFooter();icons()}
+function later(fn,ms){state.timers.push(setTimeout(fn,ms))}
+function submit(text){if(state.stage!=='idle')return;const value=text.trim();if(!value){$('tr-comment').focus();return}if(/walk|explain|why|context/i.test(value)&&!/filter.*(preserv|reset)|preserv.*filter/i.test(value)){message('Start with the shared filter hook, then follow how TaskBoard passes state into both views. The original author session says filters should survive view changes. Click “Why this change?” beside the code to inspect that decision.');$('tr-comment').value='';return}if(!/filter|switch|reset|preserv|status/i.test(value)){message('This design prototype demonstrates the filter issue. Try “Preserve my filters when switching views” to explore the proposed-fix and approval flow.');return}state.comment=value;state.capturedFilter=state.filter;state.capturedView=state.view;state.stage='reproducing';state.anchored=true;$('tr-pin').hidden=false;$('tr-comment').value='';$('tr-comment').placeholder='Finish the current review thread above…';$('tr-compose-context').hidden=true;thread();later(()=>{state.stage='fixing';thread()},1100);later(()=>{state.stage='verifying';thread()},2200);later(()=>{state.stage='proposed';state.fixed=true;state.filter=state.capturedFilter;preview();code();thread()},3400)}
+root.addEventListener('click',event=>{const b=event.target.closest('button');if(!b)return;if(b.dataset.page)page(b.dataset.page);if(b.dataset.agentFocus){page('workspace');$('tr-comment').focus()}if(b.dataset.file){if(b.dataset.sidebarFile)page('workspace');state.file=b.dataset.file;code();$('tr-code-context').hidden=true;$('tr-code').hidden=false;if(state.file==='tests')showPane('tests')}if(b.dataset.sessionLink)page('sessions');const action=b.dataset.action;if(action==='inspect'){state.file='filters';code();showPane('tests');$('tr-code').hidden=false;$('tr-code-context').hidden=true}if(action==='accept'&&state.stage==='proposed'){state.stage='accepted';thread()}if(action==='author'&&state.stage==='accepted'){state.stage='author-approved';thread()}if(action==='revise'){state.stage='idle';state.fixed=false;state.approved=false;state.anchored=false;state.voice=false;preview();code();$('tr-pin').hidden=true;$('tr-comment').value='Please preserve the selected status without adding URL persistence.';$('tr-comment').placeholder='Describe the approach you prefer…';$('tr-send').disabled=false;$('tr-voice').disabled=false;$('tr-agent-status').textContent='Waiting for your direction';message('The patch is back in draft. Describe the approach you want, then send your feedback to prepare another proposal.');updateFooter();$('tr-comment').focus()}});
+$('tr-filter').addEventListener('change',e=>{state.filter=e.target.value;preview()});['board','list'].forEach(v=>$('tr-'+v).addEventListener('click',()=>{if(state.view!==v){state.view=v;if(!state.fixed)state.filter='All statuses';preview()}}));$('tr-preview-tab').addEventListener('click',()=>showPane('preview'));$('tr-tests-tab').addEventListener('click',()=>showPane('tests'));$('tr-annotate').addEventListener('click',annotate);$('tr-preview').addEventListener('click',e=>{if(state.annotating){e.preventDefault();state.target=e.target.closest('.tr-controls')?'Status filter':'Project view';$('tr-selected-target').textContent='↗ '+state.target;anchor()}});
+$('tr-try-issue').addEventListener('click',()=>{state.view='board';state.filter='In progress';preview();message('“In progress” is selected in the preview. Switch to List: the filter resets. Then click Annotate and select the filter to leave a comment.');showPane('preview')});$('tr-walkthrough').addEventListener('click',()=>{state.file='filters';code();$('tr-code').hidden=true;$('tr-code-context').hidden=false;message('Follow the three files above: shared state → product views → behavior checks. The author’s intent is linked beside the code, so you can compare the implementation with the original decision.')});$('tr-why').addEventListener('click',()=>{const show=$('tr-code-context').hidden;$('tr-code-context').hidden=!show;$('tr-code').hidden=show});$('tr-open-source').addEventListener('click',()=>page('sessions'));$('tr-decision-search').addEventListener('input',renderDecisions);$('tr-send').addEventListener('click',()=>submit($('tr-comment').value));$('tr-compose').addEventListener('submit',e=>e.preventDefault());
+$('tr-voice').addEventListener('click',()=>{state.voice=!state.voice;$('tr-voice').classList.toggle('tr-mic-active',state.voice);$('tr-voice-hint').textContent=state.voice?'Sample transcript · edit before sending':'Voice interaction preview';if(state.voice){$('tr-comment').value='This should preserve my filters when switching views.';$('tr-input-label').textContent='Voice transcript · simulated for design review';$('tr-comment').focus()}});$('tr-approve-pr').addEventListener('click',()=>{if(!['idle','author-approved'].includes(state.stage))return;state.approved=true;$('tr-pr-state').textContent='Approved';$('tr-approve-pr').innerHTML='✓ PR approved';updateFooter();$('tr-agent-status').textContent='Review complete';$('tr-send').disabled=true;$('tr-voice').disabled=true;if(state.stage==='idle')message('PR approved with no requested changes. This is a local design interaction; no GitHub action was sent.')});code();preview();renderDecisions();icons();
+})();
+</script>
