@@ -168,3 +168,18 @@ test("cancellation stops a stalled stream and records unknown usage", async () =
 	assert.equal(logs[0]?.status, "cancelled");
 	assert.equal(logs[0]?.estimatedUsd, null);
 });
+
+test("cancellation does not wait forever for a stream adapter's cleanup promise", async () => {
+	const controller = new AbortController();
+	const client = new MetaClient({
+		getApiKey: async () => "key",
+		recordUsage: () => {},
+		fetch: async () =>
+			new Response(new ReadableStream({ cancel: () => new Promise<void>(() => {}) }), {
+				headers: { "Content-Type": "text/event-stream" },
+			}),
+	});
+	const result = collect(client, request, controller.signal);
+	setTimeout(() => controller.abort(), 5);
+	await assert.rejects(result, { name: "AbortError" });
+});

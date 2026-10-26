@@ -252,7 +252,7 @@ async function* readSse(
 			if (chunk.done) return; // Unframed/truncated terminal events are never accepted.
 		}
 	} finally {
-		await reader.cancel().catch(() => {});
+		await abortable(reader.cancel(), signal).catch(() => {});
 		reader.releaseLock();
 	}
 }
