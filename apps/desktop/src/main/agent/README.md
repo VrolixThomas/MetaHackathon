@@ -20,6 +20,13 @@ selection to main so `getScreenContext(sessionId)` reflects navigation, includin
 a turn runs. The loop refreshes it before each model request and before emitting actions.
 Runtime's source reader validates line bounds; it must compare repository and pinned SHA.
 
+`ScreenContextStore` supplies that main-side cache. Register `createAgentScreenRouter(store)`
+beside the agent router (for example, `agentScreen`) and implement the port as
+`getScreenContext: (sessionId, initial) => store.get(sessionId, initial)`. UI sends
+`update({sessionId, screenContext})` after navigation and applied tool effects, using its
+monotonic sequence. Delayed updates cannot roll state backward. Release both the screen
+store and the agent session together; clear the store during main shutdown.
+
 ## UI and voice turns
 
 - `start` takes shared `AgentTurnInput` plus optional `workload: quick|deep`. It returns
@@ -52,7 +59,8 @@ writing. Ambiguous failures stay unresolved and cannot blindly retry with anothe
 
 `preparePullRequest` consumes runtime-read base/head contents and calls a trusted
 `runBuilds` port when mechanical candidates exist. It only establishes exact content
-equality or equal parsed JSON values/property order. Verification requires successful
+equality or identical validated JSON tokens after removing formatting whitespace outside
+strings. Numbers and duplicate members retain their original spelling. Verification requires successful
 build evidence at both requested SHAs. The reason states what was checked and explicitly
 does not claim behavior equivalence. Reading order is a deterministic path-role heuristic.
 
@@ -106,7 +114,7 @@ automatically retried. No prompt/key/response content is written to the usage si
 `findCodeContext` uses TypeScript's compiler API with an in-memory host over runtime-read
 source snapshots. It reports resolved call sites, caller counts, callees and a shared diagram.
 It never reads repositories itself. Dynamic dispatch, uninspected files, external modules
-and project aliases may remain unresolved. Production use requires integration's requested
+and project aliases may remain unresolved. Integration supplies the pinned
 `typescript@5.9.3` runtime dependency.
 
 `assessRequestedScope` compares changes with supplied ticket/recorded-author sources.

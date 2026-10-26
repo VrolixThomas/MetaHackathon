@@ -13,4 +13,5 @@ export type { ScenarioTarget } from "./scenario-proposals";
 export { generateScenario, requestScenarioExecution } from "./scenarios";
 export type { GeneratedTestRuntime } from "./scenarios";
 export { UsageLedger } from "./usage";
+export { ScreenContextStore, createAgentScreenRouter } from "./screen-context";
 // Optional Should-scope analysis is imported directly from code-context/scope-analysis.
