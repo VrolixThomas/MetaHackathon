@@ -14,6 +14,8 @@ export type ReviewFile = {
 	additions: number;
 	deletions: number;
 	lines: DiffLine[];
+	sourceAvailable?: boolean;
+	sourceError?: string;
 };
 
 export type WhyNote = {
@@ -40,6 +42,21 @@ export type Artifact = "conversation" | "scenario" | "preview" | "diagram" | "si
 export function parseDiff(before: string, after: string): DiffLine[] {
 	const old = before ? before.split("\n") : [];
 	const next = after ? after.split("\n") : [];
+	// Bound quadratic work. Large replacements retain correct source line identities.
+	if (old.length * next.length > 2_000_000)
+		return [
+			...old.map(
+				(text, index): DiffLine => ({
+					id: `old-${index}`,
+					kind: "remove",
+					oldLine: index + 1,
+					text,
+				})
+			),
+			...next.map(
+				(text, index): DiffLine => ({ id: `new-${index}`, kind: "add", newLine: index + 1, text })
+			),
+		];
 	const lengths = Array.from({ length: old.length + 1 }, () => new Uint32Array(next.length + 1));
 	for (let i = old.length - 1; i >= 0; i--) {
 		for (let j = next.length - 1; j >= 0; j--) {

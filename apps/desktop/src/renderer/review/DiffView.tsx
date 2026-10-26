@@ -213,10 +213,10 @@ export function DiffView() {
 						);
 					})}
 				</div>
-				{source.lines.length === 0 && (
+				{source.sourceAvailable === false && (
 					<p className="artifact-note source-unavailable">
-						Source is not available for this file. Its reading-route entry is retained; no code or
-						checks have been invented.
+						{source.sourceError ??
+							"Source is not available for this file. Its reading-route entry is retained; no code or checks have been invented."}
 					</p>
 				)}
 				<div className="end-of-file">
@@ -225,7 +225,7 @@ export function DiffView() {
 						type="button"
 						className={`button ${seen.includes(file) ? "checked-button" : ""}`}
 						onClick={markSeen}
-						disabled={source.lines.length === 0}
+						disabled={source.sourceAvailable === false}
 					>
 						<Icon name="check" size={15} />
 						{seen.includes(file) ? "Seen · mark unread" : "Mark as seen"}

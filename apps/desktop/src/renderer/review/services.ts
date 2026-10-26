@@ -11,6 +11,8 @@ import type {
 	DraftedComment,
 	Preview,
 	ScenarioTrace,
+	SourceFile,
+	SourceFileRequest,
 } from "../../shared/contracts";
 
 export type { CredentialProvider, CredentialStatus } from "../../shared/contracts";
@@ -52,13 +54,22 @@ export type DraftAdapter = {
 	edit: (draftId: string, body: string) => Promise<DraftedComment>;
 	confirm: (input: ConfirmCommentInput) => Promise<{ url: string }>;
 };
+export type SourceAdapter = { read: (request: SourceFileRequest) => Promise<SourceFile> };
 export const useServices = create<{
 	settings: SettingsAdapter | null;
 	voice: VoiceAdapter | null;
 	agent: AgentAdapter | null;
 	artifacts: ArtifactAdapter | null;
 	drafts: DraftAdapter | null;
-}>(() => ({ settings: null, voice: null, agent: null, artifacts: null, drafts: null }));
+	sources: SourceAdapter | null;
+}>(() => ({
+	settings: null,
+	voice: null,
+	agent: null,
+	artifacts: null,
+	drafts: null,
+	sources: null,
+}));
 export function configureReviewServices(
 	services: Partial<ReturnType<typeof useServices.getState>>
 ) {

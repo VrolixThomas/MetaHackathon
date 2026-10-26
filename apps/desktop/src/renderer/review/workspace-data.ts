@@ -36,6 +36,8 @@ export function orderedFiles(preparation: PRPreparation, sources: ReviewFile[]):
 				additions: source?.additions ?? 0,
 				deletions: source?.deletions ?? 0,
 				lines: source?.lines ?? [],
+				sourceAvailable: source?.sourceAvailable ?? !!source,
+				sourceError: source?.sourceError,
 			};
 		});
 	return [

@@ -1388,3 +1388,86 @@ strong {
 .credential-form p {
 	width: 100%;
 }
+/* Artifacts retain their selected step and controls within the desktop viewport. */
+.artifact-panel .agent-answer {
+	font-size: 16px;
+	line-height: 1.5;
+	margin-bottom: 12px;
+}
+.artifact-panel .exchange-label {
+	margin-bottom: 4px;
+}
+.artifact-panel .user-words {
+	margin-bottom: 10px;
+	font-size: 11px;
+}
+.panel-scroll.scenario-panel {
+	display: flex;
+	flex-direction: column;
+	overflow: hidden;
+	padding-top: 12px;
+	padding-bottom: 12px;
+}
+.scenario-panel > .exchange-label,
+.scenario-panel > .user-words,
+.scenario-panel > .agent-answer {
+	flex-shrink: 0;
+}
+.scenario-panel .scenario-artifact {
+	display: flex;
+	flex-direction: column;
+	flex: 1;
+	min-height: 0;
+}
+.scenario-panel .scenario-origin {
+	margin-bottom: 7px;
+}
+.scenario-panel .scenario-inputs {
+	margin-bottom: 10px;
+}
+.scenario-panel .scenario-lane-headings {
+	margin-bottom: 7px;
+}
+.scenario-panel .scenario-rows {
+	flex: 1;
+	min-height: 120px;
+	max-height: none;
+}
+.scenario-panel .scenario-controls {
+	margin-top: 10px;
+	padding-top: 8px;
+	font-size: 10px;
+}
+.scenario-panel .scenario-actions {
+	margin-top: 8px;
+}
+.scenario-panel .scenario-notice {
+	font-size: 9px;
+	margin: 6px 0 0;
+	line-height: 1.5;
+}
+.scenario-panel .scenario-evidence-list {
+	display: flex;
+	gap: 12px;
+	margin-top: 8px;
+	padding-top: 4px;
+	flex-shrink: 0;
+}
+.scenario-panel .scenario-evidence {
+	margin: 0;
+}
+.scenario-panel .scenario-evidence[open] {
+	position: absolute;
+	z-index: 5;
+	bottom: 65px;
+	right: 20px;
+	width: 320px;
+	padding: 14px;
+	border: 1px solid var(--line);
+	background: var(--surface);
+	border-radius: 6px;
+	box-shadow: 0 5px 15px #0008;
+}
+.source-unavailable {
+	margin: 24px;
+}

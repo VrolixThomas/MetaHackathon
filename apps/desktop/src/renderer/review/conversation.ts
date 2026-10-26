@@ -9,8 +9,9 @@ import {
 	ScenarioTraceSchema,
 	type TurnIdentity,
 } from "../../shared/contracts";
-import { getScreenContext, highlightLocation, useReview } from "./controller";
+import { getScreenContext, useReview } from "./controller";
 import { type AgentAdapter, useServices } from "./services";
+import { focusCodeLocation } from "./source-adapter";
 
 export const useConversation = create<{
 	question: string;
@@ -73,7 +74,7 @@ async function applyAction(turn: ActiveTurn, input: AgentAction) {
 	const state = useReview.getState();
 	switch (action.kind) {
 		case "highlight-code":
-			highlightLocation(action.location, action.note);
+			await focusCodeLocation(action.location, action.note);
 			break;
 		case "show-scenario": {
 			const scenario = ScenarioTraceSchema.parse(await turn.adapter.getScenario(action.scenarioId));
@@ -93,7 +94,7 @@ async function applyAction(turn: ActiveTurn, input: AgentAction) {
 			state.setPanel("scenario");
 			const step = scenario.after.steps[index];
 			if (step) {
-				highlightLocation(step.location, `Following scenario, step ${index + 1}`);
+				await focusCodeLocation(step.location, `Following scenario, step ${index + 1}`);
 				useReview.setState({ scenarioStepId: step.id });
 			}
 			break;

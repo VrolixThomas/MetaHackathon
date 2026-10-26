@@ -1,10 +1,11 @@
 import { Icon } from "./Icons";
 import { PreviewArtifact } from "./artifacts/PreviewArtifact";
 import { ScenarioArtifact } from "./artifacts/ScenarioArtifact";
-import { highlightLocation, openReviewArtifact, useReview } from "./controller";
+import { openReviewArtifact, useReview } from "./controller";
 import { cancelActiveQuestion, runAgentQuestion, useConversation } from "./conversation";
 import type { Artifact } from "./model";
 import { useServices } from "./services";
+import { focusCodeLocation } from "./source-adapter";
 
 const titles: Record<Artifact, string> = {
 	conversation: "Review companion",
@@ -48,7 +49,9 @@ export function AgentPanel() {
 					</button>
 				))}
 			</nav>
-			<div className="panel-scroll">
+			<div
+				className={`panel-scroll ${panel === "scenario" ? "scenario-panel" : ""} ${panel !== "conversation" ? "artifact-panel" : ""}`}
+			>
 				<div className="exchange-label">{conversation.question ? "You" : "Reference prompt"}</div>
 				<p className="user-words">
 					{conversation.question ||
@@ -70,7 +73,7 @@ export function AgentPanel() {
 								? "A Platinum shopper, VIP30, and a €120 cart. On a phone, the cap note wraps and Pay moves below the fold."
 								: "Start with the discount rule. Follow the change through the order, then check the checkout states. The expired-code path needs a closer look."}
 				</p>
-				{isFixture && (
+				{isFixture && panel === "conversation" && (
 					<span className="evidence-label">
 						<span className="dot amber" />
 						Reference fixture · not an executed result
@@ -113,7 +116,7 @@ export function AgentPanel() {
 									scenarioStepId: step.id,
 									sequence: state.sequence + 1,
 								}));
-								highlightLocation(
+								void focusCodeLocation(
 									step.location,
 									`Following scenario C, step ${index + 1} · ${step.location.revision === "base" ? "before" : "this PR"}`
 								);
@@ -137,7 +140,7 @@ export function AgentPanel() {
 									previewMarkerId: marker.id,
 									sequence: state.sequence + 1,
 								}));
-								highlightLocation(marker.location, `Marker ${marker.number}: ${marker.label}`);
+								void focusCodeLocation(marker.location, `Marker ${marker.number}: ${marker.label}`);
 							}}
 							onViewportChange={
 								artifacts

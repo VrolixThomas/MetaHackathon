@@ -127,10 +127,14 @@ export function ScenarioArtifact({
 		const list = rowList.current;
 		const row = list?.querySelector<HTMLElement>(`[data-scenario-index="${current}"]`);
 		if (!list || !row) return;
-		const offset = row.getBoundingClientRect().top - list.getBoundingClientRect().top;
+		const split = row.previousElementSibling;
+		const anchor =
+			split instanceof HTMLElement && split.classList.contains("scenario-split") ? split : row;
+		const offset = anchor.getBoundingClientRect().top - list.getBoundingClientRect().top;
+		const targetHeight = row.getBoundingClientRect().bottom - anchor.getBoundingClientRect().top;
 		if (offset < 0) list.scrollTop += offset;
-		else if (offset + row.offsetHeight > list.clientHeight) {
-			list.scrollTop += offset + row.offsetHeight - list.clientHeight;
+		else if (offset + targetHeight > list.clientHeight) {
+			list.scrollTop += offset + targetHeight - list.clientHeight;
 		}
 	}, [current]);
 	const select = (step: ScenarioStep | undefined, index: number) => {

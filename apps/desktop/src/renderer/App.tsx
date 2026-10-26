@@ -6,9 +6,11 @@ import { Sidebar } from "./review/Sidebar";
 import { createCaptureGate } from "./review/capture-gate";
 import { useReview } from "./review/controller";
 import { useReviewKeyboard } from "./review/keyboard";
+import { connectAvailableRuntime } from "./review/runtime-bridge";
 import { useServices } from "./review/services";
 
 export function App() {
+	useEffect(connectAvailableRuntime, []);
 	const [settings, setSettings] = useState(false);
 	const voice = useServices((s) => s.voice);
 	const [voiceStatus, setVoiceStatus] = useState("Voice not connected");
