@@ -1,0 +1,26 @@
+name: Runtime and shared contracts
+on:
+  pull_request:
+  push:
+    branches: [main]
+permissions:
+  contents: read
+jobs:
+  runtime:
+    runs-on: macos-15
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22.12.0
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: 1.3.9
+      - run: bun install --frozen-lockfile
+      - run: bun run type-check
+      - run: bun run lint
+      - run: bun run test:contracts
+      - run: bun test apps/desktop/src/main/runtime
+      - run: node --test apps/desktop/packaging/refresh-update-info.test.cjs
+      - run: bun run build
