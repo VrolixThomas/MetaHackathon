@@ -1,112 +1,90 @@
+import { useEffect, useRef } from "react";
 import { Icon } from "./Icons";
-import { DiagramArtifact } from "./artifacts/DiagramArtifact";
-import { PreviewArtifact } from "./artifacts/PreviewArtifact";
-import { ScenarioArtifact } from "./artifacts/ScenarioArtifact";
-import { SignoffArtifact } from "./artifacts/SignoffArtifact";
-import { openReviewArtifact, useReview } from "./controller";
-import { cancelActiveQuestion, runAgentQuestion, useConversation } from "./conversation";
-import type { Artifact } from "./model";
-import { resizeActivePreview } from "./preview-session";
-import { runLocalScenario, startLocalPreview, useRuntimeAction } from "./runtime-actions";
+import { useReview } from "./controller";
+import {
+	cancelActiveQuestion,
+	reviewSessionId,
+	runAgentQuestion,
+	useConversation,
+} from "./conversation";
 import { useServices } from "./services";
-import { focusCodeLocation } from "./source-adapter";
 
-const titles: Record<Artifact, string> = {
-	conversation: "Review companion",
-	scenario: "Scenario C",
-	preview: "Checkout preview",
-	diagram: "Codebase context",
-	signoff: "Review sign-off",
-};
+const suggestions = [
+	"Walk me through this PR",
+	"Show me the checkout",
+	"Apply the promo code",
+	"Show it on a phone",
+	"Scroll to the payment button",
+	"Show me the responsible code",
+	"Compare it with before this PR",
+];
 
+/** Conversation remains beside every main surface; artifacts occupy the main workspace. */
 export function AgentPanel() {
-	const {
-		sourceMode,
-		panel,
-		setPanel,
-		file,
-		scenario,
-		scenarioIndex,
-		preview,
-		diagram,
-		drafts,
-		files,
-		seen,
-		openFile,
-		preparation,
-	} = useReview();
 	const conversation = useConversation();
-	const copy = panelCopy(preparation, sourceMode, panel, conversation);
-	const artifacts = useServices((state) => state.artifacts);
-	const draftAdapter = useServices((state) => state.drafts);
-	const isFixture = sourceMode === "reference" && preparation.evidence.kind === "fixture";
-	const runtime = useServices((state) => state.runtime);
-	const agent = useServices((state) => state.agent);
-	const runtimeAction = useRuntimeAction();
-	const isOpen = panel !== null;
+	const sourceMode = useReview((s) => s.sourceMode);
+	const agent = useServices((s) => s.agent);
+	const scroll = useRef<HTMLDivElement>(null);
 	useEffect(() => {
-		if (!isOpen) return;
-		const opener = document.activeElement;
-		return () => {
-			if (opener instanceof HTMLElement && opener.isConnected)
-				opener.focus({ preventScroll: true });
-			else
-				document
-					.querySelector<HTMLButtonElement>("[data-agent-trigger]")
-					?.focus({ preventScroll: true });
-		};
-	}, [isOpen]);
-	if (!panel) return null;
+		const element = scroll.current;
+		if (
+			element &&
+			(conversation.answer || conversation.question || conversation.state === "working")
+		)
+			element.scrollTop = element.scrollHeight;
+	}, [conversation.answer, conversation.question, conversation.state]);
 	return (
-		<aside className="agent-panel" aria-label={titles[panel]}>
+		<aside
+			className="agent-panel conversation-panel"
+			aria-label="Review conversation"
+			data-conversation-state={conversation.state}
+			data-session-id={reviewSessionId}
+			data-turn-id={conversation.identity?.turnId}
+			data-generation={conversation.identity?.generation}
+			data-request-id={conversation.identity?.requestId}
+		>
 			<header className="panel-header">
 				<span className="dot blue" />
-				<strong>{titles[panel]}</strong>
-				<span>contextual agent</span>
-				<kbd>esc</kbd>
-				<button
-					type="button"
-					className="icon-button"
-					aria-label="Close agent panel"
-					onClick={() => setPanel(null)}
-				>
-					<Icon name="close" size={16} />
-				</button>
+				<strong>Review companion</strong>
+				<span>{conversation.state === "working" ? "Thinking…" : "Ask or hold to talk"}</span>
 			</header>
-			<nav className="panel-tabs" aria-label="Artifacts">
-				{(["conversation", "scenario", "preview", "diagram"] as const).map((tab) => (
-					<button
-						type="button"
-						key={tab}
-						className={panel === tab ? "active" : ""}
-						onClick={() => openReviewArtifact(tab)}
-					>
-						{
-							{
-								conversation: "Ask",
-								scenario: "Scenario C",
-								preview: "Preview",
-								diagram: "Context",
-							}[tab]
-						}
-					</button>
-				))}
-			</nav>
-			<div
-				className={`panel-scroll ${panel === "scenario" ? "scenario-panel" : ""} ${panel !== "conversation" ? "artifact-panel" : ""}`}
-			>
-				{panel !== "signoff" && (
+			<div className="panel-scroll" ref={scroll}>
+				{!conversation.question && (
 					<>
-						<div className="exchange-label">{copy.label}</div>
-						<p className="user-words">{copy.question}</p>
-						<p className="agent-answer">{copy.answer}</p>
+						<div className="exchange-label">Start with a question</div>
+						<p className="agent-answer">Let’s walk through the change.</p>
+						<p className="artifact-note">
+							Ask about the PR, try the checkout together, and follow the result back to its code.
+						</p>
+						{sourceMode === "reference" && (
+							<span className="evidence-label">
+								Reference fixture · load the local demo to begin
+							</span>
+						)}
 					</>
 				)}
-				{isFixture && panel === "conversation" && (
-					<span className="evidence-label">
-						<span className="dot amber" />
-						Reference fixture · not an executed result
-					</span>
+				{conversation.history.map((exchange, index) => (
+					<div className="conversation-exchange" key={`${index}-${exchange.question}`}>
+						<div className="exchange-label">You</div>
+						<p className="user-words">{exchange.question}</p>
+						<p className="conversation-answer">
+							{exchange.answer || (exchange.state === "cancelled" ? "Stopped" : "No response")}
+						</p>
+					</div>
+				))}
+				{conversation.question && (
+					<div className="conversation-exchange">
+						<div className="exchange-label">You</div>
+						<p className="user-words">{conversation.question}</p>
+						<p className="conversation-answer" aria-live="polite">
+							{conversation.answer ||
+								(conversation.state === "working"
+									? "Looking into it…"
+									: conversation.state === "cancelled"
+										? "Stopped"
+										: "")}
+						</p>
+					</div>
 				)}
 				{conversation.error && (
 					<p className="artifact-note" role="alert">
@@ -118,122 +96,20 @@ export function AgentPanel() {
 						Stop reply
 					</button>
 				)}
-				{sourceMode === "repository" && runtime && (
-					<div className="runtime-artifact-actions">
-						<button
-							type="button"
-							className="button"
-							disabled={runtimeAction.busy}
-							onClick={() => void runLocalScenario()}
-						>
-							Run scenario C
-						</button>
-						<button
-							type="button"
-							className="button"
-							disabled={runtimeAction.busy}
-							onClick={() => void startLocalPreview()}
-						>
-							Open live preview
-						</button>
-						{runtimeAction.busy && <output>{runtimeAction.message}</output>}
+				{!conversation.question && (
+					<div className="suggestions">
+						{suggestions.map((text) => (
+							<button
+								type="button"
+								key={text}
+								disabled={!agent || sourceMode === "reference"}
+								onClick={() => void runAgentQuestion(text)}
+							>
+								{text}
+								<Icon name="arrow" size={14} />
+							</button>
+						))}
 					</div>
-				)}
-				{panel === "conversation" && (
-					<>
-						<p className="artifact-note">
-							In context: <code>{file}</code>.{" "}
-							{agent
-								? "This context accompanies your question."
-								: "Live agent replies are not connected."}
-						</p>
-						<div className="suggestions">
-							<button type="button" onClick={() => openReviewArtifact("scenario")}>
-								Show me scenario C <Icon name="arrow" size={14} />
-							</button>
-							<button type="button" onClick={() => openReviewArtifact("preview")}>
-								Show the phone checkout <Icon name="arrow" size={14} />
-							</button>
-						</div>
-					</>
-				)}
-				{panel === "scenario" &&
-					(scenario ? (
-						<ScenarioArtifact
-							key={scenario.id}
-							trace={scenario}
-							selectedIndex={scenarioIndex}
-							onSelect={(step, index) => {
-								useReview.setState((state) => ({
-									scenarioIndex: index,
-									scenarioStepId: step.id,
-									sequence: state.sequence + 1,
-								}));
-								void focusCodeLocation(
-									step.location,
-									`Following scenario C, step ${index + 1} · ${step.location.revision === "base" ? "before" : "this PR"}`
-								);
-							}}
-							onKeepAsTest={
-								artifacts?.keepScenarioAsTest
-									? () => artifacts.keepScenarioAsTest?.(scenario) ?? Promise.resolve()
-									: undefined
-							}
-							onDraftComment={() => setPanel("signoff")}
-						/>
-					) : (
-						<p className="artifact-note">No scenario result is available for this review.</p>
-					))}
-				{panel === "preview" &&
-					(preview ? (
-						<PreviewArtifact
-							preview={preview}
-							onSelect={(marker) => {
-								useReview.setState((state) => ({
-									previewMarkerId: marker.id,
-									sequence: state.sequence + 1,
-								}));
-								void focusCodeLocation(marker.location, `Marker ${marker.number}: ${marker.label}`);
-							}}
-							onViewportChange={
-								artifacts ? (mode) => resizeActivePreview(artifacts, mode) : undefined
-							}
-						/>
-					) : (
-						<p className="artifact-note">No preview is available for this review.</p>
-					))}
-				{panel === "diagram" &&
-					(diagram ? (
-						<DiagramArtifact
-							diagram={diagram}
-							onSelect={(location) => void focusCodeLocation(location, "Opened from the diagram")}
-						/>
-					) : (
-						<p className="artifact-note">No codebase diagram is available for this review.</p>
-					))}
-				{panel === "signoff" && (
-					<SignoffArtifact
-						preparation={preparation}
-						files={files}
-						seen={seen}
-						drafts={drafts}
-						onOpenFile={openFile}
-						adapter={draftAdapter}
-						onDraftChange={(draft) =>
-							useReview.setState((current) =>
-								draft.prId === current.preparation.pr.id &&
-								draft.headSha === current.preparation.pr.headSha
-									? {
-											drafts: current.drafts.map((existing) =>
-												existing.id === draft.id && draft.revision > existing.revision
-													? draft
-													: existing
-											),
-										}
-									: {}
-							)
-						}
-					/>
 				)}
 			</div>
 			<form
@@ -250,15 +126,18 @@ export function AgentPanel() {
 				<Icon name="agent" size={15} />
 				<input
 					name="question"
-					aria-label="Ask about the current code"
-					placeholder="Ask about this code…"
+					aria-label="Ask about this review"
+					placeholder="Ask about this review…"
+					disabled={!agent || sourceMode === "reference"}
 				/>
-				<button type="submit" aria-label="Send question">
+				<button
+					type="submit"
+					aria-label="Send question"
+					disabled={!agent || sourceMode === "reference"}
+				>
 					<Icon name="arrow" size={16} />
 				</button>
 			</form>
 		</aside>
 	);
 }
-import { useEffect } from "react";
-import { panelCopy } from "./panel-copy";

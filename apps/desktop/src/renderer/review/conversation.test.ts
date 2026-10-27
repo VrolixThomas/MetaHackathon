@@ -11,6 +11,7 @@ const fixture = getReviewFixture();
 beforeEach(() =>
 	useReview.setState({
 		preparation: fixture.preparation,
+		browser: null,
 		files: initialFiles,
 		file: "pricing/applyDiscounts.ts",
 		panel: null,
@@ -305,4 +306,82 @@ it("retiring a voice generation rejects old transcripts and actions", async () =
 	});
 	assert.equal(useConversation.getState().question, "Current question");
 	assert.equal(useReview.getState().panel, null);
+});
+
+it("a new voice capture cannot be interrupted by retiring the old sink", async () => {
+	const { allocateReviewTurn, externalVoiceTurn } = await import("./conversation");
+	harness();
+	let interrupts = 0;
+	configureReviewServices({
+		voice: {
+			beginCapture() {},
+			endCapture() {},
+			interrupt() {
+				interrupts++;
+			},
+			getPhase: () => "listening",
+			subscribe: () => () => {},
+		},
+	});
+	const old = allocateReviewTurn();
+	externalVoiceTurn.begin(old);
+	const current = allocateReviewTurn();
+	externalVoiceTurn.begin(current);
+	externalVoiceTurn.finish(old, "cancelled");
+	externalVoiceTurn.transcript(current, "Still listening to this capture");
+	assert.equal(interrupts, 0);
+	assert.equal(useConversation.getState().question, "Still listening to this capture");
+	externalVoiceTurn.finish(current, "complete");
+	assert.equal(externalVoiceTurn.begin(current), false);
+	configureReviewServices({ voice: null });
+});
+
+it("cancelling while a source read is pending prevents its eventual code effect", async () => {
+	const h = harness();
+	const reads: Array<() => void> = [];
+	configureReviewServices({
+		sources: {
+			read: (input) =>
+				new Promise((resolve) =>
+					reads.push(() =>
+						resolve({
+							...input,
+							repository: fixture.preparation.pr.repository,
+							commitSha:
+								input.revision === "base"
+									? fixture.preparation.pr.baseSha
+									: fixture.preparation.pr.headSha,
+							content: "caller();",
+						})
+					)
+				),
+		},
+	});
+	const running = runAgentQuestion("Show caller");
+	await Promise.resolve();
+	await Promise.resolve();
+	const input = h.input();
+	const pending = h.observer().action({
+		sessionId: input.sessionId,
+		turnId: input.turnId,
+		generation: input.generation,
+		requestId: "read-before-cancel",
+		screenSequence: input.screenContext.sequence,
+		kind: "highlight-code",
+		location: {
+			repository: fixture.preparation.pr.repository,
+			revision: "head",
+			commitSha: fixture.preparation.pr.headSha,
+			path: "new/caller.ts",
+			startLine: 1,
+			endLine: 1,
+		},
+		note: "Caller",
+	});
+	await cancelActiveQuestion();
+	for (const read of reads) read();
+	await pending;
+	assert.equal(useReview.getState().file, "pricing/applyDiscounts.ts");
+	h.finish();
+	await running;
 });

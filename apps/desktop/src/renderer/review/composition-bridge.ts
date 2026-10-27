@@ -2,6 +2,10 @@ import superjson from "superjson";
 import { z } from "zod";
 import {
 	AgentTurnInputSchema,
+	BrowserCommandSchema,
+	BrowserObserveInputSchema,
+	BrowserPresentInputSchema,
+	BrowserStateSchema,
 	CancelTurnInputSchema,
 	CancelTurnResultSchema,
 	ConfirmCommentInputSchema,
@@ -17,14 +21,15 @@ import {
 	TurnIdentitySchema,
 } from "../../shared/contracts";
 import type { TrpcRequest, TrpcResponse } from "../../shared/types";
+import { reviewErrorMessage } from "./errors";
 import { createPollingAgentAdapter } from "./polling-adapter";
-import type { DraftAdapter, ReviewAdapter } from "./services";
+import type { BrowserAdapter, DraftAdapter, ReviewAdapter } from "./services";
 
 export type ReviewRequest = (input: TrpcRequest) => Promise<TrpcResponse>;
 export function createReviewRpc(request: ReviewRequest) {
 	return async (type: "query" | "mutation", path: string, input?: unknown): Promise<unknown> => {
 		const response = await request({ type, path, input: superjson.serialize(input) });
-		if ("error" in response) throw new Error("Review request failed");
+		if ("error" in response) throw new Error(reviewErrorMessage(response.error.message));
 		return superjson.deserialize(response.result.data);
 	};
 }
@@ -89,5 +94,22 @@ export function createCompositionBridge(request: ReviewRequest) {
 					await call("mutation", "agent.confirmComment", ConfirmCommentInputSchema.parse(input))
 				),
 	};
-	return { agent, review, drafts };
+	const browser: BrowserAdapter = {
+		execute: async (input) =>
+			BrowserStateSchema.parse(
+				await call("mutation", "browser.execute", BrowserCommandSchema.parse(input))
+			),
+		observe: async (sessionId) =>
+			BrowserStateSchema.nullable().parse(
+				await call("query", "browser.observe", BrowserObserveInputSchema.parse({ sessionId }))
+			),
+		present: async (sessionId, bounds) => {
+			await call(
+				"mutation",
+				"browser.present",
+				BrowserPresentInputSchema.parse({ sessionId, bounds })
+			);
+		},
+	};
+	return { agent, review, drafts, browser };
 }

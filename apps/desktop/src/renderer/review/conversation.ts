@@ -10,19 +10,30 @@ import {
 	type TurnIdentity,
 	TurnIdentitySchema,
 } from "../../shared/contracts";
+import { acceptBrowserState } from "./browser-session";
 import { getScreenContext, useReview } from "./controller";
+import { reviewErrorMessage } from "./errors";
 import { type AgentAdapter, useServices } from "./services";
 import { focusCodeLocation } from "./source-adapter";
 
 type Exchange = { question: string; answer: string; state: string };
 export const useConversation = create<{
 	history: Exchange[];
+	identity: (TurnIdentity & { requestId: string }) | null;
 	question: string;
 	answer: string;
 	state: "idle" | "working" | "complete" | "cancelled" | "error";
 	context: string;
 	error: string;
-}>(() => ({ history: [], question: "", answer: "", state: "idle", context: "", error: "" }));
+}>(() => ({
+	identity: null,
+	history: [],
+	question: "",
+	answer: "",
+	state: "idle",
+	context: "",
+	error: "",
+}));
 
 type ActiveTurn = {
 	unsubscribe?: () => void;
@@ -31,6 +42,7 @@ type ActiveTurn = {
 	adapter: AgentAdapter;
 	sequence: number;
 	actions: Set<string>;
+	screens: Set<number>;
 	external?: boolean;
 };
 let active: ActiveTurn | null = null;
@@ -44,7 +56,7 @@ export function allocateReviewTurn(): TurnIdentity {
 	return { sessionId, turnId: crypto.randomUUID(), generation: ++generation };
 }
 
-function startExchange(question: string, context: string) {
+function startExchange(question: string, context: string, input: AgentTurnInput) {
 	useConversation.setState((state) => ({
 		history:
 			state.question || state.answer
@@ -53,6 +65,12 @@ function startExchange(question: string, context: string) {
 						{ question: state.question, answer: state.answer, state: state.state },
 					].slice(-30)
 				: state.history,
+		identity: {
+			sessionId: input.sessionId,
+			turnId: input.turnId,
+			generation: input.generation,
+			requestId: input.requestId,
+		},
 		question,
 		answer: "",
 		context,
@@ -63,6 +81,15 @@ function startExchange(question: string, context: string) {
 
 function watchScreen(turn: ActiveTurn) {
 	turn.unsubscribe = useReview.subscribe((state, previous) => {
+		// Observing the same visible page is not reviewer navigation.
+		if (
+			state.browser !== previous.browser &&
+			state.panel === previous.panel &&
+			turn.sequence === previous.sequence
+		) {
+			turn.sequence = state.sequence;
+			turn.screens.add(state.sequence);
+		}
 		if (state.sequence !== previous.sequence && valid(turn) && turn.adapter.updateScreen)
 			void turn.adapter
 				.updateScreen(sessionId, getScreenContext())
@@ -95,7 +122,7 @@ function currentScreen(turn: ActiveTurn, action: AgentAction) {
 	return (
 		valid(turn) &&
 		(action.screenSequence === sequence ||
-			(sequence === turn.sequence && action.screenSequence === turn.input.screenContext.sequence))
+			(sequence === turn.sequence && turn.screens.has(action.screenSequence)))
 	);
 }
 
@@ -111,12 +138,21 @@ async function applyAction(turn: ActiveTurn, input: AgentAction) {
 	turn.actions.add(action.requestId);
 	const state = useReview.getState();
 	switch (action.kind) {
+		case "show-browser": {
+			if (acceptBrowserState(action.browser, true)) state.setPanel("browser");
+			break;
+		}
 		case "highlight-code":
 			{
 				const sequence = useReview.getState().sequence;
-				const applied = await focusCodeLocation(action.location, action.note);
+				const applied = await focusCodeLocation(
+					action.location,
+					action.note,
+					turn.controller.signal
+				);
 				if (!valid(turn) || useReview.getState().sequence !== sequence + (applied ? 1 : 0)) return;
 			}
+			state.setPanel("code");
 			break;
 		case "show-scenario": {
 			const scenario = ScenarioTraceSchema.parse(await turn.adapter.getScenario(action.scenarioId));
@@ -139,7 +175,8 @@ async function applyAction(turn: ActiveTurn, input: AgentAction) {
 				const sequence = useReview.getState().sequence;
 				const applied = await focusCodeLocation(
 					step.location,
-					`Following scenario, step ${index + 1}`
+					`Following scenario, step ${index + 1}`,
+					turn.controller.signal
 				);
 				if (!valid(turn) || useReview.getState().sequence !== sequence + (applied ? 1 : 0)) return;
 				useReview.setState((state) => ({ scenarioStepId: step.id, sequence: state.sequence + 1 }));
@@ -189,17 +226,19 @@ async function applyAction(turn: ActiveTurn, input: AgentAction) {
 			break;
 	}
 	turn.sequence = useReview.getState().sequence;
+	turn.screens.add(turn.sequence);
 }
 
 async function stopActiveQuestion(
-	reason: "user" | "escape" | "navigation" | "shutdown" | "push-to-talk" = "user"
+	reason: "user" | "escape" | "navigation" | "shutdown" | "push-to-talk" = "user",
+	interruptVoice = true
 ) {
 	const turn = active;
 	if (!turn) return;
 	active = null;
 	turn.unsubscribe?.();
 	turn.controller.abort();
-	if (turn.external) void useServices.getState().voice?.interrupt(reason);
+	if (turn.external && interruptVoice) void useServices.getState().voice?.interrupt(reason);
 	useConversation.setState({ state: "cancelled" });
 	try {
 		await turn.adapter.cancel({
@@ -249,11 +288,12 @@ export async function runAgentQuestion(text: string) {
 		adapter,
 		sequence: screenContext.sequence,
 		actions: new Set(),
+		screens: new Set([screenContext.sequence]),
 	};
 	active = turn;
 	lastStartedGeneration = input.generation;
 	watchScreen(turn);
-	startExchange(input.text, screenContext.focusedLocation?.path ?? "Review");
+	startExchange(input.text, screenContext.focusedLocation?.path ?? "Review", input);
 	try {
 		await adapter.updateScreen?.(sessionId, screenContext);
 		if (!valid(turn)) return;
@@ -283,8 +323,7 @@ export async function runAgentQuestion(text: string) {
 			turn.unsubscribe?.();
 			useConversation.setState({
 				state: error instanceof DOMException && error.name === "AbortError" ? "cancelled" : "error",
-				error:
-					"The agent could not complete this reply. Try again when the connection is available.",
+				error: reviewErrorMessage(error),
 			});
 			active = null;
 		}
@@ -302,7 +341,7 @@ export const externalVoiceTurn = {
 		if (parsed.generation <= lastStartedGeneration) return false;
 		lastStartedGeneration = parsed.generation;
 		launchSequence++;
-		void stopActiveQuestion("push-to-talk");
+		void stopActiveQuestion("push-to-talk", false);
 		const screenContext = getScreenContext();
 		const turn: ActiveTurn = {
 			input: { ...parsed, requestId: crypto.randomUUID(), text: "Voice question", screenContext },
@@ -310,11 +349,12 @@ export const externalVoiceTurn = {
 			adapter,
 			sequence: screenContext.sequence,
 			actions: new Set(),
+			screens: new Set([screenContext.sequence]),
 			external: true,
 		};
 		active = turn;
 		watchScreen(turn);
-		startExchange("Listening…", screenContext.focusedLocation?.path ?? "Review");
+		startExchange("Listening…", screenContext.focusedLocation?.path ?? "Review", turn.input);
 		return true;
 	},
 	transcript(identity: TurnIdentity, text: string) {

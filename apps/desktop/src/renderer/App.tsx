@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { AgentPanel } from "./review/AgentPanel";
-import { DiffView } from "./review/DiffView";
+import { MainWorkspace } from "./review/MainWorkspace";
 import { Settings } from "./review/Settings";
 import { Sidebar } from "./review/Sidebar";
 import { createCaptureGate } from "./review/capture-gate";
@@ -24,7 +24,14 @@ export function App() {
 					current.preparation.pr.headSha !== previous.preparation.pr.headSha
 				) {
 					void cancelActiveQuestion("navigation");
-					useConversation.setState({ question: "", answer: "", state: "idle", error: "" });
+					useConversation.setState({
+						history: [],
+						question: "",
+						answer: "",
+						state: "idle",
+						error: "",
+					});
+					void useServices.getState().voice?.interrupt("navigation");
 				}
 				if (
 					(previous.panel && !current.panel) ||
@@ -103,7 +110,7 @@ export function App() {
 				onTalkEnd={endCapture}
 			/>
 			<div className="workspace">
-				<DiffView />
+				<MainWorkspace obscured={settings} />
 				<AgentPanel />
 			</div>
 			{settings && <Settings onClose={closeSettings} />}

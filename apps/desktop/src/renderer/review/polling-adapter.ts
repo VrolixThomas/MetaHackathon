@@ -4,6 +4,7 @@ import {
 	PollTurnResultSchema,
 	type TurnIdentity,
 } from "../../shared/contracts";
+import { reviewErrorMessage } from "./errors";
 import type { AgentAdapter } from "./services";
 
 export type AgentPollingPorts = Omit<AgentAdapter, "ask"> & {
@@ -86,7 +87,14 @@ export function createPollingAgentAdapter(
 				}
 				if (cursor < result.sequence) continue;
 				if (result.status === "completed") return;
-				if (result.status === "error") throw new Error("Agent turn failed");
+				if (result.status === "error") {
+					const errorEvent = result.events.find((event) => event.kind === "error");
+					throw new Error(
+						reviewErrorMessage(
+							errorEvent?.kind === "error" ? errorEvent.message : "Check model credentials"
+						)
+					);
+				}
 				if (result.status === "cancelled") throw new DOMException("Turn cancelled", "AbortError");
 				await pause(pollIntervalMs, signal);
 			}

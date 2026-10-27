@@ -2,6 +2,9 @@ import { create } from "zustand";
 import type {
 	AgentAction,
 	AgentTurnInput,
+	BrowserBounds,
+	BrowserCommand,
+	BrowserState,
 	CancelTurnInput,
 	CodeLocation,
 	ConfirmCommentInput,
@@ -32,6 +35,11 @@ export type VoiceAdapter = {
 	interrupt: (reason?: CancelTurnInput["reason"]) => void | Promise<void>;
 	getPhase: () => string;
 	subscribe: (listener: () => void) => () => void;
+};
+export type BrowserAdapter = {
+	execute: (input: BrowserCommand) => Promise<BrowserState>;
+	observe: (sessionId: string) => Promise<BrowserState | null>;
+	present: (sessionId: string, bounds: BrowserBounds | null) => Promise<void>;
 };
 export type ReviewAdapter = {
 	prepare: (prId: string) => Promise<PRPreparation>;
@@ -86,6 +94,7 @@ export const useServices = create<{
 	sources: SourceAdapter | null;
 	runtime: RuntimeAdapter | null;
 	review: ReviewAdapter | null;
+	browser: BrowserAdapter | null;
 }>(() => ({
 	settings: null,
 	voice: null,
@@ -95,6 +104,7 @@ export const useServices = create<{
 	sources: null,
 	runtime: null,
 	review: null,
+	browser: null,
 }));
 export function configureReviewServices(
 	services: Partial<ReturnType<typeof useServices.getState>>

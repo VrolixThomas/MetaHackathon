@@ -1,5 +1,6 @@
 import { create } from "zustand";
 import {
+	type BrowserState,
 	type CodeLocation,
 	CodeLocationSchema,
 	type DiagramSpec,
@@ -19,6 +20,7 @@ type ReviewState = {
 	preparation: PRPreparation;
 	scenario: ScenarioTrace | null;
 	preview: Preview | null;
+	browser: BrowserState | null;
 	diagram: DiagramSpec | null;
 	drafts: DraftedComment[];
 	sequence: number;
@@ -54,6 +56,7 @@ export const useReview = create<ReviewState>((set, get) => ({
 	preparation: fixture.preparation,
 	scenario: fixture.scenario,
 	preview: fixture.preview,
+	browser: null,
 	diagram: fixture.diagram,
 	drafts: [fixture.draftComment],
 	sequence: 0,
@@ -63,7 +66,7 @@ export const useReview = create<ReviewState>((set, get) => ({
 	cursor: 0,
 	seen: [],
 	why: true,
-	panel: null,
+	panel: "browser",
 	selection: null,
 	status: "",
 	openFile(file) {
@@ -71,6 +74,7 @@ export const useReview = create<ReviewState>((set, get) => ({
 		if (index < 0) return;
 		set({
 			file,
+			panel: "code",
 			cursor: readingRoute(get().files).findIndex((f) => f.path === file),
 			selection: null,
 			sequence: get().sequence + 1,
@@ -210,12 +214,13 @@ export function getScreenContext(): ScreenContext {
 		panel:
 			state.panel === "signoff"
 				? "sign-off"
-				: state.panel === "conversation" || !state.panel
+				: state.panel === "conversation" || state.panel === "code" || !state.panel
 					? state.why
 						? "why"
 						: "diff"
 					: state.panel,
-		focusedLocation,
+		focusedLocation: state.panel === "browser" ? null : focusedLocation,
+		...(state.browser ? { browser: state.browser } : {}),
 		...(state.panel === "scenario" && state.scenario
 			? { artifactId: state.scenario.id, scenarioStepId: state.scenarioStepId }
 			: {}),
@@ -250,6 +255,8 @@ export function installPreparedReview(
 		sequence: state.sequence + 1,
 		scenario: null,
 		preview: null,
+		browser: null,
+		panel: "browser",
 		diagram: null,
 		drafts: [],
 		scenarioStepId: undefined,

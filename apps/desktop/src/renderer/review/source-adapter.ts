@@ -100,7 +100,12 @@ export async function loadPreparedReview(
 }
 
 /** A scenario may visit an unchanged caller that was not in the original reading route. */
-export async function focusCodeLocation(location: CodeLocation, note: string) {
+export async function focusCodeLocation(
+	location: CodeLocation,
+	note: string,
+	signal?: AbortSignal
+) {
+	if (signal?.aborted) return false;
 	const state = useReview.getState();
 	const source = state.files.find((file) => file.path === location.path);
 	if (source?.lines.length) return highlightLocation(location, note);
@@ -116,7 +121,7 @@ export async function focusCodeLocation(location: CodeLocation, note: string) {
 	const sequence = state.sequence;
 	try {
 		const file = await readReviewFile(adapter, state.preparation, location.path);
-		if (useReview.getState().sequence !== sequence) return false;
+		if (signal?.aborted || useReview.getState().sequence !== sequence) return false;
 		useReview.setState((current) => ({
 			files: orderedFiles(current.preparation, [
 				...current.files.filter((source) => source.path !== file.path),

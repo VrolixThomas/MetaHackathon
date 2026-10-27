@@ -37,7 +37,14 @@ export type CodeSelection = {
 	note: string;
 };
 
-export type Artifact = "conversation" | "scenario" | "preview" | "diagram" | "signoff";
+export type Artifact =
+	| "browser"
+	| "code"
+	| "conversation"
+	| "scenario"
+	| "preview"
+	| "diagram"
+	| "signoff";
 
 export function parseDiff(before: string, after: string): DiffLine[] {
 	const allOld = before ? before.split("\n") : [];

@@ -47,7 +47,7 @@ export function loadLocalDemo() {
 		const preparation = await review.prepare(pr.id);
 		signal.throwIfAborted();
 		await loadPreparedReview(preparation, sources, signal);
-		useReview.getState().setPanel(null);
+		useReview.getState().setPanel("browser");
 		useReview
 			.getState()
 			.announce("Review prepared from pinned local source. Ask me to walk you through the PR.");
