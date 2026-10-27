@@ -9,6 +9,7 @@ import {
 	VoiceSetupStatusSchema,
 } from "../../shared/contracts";
 import { publicProcedure, router } from "../trpc";
+import { VoiceDiagnosticError, voiceDiagnosticMessage } from "../voice/diagnostics";
 import {
 	type SpeakInput,
 	SpeakSchema,
@@ -35,10 +36,15 @@ export interface VoiceCompositionOptions {
 	executableAvailable(): boolean | Promise<boolean>;
 	/** Root may read an environment default; persisted configuration takes precedence. */
 	defaultVoiceId?: string;
+	/** V1 public voice selection lives in the same .env as credentials. */
+	getVoiceId?: () => Promise<string | undefined>;
+	setVoiceId?: (voiceId: string) => Promise<void>;
 	createSidecar?: (options: SidecarOptions) => PreparedVoiceBackend;
 }
 
 interface ActiveVoice {
+	error?: string;
+	voiceId: string;
 	backend: PreparedVoiceBackend;
 	service: VoiceService;
 	credentials: Credentials;
@@ -115,7 +121,10 @@ export class VoiceCompositionManager {
 		return structuredClone(this.snapshot);
 	}
 	private async inspect() {
-		this.load();
+		if (this.options.getVoiceId) {
+			const voiceId = await this.options.getVoiceId();
+			this.voiceId = voiceId ? VoiceSetupInputSchema.parse({ voiceId }).voiceId : null;
+		} else this.load();
 		const [raw, executable] = await Promise.all([
 			this.track(Promise.resolve().then(() => this.options.getCredentials())),
 			this.track(Promise.resolve().then(() => this.options.executableAvailable())),
@@ -133,12 +142,18 @@ export class VoiceCompositionManager {
 		const active = this.active;
 		const phase = missing.length
 			? "unconfigured"
-			: active && sameCredentials(active.credentials, credentials)
+			: active &&
+					active.voiceId === this.voiceId &&
+					sameCredentials(active.credentials, credentials)
 				? active.phase
 				: "stopped";
 		return {
 			credentials,
-			status: this.publish(phase, missing, phase === "error" ? setupError : undefined),
+			status: this.publish(
+				phase,
+				missing,
+				phase === "error" ? (active?.error ?? setupError) : undefined
+			),
 		};
 	}
 	status(): Promise<VoiceSetupStatus> {
@@ -157,13 +172,19 @@ export class VoiceCompositionManager {
 			try {
 				await this.retire();
 				this.assertLive();
-				const path = this.settingsPath();
-				mkdirSync(join(this.options.getDataDirectory(), "voice"), { recursive: true, mode: 0o700 });
-				try {
-					writeFileSync(`${path}.tmp`, `${JSON.stringify(input)}\n`, { mode: 0o600 });
-					renameSync(`${path}.tmp`, path);
-				} finally {
-					rmSync(`${path}.tmp`, { force: true });
+				if (this.options.setVoiceId) await this.options.setVoiceId(input.voiceId);
+				else {
+					const path = this.settingsPath();
+					mkdirSync(join(this.options.getDataDirectory(), "voice"), {
+						recursive: true,
+						mode: 0o700,
+					});
+					try {
+						writeFileSync(`${path}.tmp`, `${JSON.stringify(input)}\n`, { mode: 0o600 });
+						renameSync(`${path}.tmp`, path);
+					} finally {
+						rmSync(`${path}.tmp`, { force: true });
+					}
 				}
 				this.voiceId = input.voiceId;
 				this.loaded = true;
@@ -190,6 +211,7 @@ export class VoiceCompositionManager {
 					getCredentials: async () => ({ ...credentials, voiceId }),
 				});
 				const active: ActiveVoice = {
+					voiceId,
 					backend,
 					credentials,
 					phase: "preparing",
@@ -250,15 +272,22 @@ export class VoiceCompositionManager {
 						const parsed = VoicePollResultSchema.parse(result);
 						for (const event of parsed.events) {
 							if (event.kind === "error") {
-								event.message = requestError;
+								event.message = event.diagnostic
+									? voiceDiagnosticMessage(event.diagnostic)
+									: requestError;
+								active.error ??= event.message;
 								active.phase = "error";
 							}
 						}
 						return parsed;
 					}
 					return result;
-				} catch {
-					if (!signal?.aborted && !active.stopped) active.phase = "error";
+				} catch (error) {
+					if (!signal?.aborted && !active.stopped) {
+						active.phase = "error";
+						active.error ??= error instanceof VoiceDiagnosticError ? error.message : requestError;
+					}
+					if (error instanceof VoiceDiagnosticError) throw error;
 					throw new Error(requestError);
 				}
 			})
@@ -280,7 +309,8 @@ export class VoiceCompositionManager {
 						if (active.stopped || this.active !== active) throw new Error(requestError);
 						return result;
 					})
-					.catch(() => {
+					.catch((error: unknown) => {
+						if (error instanceof VoiceDiagnosticError) throw error;
 						throw new Error(requestError);
 					})
 			);

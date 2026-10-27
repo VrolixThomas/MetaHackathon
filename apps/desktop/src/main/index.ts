@@ -1,15 +1,25 @@
+import { execFile } from "node:child_process";
+import { existsSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { BrowserWindow, app, safeStorage } from "electron";
+import { promisify } from "node:util";
+import { BrowserWindow, app, safeStorage, shell, systemPreferences } from "electron";
 import electronUpdater from "electron-updater";
+import { MicrophoneStatusSchema } from "../shared/contracts";
+import { EnvConfiguration } from "./config/env";
+import { initializeAppConfiguration } from "./config/initialize";
 import { openDatabase } from "./db";
 import { createElectronBrowserPage } from "./runtime/browser-electron";
 import { browserPreviewOpener } from "./runtime/browser-preview";
 import { createElectronPreviewPage } from "./runtime/preview-electron";
 import {
 	disposeRuntime,
+	getConfiguration,
 	getRuntime,
+	getVoice,
 	initializeBrowser,
+	initializeConfiguration,
+	initializeConfigurationPorts,
 	initializeRuntime,
 	initializeVoice,
 } from "./services";
@@ -25,12 +35,12 @@ let shutdownFinished = false;
 function createWindow(): void {
 	mainWindow = new BrowserWindow({
 		title: "MetaHackathon",
-		width: 1440,
-		height: 900,
-		minWidth: 1000,
-		minHeight: 650,
+		width: 1080,
+		height: 800,
+		minWidth: 800,
+		minHeight: 600,
 		show: false,
-		backgroundColor: "#ffffff",
+		backgroundColor: "#15171b",
 		webPreferences: {
 			preload: join(mainDirectory, "../preload/index.cjs"),
 			contextIsolation: true,
@@ -56,16 +66,52 @@ function createWindow(): void {
 	}
 }
 
+// Native interception also works when focus is inside an embedded page or a text field.
+// Plain Space remains available for typing. The shortcut is app-scoped, never a global key grab.
+app.on("web-contents-created", (_event, contents) => {
+	contents.on("before-input-event", (event, input) => {
+		if (!mainWindow?.isFocused() || input.type !== "keyDown" || input.isAutoRepeat) return;
+		const command = process.platform === "darwin" ? input.meta : input.control;
+		if (command && input.shift && input.code === "Space") {
+			event.preventDefault();
+			mainWindow.webContents.send("voice:shortcut", { phase: "toggle" });
+		} else if (input.key === "Escape") {
+			mainWindow.webContents.send("voice:shortcut", { phase: "cancel" });
+		}
+	});
+});
+
 app
 	.whenReady()
-	.then(() => {
+	.then(async () => {
 		database = openDatabase();
+		const envPath =
+			process.env["METAHACKATHON_ENV_FILE"] ??
+			(app.isPackaged
+				? join(app.getPath("userData"), ".env")
+				: join(mainDirectory, "../../../..", ".env"));
+		const bundledEnv = join(process.resourcesPath, ".env");
+		const config = await initializeAppConfiguration({
+			envPath,
+			userDataPath: app.getPath("userData"),
+			encryption: safeStorage,
+			seedPath: app.isPackaged
+				? existsSync(bundledEnv)
+					? bundledEnv
+					: join(dirname(app.getPath("exe")), "../../..", ".env")
+				: undefined,
+		}).catch(() => {
+			console.warn("Configuration needs attention. Open the local .env file from the app.");
+			return new EnvConfiguration(envPath);
+		});
+		initializeConfiguration(config);
 		initializeRuntime({
 			userDataPath: app.getPath("userData"),
 			fixturesPath: app.isPackaged
 				? join(process.resourcesPath, "demo")
 				: join(mainDirectory, "../../../../fixtures/demo"),
 			encryption: safeStorage,
+			credentialStore: config,
 			createPreviewPage: createElectronPreviewPage,
 			submissionLedger: database.runtime,
 		});
@@ -89,6 +135,27 @@ app
 			executableAvailable: () =>
 				existsSync(voiceCommand) && (app.isPackaged || existsSync(voiceScript)),
 			defaultVoiceId: process.env["ELEVENLABS_VOICE_ID"],
+		});
+		initializeConfigurationPorts({
+			configuration: getConfiguration,
+			microphone: () =>
+				process.platform === "darwin"
+					? MicrophoneStatusSchema.parse(systemPreferences.getMediaAccessStatus("microphone"))
+					: "unknown",
+			requestMicrophone: async () => {
+				if (process.platform !== "darwin") return "unknown";
+				await systemPreferences.askForMediaAccess("microphone");
+				return MicrophoneStatusSchema.parse(systemPreferences.getMediaAccessStatus("microphone"));
+			},
+			openEnv: async (path) => {
+				if (process.platform === "darwin") {
+					await promisify(execFile)("/usr/bin/open", ["-a", "TextEdit", path]);
+					return;
+				}
+				const error = await shell.openPath(path);
+				if (error) throw new Error("Could not open the configuration file");
+			},
+			reloadVoice: () => getVoice().prepare(),
 		});
 		setupTRPCIPC(() => mainWindow);
 		createWindow();
@@ -134,4 +201,3 @@ app.on("before-quit", (event) => {
 });
 
 app.on("will-quit", () => database?.close());
-import { existsSync } from "node:fs";

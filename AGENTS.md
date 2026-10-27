@@ -50,16 +50,15 @@ bun run type-check
 bun run lint
 bun run test:contracts
 bun run test:integration
-bun run test:browser-flow
 bun run build
 bun run --filter @metahackathon/desktop preview
 ```
 
 Run behavior checks appropriate to the handoff; include actual results and limitations.
 Use targeted formatting instead of formatting unrelated files. Runtime owns packaging checks.
-`test:integration` launches the built Electron app with temporary user data, exercises the
-registered runtime over the real preload/IPC bridge, and verifies shutdown cleanup. It uses
-local seeded repositories and no live provider credentials or GitHub writes.
+`test:integration` launches the built Electron V1 app with isolated user data and `.env`, verifies
+empty startup, a real renderer conversation without a PR, history and cancellation over IPC.
+Its model transport is simulated; it neither records a microphone nor uses live provider keys.
 
 ## Shared interfaces (v1)
 

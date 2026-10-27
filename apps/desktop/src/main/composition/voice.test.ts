@@ -1,9 +1,10 @@
 import assert from "node:assert/strict";
-import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { type TestContext, describe, it } from "node:test";
 import { VoiceSetupStatusSchema } from "../../shared/contracts";
+import { VoiceDiagnosticError } from "../voice/diagnostics";
 import type { SidecarOptions, VoiceBackend } from "../voice/sidecar";
 import {
 	type PreparedVoiceBackend,
@@ -13,6 +14,44 @@ import {
 } from "./voice";
 
 const identity = { sessionId: "voice-session", turnId: "voice-turn", generation: 1 };
+
+it("preserves the first canonical provider failure through composition and cleanup", async (t) => {
+	const f = fixture(t);
+	f.state.build = () => {
+		const backend = new FakeSidecar();
+		backend.handle = async (path) => {
+			throw new VoiceDiagnosticError(
+				path === "offer"
+					? { stage: "meta", code: "auth", httpStatus: 401 }
+					: { stage: "media", code: "failed" }
+			);
+		};
+		return backend;
+	};
+	await ready(f.manager);
+	await assert.rejects(f.manager.offer(offer), /Meta speech authentication failed/);
+	await flush();
+	assert.match((await f.manager.status()).error ?? "", /Meta speech authentication failed/);
+});
+
+it("uses the env voice ID and replaces the sidecar when that file selection changes", async (t) => {
+	let voiceId = "env-first";
+	const f = fixture(t, {
+		getVoiceId: async () => voiceId,
+		setVoiceId: async (value) => {
+			voiceId = value;
+		},
+	});
+	await ready(f.manager);
+	assert.equal((await f.options[0]?.getCredentials())?.voiceId, "env-first");
+	voiceId = "env-edited";
+	assert.equal((await f.manager.status()).phase, "stopped");
+	await ready(f.manager);
+	assert.equal(f.sidecars.length, 2);
+	await f.manager.configure({ voiceId: "env-final" });
+	assert.equal(voiceId, "env-final");
+	assert.equal(existsSync(join(f.directory, "voice/settings.json")), false);
+});
 const offer = { ...identity, type: "offer" as const, sdp: "test-offer", keywords: [] };
 const answer = { type: "answer" as const, sdp: "test-answer" };
 const secret = "upstream-secret-that-must-stay-in-main";

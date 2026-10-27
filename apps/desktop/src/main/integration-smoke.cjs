@@ -19,6 +19,7 @@ globalThis.fetch = (input, options) => {
 };
 const userData = mkdtempSync(join(tmpdir(), "metahackathon-integrated-"));
 app.setPath("userData", userData);
+process.env.METAHACKATHON_ENV_FILE = join(userData, ".env");
 const hardDeadline = setTimeout(() => {
 	console.error("INTEGRATED_SMOKE_FAIL: hard deadline");
 	app.exit(1);

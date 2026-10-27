@@ -1,7 +1,11 @@
 import { TRPCError } from "@trpc/server";
+import { ConversationService } from "./agent/conversation";
+import { MetaClient } from "./agent/meta-client";
 import { ScreenContextStore } from "./agent/screen-context";
 import { createAgentComposition } from "./composition";
 import { type VoiceCompositionOptions, createVoiceComposition } from "./composition/voice";
+import type { EnvConfiguration } from "./config/env";
+import type { AppConfigurationPorts } from "./config/router";
 import { BrowserService, type BrowserServiceOptions } from "./runtime/browser";
 import type { RuntimeOptions, RuntimeService } from "./runtime/service";
 
@@ -11,6 +15,8 @@ let closing = false;
 let browser: BrowserService | undefined;
 let browserOptions: BrowserServiceOptions | undefined;
 let voice: ReturnType<typeof createVoiceComposition> | undefined;
+let configuration: EnvConfiguration | undefined;
+let configurationPorts: AppConfigurationPorts | undefined;
 export const screenContexts = new ScreenContextStore();
 export const agentComposition = createAgentComposition({
 	getRuntime: runtimeForActiveJobs,
@@ -29,6 +35,29 @@ export const agentComposition = createAgentComposition({
 			? { command: process.execPath, args: ["--experimental-strip-types", "scenarios/build.mjs"] }
 			: undefined,
 });
+
+const conversationClient = new MetaClient({
+	getApiKey: async () => (await getConfiguration().get("meta")) ?? null,
+	recordUsage: (record) => agentComposition.usage.record("conversation", record),
+});
+export const conversationService = new ConversationService(conversationClient, {
+	getContext: (prId, signal) => getRuntime().github.prContext(prId, signal),
+});
+
+export function initializeConfiguration(value: EnvConfiguration): void {
+	configuration = value;
+}
+export function getConfiguration(): EnvConfiguration {
+	if (closing || !configuration) throw new Error("App configuration is unavailable");
+	return configuration;
+}
+export function initializeConfigurationPorts(value: AppConfigurationPorts): void {
+	configurationPorts = value;
+}
+export function getConfigurationPorts(): AppConfigurationPorts {
+	if (!configurationPorts) throw new Error("App configuration is unavailable");
+	return configurationPorts;
+}
 
 export function initializeBrowser(options: BrowserServiceOptions): void {
 	browserOptions = options;
@@ -61,6 +90,8 @@ export function initializeVoice(
 			]);
 			return { meta, elevenlabs };
 		},
+		getVoiceId: () => getConfiguration().voiceId(),
+		setVoiceId: (value) => getConfiguration().setVoiceId(value),
 	});
 }
 export function getVoice(): ReturnType<typeof createVoiceComposition> {
@@ -98,6 +129,7 @@ export async function disposeRuntime(): Promise<void> {
 		try {
 			await voice?.dispose();
 		} finally {
+			await conversationService.dispose();
 			// Drain provider, confirmation and source jobs while runtime/ledger remain available.
 			await agentComposition.dispose();
 		}

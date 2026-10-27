@@ -28,6 +28,7 @@ const userData = mkdtempSync(join(tmpdir(), "metahackathon-browser-flow-"));
 const userDataOwner = randomUUID();
 writeFileSync(join(userData, ".browser-flow-owner"), userDataOwner);
 app.setPath("userData", userData);
+process.env.METAHACKATHON_ENV_FILE = join(userData, ".env");
 const provider = createBrowserFlowProvider({ forwardFetch: globalThis.fetch.bind(globalThis) });
 globalThis.fetch = provider.fetch;
 const report = {

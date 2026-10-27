@@ -13,7 +13,6 @@
 		"type-check": "turbo run type-check",
 		"test:contracts": "bun test apps/desktop/src/shared apps/desktop/src/main/trpc/routers",
 		"test:integration": "bun run --filter @metahackathon/desktop test:integration",
-		"test:browser-flow": "bun run --filter @metahackathon/desktop test:browser-flow",
 		"pack": "bun run --filter @metahackathon/desktop pack",
 		"dist": "bun run --filter @metahackathon/desktop dist"
 	},
