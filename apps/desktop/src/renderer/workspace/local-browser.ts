@@ -1,6 +1,7 @@
 import { createStore } from "zustand/vanilla";
 import {
 	type BrowserBounds,
+	type BrowserViewport,
 	type LocalBrowserCommand,
 	LocalBrowserCommandSchema,
 	LocalBrowserPresentSchema,
@@ -9,7 +10,6 @@ import {
 	LocalBrowserUrlSchema,
 } from "../../shared/contracts";
 import type { ConversationApi } from "../conversation/api";
-import { createSurfacePresenter } from "./layout";
 
 /** Only root can create/navigate the native view; no URL is opened by renderer startup. */
 export function createLocalBrowserController(call: ConversationApi["call"]) {
@@ -20,9 +20,30 @@ export function createLocalBrowserController(call: ConversationApi["call"]) {
 	let epoch = 0;
 	let timer: ReturnType<typeof setTimeout> | undefined;
 	let mutations: Promise<unknown> = Promise.resolve();
-	const present = createSurfacePresenter(async (bounds: BrowserBounds | null) => {
-		await call("mutation", "localBrowser.present", LocalBrowserPresentSchema.parse({ bounds }));
-	});
+	let latestBounds: BrowserBounds | null = null;
+	let presentations = Promise.resolve();
+	let lastPresentation: string | undefined;
+	function queuePresentation(viewport?: BrowserViewport) {
+		const next = presentations
+			.catch(() => {})
+			.then(async () => {
+				// Read at dispatch so a queued resize cannot restore bounds from before a modal/drag.
+				const input = LocalBrowserPresentSchema.parse({
+					bounds: latestBounds,
+					...(viewport ? { viewport } : {}),
+				});
+				const key = JSON.stringify(input);
+				if (key === lastPresentation) return;
+				await call("mutation", "localBrowser.present", input);
+				lastPresentation = key;
+			});
+		presentations = next;
+		return next;
+	}
+	function present(bounds: BrowserBounds | null) {
+		latestBounds = LocalBrowserPresentSchema.parse({ bounds }).bounds;
+		return queuePresentation();
+	}
 	function schedule() {
 		clearTimeout(timer);
 		if (!disposed && store.getState().page) timer = setTimeout(() => void poll(), 1000);
@@ -82,12 +103,27 @@ export function createLocalBrowserController(call: ConversationApi["call"]) {
 				)
 			);
 		},
+		setViewport: (mode: "desktop" | "phone", bounds?: BrowserBounds | null) => {
+			if (!store.getState().page || store.getState().busy) return Promise.resolve();
+			if (bounds !== undefined) latestBounds = LocalBrowserPresentSchema.parse({ bounds }).bounds;
+			const viewport =
+				mode === "phone" ? { width: 390, height: 844 } : { width: 1024, height: 768 };
+			return change(async () => {
+				await queuePresentation(viewport);
+				return LocalBrowserStateSchema.parse(await call("query", "localBrowser.state"));
+			});
+		},
 		command: (input: LocalBrowserCommand) => {
+			const parsed = LocalBrowserCommandSchema.safeParse(
+				input.kind === "navigate" ? { ...input, url: input.url.trim() } : input
+			);
+			if (!parsed.success) {
+				store.setState({ error: "Enter a running localhost HTTP address without credentials." });
+				return Promise.resolve();
+			}
 			if (!store.getState().page || store.getState().busy) return Promise.resolve();
 			return change(async () =>
-				LocalBrowserStateSchema.parse(
-					await call("mutation", "localBrowser.command", LocalBrowserCommandSchema.parse(input))
-				)
+				LocalBrowserStateSchema.parse(await call("mutation", "localBrowser.command", parsed.data))
 			);
 		},
 		close: () => {

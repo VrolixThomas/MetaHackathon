@@ -91,6 +91,31 @@ export function BrowserSurface({
 					×
 				</button>
 			</header>
+			<fieldset className="browser-viewport-controls" aria-label="Browser viewport">
+				{(["desktop", "phone"] as const).map((mode) => (
+					<button
+						type="button"
+						key={mode}
+						disabled={state.busy || !state.page}
+						aria-pressed={
+							mode === "phone"
+								? state.page?.viewport.width === 390 && state.page.viewport.height === 844
+								: state.page?.viewport.width === 1024 && state.page.viewport.height === 768
+						}
+						onClick={() => {
+							const box = host.current?.getBoundingClientRect();
+							void controller.setViewport(mode, box ? contentBounds(box, visible) : null);
+						}}
+					>
+						{mode === "phone" ? "Phone" : "Desktop"}
+					</button>
+				))}
+				{state.page && (
+					<span data-testid="browser-viewport">
+						{state.page.viewport.width} × {state.page.viewport.height}
+					</span>
+				)}
+			</fieldset>
 			<div className="browser-page-label">
 				<strong>{state.page?.title || "Local preview"}</strong>
 				<span title="This running page has not been verified against the pull request revision.">
