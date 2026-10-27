@@ -14,6 +14,8 @@ export const VoiceDiagnosticSchema = z.strictObject({
 		"network",
 		"timeout",
 		"protocol",
+		"tls",
+		"invalid-response",
 		"failed",
 	]),
 	httpStatus: z.int().min(100).max(599).optional(),
