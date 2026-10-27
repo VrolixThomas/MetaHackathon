@@ -4,6 +4,7 @@ export * from "./browser";
 export * from "./common";
 export * from "./conversation";
 export * from "./interaction";
+export * from "./local-browser";
 export * from "./prepared-review";
 export * from "./review";
 export * from "./runtime-access";
