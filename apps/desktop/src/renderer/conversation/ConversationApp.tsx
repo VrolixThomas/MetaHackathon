@@ -38,7 +38,7 @@ export function Configuration({
 	return (
 		<WorkspaceDialog
 			id="configuration"
-			title="Configuration"
+			title="Settings"
 			position="center"
 			className="configuration"
 			onClose={onClose}
@@ -446,7 +446,7 @@ export function ConversationApp({
 						aria-haspopup="dialog"
 						onClick={() => setOverlay("configuration")}
 					>
-						Configuration
+						Settings
 					</button>
 				</WorkspaceDialog>
 			)}

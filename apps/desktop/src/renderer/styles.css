@@ -1522,3 +1522,43 @@ summary:focus-visible {
 .review-details-scroll [aria-current="step"] {
 	color: #ededed;
 }
+
+.hands-free-indicator {
+	display: inline-flex;
+	align-items: center;
+	gap: 6px;
+	white-space: nowrap;
+	font-size: 10px;
+	color: #969696;
+}
+.hands-free-indicator.enabled {
+	color: #c2d5c6;
+}
+.microphone-indicator {
+	width: 5px;
+	height: 5px;
+	border-radius: 50%;
+	background: #686868;
+}
+.enabled .microphone-indicator {
+	background: #9bc1a4;
+}
+.workspace-overlay-error {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	gap: 12px;
+	padding: 5px 16px;
+	background: #211c18;
+	color: #d5aa8c;
+	font-size: 11px;
+}
+@media (max-width: 700px) {
+	.voice-bar .voice-row {
+		flex-wrap: wrap;
+		gap: 8px;
+	}
+	.voice-bar .voice-hint {
+		flex: 1 0 100%;
+	}
+}

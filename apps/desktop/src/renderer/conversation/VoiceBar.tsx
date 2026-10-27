@@ -1,35 +1,46 @@
-import { useRef } from "react";
 import { useStore } from "zustand";
 import type { ConversationController } from "./controller";
 
 export function VoiceBar({ controller }: { controller: ConversationController }) {
 	const state = useStore(controller.store);
-	const keyHeld = useRef(false);
-	const running = state.phase !== "idle";
+	const sessionOpen = state.handsFree || state.handsFreeStarting;
+	const running = ["connecting", "listening", "transcribing", "thinking", "speaking"].includes(
+		state.phase
+	);
+	const replying = !!state.active && ["transcribing", "thinking", "speaking"].includes(state.phase);
 	const voiceReady = state.voice?.phase === "ready";
-	const status = running
-		? {
-				idle: "",
-				connecting: "Connecting microphone…",
-				listening: "Listening…",
-				transcribing: "Transcribing…",
-				thinking: "Thinking…",
-				speaking: "Speaking…",
-				complete: "",
-				cancelled: "",
-				error: "",
-			}[state.phase]
-		: state.config?.error
-			? "Configuration needs attention"
-			: state.configBusy
-				? "Checking configuration…"
-				: state.voice?.phase === "preparing"
-					? "Preparing voice…"
-					: voiceReady
-						? "Voice ready"
-						: "Voice needs configuration";
+	const status = state.handsFreeStarting
+		? "Starting microphone…"
+		: running
+			? {
+					idle: "",
+					connecting: "Connecting microphone…",
+					listening: "Listening…",
+					transcribing: "Transcribing…",
+					thinking: "Thinking…",
+					speaking: "Speaking…",
+					complete: "",
+					cancelled: "",
+					error: "",
+				}[state.phase]
+			: state.handsFree
+				? "Listening…"
+				: state.config?.error
+					? "Configuration needs attention"
+					: state.configBusy
+						? "Checking configuration…"
+						: state.voice?.phase === "preparing"
+							? "Preparing voice…"
+							: voiceReady
+								? "Voice ready"
+								: "Voice needs configuration";
 	return (
-		<footer className="voice-bar" aria-label="Voice controls">
+		<footer
+			className="voice-bar"
+			aria-label="Voice controls"
+			data-hands-free={state.handsFree}
+			data-hands-free-starting={state.handsFreeStarting}
+		>
 			{state.error && (
 				<div className="voice-bar-error" role="alert">
 					<span>{state.error}</span>
@@ -46,53 +57,45 @@ export function VoiceBar({ controller }: { controller: ConversationController })
 			<div className="voice-row">
 				<button
 					type="button"
-					className={`talk-button ${running ? "active" : ""}`}
+					className={`talk-button ${sessionOpen ? "active" : ""}`}
 					data-testid="voice-control"
-					aria-label={running ? "Stop" : "Hold to talk"}
-					onPointerDown={(event) => {
-						if (event.button !== 0) return;
-						event.currentTarget.setPointerCapture(event.pointerId);
-						if (running) controller.stop();
-						else controller.press();
-					}}
-					onPointerUp={controller.release}
-					onPointerCancel={controller.release}
-					onLostPointerCapture={controller.release}
-					onBlur={() => {
-						keyHeld.current = false;
-						controller.release();
-					}}
-					onKeyDown={(event) => {
-						if (event.key === "Enter" || event.code === "Space") {
-							event.preventDefault();
-							if (!event.repeat) {
-								keyHeld.current = true;
-								if (running) controller.stop();
-								else controller.press();
-							}
-						}
-					}}
-					onKeyUp={(event) => {
-						if (event.key === "Enter" || event.code === "Space") {
-							event.preventDefault();
-							keyHeld.current = false;
-							controller.release();
-						}
-					}}
-					onClick={(event) => {
-						if (event.detail === 0 && !keyHeld.current) controller.toggle();
-					}}
+					aria-label={sessionOpen ? "End conversation" : "Start conversation"}
+					aria-pressed={sessionOpen}
+					onClick={controller.toggleConversation}
 				>
-					<span aria-hidden="true">{running ? "■" : "●"}</span>
-					{running ? "Stop" : "Hold to talk"}
+					<span aria-hidden="true">{sessionOpen ? "■" : "●"}</span>
+					{sessionOpen ? "End conversation" : "Start conversation"}
 				</button>
+				<span
+					className={`hands-free-indicator ${sessionOpen ? "enabled" : ""}`}
+					data-testid="hands-free-status"
+				>
+					<span aria-hidden="true" className="microphone-indicator" />
+					{state.handsFreeStarting
+						? "Hands-free starting"
+						: state.handsFree
+							? "Hands-free on"
+							: "Hands-free off"}
+				</span>
+				{replying && (
+					<button
+						type="button"
+						className="quiet"
+						data-testid="interrupt-reply"
+						aria-label="Stop response"
+						onClick={controller.interruptReply}
+					>
+						Stop response
+					</button>
+				)}
 				<div className="voice-hint">
-					<output>{status}</output>
+					<output aria-live="polite">{status}</output>
 					<span>
-						<kbd>⌘ ⇧ Space</kbd> to toggle
+						<kbd>⌘ ⇧ Space</kbd> to start / end
 					</span>
 				</div>
-				{!running &&
+				{!sessionOpen &&
+					!running &&
 					!voiceReady &&
 					state.voice?.phase !== "preparing" &&
 					state.config?.configured.meta &&

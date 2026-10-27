@@ -34,7 +34,7 @@ it("prioritizes review with persistent voice and a collapsed accessible conversa
 	assert.match(html, /id="conversation-panel"[^>]*hidden=""/);
 	assert.match(html, /<footer[^>]*class="voice-bar"/);
 	assert.doesNotMatch(html, /<iframe|<webview|data-native-browser-content/);
-	assert.match(html, /aria-label="Hold to talk"/);
+	assert.match(html, /aria-label="Start conversation"/);
 	assert.match(html, /<textarea[^>]*name="question"/);
 	assert.doesNotMatch(
 		html,
