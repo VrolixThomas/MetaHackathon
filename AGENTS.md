@@ -60,8 +60,28 @@ Use targeted formatting instead of formatting unrelated files. Runtime owns pack
 empty startup, a real renderer conversation without a PR, history and cancellation over IPC.
 Its model transport is simulated; it neither records a microphone nor uses live provider keys.
 
+## Current real-review increment
+
+User direction adds real repository connection and local SQLite preparation, with a review-first
+workspace inspired by Macro. Voice stays available everywhere; transcript and typing are hidden
+until requested. A resizable right native browser pane opens an explicitly supplied local URL.
+No demo content enters startup. Team hosting, webhooks and Supabase remain future deployment work.
+
+`bun run test:prepared-reviews` validates pinned local source, durable prepared plans and guided
+file actions in native Electron with controlled GitHub/model responses. `bun run test:local-browser`
+validates an actual locally served page and native lifecycle. Integration alone launches these.
+
 ## Shared interfaces (v1)
 
+- `PreparedReview` is immutable inferred analysis keyed by PR base/head and analysis content.
+  `ReviewCache` stores repository/local path, prepared plans and progress through a SQLite adapter.
+  `ReviewScreen` describes the file actually shown; `ConversationActionReceipt` gates narration
+  on a displayed, durably acknowledged `review-navigation` effect. Local source reads never
+  checkout, reset, fetch or alter user work.
+- `LocalBrowserState` describes an explicit local website with provenance
+  `local-preview-unverified-revision`; never attach fabricated PR SHAs. `localBrowser` owns
+  the persistent native surface, its presentation/history and shutdown. The existing pinned
+  browser contracts remain available to the earlier runtime workflow.
 - `ConversationTurnInput` supports general conversation with optional real `prId`; it does not
   invent a review ScreenContext. Its poll/cancel identity matches existing agent events.
   `AppConfiguration` returns only configuration path, presence flags, voice ID and microphone
