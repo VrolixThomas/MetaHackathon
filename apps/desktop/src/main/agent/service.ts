@@ -10,7 +10,7 @@ import {
 	PollTurnSchema,
 } from "../../shared/contracts";
 import { type AgentEvent, AgentEventSchema } from "./events";
-import type { MetaClient } from "./meta-client";
+import type { AgentModelClient } from "./meta-client";
 import { type AgentPorts, runToolLoop } from "./tool-loop";
 
 // Workload is a local execution preference; turn identity and polling use MET-8 contracts.
@@ -46,7 +46,7 @@ export class AgentService {
 	private readonly jobs = new Set<Promise<void>>();
 	private disposed = false;
 	constructor(
-		private readonly client: MetaClient,
+		private readonly client: AgentModelClient,
 		private readonly ports: AgentPorts
 	) {}
 

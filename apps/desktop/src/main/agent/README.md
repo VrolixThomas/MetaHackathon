@@ -20,6 +20,10 @@ selection to main so `getScreenContext(sessionId)` reflects navigation, includin
 a turn runs. The loop refreshes it before each model request and before emitting actions.
 Runtime's source reader validates line bounds; it must compare repository and pinned SHA.
 
+`AgentService` and the analysis helpers accept the structural `AgentModelClient` interface
+(`stream(request, signal)`), implemented by `MetaClient`. Root acceptance may inject a
+scripted provider explicitly. There is no silent provider or browser simulation fallback.
+
 `ScreenContextStore` supplies that main-side cache. Register `createAgentScreenRouter(store)`
 beside the agent router (for example, `agentScreen`) and implement the port as
 `getScreenContext: (sessionId, initial) => store.get(sessionId, initial)`. UI sends
@@ -45,6 +49,52 @@ store and the agent session together; clear the store during main shutdown.
 - `release` removes a session; dispose ends admission and cancels all active turns.
 - Apply actions only for the active session/turn/generation and current screen sequence.
   Action delivery is a rendering request, not evidence that UI displayed it.
+
+## Conversational browser review (MET-19 / MET-24)
+
+Inject optional `AgentPorts.browser: AgentBrowserPort` with
+`execute(command: BrowserCommand, signal): Promise<BrowserState>` and
+`observe(sessionId, signal): Promise<BrowserState | null>`. Integration adapts runtime's
+single persistent visible page; the agent creates no page, view or browser process.
+No browser tools are offered without this port. Runtime owns preview URLs, same-origin
+navigation, DOM interaction, viewport changes, native presentation and session disposal.
+
+The tools are `browser_open`, `browser_observe`, `browser_navigate`, `browser_click`,
+`browser_type`, `browser_scroll` and `browser_viewport`. Open takes `{revision, path?}`;
+observe takes `{}`; the other tools take their shared command fields without `kind`,
+`sessionId` or `requestId`. Agent supplies the session, pinned PR and a stable per-call
+request ID. Element operations require an exact current browser ID, element ID and
+observation sequence. Only scroll may target an offscreen element. Navigation stays on
+the current preview origin. Runtime must recheck refs against the DOM before mutating.
+
+Every model request and pre-dispatch screen refresh reads runtime's actual observation
+into `ScreenContext.browser`, replacing the renderer cache and removing closed pages.
+Every browser mutation is followed by another observation. Unchanged DOM reads must
+preserve runtime's sequence. State must match the session, PR, repository and pinned
+revision; non-open commands cannot switch browser identity. Opening base may replace
+the page ID, and the next action must use the newly returned one. The same turn abort
+signal reaches execute/observe; late results cannot produce events. Runtime must stop
+in-flight work on abort and prevent late DOM mutations itself.
+
+`show-browser` carries the observed page with the originating session/turn/generation.
+UI presents that existing runtime page in its main surface, never another iframe or
+browser. A concurrent screen-sequence change suppresses presentation while returning
+the observed mutation outcome to the model. A browser observation is not scenario/build
+execution evidence. Browser element source mappings must be grounded and validated
+before highlighting; causal explanations from source alone remain inferences.
+
+Guidance supports the seven-request flow: explain the PR from bounded `sourceContext`
+excerpts, open head checkout, fill then apply a promo using refreshed refs, resize the
+current page to phone (390×844), scroll to the observed payment button, highlight the
+responsible code, then open base and reproduce inputs for an observed comparison.
+Desktop is the default (1024×768). Showing payment does not submit payment. Runtime
+observations govern all claims; failures are reported instead of inventing outcomes.
+
+Optional `runScenario(prId, signal): Promise<ScenarioTrace>` enables `run_scenario({})`.
+Root executes its trusted configured scenario and catalogs the returned trace. Agent
+accepts only execution evidence at both pinned revisions, validates step locations and
+requests `show-scenario`. Fixture traces remain available through `show_scenario`, but
+cannot satisfy this execution port. No model-provided shell command is accepted.
 
 ## Drafts and posting
 

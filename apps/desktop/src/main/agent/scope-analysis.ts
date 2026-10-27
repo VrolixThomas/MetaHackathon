@@ -6,7 +6,7 @@ import {
 	SourceReferenceSchema,
 } from "../../shared/contracts";
 import { throwIfAborted } from "./cancellation";
-import type { MetaClient } from "./meta-client";
+import type { AgentModelClient } from "./meta-client";
 
 const scopeInputSchema = z.strictObject({
 	requestId: z.string().min(1),
@@ -48,7 +48,11 @@ const judgementSchema = z
 	.max(50);
 
 /** Findings are explicitly inferred from the supplied sources; absence of a link is not proof of intent. */
-export async function assessRequestedScope(client: MetaClient, raw: unknown, signal: AbortSignal) {
+export async function assessRequestedScope(
+	client: AgentModelClient,
+	raw: unknown,
+	signal: AbortSignal
+) {
 	const input = scopeInputSchema.parse(raw);
 	if (input.screenContext.prId !== input.pr.id) throw new Error("Wrong scope screen context");
 	if (

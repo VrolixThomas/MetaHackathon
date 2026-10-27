@@ -1,7 +1,7 @@
 import { z } from "zod";
 import { CodeLocationSchema, PullRequestSchema, ScreenContextSchema } from "../../shared/contracts";
 import { throwIfAborted } from "./cancellation";
-import type { MetaClient } from "./meta-client";
+import type { AgentModelClient } from "./meta-client";
 import { ScenarioPlanSchema, generateScenario } from "./scenarios";
 
 export const ScenarioTargetSchema = z
@@ -48,7 +48,11 @@ const proposalSchema = z
 	.max(8);
 
 /** Deep analysis proposes inputs/assertions; trusted brief/source maps supply provenance and code targets. */
-export async function proposeScenarios(client: MetaClient, raw: unknown, signal: AbortSignal) {
+export async function proposeScenarios(
+	client: AgentModelClient,
+	raw: unknown,
+	signal: AbortSignal
+) {
 	const input = ScenarioProposalInputSchema.parse(raw);
 	if (input.screenContext.prId !== input.pr.id)
 		throw new Error("Scenario context belongs to another PR");

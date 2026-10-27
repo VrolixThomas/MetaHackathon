@@ -11,7 +11,7 @@ import {
 	WhyNoteSchema,
 } from "../../shared/contracts";
 import { throwIfAborted } from "./cancellation";
-import type { MetaClient } from "./meta-client";
+import type { AgentModelClient } from "./meta-client";
 
 const secretPatterns: RegExp[] = [
 	/-----BEGIN [^-]*(?:PRIVATE KEY|OPENSSH PRIVATE KEY)-----[\s\S]*?-----END [^-]*PRIVATE KEY-----/g,
@@ -188,7 +188,7 @@ const explanationInputSchema = z.strictObject({
 });
 /** Recorded excerpts are selected by code location; the model only supplies explicitly inferred notes. */
 export async function explainIntent(
-	client: MetaClient,
+	client: AgentModelClient,
 	raw: unknown,
 	signal: AbortSignal
 ): Promise<WhyNote[]> {

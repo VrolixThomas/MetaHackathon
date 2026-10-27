@@ -49,6 +49,10 @@ export interface MetaCompletion {
 export type MetaStreamEvent =
 	| { type: "text"; delta: string }
 	| { type: "completed"; response: MetaCompletion };
+/** Injectable provider boundary; scripted implementations belong in explicit test harnesses. */
+export interface AgentModelClient {
+	stream(request: MetaRequest, signal: AbortSignal): AsyncIterable<MetaStreamEvent>;
+}
 export interface UsageRecord {
 	attemptId: string;
 	requestId: string;
@@ -72,7 +76,7 @@ export class MetaApiError extends Error {
 }
 
 /** Native fetch avoids an SDK/manifest change. No raw prompts, secrets or responses in logs. */
-export class MetaClient {
+export class MetaClient implements AgentModelClient {
 	constructor(
 		private readonly options: {
 			getApiKey: () => Promise<string | null>;
