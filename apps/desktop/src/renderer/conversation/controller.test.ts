@@ -218,3 +218,51 @@ it("does not synthesize fallback replies or PRs after API failures", async () =>
 		h.controller.dispose();
 	}
 });
+
+it("changing optional PR context does not interrupt an ongoing voice turn", async () => {
+	const h = harness();
+	let interrupts = 0;
+	h.controller.attachVoice({
+		beginCapture() {},
+		endCapture() {},
+		interrupt: () => {
+			interrupts++;
+		},
+		dispose() {},
+	});
+	try {
+		const turn = h.controller.allocateIdentity();
+		h.controller.beginVoice(turn);
+		await h.controller.selectPR(pr);
+		assert.equal(interrupts, 0);
+		assert.deepEqual(h.controller.store.getState().active, turn);
+		h.controller.transcript(turn, "Still speaking");
+		assert.equal(h.controller.store.getState().exchanges[0]?.question, "Still speaking");
+	} finally {
+		h.controller.dispose();
+	}
+});
+
+it("keeps the known env path and Open configuration available after malformed reload", async () => {
+	let opens = 0;
+	const h = harness({
+		reloadConfig: async () => {
+			throw new Error("malformed private file");
+		},
+		openEnv: async () => {
+			opens++;
+		},
+	});
+	try {
+		await h.controller.configure();
+		await h.controller.configure(true);
+		assert.equal(h.controller.store.getState().envPath, config.envPath);
+		assert.equal(h.controller.store.getState().config, null);
+		assert.equal(h.controller.store.getState().voice, null);
+		assert.ok(h.controller.store.getState().error.includes("Open"));
+		await h.controller.openEnv();
+		assert.equal(opens, 1);
+	} finally {
+		h.controller.dispose();
+	}
+});

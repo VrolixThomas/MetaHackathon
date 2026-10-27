@@ -10,6 +10,7 @@ import type {
 } from "../../shared/contracts";
 import { bounded, delay } from "../voice/async";
 import type { ConversationApi } from "./api";
+import { conversationErrorMessage } from "./errors";
 
 export type Phase =
 	| "listening"
@@ -37,6 +38,7 @@ export type ConversationState = {
 	active: TurnIdentity | null;
 	phase: Phase | "idle" | "connecting";
 	config: AppConfiguration | null;
+	envPath: string | null;
 	configBusy: boolean;
 	voice: VoiceSetupStatus | null;
 	error: string;
@@ -76,6 +78,7 @@ export function createConversationController(
 		active: null,
 		phase: "idle",
 		config: null,
+		envPath: null,
 		configBusy: false,
 		voice: null,
 		error: "",
@@ -215,12 +218,21 @@ export function createConversationController(
 					finish(turn, "cancelled");
 					return;
 				}
-				if (result.status === "error") throw new Error("Conversation failed");
+				if (result.status === "error") {
+					const failure = result.events.find((event) => event.kind === "error");
+					throw new Error(
+						failure?.kind === "error"
+							? failure.message
+							: "The conversation could not complete this reply. Please try again."
+					);
+				}
 				await delay(options.pollInterval ?? 150, current.abort.signal);
 			}
-		} catch {
-			if (live(turn))
-				finish(turn, "error", "Could not complete the reply. Check configuration and try again.");
+		} catch (error) {
+			if (live(turn)) {
+				cancelRemote(turn, "user");
+				finish(turn, "error", conversationErrorMessage(error));
+			}
 		}
 	}
 	function watchVoice(epoch: number) {
@@ -229,7 +241,12 @@ export function createConversationController(
 			try {
 				const status = await api.voiceStatus();
 				if (disposed || epoch !== configEpoch) return;
-				store.setState({ voice: status });
+				store.setState({
+					voice: status,
+					...(status.phase === "error"
+						? { error: conversationErrorMessage(status.error, store.getState().config?.microphone) }
+						: {}),
+				});
 				if (status.phase === "preparing") watchVoice(epoch);
 			} catch {
 				if (!disposed && epoch === configEpoch)
@@ -246,7 +263,12 @@ export function createConversationController(
 		try {
 			const status = await api.prepareVoice();
 			if (disposed || epoch !== configEpoch) return;
-			store.setState({ voice: status });
+			store.setState({
+				voice: status,
+				...(status.phase === "error"
+					? { error: conversationErrorMessage(status.error, store.getState().config?.microphone) }
+					: {}),
+			});
 			if (status.phase === "preparing") watchVoice(epoch);
 		} catch {
 			if (!disposed && epoch === configEpoch)
@@ -261,19 +283,33 @@ export function createConversationController(
 		clearTimeout(voiceTimer);
 		const epoch = ++configEpoch;
 		store.setState({ configBusy: true, voice: null, error: "" });
+		let loaded = false;
 		try {
 			const config = await (reload ? api.reloadConfig() : api.config());
 			if (disposed || epoch !== configEpoch) return;
-			store.setState({ config });
+			store.setState({
+				config,
+				envPath: config.envPath,
+				...(!config.configured.github ? { account: null, prs: [], selected: null } : {}),
+			});
+			loaded = true;
 			const status = await api.voiceStatus();
 			if (disposed || epoch !== configEpoch) return;
-			store.setState({ voice: status });
+			store.setState({
+				voice: status,
+				...(status.phase === "error"
+					? { error: conversationErrorMessage(status.error, store.getState().config?.microphone) }
+					: {}),
+			});
 			if (status.phase === "preparing") watchVoice(epoch);
 			else if (status.phase !== "ready") await prepareVoice(epoch);
 		} catch {
 			if (!disposed && epoch === configEpoch)
 				store.setState({
-					error: "Configuration is unavailable. Open the configuration file or try Reload.",
+					config: loaded ? store.getState().config : null,
+					error: loaded
+						? "Voice status is unavailable. Retry voice or reload configuration."
+						: "Configuration is unavailable. Open the configuration file or try Reload.",
 				});
 		} finally {
 			if (!disposed && epoch === configEpoch) store.setState({ configBusy: false });
@@ -346,7 +382,6 @@ export function createConversationController(
 		}
 	}
 	async function selectPR(pr: PullRequest | null) {
-		stop("navigation");
 		const epoch = ++selectionEpoch;
 		store.setState({ selected: null, githubError: "", githubBusy: false });
 		if (!pr) return;
@@ -355,7 +390,6 @@ export function createConversationController(
 			const selected = await api.prContext(pr.id);
 			if (selected.pr.id !== pr.id) throw new Error("Unexpected pull request");
 			if (!disposed && epoch === selectionEpoch) {
-				stop("navigation");
 				store.setState({ selected });
 			}
 		} catch {
@@ -391,11 +425,10 @@ export function createConversationController(
 		voicePhase: (phase: ConversationState["phase"]) => {
 			if (active?.source === "voice") store.setState({ phase });
 		},
-		voiceError: () => {
-			if (!disposed)
+		voiceError: (error: unknown) => {
+			if (!disposed && (!active || active.source === "voice"))
 				store.setState({
-					error:
-						"Voice could not complete the request. Check configuration and microphone status, then retry.",
+					error: conversationErrorMessage(error, store.getState().config?.microphone),
 				});
 		},
 		press: () => {

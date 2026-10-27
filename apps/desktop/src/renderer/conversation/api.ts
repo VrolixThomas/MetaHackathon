@@ -19,6 +19,7 @@ import {
 	VoiceSetupStatusSchema,
 } from "../../shared/contracts";
 import type { TrpcRequest, TrpcResponse } from "../../shared/types";
+import { conversationErrorMessage } from "./errors";
 
 export type Request = (input: TrpcRequest) => Promise<TrpcResponse>;
 const AccountSchema = z.object({ login: z.string().min(1), avatar_url: z.url() });
@@ -31,8 +32,7 @@ export function createConversationApi(request: Request) {
 		input?: unknown
 	): Promise<unknown> => {
 		const response = await request({ type, path, input: superjson.serialize(input) });
-		if ("error" in response)
-			throw new Error("The request failed. Check configuration and try again.");
+		if ("error" in response) throw new Error(conversationErrorMessage(response.error.message));
 		return superjson.deserialize(response.result.data);
 	};
 	return {

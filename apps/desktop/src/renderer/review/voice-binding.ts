@@ -79,9 +79,10 @@ export function connectReviewVoice(
 		},
 		agent: {
 			start: async (input, signal) => {
+				const legacy = AgentTurnInputSchema.parse(input);
 				await call(signal, "mutation", "screen.update", {
-					sessionId: input.sessionId,
-					screenContext: input.screenContext,
+					sessionId: legacy.sessionId,
+					screenContext: legacy.screenContext,
 				});
 				return StartResult.parse(
 					await call(signal, "mutation", "agent.start", AgentTurnInputSchema.parse(input))
