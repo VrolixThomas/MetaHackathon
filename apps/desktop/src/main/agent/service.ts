@@ -1,6 +1,9 @@
 import { z } from "zod";
 import {
 	type AgentAction,
+	type AgentActionReceipt,
+	type AgentActionReceiptResult,
+	AgentActionReceiptSchema,
 	AgentTurnInputSchema,
 	type AgentTurnStatus,
 	CancelTurnInputSchema,
@@ -8,7 +11,9 @@ import {
 	IdSchema,
 	PollTurnResultSchema,
 	PollTurnSchema,
+	type ScreenContext,
 } from "../../shared/contracts";
+import { ActionReceiptError } from "./action-receipts";
 import { type AgentEvent, AgentEventSchema } from "./events";
 import type { AgentModelClient } from "./meta-client";
 import { type AgentPorts, runToolLoop } from "./tool-loop";
@@ -28,6 +33,19 @@ type EventPayload =
 	| { kind: "error"; message: string };
 export type { AgentEvent } from "./events";
 type TurnStatus = AgentTurnStatus;
+export interface AgentServiceOptions {
+	actionReceipts?: {
+		timeoutMs?: number;
+		/** Synchronously commit to the canonical screen store before releasing the barrier. */
+		updateScreen: (receipt: AgentActionReceipt) => void;
+	};
+}
+interface PendingAction {
+	action: AgentAction;
+	resolve: (screen: ScreenContext) => void;
+	reject: (error: Error) => void;
+	cleanup: () => void;
+}
 interface TurnState {
 	input: StartTurn;
 	fingerprint: string;
@@ -37,6 +55,7 @@ interface TurnState {
 	events: AgentEvent[];
 	text: string;
 	actions: AgentAction[];
+	pendingAction?: PendingAction;
 }
 
 /** Main-process singleton per application. Poll via existing IPC; cancellation must call cancel(). */
@@ -47,8 +66,47 @@ export class AgentService {
 	private disposed = false;
 	constructor(
 		private readonly client: AgentModelClient,
-		private readonly ports: AgentPorts
-	) {}
+		private readonly ports: AgentPorts,
+		private readonly options: AgentServiceOptions = {}
+	) {
+		const timeout = options.actionReceipts?.timeoutMs;
+		if (timeout !== undefined && (!Number.isInteger(timeout) || timeout < 1 || timeout > 10_000))
+			throw new Error("Action receipt timeout must be between 1 and 10000 ms");
+	}
+
+	actionApplied(raw: unknown): AgentActionReceiptResult {
+		const receipt = AgentActionReceiptSchema.parse(raw);
+		const state = this.sessions.get(receipt.sessionId);
+		const pending = state?.pendingAction;
+		const config = this.options.actionReceipts;
+		if (
+			!config ||
+			!state ||
+			!pending ||
+			!this.active(state) ||
+			receipt.turnId !== state.input.turnId ||
+			receipt.generation !== state.input.generation ||
+			receipt.requestId !== pending.action.requestId ||
+			(receipt.status === "applied" &&
+				receipt.screenContext.prId !== state.input.screenContext.prId) ||
+			receipt.screenContext.sequence < pending.action.screenSequence ||
+			(receipt.screenContext.browser &&
+				receipt.screenContext.browser.sessionId !== receipt.sessionId)
+		)
+			return { status: "stale" };
+		try {
+			config.updateScreen(structuredClone(receipt));
+		} catch {
+			pending.cleanup();
+			pending.reject(new ActionReceiptError("failed"));
+			throw new ActionReceiptError("failed");
+		}
+		if (!this.active(state) || state.pendingAction !== pending) return { status: "stale" };
+		pending.cleanup();
+		if (receipt.status === "ignored") pending.reject(new ActionReceiptError("ignored"));
+		else pending.resolve(receipt.screenContext);
+		return { status: "accepted" };
+	}
 
 	start(raw: unknown): {
 		sessionId: string;
@@ -204,6 +262,36 @@ export class AgentService {
 		state.controller.abort();
 		this.emit(state, { kind: "cancelled" });
 	}
+	private publishAction(state: TurnState, action: AgentAction): undefined | Promise<ScreenContext> {
+		state.controller.signal.throwIfAborted();
+		if (!this.active(state)) throw new Error("Turn is no longer active");
+		let receipt: Promise<ScreenContext> | undefined;
+		if (this.options.actionReceipts) {
+			if (state.pendingAction) throw new Error("Previous action is still pending");
+			receipt = new Promise<ScreenContext>((resolve, reject) => {
+				const signal = state.controller.signal;
+				const cleanup = () => {
+					clearTimeout(timer);
+					signal.removeEventListener("abort", abort);
+					state.pendingAction = undefined;
+				};
+				const abort = () => {
+					cleanup();
+					reject(new DOMException("Operation cancelled", "AbortError"));
+				};
+				const timer = setTimeout(() => {
+					cleanup();
+					reject(new ActionReceiptError("timeout"));
+				}, this.options.actionReceipts?.timeoutMs ?? 10_000);
+				state.pendingAction = { action, resolve, reject, cleanup };
+				signal.addEventListener("abort", abort, { once: true });
+			});
+		}
+		// The receipt must already be registered when polling can expose this event.
+		state.actions.push(action);
+		this.emit(state, { kind: "action", action });
+		return receipt;
+	}
 	private async run(state: TurnState) {
 		try {
 			await runToolLoop(this.client, this.ports, {
@@ -218,23 +306,21 @@ export class AgentService {
 					state.text += delta;
 					this.emit(state, { kind: "text-delta", delta });
 				},
-				onAction: (action) => {
-					if (!this.active(state)) return;
-					state.actions.push(action);
-					this.emit(state, { kind: "action", action });
-				},
+				onAction: (action) => this.publishAction(state, action),
 			});
 			if (this.active(state)) {
 				state.status = "completed";
 				this.emit(state, { kind: "completed" });
 			}
-		} catch {
+		} catch (error) {
 			if (this.active(state)) {
 				state.status = "error";
 				this.emit(state, {
 					kind: "error",
 					message:
-						"Agent turn failed; check model credentials, runtime availability and current PR context.",
+						error instanceof ActionReceiptError
+							? "Workspace did not acknowledge the action; retry the review."
+							: "Agent turn failed; check model credentials, runtime availability and current PR context.",
 				});
 			}
 		}

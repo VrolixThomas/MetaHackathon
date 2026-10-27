@@ -1,6 +1,7 @@
 export { MetaApiError, MetaClient } from "./meta-client";
 export type { AgentModelClient, MetaRequest, MetaStreamEvent, UsageRecord } from "./meta-client";
 export { AgentService, StartTurnSchema } from "./service";
+export type { AgentServiceOptions } from "./service";
 export { createAgentRouter } from "./router";
 export type { AgentPorts } from "./tool-loop";
 export type { AgentBrowserPort } from "./browser";

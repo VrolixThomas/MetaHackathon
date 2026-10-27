@@ -50,6 +50,23 @@ store and the agent session together; clear the store during main shutdown.
 - Apply actions only for the active session/turn/generation and current screen sequence.
   Action delivery is a rendering request, not evidence that UI displayed it.
 
+Production composition enables ordered presentation with the third `AgentService` argument:
+`{ actionReceipts: { timeoutMs: 10000, updateScreen(receipt) { /* canonical store.update */ } } }`.
+The callback must synchronously commit the receipt's final screen snapshot. UI calls
+`agent.actionApplied(AgentActionReceipt)` after fully applying or ignoring each effect,
+using its exact action request ID and turn identity. Typed and voice actions use the same
+receipt path. Ordinary screen updates and the receipt must agree on the final snapshot.
+Receipts are optional only for headless consumers; without the option behavior is unchanged.
+
+Main registers the waiter before exposing the action and waits before the next effect or
+model request. Multi-effect calls rebase only to an acknowledged sequence, and reject
+navigation newer than that acknowledgement. Foreign, duplicate, late and regressing
+receipts return `stale` without updating the store. An ignored receipt stops remaining
+effects/calls from that model response and lets the next round inspect fresh context.
+Timeout (at most ten seconds) or screen-commit failure ends the turn with a workspace
+acknowledgement error; it does not retry the browser mutation or blame credentials.
+Cancellation, replacement, release and shutdown clear pending waiters immediately.
+
 ## Conversational browser review (MET-19 / MET-24)
 
 Inject optional `AgentPorts.browser: AgentBrowserPort` with

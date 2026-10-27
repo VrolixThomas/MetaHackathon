@@ -18,6 +18,7 @@ import {
 	type ScreenContext,
 	ScreenContextSchema,
 } from "../../shared/contracts";
+import { ActionReceiptError } from "./action-receipts";
 import {
 	type AgentBrowserPort,
 	BROWSER_TOOLS,
@@ -138,7 +139,7 @@ export interface LoopInput {
 	workload: Workload;
 	signal: AbortSignal;
 	onText: (delta: string) => void;
-	onAction: (action: AgentAction) => void;
+	onAction: (action: AgentAction) => void | Promise<void> | Promise<ScreenContext>;
 	maxRounds?: number;
 }
 
@@ -197,12 +198,14 @@ export async function runToolLoop(
 		const calls = completed.output.filter((item) => item["type"] === "function_call");
 		if (calls.length === 0) return;
 		if (calls.length > 8) throw new Error("Tool call limit exceeded");
+		let presentationIgnored = false;
 		for (const raw of calls) {
 			const call = callSchema.parse(raw);
 			if (seenCalls.has(call.call_id)) throw new Error("Duplicate model tool call ID");
 			seenCalls.add(call.call_id);
 			let output: unknown;
 			try {
+				if (presentationIgnored) throw new ActionReceiptError("ignored");
 				const latestScreen = await currentScreen(ports, input, prep);
 				output = await dispatchTool(
 					client,
@@ -216,6 +219,10 @@ export async function runToolLoop(
 				);
 			} catch (error) {
 				throwIfAborted(signal);
+				if (error instanceof ActionReceiptError) {
+					if (error.reason !== "ignored") throw error;
+					presentationIgnored = true;
+				}
 				// Do not echo arbitrary exception text (it may contain credentials or source content).
 				output = {
 					status: "error",
@@ -497,13 +504,28 @@ async function dispatchTool(
 			...(browserResult !== undefined ? { browser: latest.browser ?? null } : {}),
 		};
 	throwIfAborted(signal);
+	let effectScreen = screen;
 	for (const [index, action] of actions.entries()) {
 		// UI deduplicates by requestId. Each effect needs a stable identity, including
 		// separate effects from one call; tuple encoding avoids delimiter collisions.
 		const requestId = `action-${createHash("sha256")
 			.update(JSON.stringify([turn.requestId, callId, index]))
 			.digest("hex")}`;
-		input.onAction(AgentActionSchema.parse({ ...action, requestId }));
+		const acknowledged = await abortable(
+			Promise.resolve(
+				input.onAction(
+					AgentActionSchema.parse({ ...action, requestId, screenSequence: effectScreen.sequence })
+				)
+			),
+			signal
+		);
+		if (acknowledged) {
+			const receiptScreen = ScreenContextSchema.parse(acknowledged);
+			const current = await currentScreen(ports, input, prep);
+			if (current.sequence !== receiptScreen.sequence || current.prId !== receiptScreen.prId)
+				throw new ActionReceiptError("ignored");
+			effectScreen = current;
+		}
 	}
 	return result;
 }

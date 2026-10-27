@@ -1,5 +1,7 @@
 import { z } from "zod";
 import {
+	AgentActionReceiptResultSchema,
+	AgentActionReceiptSchema,
 	CancelTurnInputSchema,
 	CancelTurnResultSchema,
 	ConfirmCommentInputSchema,
@@ -14,6 +16,10 @@ import { type AgentService, PollTurnSchema, StartTurnSchema } from "./service";
 /** Integration registers this factory's router and owns service lifetime and trusted ports. */
 export function createAgentRouter(service: AgentService, drafts: CommentDrafts) {
 	return router({
+		actionApplied: publicProcedure
+			.input(AgentActionReceiptSchema)
+			.output(AgentActionReceiptResultSchema)
+			.mutation(({ input }) => service.actionApplied(input)),
 		start: publicProcedure
 			.input(StartTurnSchema)
 			.output(StartTurnResultSchema)
