@@ -1,196 +1,95 @@
-# MetaHackathon
+# MetaHackathon — V1
 
-A macOS workspace for investigating GitHub pull requests by conversation. A compact transcript
-sits alongside the main browser, code, scenario or diagram surface. The agent observes and
-operates the same persistent browser page the reviewer sees. Desktop is the default viewport;
-phone is available on request. GitHub comments always require explicit confirmation.
+Talk or type with an agent. A pull request is optional. The startup screen is an empty real
+conversation; it has no demo PRs, fixture explanations or scripted answers.
 
-## Built during the hackathon
+## Run
 
-The starting point was the committed Electron/React foundation at `d903951`. Work added on
-`hack/integration` includes:
-
-- Typed Zod contracts for PR review, Why provenance, artifacts, confirmed comment inputs,
-  agent polling, generated tests, credentials and pinned source reads.
-- Deterministic illustrative data and runnable shop/finance repositories containing the
-  intended promo regression, cache, checkout change and schema dependency.
-- Owned PR worktrees, bounded process execution, SHA-bound scenario traces, measured local
-  previews, encrypted credentials and durable submission records.
-- Root tRPC/runtime lifecycle composition, packaged update checks and reproducible native
-  Electron IPC validation. UI, agent and voice lane integration is tracked in Linear.
-
-## Stack
-
-Direct dependency versions are pinned to the versions resolved in SuperiorSwarm's `bun.lock`
-at setup time.
-
-| Layer | Setup |
-| --- | --- |
-| Desktop | Electron 40.8.5, electron-vite 4.0.1, Vite 6.4.1 |
-| UI | React 19.2.4, Tailwind CSS 4.2.2, PostCSS |
-| Language | TypeScript 5.9.3 with shared strict configs |
-| State and queries | Zustand 5.0.12, TanStack Query 5.95.2 |
-| RPC | tRPC 11.16.0 over a context-isolated Electron IPC bridge, SuperJSON, Zod |
-| Database | SQLite with better-sqlite3 12.8.0 and Drizzle ORM 0.45.2 |
-| Tooling | Bun workspaces, Turborepo 2.8.21, Biome 1.9.4 |
-| Packaging | electron-builder 26.8.1, electron-updater 6.8.11, macOS DMG and ZIP |
-
-TanStack Router is also installed to match SuperiorSwarm's dependencies. Zustand stores and
-navigation can be added when features need them. Product-specific dependencies such as
-Monaco, terminal/PTY tooling, OAuth integrations, and Supabase are omitted.
-
-## Development
-
-Use Node.js 22.12 or newer and Bun 1.3.9. SuperiorSwarm declares Bun 1.1.38 in its manifest;
-this project uses the locally verified Bun 1.3.9 to support its text lockfile and explicit
-hoisted workspace installs.
+Use the integrated application from `hack/integration`:
 
 ```sh
-bun install
-bun run dev
-```
-
-Installation rebuilds better-sqlite3 for Electron's native ABI. Native compilation may require
-the platform's compiler tools (Xcode Command Line Tools on macOS). To repeat that rebuild,
-run `bun run --filter @metahackathon/desktop postinstall`.
-
-```sh
-bun run type-check
-bun run lint
-bun run test:contracts
-bun run test:integration
-bun run test:browser-flow
+cd /Users/Werk/Documents/Repositories/MetaHackathon-worktrees/integration
 bun run build
-bun run format
+bun run --filter @metahackathon/desktop preview
 ```
 
-`bun run build` writes the main process, preload, and renderer to `apps/desktop/out`.
-To run that production build locally, use `bun run --filter @metahackathon/desktop preview`.
+On another checkout, install Node 22.12+ and Bun 1.3.9+, then run
+`bun install --frozen-lockfile`. Installation rebuilds SQLite for Electron.
 
-Use `hack/integration` for the combined application; the other branches feed implementation
-handoffs into it. On this machine the launch checkout is
-`/Users/Werk/Documents/Repositories/MetaHackathon-worktrees/integration`.
-Load the local demo once, then use the conversation or hold-to-talk control:
+## Configure
 
-1. “Walk me through this PR.”
-2. “Show me the checkout.”
-3. “Apply the promo code.”
-4. “Show it on a phone.”
-5. “Scroll to the payment button.”
-6. “Show me the code responsible.”
-7. “Compare what happens before this PR.”
+The development app reads repository-root `.env`. Copy `.env.example` if needed:
 
-Typed agent turns require a Meta key in Settings. Browser controls, pinned source reads and
-local scenario execution work without provider credentials. For speech, install the pinned
-Python environment once (Python 3.13), then save Meta/ElevenLabs keys and a voice ID in Settings:
+```dotenv
+MODEL_API_KEY=
+ELEVENLABS_API_KEY=
+ELEVENLABS_VOICE_ID=
+GITHUB_TOKEN=
+```
+
+Configuration shows the active path and whether values are present. **Open configuration**
+opens the file in an editor; **Reload** applies changes. Keys are never returned to the renderer.
+The file is Git-ignored and app writes use owner-only permissions. Existing saved settings
+migrate once into `.env`; explicit file values win and the previous encrypted store is retained.
+`META_API_KEY` and `GH_TOKEN` are accepted aliases when their canonical keys are absent.
+
+Speech also needs the local Python environment:
 
 ```sh
 python3.13 -m venv services/voice/.venv
 services/voice/.venv/bin/python -m pip install -r services/voice/requirements.lock
 ```
 
-Choose Prepare voice and wait for Ready before capture. Local startup can take up to three
-minutes on the first launch; readiness does not prove live provider entitlement. Keys remain
-in the OS-encrypted main-process store. `METAHACKATHON_VOICE_PYTHON` can select an existing
-Python executable; `ELEVENLABS_VOICE_ID` supplies an optional default public voice identifier.
-Interruption stops audio and cancels the active agent/voice turn. Closing the review window
-shuts down its browser, voice sidecar, preview servers and owned worktrees.
+That environment is already installed in the integration checkout on this machine.
+Voice prepares automatically once Meta, ElevenLabs and a voice ID are configured.
+`METAHACKATHON_VOICE_PYTHON` can select an existing Python executable.
 
-## Layout
+## Talk
 
-```text
-apps/desktop/
-  src/main/          Electron lifecycle, SQLite, and the tRPC root router
-  src/preload/       Narrow, context-isolated IPC bridge
-  src/renderer/      Review workspace, artifacts and typed service adapters
-  src/shared/        Validated review contracts, deterministic fixtures, IPC types
-tooling/typescript/  Shared strict TypeScript configs
-```
+Wait for **Voice ready**. Hold the microphone button, wait for **Listening**, speak, then
+release. **Command–Shift–Space** toggles capture from anywhere in the app, including a text
+field. **Stop** or **Escape** interrupts speech and cancels the current turn. Plain Space
+continues to type normally in the composer. No review or PR selection is required.
 
-The preload compiles to CommonJS (`index.cjs`) for Electron's sandbox. Node integration is
-disabled in the renderer. IPC is restricted to the app window's main frame.
+Configuration reports microphone permission from the running app's process. Use **Request
+microphone access** if needed. macOS permission can be attributed to the development launcher;
+check the app's status before changing unrelated system settings.
 
-The app creates `metahackathon.db` in Electron's per-user application data directory, including
-runtime submission and budget records.
-Add tables in `apps/desktop/src/main/db/schema.ts`, then generate migrations with
-`bun run --filter @metahackathon/desktop db:generate`. Generated migrations are copied into
-build output; add migration execution before introducing additional schema-managed tables.
+## Real GitHub context
 
-## Shared contracts and lane bootstrap
+Open **GitHub**, then **Connect GitHub**. The app imports your existing `gh` login into the
+configured `.env`; if necessary, first run `gh auth login --hostname github.com`.
+It lists your open authored PRs and review requests. Selecting one adds bounded real description
+and patch context to the conversation. You can remove that context and keep talking.
+There is no sample PR fallback. V1 conversation has no GitHub posting tool.
 
-See [AGENTS.md](AGENTS.md) for ownership, ticket mapping, handoff requirements and interface rules.
-Zod schemas and inferred TypeScript types live in `apps/desktop/src/shared/contracts/`.
-`apps/desktop/src/shared/fixtures/review.ts` exports `getReviewFixture()` and its validation schema.
-It returns fresh, deterministic examples for PR preparation, triage, recorded/inferred Why notes,
-screen context, agent actions, scenario C, diagrams, phone preview markers, comment drafts and
-confirmations, voice state and cancellation.
+## Distribution configuration
 
-The registered `bootstrap.contract` query describes the contract version and fixture IDs.
-`bootstrap.fixture({ fixtureId: "shop-web-promo-v1" })` returns the bundle over the existing
-typed tRPC client and isolated preload bridge. Both inputs and outputs are validated.
-There are no subscriptions yet; lane routers and event transport are registered by integration.
+A packaged app uses `~/Library/Application Support/MetaHackathon/.env`. A user-provided `.env`
+placed alongside the `.app`, or provided in its resources before packaging, seeds that file on
+first startup. Existing installed configuration is preserved. `METAHACKATHON_ENV_FILE` can
+explicitly select a different local file. No real credentials are committed to this repository.
+Developer ID signing, notarization and signed updates remain separate release checks.
 
-All sample evidence is explicitly marked `fixture`. The source URLs, commit hashes, code lines
-and marker bounds are illustrative. Fetching a fixture does not execute a scenario, start a
-preview server, access a microphone or post a GitHub comment. Real execution evidence requires
-a run ID, full commit SHA, command, timestamps, exit code and log URL. Posting requires a
-separate explicit confirmation of the exact draft revision, body and PR head.
-
-## Integrated runtime validation
-
-The `runtime` router exposes local demo preparation, pinned source/diff reads, scenario A–D
-execution, measured phone/desktop previews, credential status/set/delete and GitHub reads.
-The runtime starts after Electron is ready and disposes its processes/worktrees before the
-database closes. Credentials remain in the main process; there is no secret getter or raw
-command RPC. See [runtime integration ports](apps/desktop/src/main/runtime/README.md).
-
-`bun run test:integration` builds and launches the actual app with temporary user data, calls
-these routes through the sandboxed preload bridge, checks scenario C and preview geometry,
-and verifies that app shutdown closes the remaining preview and removes owned seed repositories.
-The report is written to `apps/desktop/out/integration-smoke-report.json`. These are real local
-executions of seeded repositories. The check does not use provider credentials, voice, or
-GitHub comment writes. Signed distribution and real upgrades require separate verification.
-
-The `agent`, `review`, `artifacts` and `screen` routers provide main-process turns, preparation,
-catalog lookup and ordered screen updates. Preparation includes bounded, verbatim source
-excerpts pinned to repository/SHA/line ranges, so the model receives code as well as triage
-metadata. Excerpts do not claim recorded intent or execution. Without a configured Meta key,
-the native check verifies acknowledgement and the explicit setup error without an external call.
-
-The `browser` router owns one visible page per review session and exposes validated navigation,
-observation, click, type, scroll and viewport commands. It restricts the page to its owned preview
-origin. Ref-based actions reject stale observations. The `voice` router adds readiness/setup and
-the generation-aware speech pipeline. Scripted-provider acceptance tests exercise real local
-browser/scenario results but are separate from live microphone, STT, model and TTS verification.
-
-`bun run test:browser-flow` drives the seven requests through the built renderer with a scripted
-Meta response provider and temporary dummy credentials. It compares the native visible page
-with agent observations, checks executed before/after evidence, cancellation and confirmation
-guards, and verifies shutdown. Reports live in `apps/desktop/out/browser-flow-smoke/`.
-It also prepares the actual local voice sidecar when installed, without sending audio or calling
-speech providers. `BROWSER_FLOW_HOLD=1` keeps the successful final workspace open for inspection;
-close its window to finish the cleanup check. No test uses the user's saved credentials.
-See [the integrated acceptance report](docs/integration/acceptance.md) for verified behavior,
-the native browser screenshot, and the remaining live-provider and release checks.
-
-## Local packaging
-
-On macOS:
+## Validation
 
 ```sh
-bun run pack  # Signed unpacked .app; requires signing credentials
-bun run dist  # Signed/notarized DMG and ZIP; requires release credentials
+bun run type-check
+bun run lint
+bun run test:contracts
+bun run test:integration
+bun test apps/desktop/src/shared apps/desktop/src/main apps/desktop/src/renderer
+services/voice/.venv/bin/python -m unittest discover -s services/voice/tests
 ```
 
-Artifacts are written to `apps/desktop/dist`. For a local unsigned development probe, build
-the app and use the explicit unsigned profile:
+The native V1 check uses an isolated `.env` and user-data directory, an actual built Electron
+renderer/IPC bridge, and a simulated model. It verifies empty startup, conversation without a
+PR, follow-up history, cancellation and cleanup. It does not record a microphone or use saved
+credentials. Its report is `apps/desktop/out/v1-smoke-report.json`.
 
-```sh
-bun run build
-cd apps/desktop
-METAHACKATHON_UNSIGNED_LOCAL=1 bunx --no-install electron-builder --config electron-builder.unsigned.yml --mac --dir --publish never
-```
-
-See [packaging instructions](apps/desktop/packaging/README.md) for local probes and release
-gates. Ad-hoc/local validation is separate from Developer ID, notarization and signed-update
-acceptance. Publishing is disabled during builds.
+Legacy review/browser/scenario modules and fixtures remain available for tests and later work,
+but are excluded from the V1 renderer startup graph. The earlier browser-demo acceptance
+report in `docs/integration/acceptance.md` is historical, not the current product flow.
+Ownership and shared interface rules are recorded in [AGENTS.md](AGENTS.md) and Linear MET-8.
+See [V1 acceptance](docs/integration/v1-acceptance.md) for the verified live voice round trip,
+real GitHub connection, test results and current screenshot.

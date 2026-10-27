@@ -1,5 +1,8 @@
 # Conversational review acceptance — 2026-10-27
 
+Historical pre-V1 browser-demo acceptance. The current product is documented in
+[V1 acceptance](v1-acceptance.md); commands below apply to the tested historical source.
+
 The local slice passed in the combined `hack/integration` application. The tested source is
 `030b2e5`; subsequent handoff documentation does not change application behavior.
 All native launches and assessment took place in the integration checkout.

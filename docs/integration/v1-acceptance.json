@@ -1,0 +1,58 @@
+{
+	"testedSourceCommit": "95c794b48b1058befefeff58f8e77d6b4642cb66",
+	"date": "2026-10-27",
+	"product": "V1 conversation without a PR",
+	"status": "passed",
+	"typescriptTests": 374,
+	"pythonTests": 18,
+	"typeCheck": "passed",
+	"lint": "passed",
+	"build": "passed",
+	"nativeRendererIPC": {
+		"passed": true,
+		"simulatedModel": true,
+		"noPRRequired": true,
+		"history": true,
+		"cancelledLateOutputSuppressed": true,
+		"isolatedEnv": true
+	},
+	"liveVoiceButton": {
+		"syntheticMicrophone": true,
+		"ambientAudioRecorded": false,
+		"liveProviders": true,
+		"status": "passed",
+		"phases": ["idle", "connecting", "listening", "transcribing", "speaking"],
+		"transcriptRecognized": true,
+		"replyCharacters": 70,
+		"decodedAudioObservations": 386
+	},
+	"liveAppShortcut": {
+		"syntheticMicrophone": true,
+		"ambientAudioRecorded": false,
+		"liveProviders": true,
+		"status": "passed",
+		"activation": "app-shortcut-with-composer-focused",
+		"phases": ["connecting", "listening", "transcribing", "speaking", "thinking", "idle"],
+		"transcriptRecognized": true,
+		"replyCharacters": 69,
+		"decodedAudioObservations": 316
+	},
+	"configuration": {
+		"storage": ".env",
+		"mode": "0600",
+		"gitIgnored": true,
+		"previousSettingsMigrated": true,
+		"microphoneReportedByApp": "granted"
+	},
+	"github": {
+		"connected": true,
+		"realOpenPRs": 7,
+		"realContextValidated": true,
+		"writes": 0
+	},
+	"screenshot": "screenshots/v1-conversation.png",
+	"limits": [
+		"Live end-to-end checks used generated synthetic audio, not ambient microphone recording.",
+		"Developer ID signing and packaged clean-machine distribution remain separate release checks."
+	]
+}
