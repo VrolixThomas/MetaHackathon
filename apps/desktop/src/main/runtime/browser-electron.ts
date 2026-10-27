@@ -45,6 +45,7 @@ export function createElectronBrowserPage(
 	contents.on("will-attach-webview", (event) => event.preventDefault());
 	let owner: BrowserWindow | undefined;
 	let closed = false;
+	let renderReady = false;
 	let viewport: BrowserViewport = { width: 1024, height: 768 };
 	let bounds: BrowserBounds | null = null;
 	view.setVisible(false);
@@ -70,16 +71,27 @@ export function createElectronBrowserPage(
 			width: Math.max(1, Math.floor(viewport.width * scale)),
 			height: Math.max(1, Math.floor(viewport.height * scale)),
 		});
-		contents.enableDeviceEmulation({
-			screenPosition: "desktop",
-			screenSize: viewport,
-			viewPosition: { x: 0, y: 0 },
-			deviceScaleFactor: 0,
-			viewSize: viewport,
-			scale: Math.max(0.01, scale),
-		});
+		// Electron 40 can crash natively if emulation precedes the first render view.
+		if (renderReady)
+			contents.enableDeviceEmulation({
+				screenPosition: "desktop",
+				screenSize: viewport,
+				viewPosition: { x: 0, y: 0 },
+				deviceScaleFactor: 0,
+				viewSize: viewport,
+				scale: Math.max(0.01, scale),
+			});
 		view.setVisible(Boolean(bounds && scale > 0));
 	};
+	contents.on("did-finish-load", () => {
+		if (closed || contents.isDestroyed()) return;
+		renderReady = true;
+		// Apply the latest pending viewport/bounds before loadURL resolves or any observation.
+		layout();
+	});
+	contents.on("render-process-gone", () => {
+		renderReady = false;
+	});
 	const settle = async () => {
 		check();
 		if (contents.isLoadingMainFrame())
