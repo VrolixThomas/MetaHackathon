@@ -5,6 +5,41 @@ Python remains selected: local Pipecat/WebRTC and frozen executable mechanics wo
 C-1 requires a Python.framework signature repair and signed-app acceptance in runtime/D-5. C-7 remains Backlog; no Node fallback was built.
 No live-provider, signed release, published landing page or completed demo recording is claimed.
 
+## Resumed integration handoff — 2026-10-27
+
+The clean lane resumed at `83e9163` as its sole writer. Previous reviewed commits, evidence and
+packaging limitations below are preserved. No older worker/session was resumed or duplicated.
+
+| Ticket | New source commit | Files / behavior |
+| --- | --- | --- |
+| MET-29 | `294807761d5600a46fc6f841dd4d63a1a2cbbec2` | `services/voice/voice_sidecar/providers.py`, `tests/test_providers.py`: reject ElevenLabs redirects before API key or speech can be forwarded |
+| MET-30 / MET-33 | `c401fcbf6642bf9d2e7bd2419756fec333e62511` | Five `renderer/voice/` files: shared UI session/generation allocation, external start/end sink hooks, same browser context and cancellation regressions |
+
+The redirect regression uses two local HTTP origins and all 301/302/303/307/308 statuses;
+the destination receives zero requests. Removing the protection in memory reproduces failures.
+All **13 Python tests**, **43 TypeScript voice tests** (32 renderer + 11 main), and **31 contract/
+router tests** passed. Full type check, root lint, build and diff checks passed after consuming
+integration's shared test-import fix `152910f`. Integration checkpoint `80d0a32` supplied the
+browser contracts and `70f3fa5` supplied the setup schema. Integration owns all combined app
+launch/acceptance; none was run in this resumed lane. No live provider credentials were needed.
+
+UI peer `0Deggd-1yhpEcPc6csOuv` agreed to provide `reviewSessionId`, `allocateReviewTurn()` and
+`externalVoiceTurn`. Pass these to `sessionId`, `allocateIdentity`, `onTurnStart`, `onTranscript`,
+`onAnswer`, `onAction` and `onTurnEnd` as documented in the renderer README. Transcript delivery
+never starts another agent turn. UI's allocator is shared with typed questions and survives
+controller recreation; voice rejects reused/foreign identities. A final transcript passes the
+current browser observation to that same agent identity. Interruption closes audio synchronously,
+aborts local work and sends both explicit cancellation RPCs; late allocations still receive a
+compensating cancel. Completion reaches the UI sink only after speech drains.
+
+Root supplies main lifecycle, credentials and `voice.status/configure/prepare`; UI supplies setup
+controls. No duplicate setup store/router was added. The exact executable, ready/start, credential,
+voice ID and timeout mapping is in `apps/desktop/src/main/voice/README.md`. Source mode uses
+Python 3.13 plus the pinned lock. The old frozen artifact predates the redirect fix and must be
+rebuilt. Live microphone/provider speech and response latency remain unmeasured; Apple framework
+signing/notarization remains a separate runtime release dependency. No acceptance ticket is marked
+Done by this resumed handoff.
+
 ## Commits and ownership
 
 Base: published integration `b7712cc`. Parent commits: `041732d` protocol, `197384a` main

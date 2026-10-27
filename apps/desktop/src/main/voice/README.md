@@ -48,6 +48,44 @@ ElevenLabs API key with TTS permission, and an accessible ElevenLabs voice ID. N
 key or live entitlement has been verified in this lane. Errors enumerate missing configuration,
 never credential values. No provider credentials or private loopback bearer reach the renderer.
 
+## Exact local setup and readiness
+
+Root owns the setup router and service lifecycle. The published shared
+`VoiceSetupStatusSchema` has `phase: unconfigured | stopped | preparing | ready | error`,
+`voiceId: string | null`, `missing: (meta | elevenlabs | voiceId | executable)[]`, and
+optional sanitized `error`. UI uses `voice.status`, `voice.configure({voiceId})` and
+`voice.prepare`, plus the existing credential set/status routes. There is no credential getter
+in the renderer. The voice ID is public configuration (trimmed, 1–200 characters).
+
+| Main input | Required value / mapping |
+| --- | --- |
+| `command` | Absolute path to the local Python 3.13 venv executable, or the rebuilt frozen executable |
+| `args` for source | `[absolutePathToServicesVoiceSidecarPy]`; supervisor appends `--port 0` |
+| `getCredentials().meta` | Runtime encrypted credential `meta`; becomes child `MODEL_API_KEY` |
+| `getCredentials().elevenlabs` | Runtime encrypted credential `elevenlabs`; becomes child `ELEVENLABS_API_KEY` |
+| `getCredentials().voiceId` | Configured, account-accessible ElevenLabs voice ID; becomes child `ELEVENLABS_VOICE_ID` |
+| `VOICE_AUTH_TOKEN` | Generated privately by `VoiceSidecar`; never a user setup field |
+| `startupTimeoutMs` | Default `180_000`; permit the measured cold native import before enabling capture |
+| `requestTimeoutMs` | Default `15_000` per private HTTP request |
+
+`prepare()` resolves after the local loopback server prints validated readiness. It does not
+open the microphone or call either provider. `offer` negotiates a fresh WebRTC peer and opens
+Meta STT; `speak` sends ElevenLabs TTS. The Meta key needs Muse Voice Transcribe access (the
+agent separately needs Muse Spark); the ElevenLabs key needs TTS access to the configured voice.
+An apparently configured key is not proof of entitlement, and local `ready` is not a live speech
+test. Provider URLs and model IDs are fixed in the sidecar; no URL override is exposed to UI.
+
+Keep capture disabled until setup is `ready`; after capture begins, show `connecting` until the
+controller reaches `listening`. Stop voice and agent before changing configuration. Dispose
+the old `VoiceService`/`VoiceSidecar` pair, construct a fresh pair, and prepare it with the new
+settings: failed prepare promises and process credentials are deliberately not reset in place.
+Preserve UI's shared session/generation allocator across controller replacement.
+
+The local Python suite needs no credentials and uses mocked providers. Root can create its
+source environment with Python 3.13 and `services/voice/requirements.lock`. The frozen bundle
+recorded in the earlier handoff predates redirect fix `2948077`; rebuild it before packaging.
+Runtime still owns signing/notarization and must recompute the inventory after signing.
+
 ## Verification
 
 `bun test apps/desktop/src/main/voice` checks cancellation before/during offer, late transcripts,
