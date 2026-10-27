@@ -1,0 +1,99 @@
+{
+	"sourceCommit": "bf3e13855d48a2d84ff706f967d89d8f9f88b413",
+	"date": "2026-10-27",
+	"typescriptTests": 496,
+	"pythonVoiceTests": 18,
+	"typeCheck": "passed",
+	"lint": "passed",
+	"build": "passed",
+	"frozenInstall": "passed",
+	"nativeConversation": {
+		"status": "passed",
+		"historyVerified": true,
+		"cancelledLateSuppressed": true,
+		"actualRendererIPC": true,
+		"optionalTranscript": true,
+		"audioWithoutRendererGesture": true,
+		"cleanup": {
+			"appQuit": true,
+			"ownedTempRemoved": true
+		}
+	},
+	"nativePreparedReview": {
+		"status": "passed",
+		"guidedTurns": 6,
+		"preparationCalls": 1,
+		"sourceGroundedPackets": 12,
+		"remoteContentReads": 0,
+		"syntax": [
+			{
+				"view": "Changes",
+				"distinctTokenColors": 8,
+				"exactText": true
+			},
+			{
+				"view": "Before",
+				"distinctTokenColors": 8,
+				"exactText": true
+			},
+			{
+				"view": "After",
+				"distinctTokenColors": 8,
+				"exactText": true
+			}
+		],
+		"dirtyWorkPreserved": true,
+		"cleanup": {
+			"ownedTempRemoved": true
+		},
+		"simulatedModel": true,
+		"simulatedGitHub": true,
+		"actualLocalGit": true,
+		"actualSQLite": true
+	},
+	"nativeBrowser": {
+		"status": "passed",
+		"steps": [
+			"open desktop",
+			"real link",
+			"back",
+			"forward",
+			"navigate IPC",
+			"real form submit",
+			"reload",
+			"phone",
+			"hidden",
+			"shown",
+			"desktop restored",
+			"modal dismissed",
+			"resized split",
+			"phone visual QA"
+		],
+		"sameGuest": true,
+		"externalPolicy": {
+			"navigationPrevented": true,
+			"sessionBlocked": true,
+			"networkError": "net::ERR_BLOCKED_BY_CLIENT"
+		},
+		"explicitClose": {
+			"stateNull": true,
+			"guestDestroyed": true,
+			"viewDetached": true
+		},
+		"cleanup": {
+			"guestDisposed": true,
+			"ownedServerClosed": true,
+			"ownedTempRemoved": true
+		},
+		"controlledSite": true,
+		"liveProviders": false,
+		"liveSpeech": false
+	},
+	"limitations": [
+		"Current local browser is manually controlled and has unverified PR revision.",
+		"Full agent-first repository/PR selection and browser observation/actions are designed, not implemented in this increment.",
+		"Team GitHub App/webhooks/hosted worker and Supabase are future work.",
+		"New review suggestions remain unposted.",
+		"Human speech with the forthcoming user test repository and Apple signing/notarization remain unverified."
+	]
+}

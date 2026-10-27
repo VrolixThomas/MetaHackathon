@@ -75,6 +75,8 @@ Select a ready PR and say **“Walk me through this review”**, **“Next file�
 narrating. Changes, Before and After views use the PR's actual base/head commits. When those
 commits exist in the selected local clone, reads use Git objects without changing your branch,
 index or working files. Missing local commits use GitHub's pinned content API.
+Changes, Before and After include locally bundled syntax highlighting for common languages;
+unknown file types remain exact plain text. Highlighting preserves source line identity.
 
 The repository connection, prepared plans and visited-file progress live in SQLite in the app's
 user-data directory. A 60-second refresh runs while the app is open; changed PR revisions invalidate
@@ -132,3 +134,8 @@ report in `docs/integration/acceptance.md` is historical, not the current produc
 Ownership and shared interface rules are recorded in [AGENTS.md](AGENTS.md) and Linear MET-8.
 See [V1 acceptance](docs/integration/v1-acceptance.md) for the verified live voice round trip,
 real GitHub connection, test results and current screenshot.
+
+Implementation sequence: [product plan](docs/integration/product-plan.md).
+Agent control and observation: [navigation investigation](docs/integration/agent-navigation-plan.md).
+
+Latest validation and screenshots: [review workspace acceptance](docs/integration/review-workspace-acceptance.md).
