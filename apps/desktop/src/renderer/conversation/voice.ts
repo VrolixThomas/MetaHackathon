@@ -6,7 +6,12 @@ import {
 	VoicePollSchema,
 } from "../../main/voice/protocol";
 import { ConversationTurnInputSchema, TurnIdentitySchema } from "../../shared/contracts";
-import { type MediaFactory, createBrowserMediaFactory, createVoiceController } from "../voice";
+import {
+	type MediaFactory,
+	type VoiceControllerOptions,
+	createHandsFreeVoiceController,
+	createVoiceController,
+} from "../voice";
 import type { ConversationApi } from "./api";
 import type { ConversationController } from "./controller";
 import { conversationErrorMessage } from "./errors";
@@ -15,17 +20,16 @@ import { conversationErrorMessage } from "./errors";
 export function connectConversationVoice(
 	api: ConversationApi,
 	ui: ConversationController,
-	media: MediaFactory = createBrowserMediaFactory()
+	media?: MediaFactory
 ) {
 	const call = (signal: AbortSignal, type: "query" | "mutation", path: string, input: unknown) => {
 		signal.throwIfAborted();
 		return api.call(type, path, input);
 	};
-	const voice = createVoiceController({
+	const options: Omit<VoiceControllerOptions, "media"> = {
 		sessionId: ui.sessionId,
 		allocateIdentity: ui.allocateIdentity,
 		getConversationContext: ui.getConversationContext,
-		media,
 		agent: {
 			start: (input, signal) => {
 				signal.throwIfAborted();
@@ -82,15 +86,53 @@ export function connectConversationVoice(
 					: ""
 			),
 		onError: (error) => ui.voiceError(error),
+	};
+	// Explicit injected media retains the deterministic single-utterance test/legacy adapter.
+	if (media) {
+		const voice = createVoiceController({ ...options, media });
+		ui.attachVoice(voice);
+		const unsubscribe = voice.subscribe(() =>
+			ui.voicePhase(voice.connecting ? "connecting" : voice.getPhase())
+		);
+		return () => {
+			unsubscribe();
+			voice.dispose();
+		};
+	}
+	const conversation = createHandsFreeVoiceController(options);
+	ui.attachVoice({
+		beginCapture: () => {
+			void ui.startConversation();
+		},
+		endCapture: () => ui.endConversation(),
+		interrupt: (reason) => conversation.interrupt(reason),
+		dispose: () => conversation.dispose(),
 	});
-	ui.attachVoice(voice);
-	const unsubscribe = voice.subscribe(() =>
+	ui.attachHandsFree({
+		start: () => conversation.startListening(),
+		stop: () => conversation.stopListening(),
+		interrupt: () => conversation.interrupt(),
+	});
+	const unsubscribe = conversation.subscribe(() => {
+		const session = conversation.getSessionSnapshot();
+		const phase = conversation.getPhase();
 		ui.voicePhase(
-			voice.connecting ? "connecting" : voice.getPhase() === "idle" ? "idle" : voice.getPhase()
+			session.phase === "capturing" && phase === "idle"
+				? "connecting"
+				: session.phase === "responding" && (phase === "idle" || phase === "listening")
+					? "transcribing"
+					: phase
+		);
+		const state = ui.store.getState();
+		if (
+			(state.handsFree || state.handsFreeStarting) &&
+			(session.phase === "stopped" || session.phase === "error")
 		)
-	);
+			ui.handsFreeStopped(session.phase === "error" ? session.error : undefined);
+	});
 	return () => {
 		unsubscribe();
-		voice.dispose();
+		ui.attachHandsFree(null);
+		conversation.dispose();
 	};
 }
