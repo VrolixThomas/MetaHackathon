@@ -13,11 +13,13 @@ export function Configuration({
 	controller,
 	onClose,
 	beforeOpen,
+	onOpenError,
 	returnFocus,
 }: {
 	controller: ConversationController;
 	onClose(): void;
 	beforeOpen?: () => Promise<void>;
+	onOpenError?(): void;
 	returnFocus?: RefObject<HTMLButtonElement | null>;
 }) {
 	const state = useStore(controller.store);
@@ -41,6 +43,7 @@ export function Configuration({
 			className="configuration"
 			onClose={onClose}
 			beforeOpen={beforeOpen}
+			onOpenError={onOpenError}
 			returnFocus={returnFocus}
 		>
 			<p>Credentials stay in your local configuration file.</p>
@@ -154,6 +157,11 @@ export function ConversationApp({
 	const [overlay, setOverlay] = useState<
 		"repository" | "more" | "preview" | "configuration" | null
 	>(null);
+	const [overlayError, setOverlayError] = useState("");
+	const overlayFailed = () => {
+		setOverlay(null);
+		setOverlayError("Could not hide the local browser. Close it and try again.");
+	};
 	const [conversationOpen, setConversationOpen] = useState(false);
 	const [url, setUrl] = useState("");
 	const [draft, setDraft] = useState("");
@@ -223,6 +231,19 @@ export function ConversationApp({
 					More <span aria-hidden="true">···</span>
 				</button>
 			</header>
+			{overlayError && (
+				<div className="workspace-overlay-error" role="alert">
+					<span>{overlayError}</span>
+					<button
+						type="button"
+						className="quiet"
+						aria-label="Dismiss workspace error"
+						onClick={() => setOverlayError("")}
+					>
+						Close
+					</button>
+				</div>
+			)}
 			<div className="workspace-body">
 				<WorkSplit browser={local.page ? browser : undefined} obscured={overlay !== null}>
 					<main
@@ -377,6 +398,7 @@ export function ConversationApp({
 					position="left"
 					onClose={closeOverlay}
 					beforeOpen={hideNativePage}
+					onOpenError={overlayFailed}
 					returnFocus={repositoryToggle}
 				>
 					<ReviewInbox
@@ -395,6 +417,7 @@ export function ConversationApp({
 					className="workspace-options"
 					onClose={closeOverlay}
 					beforeOpen={hideNativePage}
+					onOpenError={overlayFailed}
 					returnFocus={moreToggle}
 				>
 					<button
@@ -433,6 +456,7 @@ export function ConversationApp({
 					title="Local preview"
 					onClose={closeOverlay}
 					beforeOpen={hideNativePage}
+					onOpenError={overlayFailed}
 					returnFocus={moreToggle}
 				>
 					<form
@@ -469,6 +493,7 @@ export function ConversationApp({
 					controller={controller}
 					onClose={closeOverlay}
 					beforeOpen={hideNativePage}
+					onOpenError={overlayFailed}
 					returnFocus={moreToggle}
 				/>
 			)}

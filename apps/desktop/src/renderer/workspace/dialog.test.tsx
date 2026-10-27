@@ -65,6 +65,26 @@ it("a retired overlay never opens after a delayed native hide", async () => {
 	assert.equal(opened, false);
 });
 
+it("reports a native hide failure without opening an obscured dialog", async () => {
+	const events: string[] = [];
+	mountWorkspaceDialog(
+		{
+			open: false,
+			showModal() {
+				events.push("show");
+			},
+			close() {},
+		},
+		async () => {
+			throw new Error("native hide failed");
+		},
+		null,
+		() => events.push("failed")
+	);
+	await new Promise((resolve) => setTimeout(resolve, 0));
+	assert.deepEqual(events, ["failed"]);
+});
+
 it("uses a named native dialog with a close control and a bounded content container", () => {
 	const html = renderToStaticMarkup(
 		<WorkspaceDialog

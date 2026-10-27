@@ -4,15 +4,20 @@ import { type ReactNode, type RefObject, useEffect, useRef } from "react";
 export function mountWorkspaceDialog(
 	dialog: Pick<HTMLDialogElement, "showModal" | "close" | "open">,
 	beforeOpen: (() => Promise<void>) | undefined,
-	returnFocus: { isConnected: boolean; focus(): void } | null
+	returnFocus: { isConnected: boolean; focus(): void } | null,
+	onOpenError: () => void = () => {}
 ) {
 	let mounted = true;
 	void Promise.resolve()
 		.then(beforeOpen)
-		.catch(() => {})
-		.then(() => {
-			if (mounted && !dialog.open) dialog.showModal();
-		});
+		.then(
+			() => {
+				if (mounted && !dialog.open) dialog.showModal();
+			},
+			() => {
+				if (mounted) onOpenError();
+			}
+		);
 	return () => {
 		mounted = false;
 		if (dialog.open) dialog.close();
@@ -27,6 +32,7 @@ export function WorkspaceDialog({
 	className = "",
 	children,
 	onClose,
+	onOpenError,
 	beforeOpen,
 	returnFocus,
 }: {
@@ -36,17 +42,21 @@ export function WorkspaceDialog({
 	className?: string;
 	children: ReactNode;
 	onClose(): void;
+	onOpenError?(): void;
 	beforeOpen?: () => Promise<void>;
 	returnFocus?: RefObject<HTMLButtonElement | null>;
 }) {
 	const dialog = useRef<HTMLDialogElement>(null);
+	const failed = useRef(onOpenError ?? onClose);
+	failed.current = onOpenError ?? onClose;
 	useEffect(() => {
 		const previous = returnFocus?.current ?? document.activeElement;
 		if (!dialog.current) return;
 		return mountWorkspaceDialog(
 			dialog.current,
 			beforeOpen,
-			previous instanceof HTMLElement ? previous : null
+			previous instanceof HTMLElement ? previous : null,
+			() => failed.current()
 		);
 	}, [beforeOpen, returnFocus]);
 	return (
