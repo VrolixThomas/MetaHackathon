@@ -33,10 +33,13 @@ export class PreviewRunner {
 		path: string;
 		sha: string;
 		mode: "phone" | "desktop";
+		revision?: "base" | "head";
 		signal?: AbortSignal;
 		timeoutMs?: number;
 	}): Promise<{ preview: Preview; stop: () => Promise<void> }> {
-		if (input.sha !== input.pr.headSha) throw new Error("Preview must match the PR head");
+		const revision = input.revision ?? "head";
+		if (input.sha !== (revision === "head" ? input.pr.headSha : input.pr.baseSha))
+			throw new Error("Preview must match the pinned PR revision");
 		if (input.signal?.aborted) throw new Error("Preview cancelled");
 		const timeoutMs = input.timeoutMs ?? 20_000;
 		if (timeoutMs < 1 || timeoutMs > 120_000) throw new Error("Invalid preview timeout");
@@ -184,30 +187,33 @@ export class PreviewRunner {
 			)
 				throw new Error("Preview source changed during execution");
 			const source = blob.stdout.split("\n");
-			const markers = ["cap-note", "pay-button"].map((id, index) => {
-				const rect = measurements.find((measurement) => measurement.id === id);
-				const line = source.findIndex((text) => text.includes(`data-preview-marker=\"${id}\"`)) + 1;
-				if (!rect || line === 0) throw new Error(`Missing preview marker ${id}`);
-				return {
-					id,
-					number: index + 1,
-					label:
-						id === "cap-note"
-							? "40% discount cap note"
-							: rect.y >= viewport.height
-								? "Pay button below the fold"
-								: "Pay button",
-					location: {
-						repository: input.pr.repository,
-						revision: "head" as const,
-						commitSha: input.sha,
-						path: file,
-						startLine: line,
-						endLine: line,
-					},
-					bounds: { x: rect.x, y: rect.y, width: rect.width, height: rect.height },
-				};
-			});
+			const markers = (revision === "head" ? ["cap-note", "pay-button"] : ["pay-button"]).map(
+				(id, index) => {
+					const rect = measurements.find((measurement) => measurement.id === id);
+					const line =
+						source.findIndex((text) => text.includes(`data-preview-marker=\"${id}\"`)) + 1;
+					if (!rect || line === 0) throw new Error(`Missing preview marker ${id}`);
+					return {
+						id,
+						number: index + 1,
+						label:
+							id === "cap-note"
+								? "40% discount cap note"
+								: rect.y >= viewport.height
+									? "Pay button below the fold"
+									: "Pay button",
+						location: {
+							repository: input.pr.repository,
+							revision,
+							commitSha: input.sha,
+							path: file,
+							startLine: line,
+							endLine: line,
+						},
+						bounds: { x: rect.x, y: rect.y, width: rect.width, height: rect.height },
+					};
+				}
+			);
 			await mkdir(this.logsDirectory, { recursive: true, mode: 0o700 });
 			const log = resolve(this.logsDirectory, `${runId}-preview.json`);
 			const completedAt = new Date().toISOString();
@@ -235,7 +241,7 @@ export class PreviewRunner {
 			const preview = PreviewSchema.parse({
 				id: runId,
 				prId: input.pr.id,
-				revision: "head",
+				revision,
 				commitSha: input.sha,
 				url,
 				viewport,

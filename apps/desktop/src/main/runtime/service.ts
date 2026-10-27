@@ -251,14 +251,20 @@ export class RuntimeService {
 		});
 	}
 
-	startPreview(requestId: string, prId: string, mode: "phone" | "desktop") {
+	startPreview(
+		requestId: string,
+		prId: string,
+		mode: "phone" | "desktop",
+		revision: "base" | "head" = "head"
+	) {
 		return this.operation(requestId, async (signal) => {
 			const { pr, worktrees } = this.getPrepared(prId);
 			const result = await this.previews.start({
 				pr,
-				path: worktrees.head.path,
-				sha: worktrees.head.sha,
+				path: worktrees[revision].path,
+				sha: worktrees[revision].sha,
 				mode,
+				revision,
 				signal,
 			});
 			if (signal.aborted) {
