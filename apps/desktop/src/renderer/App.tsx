@@ -79,8 +79,11 @@ export function App() {
 		};
 	}, [endCapture]);
 	useEffect(() => {
-		if (settings) endCapture();
-	}, [settings, endCapture]);
+		if (settings) {
+			endCapture();
+			void voice?.interrupt("user");
+		}
+	}, [settings, endCapture, voice]);
 	useEffect(() => {
 		if (!voice) {
 			setVoiceStatus("Voice not connected");

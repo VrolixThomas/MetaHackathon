@@ -139,7 +139,8 @@ async function applyAction(turn: ActiveTurn, input: AgentAction) {
 	const state = useReview.getState();
 	switch (action.kind) {
 		case "show-browser": {
-			if (acceptBrowserState(action.browser, true)) state.setPanel("browser");
+			if (acceptBrowserState(action.browser, true) && state.panel !== "browser")
+				state.setPanel("browser");
 			break;
 		}
 		case "highlight-code":
@@ -275,6 +276,7 @@ export async function runAgentQuestion(text: string) {
 	void useServices.getState().voice?.interrupt("user");
 	await stopActiveQuestion();
 	if (launch !== launchSequence) return;
+	useReview.setState((state) => ({ sequence: state.sequence + 1 }));
 	const screenContext = getScreenContext();
 	const input: AgentTurnInput = {
 		requestId: crypto.randomUUID(),
@@ -342,6 +344,7 @@ export const externalVoiceTurn = {
 		lastStartedGeneration = parsed.generation;
 		launchSequence++;
 		void stopActiveQuestion("push-to-talk", false);
+		useReview.setState((state) => ({ sequence: state.sequence + 1 }));
 		const screenContext = getScreenContext();
 		const turn: ActiveTurn = {
 			input: { ...parsed, requestId: crypto.randomUUID(), text: "Voice question", screenContext },

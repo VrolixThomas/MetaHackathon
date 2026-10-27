@@ -32,7 +32,7 @@ export function acceptBrowserState(input: BrowserState, replace = false) {
 		)
 			return JSON.stringify(state.browser) === JSON.stringify(browser);
 	}
-	useReview.setState({ browser, sequence: state.sequence + 1 });
+	useReview.setState({ browser });
 	return true;
 }
 

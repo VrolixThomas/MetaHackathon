@@ -45,7 +45,7 @@ it("only publishes browser observations pinned to the current session and PR rev
 	assert.equal(getScreenContext().focusedLocation, null);
 	assert.equal(acceptBrowserState(browserSnapshot(0)), false);
 	assert.equal(acceptBrowserState(browser), true);
-	assert.equal(useReview.getState().sequence, 1);
+	assert.equal(useReview.getState().sequence, 0);
 	assert.equal(acceptBrowserState({ ...browserSnapshot(2), browserId: "other-page" }), false);
 	assert.equal(
 		acceptBrowserState(

@@ -275,7 +275,7 @@ it("voice transcript, text and actions share the UI session without starting a s
 	await externalVoiceTurn.action({
 		...identity,
 		requestId: "voice-scenario",
-		screenSequence: 0,
+		screenSequence: useReview.getState().sequence,
 		kind: "show-scenario",
 		scenarioId: fixture.scenario.id,
 	});

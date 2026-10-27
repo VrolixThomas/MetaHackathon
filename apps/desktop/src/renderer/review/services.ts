@@ -19,6 +19,7 @@ import type {
 	ScreenContext,
 	SourceFile,
 	SourceFileRequest,
+	VoiceSetupStatus,
 } from "../../shared/contracts";
 
 export type { CredentialProvider, CredentialStatus } from "../../shared/contracts";
@@ -40,6 +41,12 @@ export type BrowserAdapter = {
 	execute: (input: BrowserCommand) => Promise<BrowserState>;
 	observe: (sessionId: string) => Promise<BrowserState | null>;
 	present: (sessionId: string, bounds: BrowserBounds | null) => Promise<void>;
+};
+export type VoiceSetupAdapter = {
+	invalidate: () => void;
+	status: () => Promise<VoiceSetupStatus>;
+	configure: (voiceId: string) => Promise<VoiceSetupStatus>;
+	prepare: () => Promise<VoiceSetupStatus>;
 };
 export type ReviewAdapter = {
 	prepare: (prId: string) => Promise<PRPreparation>;
@@ -95,6 +102,7 @@ export const useServices = create<{
 	runtime: RuntimeAdapter | null;
 	review: ReviewAdapter | null;
 	browser: BrowserAdapter | null;
+	voiceSetup: VoiceSetupAdapter | null;
 }>(() => ({
 	settings: null,
 	voice: null,
@@ -105,6 +113,7 @@ export const useServices = create<{
 	runtime: null,
 	review: null,
 	browser: null,
+	voiceSetup: null,
 }));
 export function configureReviewServices(
 	services: Partial<ReturnType<typeof useServices.getState>>

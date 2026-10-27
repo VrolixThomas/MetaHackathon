@@ -2,9 +2,12 @@ import { useEffect, useRef, useState } from "react";
 import { CredentialStatusListSchema } from "../../shared/contracts";
 import { Icon } from "./Icons";
 import { type CredentialProvider, type CredentialStatus, useServices } from "./services";
+import { useVoiceReadiness } from "./voice-binding";
 
 export function Settings({ onClose }: { onClose: () => void }) {
 	const adapter = useServices((s) => s.settings);
+	const voiceSetup = useServices((s) => s.voiceSetup);
+	const voiceStatus = useVoiceReadiness((s) => s.status);
 	const [statuses, setStatuses] = useState<CredentialStatus[]>([]);
 	const [editing, setEditing] = useState<CredentialProvider | null>(null);
 	const [message, setMessage] = useState("");
@@ -156,6 +159,73 @@ export function Settings({ onClose }: { onClose: () => void }) {
 					);
 				})}
 				{message && <output>{message}</output>}
+				<div className="settings-divider" />
+				<h3>Voice</h3>
+				<p>
+					{voiceStatus?.phase === "ready"
+						? "Ready. Hold Space and wait for Listening before speaking."
+						: voiceStatus?.phase === "preparing"
+							? "Preparing voice… The first start may take a few minutes."
+							: "Add Meta and ElevenLabs keys, choose an ElevenLabs voice, then prepare voice."}
+				</p>
+				{voiceStatus?.missing.length ? (
+					<p className="attention-text">
+						Missing:{" "}
+						{voiceStatus.missing
+							.map(
+								(item) =>
+									({
+										meta: "Meta key",
+										elevenlabs: "ElevenLabs key",
+										voiceId: "voice ID",
+										executable: "voice service",
+									})[item]
+							)
+							.join(", ")}
+					</p>
+				) : null}
+				{voiceStatus?.phase === "error" && (
+					<p role="alert">
+						Voice could not start. Check the voice service and credentials, then retry.
+					</p>
+				)}
+				<form
+					className="credential-form"
+					onSubmit={(event) => {
+						event.preventDefault();
+						const input = event.currentTarget.elements.namedItem("voiceId");
+						if (voiceSetup && input instanceof HTMLInputElement && input.value.trim())
+							void run(async () => {
+								await voiceSetup.configure(input.value.trim());
+							});
+					}}
+				>
+					<label htmlFor="voice-id">ElevenLabs voice ID</label>
+					<input
+						id="voice-id"
+						name="voiceId"
+						defaultValue={voiceStatus?.voiceId ?? ""}
+						key={voiceStatus?.voiceId ?? ""}
+						placeholder="Public voice ID"
+						disabled={!voiceSetup || busy}
+						required
+					/>
+					<button className="button" type="submit" disabled={!voiceSetup || busy}>
+						Save voice
+					</button>
+				</form>
+				<button
+					type="button"
+					className="button primary"
+					disabled={!voiceSetup || busy || voiceStatus?.phase === "preparing"}
+					onClick={() =>
+						void run(async () => {
+							await voiceSetup?.prepare();
+						})
+					}
+				>
+					{voiceStatus?.phase === "preparing" ? "Preparing voice…" : "Prepare voice"}
+				</button>
 				<div className="settings-divider" />
 				<h3>Keyboard</h3>
 				<div className="shortcut-list">

@@ -18,7 +18,10 @@ import {
 	type SettingsAdapter,
 	type SourceAdapter,
 	configureReviewServices,
+	useServices,
 } from "./services";
+
+import { connectReviewVoice } from "./voice-binding";
 
 type Request = (input: TrpcRequest) => Promise<TrpcResponse>;
 
@@ -33,6 +36,7 @@ export function createRuntimeBridge(request: Request) {
 		status: async () =>
 			CredentialStatusListSchema.parse(await call("query", "runtime.credentialStatus")),
 		set: async (provider, value) => {
+			if (provider !== "github") useServices.getState().voiceSetup?.invalidate();
 			await call(
 				"mutation",
 				"runtime.setCredential",
@@ -40,6 +44,7 @@ export function createRuntimeBridge(request: Request) {
 			);
 		},
 		remove: async (provider) => {
+			if (provider !== "github") useServices.getState().voiceSetup?.invalidate();
 			await call(
 				"mutation",
 				"runtime.deleteCredential",
@@ -101,19 +106,23 @@ export function createRuntimeBridge(request: Request) {
 
 export function connectAvailableRuntime() {
 	let disposed = false;
+	let disconnectVoice = () => {};
 	if (!window.electron?.trpc) return () => {};
 	const bridge = createRuntimeBridge((input) => window.electron.trpc.request(input));
 	void bridge.settings
 		.status()
 		.then(() => {
-			if (!disposed)
+			if (!disposed) {
 				configureReviewServices({
 					...bridge,
 					...createCompositionBridge((input) => window.electron.trpc.request(input)),
 				});
+				disconnectVoice = connectReviewVoice((input) => window.electron.trpc.request(input));
+			}
 		})
 		.catch(() => {});
 	return () => {
 		disposed = true;
+		disconnectVoice();
 	};
 }
