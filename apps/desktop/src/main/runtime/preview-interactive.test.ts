@@ -44,7 +44,11 @@ test("owned base/head previews execute interactive pricing and retain real pinne
 			urls.push(lease.url);
 			assert.equal(lease.revision, revision);
 			assert.equal(lease.commitSha, revision === "head" ? pr.headSha : pr.baseSha);
-			const initial = await (await fetch(lease.url)).text();
+			const response = await fetch(lease.url);
+			assert.equal(response.headers.get("content-type"), "text/html; charset=utf-8");
+			const initial = await response.text();
+			assert.match(initial, /<meta charset="utf-8">/);
+			assert.match(initial, / · /);
 			assert.match(initial, revision === "head" ? /€72\.00/ : /€84\.00/);
 			assert.match(initial, /<form method="get" action="\/checkout">/);
 			const promo = new URL(lease.url);
