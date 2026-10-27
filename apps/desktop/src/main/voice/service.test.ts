@@ -17,6 +17,30 @@ function backend(request: VoiceBackend["request"]): VoiceBackend {
 	return { request, dispose: async () => {} };
 }
 describe("voice main generation boundary", () => {
+	it("reconstructs provider error messages from metadata instead of trusting the sidecar message", async () => {
+		const service = new VoiceService(
+			backend(async (path) =>
+				path === "offer"
+					? answer
+					: {
+							events: [
+								{
+									...identity,
+									kind: "error",
+									sequence: 1,
+									message: "private-provider-body",
+									diagnostic: { stage: "elevenlabs", code: "access", httpStatus: 403 },
+								},
+							],
+						}
+			)
+		);
+		await service.offer(offer);
+		const result = await service.poll({ ...identity, afterSequence: 0 });
+		assert.equal(JSON.stringify(result).includes("private-provider-body"), false);
+		assert.match(JSON.stringify(result), /ElevenLabs speech access was rejected/);
+		await service.dispose();
+	});
 	it("cancel before offer tombstones the generation without admitting media", async () => {
 		const calls: string[] = [];
 		const service = new VoiceService(

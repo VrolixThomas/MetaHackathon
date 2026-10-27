@@ -1,4 +1,5 @@
 import { type TurnIdentity, TurnIdentitySchema } from "../../shared/contracts";
+import { VoiceDiagnosticError, voiceDiagnosticMessage } from "./diagnostics";
 import {
 	type SpeakInput,
 	SpeakSchema,
@@ -103,12 +104,17 @@ export class VoiceService {
 	async poll(raw: VoicePoll) {
 		const input = VoicePollSchema.parse(raw);
 		const session = this.current(input);
-		const result = VoicePollResultSchema.parse(
-			await this.backend.request("poll", input, session.abort.signal)
-		);
+		const rawResult = await this.backend.request("poll", input, session.abort.signal);
+		const parsed = VoicePollResultSchema.safeParse(rawResult);
+		if (!parsed.success) throw new VoiceDiagnosticError({ stage: "media", code: "protocol" });
+		const result = parsed.data;
 		this.current(input);
 		let last = input.afterSequence;
 		for (const event of result.events) {
+			if (event.kind === "error")
+				event.message = voiceDiagnosticMessage(
+					event.diagnostic ?? { stage: "media", code: "failed" }
+				);
 			if (!same(event, input) || event.sequence <= last)
 				throw new Error("Invalid voice event identity or sequence");
 			last = event.sequence;

@@ -1,11 +1,22 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { VoiceDiagnosticError, VoiceDiagnosticSchema, voiceDiagnosticMessage } from "./diagnostics";
+import {
+	VoiceDiagnosticError,
+	VoiceDiagnosticSchema,
+	isVoiceDiagnosticMessage,
+	voiceDiagnosticMessage,
+} from "./diagnostics";
 
 test("diagnostics accept only bounded metadata and generate their own messages", () => {
 	const valid = { stage: "elevenlabs", code: "auth", httpStatus: 401 } as const;
 	assert.match(new VoiceDiagnosticError(valid).message, /ElevenLabs.*API key/);
 	assert.deepEqual(new VoiceDiagnosticError(valid).diagnostic, valid);
+	assert.equal(isVoiceDiagnosticMessage(new VoiceDiagnosticError(valid).message), true);
+	assert.equal(
+		isVoiceDiagnosticMessage(`${new VoiceDiagnosticError(valid).message} secret`),
+		false
+	);
+	assert.equal(isVoiceDiagnosticMessage("secret provider body"), false);
 	for (const extra of [
 		{ message: "secret-provider-body" },
 		{ key: "secret-key" },

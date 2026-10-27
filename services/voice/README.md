@@ -11,6 +11,13 @@ Developer ID signing, notarization and DMG acceptance. The authoritative transpo
 contract is `apps/desktop/src/main/voice/protocol.ts`; the Python boundary models
 mirror it in `voice_sidecar/protocol.py`.
 
+V1 general conversation may omit a PR entirely; this sidecar still handles only audio and never
+creates a screen or an agent turn. Provider failures now carry the bounded shared diagnostic
+`{stage,code,httpStatus?,closeCode?}` through HTTP `detail` or a poll error's `diagnostic` field.
+Exception text, response bodies and WebSocket close reasons are discarded. Main validates the
+metadata and generates user-facing messages locally. The first provider failure survives peer
+teardown; explicit cancellation retains its existing semantics.
+
 ## Run and build
 
 Use Python 3.13 on the target platform and architecture. The checked-in lock is

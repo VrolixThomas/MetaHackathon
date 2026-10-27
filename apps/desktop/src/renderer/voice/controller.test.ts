@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import { afterEach, test } from "node:test";
+import { VoiceDiagnosticError } from "../../main/voice/diagnostics";
 import type { SpeakInput, VoiceEvent, VoicePollResult } from "../../main/voice/protocol";
 import { AgentTurnInputSchema, ConversationTurnInputSchema } from "../../shared/contracts";
 import type {
@@ -335,6 +336,22 @@ test("the first failure survives synchronous media teardown and late cancellatio
 	await wait();
 	assert.equal(h.controller.getSnapshot().error, first.message);
 	assert.deepEqual(h.errors, [first]);
+});
+
+test("structured provider failure uses canonical copy rather than the polled message", async () => {
+	const h = harness();
+	await h.capture();
+	h.voiceEvents.push({
+		...h.current(),
+		sequence: 1,
+		kind: "error",
+		message: "private-provider-body",
+		diagnostic: { stage: "meta", code: "auth", httpStatus: 401 },
+	});
+	await until(() => h.controller.getPhase() === "error");
+	assert.ok(h.errors[0] instanceof VoiceDiagnosticError);
+	assert.equal(h.controller.snapshot.error?.includes("private-provider-body"), false);
+	assert.match(h.controller.snapshot.error ?? "", /Meta speech authentication failed/);
 });
 
 test("release stops capture but preserves peer, accepts one final, starts agent and ack concurrently", async () => {

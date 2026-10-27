@@ -3,6 +3,10 @@
 MET-28–33 voice transport modules consume shared turn identities. Root integration owns
 registration, lifecycle and credential wiring; UI owns visible controls and the global Space handler.
 
+V1 uses root's configured `.env` credentials through the injected main-only getter. General
+conversation needs no PR or screen context. The credential-store example below describes the
+legacy review composition; it does not authorize copying saved keys to the renderer.
+
 ```ts
 import { VoiceSidecar, VoiceService, createVoiceRouter } from './voice';
 const sidecar = new VoiceSidecar({
@@ -98,6 +102,28 @@ The local Python suite needs no credentials and uses mocked providers. Root can 
 source environment with Python 3.13 and `services/voice/requirements.lock`. The frozen bundle
 recorded in the earlier handoff predates redirect fix `2948077`; rebuild it before packaging.
 Runtime still owns signing/notarization and must recompute the inventory after signing.
+
+## Safe diagnostics (V1)
+
+`diagnostics.ts` imports/re-exports `VoiceDiagnosticSchema` and `VoiceDiagnostic` from shared
+contracts. `VoiceDiagnosticError(diagnostic)` exposes immutable `.diagnostic` metadata and a
+canonical local `.message`. `voiceDiagnosticMessage(diagnostic)` generates the same copy;
+`isVoiceDiagnosticMessage(value)` recognizes only exact generated messages across RPC. UI should
+use that allowlist instead of rendering arbitrary exception text or applying a second generic mask.
+
+Python failures use HTTP `{ "detail": diagnostic }` (local status 502) or a polled error event
+with optional `diagnostic` alongside `message`. A diagnostic is `{stage,code,httpStatus?,closeCode?}`;
+its stage/code are shared enums and its status values are bounded integers. Provider status stays
+inside the diagnostic and is distinct from the local HTTP status. Main reads at most 4096 bytes
+for a failed HTTP response, requires the exact schema, and reconstructs the message. Unknown fields,
+provider strings and oversized bodies produce a generic local diagnostic. Polled error messages
+are also regenerated from validated metadata, never trusted as display copy.
+
+Provider exceptions retain only their category and optional numeric HTTP/WebSocket status. No
+response body, close reason, SDP, transcript, audio, key, URL or stderr is included. Meta stream
+failures retain the first diagnostic; if teardown cancels an in-progress offer, its original
+provider failure survives. Explicit user cancellation still preserves tombstones and late-event
+rejection. The old frozen artifact must be rebuilt to contain these source changes.
 
 ## Verification
 

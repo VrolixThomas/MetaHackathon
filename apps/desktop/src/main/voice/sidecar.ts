@@ -1,6 +1,7 @@
 import { type ChildProcessWithoutNullStreams, spawn } from "node:child_process";
 import { randomBytes } from "node:crypto";
 import { z } from "zod";
+import { type VoiceDiagnostic, VoiceDiagnosticError, VoiceDiagnosticSchema } from "./diagnostics";
 
 export interface VoiceCredentials {
 	meta?: string;
@@ -20,6 +21,27 @@ export interface VoiceBackend {
 	dispose: () => Promise<void>;
 }
 const ReadySchema = z.strictObject({ port: z.int().min(1).max(65535) });
+const FailureSchema = z.strictObject({ detail: VoiceDiagnosticSchema });
+
+async function readJson(response: Response, limit: number): Promise<unknown> {
+	const reader = response.body?.getReader();
+	if (!reader) throw new VoiceDiagnosticError({ stage: "media", code: "protocol" });
+	let size = 0;
+	const chunks: Uint8Array[] = [];
+	try {
+		for (;;) {
+			const chunk = await reader.read();
+			if (chunk.done) break;
+			size += chunk.value.byteLength;
+			if (size > limit) throw new VoiceDiagnosticError({ stage: "media", code: "protocol" });
+			chunks.push(chunk.value);
+		}
+		return JSON.parse(Buffer.concat(chunks).toString("utf8"));
+	} finally {
+		await reader.cancel().catch(() => {});
+		reader.releaseLock();
+	}
+}
 
 /** Owns one private loopback server. Credentials and its bearer never leave main. */
 export class VoiceSidecar implements VoiceBackend {
@@ -88,13 +110,13 @@ export class VoiceSidecar implements VoiceBackend {
 				} else resolve(port as number);
 			};
 			const timer = setTimeout(
-				() => finish(new Error("Voice sidecar startup timed out")),
+				() => finish(new VoiceDiagnosticError({ stage: "setup", code: "timeout" })),
 				this.options.startupTimeoutMs ?? 180_000
 			);
 			const onData = (chunk: Buffer) => {
 				buffer += chunk.toString("utf8");
 				if (buffer.length > 8192) {
-					finish(new Error("Invalid voice readiness response"));
+					finish(new VoiceDiagnosticError({ stage: "setup", code: "protocol" }));
 					return;
 				}
 				const newline = buffer.indexOf("\n");
@@ -102,13 +124,20 @@ export class VoiceSidecar implements VoiceBackend {
 				try {
 					finish(undefined, ReadySchema.parse(JSON.parse(buffer.slice(0, newline))).port);
 				} catch {
-					finish(new Error("Invalid voice readiness response"));
+					finish(new VoiceDiagnosticError({ stage: "setup", code: "protocol" }));
 				}
 			};
 			child.stdout.on("data", onData);
-			child.once("error", () => finish(new Error("Voice executable could not start")));
+			child.once("error", (error: NodeJS.ErrnoException) =>
+				finish(
+					new VoiceDiagnosticError({
+						stage: "setup",
+						code: error.code === "ENOENT" ? "not-found" : "failed",
+					})
+				)
+			);
 			child.once("exit", () => {
-				finish(new Error("Voice sidecar exited before readiness"));
+				finish(new VoiceDiagnosticError({ stage: "setup", code: "failed" }));
 				this.lifetime.abort();
 			});
 		});
@@ -126,34 +155,42 @@ export class VoiceSidecar implements VoiceBackend {
 			AbortSignal.timeout(this.options.requestTimeoutMs ?? 15_000),
 			...(signal ? [signal] : []),
 		]);
-		combined.throwIfAborted();
-		const response = await fetch(`http://127.0.0.1:${port}/${path}`, {
-			method: "POST",
-			headers: { authorization: `Bearer ${this.token}`, "content-type": "application/json" },
-			body: JSON.stringify(body),
-			signal: combined,
-			redirect: "error",
-		});
-		if (!response.ok) {
-			await response.body?.cancel();
-			throw new Error(`Voice ${path} failed (HTTP ${response.status})`);
-		}
-		const reader = response.body?.getReader();
-		if (!reader) throw new Error("Empty voice response");
-		let size = 0;
-		const chunks: Uint8Array[] = [];
+		let response: Response;
 		try {
-			for (;;) {
-				const chunk = await reader.read();
-				if (chunk.done) break;
-				size += chunk.value.byteLength;
-				if (size > 4_000_000) throw new Error("Voice response exceeds limit");
-				chunks.push(chunk.value);
+			combined.throwIfAborted();
+			response = await fetch(`http://127.0.0.1:${port}/${path}`, {
+				method: "POST",
+				headers: { authorization: `Bearer ${this.token}`, "content-type": "application/json" },
+				body: JSON.stringify(body),
+				signal: combined,
+				redirect: "error",
+			});
+		} catch {
+			if (signal?.aborted) throw signal.reason;
+			throw new VoiceDiagnosticError({
+				stage: this.lifetime.signal.aborted ? "setup" : "media",
+				code: this.lifetime.signal.aborted ? "failed" : combined.aborted ? "timeout" : "network",
+			});
+		}
+		if (!response.ok) {
+			let diagnostic: VoiceDiagnostic | undefined;
+			try {
+				diagnostic = FailureSchema.parse(await readJson(response, 4096)).detail;
+			} catch {
+				// Unrecognized/oversized response bodies never enter the error or logs.
 			}
-			return JSON.parse(Buffer.concat(chunks).toString("utf8"));
-		} finally {
-			await reader.cancel().catch(() => {});
-			reader.releaseLock();
+			throw new VoiceDiagnosticError(
+				diagnostic ?? { stage: "media", code: "failed", httpStatus: response.status }
+			);
+		}
+		try {
+			return await readJson(response, 4_000_000);
+		} catch {
+			if (signal?.aborted) throw signal.reason;
+			throw new VoiceDiagnosticError({
+				stage: "media",
+				code: combined.aborted ? "timeout" : "protocol",
+			});
 		}
 	}
 	dispose(): Promise<void> {

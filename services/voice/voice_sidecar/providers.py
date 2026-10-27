@@ -9,6 +9,7 @@ from urllib.parse import quote
 import aiohttp
 import truststore
 from websockets.asyncio.client import connect
+from .diagnostics import ProviderError, classify, close_error, http_error
 
 RATE = 24_000
 PCM_CHUNK = 1920  # 40 ms, mono signed s16le
@@ -32,10 +33,6 @@ class Config:
     tts_model: str = "eleven_flash_v2_5"
 
 
-class ProviderError(Exception):
-    """A fixed, client-safe error (never a provider response body)."""
-
-
 class MetaStream:
     def __init__(self, config, identity, keywords, emit):
         self.config, self.identity, self.keywords, self.emit = config, identity, keywords, emit
@@ -51,12 +48,12 @@ class MetaStream:
         query = quote(
             f"{self.identity.sessionId}:{self.identity.turnId}:{self.identity.generation}", safe=""
         )
-        self.ws = await connect(
-            f"{self.config.meta_url}?sessionId={query}",
-            open_timeout=5, close_timeout=2, max_size=256_000, max_queue=8,
-            **({"ssl": tls_context()} if self.config.meta_url.startswith("wss:") else {}),
-        )
         try:
+            self.ws = await connect(
+                f"{self.config.meta_url}?sessionId={query}",
+                open_timeout=5, close_timeout=2, max_size=256_000, max_queue=8,
+                **({"ssl": tls_context()} if self.config.meta_url.startswith("wss:") else {}),
+            )
             await self.ws.send(json.dumps({
                 "authorization": {"accessToken": f"Bearer {self.config.meta_key}"},
                 "audioEncoding": "PCM_24KHZ", "model": "muse-voice-transcribe-1.0",
@@ -65,10 +62,19 @@ class MetaStream:
             }))
             ack = json.loads(await asyncio.wait_for(self.ws.recv(), 5))
             if not isinstance(ack, dict) or not isinstance(ack.get("sessionId"), str) or "type" in ack:
-                raise ProviderError("Meta STT handshake failed")
-        except BaseException:
-            await self.ws.close()
+                raise ProviderError("meta", "failed" if isinstance(ack, dict) and ack.get("type") == "error" else "protocol")
+        except asyncio.CancelledError:
+            if self.ws:
+                await self.ws.close()
             raise
+        except Exception as error:
+            failure = classify(error, "meta")
+            if self.ws:
+                try:
+                    await self.ws.close()
+                except Exception:
+                    pass
+            raise failure from None
         self.receiver = asyncio.create_task(self._receive(), name="meta-receive")
         self.sender = asyncio.create_task(self._send(), name="meta-send")
 
@@ -76,12 +82,17 @@ class MetaStream:
         if self.ended:
             return
         if len(pcm) % 2:
-            raise ProviderError("Invalid PCM sample alignment")
+            raise ProviderError("media", "protocol")
         for offset in range(0, len(pcm), PCM_CHUNK):
             try:
                 self.audio.put_nowait(pcm[offset:offset + PCM_CHUNK])
             except asyncio.QueueFull:
-                raise ProviderError("STT input queue exceeded") from None
+                raise ProviderError("meta", "busy") from None
+
+    def fail(self, error):
+        if self.failure is None:
+            self.failure = classify(error, "meta")
+            self.emit("error", message=str(self.failure), diagnostic=self.failure.diagnostic)
 
     async def _send(self):
         loop = asyncio.get_running_loop()
@@ -102,35 +113,33 @@ class MetaStream:
                     self.audio.task_done()
         except asyncio.CancelledError:
             raise
-        except Exception:
-            self.failure = ProviderError("Meta STT audio send failed")
-            self.emit("error", message=str(self.failure))
+        except Exception as error:
+            self.fail(error)
 
     async def _receive(self):
         try:
             async for raw in self.ws:
                 if not isinstance(raw, str):
-                    raise ProviderError("Meta STT returned invalid data")
+                    raise ProviderError("meta", "protocol")
                 event = json.loads(raw)
                 if not isinstance(event, dict):
-                    raise ProviderError("Meta STT returned invalid data")
+                    raise ProviderError("meta", "protocol")
                 if event.get("type") == "error":
-                    raise ProviderError("Meta STT rejected the stream")
+                    raise ProviderError("meta")
                 if event.get("type") == "transcript":
                     text, final = event.get("transcript"), event.get("final")
                     if not isinstance(text, str) or len(text) > 32000 or type(final) is not bool:
-                        raise ProviderError("Meta STT returned invalid transcript")
+                        raise ProviderError("meta", "protocol")
                     if self.final:
                         continue
                     self.final = final
                     self.emit("transcript", text=text, final=final)
             if self.ws.close_code != 1000 or not self.final:
-                raise ProviderError("Meta STT closed without a final transcript")
+                raise close_error("meta", self.ws.close_code)
         except asyncio.CancelledError:
             raise
-        except Exception:
-            self.failure = ProviderError("Meta STT stream failed or ended without final transcript")
-            self.emit("error", message=str(self.failure))
+        except Exception as error:
+            self.fail(error)
 
     async def finish(self):
         if self.ended:
@@ -170,19 +179,19 @@ async def eleven_pcm(http, config, text):
             timeout=aiohttp.ClientTimeout(total=120, connect=10, sock_read=15),
         ) as response:
             if response.status != 200:
-                raise ProviderError("ElevenLabs TTS request failed")
+                raise http_error("elevenlabs", response.status)
             pending = b""
             count = 0
             async for chunk in response.content.iter_chunked(PCM_CHUNK):
                 count += len(chunk)
                 if count > RATE * 2 * 120:
-                    raise ProviderError("ElevenLabs TTS exceeded 120 seconds")
+                    raise ProviderError("elevenlabs", "protocol")
                 pending += chunk
                 while len(pending) >= PCM_CHUNK:
                     yield pending[:PCM_CHUNK]
                     pending = pending[PCM_CHUNK:]
             if count == 0 or len(pending) % 2:
-                raise ProviderError("ElevenLabs TTS returned invalid PCM")
+                raise ProviderError("elevenlabs", "protocol")
             if pending:
                 # Transport writes multiples of 10ms. Pad only the final frame.
                 yield pending + bytes((-len(pending)) % PCM_CHUNK)
@@ -190,5 +199,5 @@ async def eleven_pcm(http, config, text):
         raise
     except ProviderError:
         raise
-    except Exception:
-        raise ProviderError("ElevenLabs TTS stream failed") from None
+    except Exception as error:
+        raise classify(error, "elevenlabs") from None

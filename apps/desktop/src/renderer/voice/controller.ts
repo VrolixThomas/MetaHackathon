@@ -454,7 +454,10 @@ export function createVoiceController(options: VoiceControllerOptions): VoiceCon
 		turn.voiceSequence = event.sequence;
 		options.onVoiceEvent?.(event);
 		if (!live(turn)) return;
-		if (event.kind === "error") throw new Error(event.message);
+		if (event.kind === "error")
+			throw event.diagnostic
+				? new VoiceDiagnosticError(event.diagnostic)
+				: new Error(event.message);
 		if (event.kind === "transcript" && !turn.finalized) {
 			if (event.final) turn.finalText = event.text;
 			publish({ transcript: event.text, transcriptFinal: event.final });

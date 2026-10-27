@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { TurnIdentitySchema } from "../../shared/contracts";
+import { TurnIdentitySchema, VoiceDiagnosticSchema } from "../../shared/contracts";
 
 /** Voice-owned transport contract; no credentials cross this boundary. */
 export const VoiceOfferSchema = TurnIdentitySchema.extend({
@@ -25,7 +25,12 @@ export const VoiceEventSchema = z.discriminatedUnion("kind", [
 	}),
 	z.strictObject({ ...eventFields, kind: z.literal("speech-started"), speechId: z.string() }),
 	z.strictObject({ ...eventFields, kind: z.literal("speech-ended"), speechId: z.string() }),
-	z.strictObject({ ...eventFields, kind: z.literal("error"), message: z.string().max(500) }),
+	z.strictObject({
+		...eventFields,
+		kind: z.literal("error"),
+		message: z.string().max(500),
+		diagnostic: VoiceDiagnosticSchema.optional(),
+	}),
 ]);
 export const VoicePollSchema = TurnIdentitySchema.extend({ afterSequence: z.int().nonnegative() });
 export const VoicePollResultSchema = z.strictObject({ events: z.array(VoiceEventSchema).max(100) });

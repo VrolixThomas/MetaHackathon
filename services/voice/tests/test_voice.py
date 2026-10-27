@@ -74,6 +74,8 @@ class VoiceTests(unittest.IsolatedAsyncioTestCase):
         self.max_tts = 0
         self.bad_handshake = False
         self.omit_final = False
+        self.close_after_handshake = False
+        self.tts_status = None
 
         async def meta(request):
             ws = web.WebSocketResponse()
@@ -85,6 +87,9 @@ class VoiceTests(unittest.IsolatedAsyncioTestCase):
             try:
                 await ws.send_json({"type": "error", "message": "secret-provider-body"} if self.bad_handshake
                                    else {"sessionId": request.query["sessionId"]})
+                if self.close_after_handshake:
+                    await ws.close(code=1013, message=b"private-close-reason")
+                    return ws
             except aiohttp.ClientConnectionError:
                 return ws
             async for msg in ws:
@@ -108,6 +113,8 @@ class VoiceTests(unittest.IsolatedAsyncioTestCase):
 
         async def tts(request):
             self.tts_requests.append((dict(request.headers), dict(request.query), await request.json(), request.match_info["voice"]))
+            if self.tts_status:
+                return web.Response(status=self.tts_status, text="private-provider-rejection")
             self.active_tts += 1
             self.max_tts = max(self.max_tts, self.active_tts)
             try:
@@ -301,6 +308,7 @@ class VoiceTests(unittest.IsolatedAsyncioTestCase):
         peer, offer = await self.local_offer()
         result = await self.post("/offer", offer, 502)
         self.assertNotIn("secret-provider-body", json.dumps(result))
+        self.assertEqual(result["detail"], {"stage": "meta", "code": "failed"})
         session = self.manager.sessions[IDENTITY["sessionId"]]
         await asyncio.wait_for(session.ensure_stop(), 7)
         self.assertEqual(session.peer.pc.connectionState, "closed")
@@ -315,9 +323,27 @@ class VoiceTests(unittest.IsolatedAsyncioTestCase):
         await until(lambda: not session.active)
         events = (await self.post("/poll", {**IDENTITY, "afterSequence": 0}))["events"]
         self.assertTrue(any(e["kind"] == "error" for e in events))
+        self.assertTrue(any(e.get("diagnostic") == {"stage": "meta", "code": "protocol", "closeCode": 1000} for e in events))
         self.assertFalse(any(e.get("final") for e in events))
         await asyncio.wait_for(session.ensure_stop(), 7)
         self.assertEqual(session.peer.pc.connectionState, "closed")
+
+    async def test_provider_failure_during_peer_setup_is_not_masked_as_user_cancel(self):
+        self.close_after_handshake = True
+        _, offer = await self.local_offer()
+        result = await self.post("/offer", offer, 502)
+        self.assertEqual(result["detail"], {"stage": "meta", "code": "rate-limit", "closeCode": 1013})
+        self.assertNotIn("private-close-reason", json.dumps(result))
+
+    async def test_synthesis_failure_reports_provider_category_through_poll(self):
+        self.tts_status = 403
+        await self.connect()
+        await self.post("/speak", {**IDENTITY, "speechId": "blocked", "text": "Hello"})
+        session = self.manager.get(Identity(**IDENTITY))
+        await until(lambda: not session.active)
+        events = (await self.post("/poll", {**IDENTITY, "afterSequence": 0}))["events"]
+        self.assertTrue(any(e.get("diagnostic") == {"stage": "elevenlabs", "code": "access", "httpStatus": 403} for e in events))
+        self.assertNotIn("private-provider-rejection", json.dumps(events))
 
     async def test_capture_timeout_closes_peer(self):
         with patch("voice_sidecar.session.CAPTURE_SECONDS", 0.5):

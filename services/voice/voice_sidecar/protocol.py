@@ -53,10 +53,21 @@ class SpeechEvent(Identity):
     speechId: str
 
 
+class Diagnostic(BaseModel):
+    """Mirror of shared/contracts/voice-diagnostics.ts; no free-form provider data."""
+    model_config = ConfigDict(extra="forbid", strict=True)
+    stage: Literal["microphone", "media", "setup", "meta", "elevenlabs"]
+    code: Literal["denied", "not-found", "busy", "auth", "access", "rate-limit",
+                  "unavailable", "network", "timeout", "protocol", "tls", "invalid-response", "failed"]
+    httpStatus: int | None = Field(default=None, ge=100, le=599)
+    closeCode: int | None = Field(default=None, ge=1000, le=4999)
+
+
 class ErrorEvent(Identity):
     sequence: int = Field(gt=0)
     kind: Literal["error"]
     message: str = Field(max_length=500)
+    diagnostic: Diagnostic | None = None
 
 
 Event = Annotated[Transcript | SpeechEvent | ErrorEvent, Field(discriminator="kind")]

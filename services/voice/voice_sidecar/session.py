@@ -22,6 +22,7 @@ from pipecat.workers.runner import WorkerRunner
 
 from .protocol import Answer, Identity, PollResult
 from .providers import MetaStream, ProviderError, RATE, eleven_pcm, tls_context
+from .diagnostics import classify
 
 CAPTURE_SECONDS = 60
 SESSION_SECONDS = 300
@@ -53,13 +54,13 @@ class InputGate(FrameProcessor):
             if s.active and s.capturing and time.monotonic() <= s.capture_deadline:
                 try:
                     if frame.sample_rate != RATE or frame.num_channels != 1:
-                        raise ProviderError("Expected mono PCM at 24000 Hz")
+                        raise ProviderError("media", "protocol")
                     s.audio_bytes += len(frame.audio)
                     if s.audio_bytes > RATE * 2 * CAPTURE_SECONDS:
-                        raise ProviderError("Maximum capture duration reached")
+                        raise ProviderError("media", "timeout")
                     s.meta.feed(frame.audio)
                 except ProviderError as error:
-                    s.fail(str(error))
+                    s.fail(str(error), error.diagnostic)
             return
         if isinstance(frame, InputTransportMessageFrame):
             return  # Signalling stays in SmallWebRTC; application commands use authenticated HTTP.
@@ -96,6 +97,8 @@ class Session:
         self.speech_ids = {}  # Bounded per-generation duplicate suppression.
         self.tasks = set()
         self.start_task = None
+        self.start_stage = "media"
+        self.failure = None
         self.stop_task = None
         self.release_task = None
         self.run_task = None
@@ -124,13 +127,14 @@ class Session:
 
     def provider_event(self, kind, **payload):
         if kind == "error":
-            self.fail(payload["message"])
+            self.fail(payload["message"], payload.get("diagnostic"))
         else:
             self.emit(kind, **payload)
 
-    def fail(self, message):
+    def fail(self, message, diagnostic=None):
         if self.active:
-            self.emit("error", message=message[:500])
+            self.failure = diagnostic or {"stage": "media", "code": "failed"}
+            self.emit("error", message=message[:500], diagnostic=self.failure)
             self.invalidate(clear_events=False)
             self.ensure_stop()
 
@@ -190,7 +194,9 @@ class Session:
             connector=aiohttp.TCPConnector(ssl=tls_context()),
         )
         async with asyncio.timeout(12):
+            self.start_stage = "meta"
             await self.meta.open()
+            self.start_stage = "media"
             await self.peer.initialize(self.offer.sdp, self.offer.type)
             runner = WorkerRunner(handle_sigint=False, handle_sigterm=False)
             await runner.add_workers(self.worker)
@@ -228,8 +234,9 @@ class Session:
                 await self.meta.finish()
         except asyncio.CancelledError:
             raise
-        except Exception:
-            self.fail("Meta STT did not finish after release")
+        except Exception as error:
+            failure = classify(error, "meta")
+            self.fail(str(failure), failure.diagnostic)
 
     def enqueue(self, speech):
         prior = self.speech_ids.get(speech.speechId)
@@ -272,8 +279,9 @@ class Session:
                     self.speech.task_done()
         except asyncio.CancelledError:
             raise
-        except Exception:
-            self.fail("Speech synthesis or transport failed")
+        except Exception as error:
+            failure = classify(error, "media")
+            self.fail(str(failure), failure.diagnostic)
 
     def poll(self, after):
         if self.events and after < self.events[0]["sequence"] - 1:
@@ -362,11 +370,15 @@ class Manager:
             # Teardown may itself have cancelled this setup request. Do not
             # await it here (it is waiting for the request to unwind).
             session.ensure_stop()
+            # A provider can fail while peer setup is awaiting and teardown cancels
+            # this offer task. Preserve that first failure instead of reporting user cancel.
+            if session.failure is not None:
+                raise HTTPException(502, session.failure) from None
             if isinstance(error, HTTPException):
                 raise
             if isinstance(error, asyncio.CancelledError):
                 raise HTTPException(409, "Generation cancelled") from None
-            raise HTTPException(502, "Voice provider or peer setup failed") from None
+            raise HTTPException(502, classify(error, session.start_stage).diagnostic) from None
 
     def get(self, identity, *, require_active=True):
         session = self.sessions.get(identity.sessionId)

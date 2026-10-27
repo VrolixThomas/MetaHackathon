@@ -94,7 +94,7 @@ def create_app(config, manager=None):
         await manager.cancel(body)
         return {}
 
-    @app.post("/poll", response_model=PollResult)
+    @app.post("/poll", response_model=PollResult, response_model_exclude_none=True)
     async def poll(body: Poll):
         return manager.get(body, require_active=False).poll(body.afterSequence)
 
