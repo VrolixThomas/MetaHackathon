@@ -23,9 +23,16 @@ it("bundles the real startup without fixtures or the legacy artifact workspace",
 	);
 	assert.ok(inputs.some((path) => path.endsWith("conversation/ConversationApp.tsx")));
 });
-it("opens an empty conversation with visible talk and typed controls", () => {
+it("prioritizes review with persistent voice and a collapsed accessible conversation panel", () => {
 	const html = renderToStaticMarkup(createElement(App));
-	assert.match(html, /Start a conversation/);
+	assert.match(html, /Choose a pull request/);
+	assert.match(
+		html,
+		/data-testid="conversation-toggle"[^>]*aria-controls="conversation-panel"[^>]*aria-expanded="false"/
+	);
+	assert.match(html, /id="conversation-panel"[^>]*hidden=""/);
+	assert.match(html, /<footer[^>]*class="voice-bar"/);
+	assert.doesNotMatch(html, /<iframe|<webview|data-native-browser-content/);
 	assert.match(html, /aria-label="Hold to talk"/);
 	assert.match(html, /<textarea[^>]*name="question"/);
 	assert.doesNotMatch(

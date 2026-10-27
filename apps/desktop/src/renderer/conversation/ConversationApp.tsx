@@ -3,6 +3,9 @@ import { useStore } from "zustand";
 import { ReviewInbox } from "../prepared/Inbox";
 import { ReviewWorkspace } from "../prepared/ReviewWorkspace";
 import type { PreparedController } from "../prepared/controller";
+import { WorkSplit } from "../workspace/WorkSplit";
+import type { LocalBrowserController } from "../workspace/local-browser";
+import { VoiceBar } from "./VoiceBar";
 import type { ConversationController } from "./controller";
 
 function Configuration({
@@ -108,75 +111,129 @@ function Configuration({
 export function ConversationApp({
 	controller,
 	reviews,
-}: { controller: ConversationController; reviews: PreparedController }) {
+	browser,
+}: {
+	controller: ConversationController;
+	reviews: PreparedController;
+	browser: LocalBrowserController;
+}) {
 	const state = useStore(controller.store);
 	const prepared = useStore(reviews.store);
+	const local = useStore(browser.store);
 	const reviewOpen = prepared.screen.mode === "review";
 	const [sidebar, setSidebar] = useState(false);
 	const [configuration, setConfiguration] = useState(false);
+	const [conversationOpen, setConversationOpen] = useState(false);
+	const [previewPrompt, setPreviewPrompt] = useState(false);
+	const [url, setUrl] = useState("");
 	const [draft, setDraft] = useState("");
 	const scroll = useRef<HTMLDivElement>(null);
-	const keyHeld = useRef(false);
+	const composer = useRef<HTMLTextAreaElement>(null);
+	const conversationToggle = useRef<HTMLButtonElement>(null);
 	const last = state.exchanges.at(-1);
 	useEffect(() => {
-		if ((last?.question || last?.answer) && scroll.current)
+		if (conversationOpen) composer.current?.focus();
+	}, [conversationOpen]);
+	useEffect(() => {
+		if (conversationOpen && (last?.question || last?.answer) && scroll.current)
 			scroll.current.scrollTop = scroll.current.scrollHeight;
-	}, [last?.question, last?.answer]);
-	const running = state.phase !== "idle";
-	const voiceReady = state.voice?.phase === "ready";
-	const status = running
-		? {
-				idle: "",
-				connecting: "Connecting microphone…",
-				listening: "Listening…",
-				transcribing: "Transcribing…",
-				thinking: "Thinking…",
-				speaking: "Speaking…",
-				complete: "",
-				cancelled: "",
-				error: "",
-			}[state.phase]
-		: state.config?.error
-			? "Configuration needs attention"
-			: state.configBusy
-				? "Checking configuration…"
-				: state.voice?.phase === "preparing"
-					? "Preparing voice…"
-					: voiceReady
-						? "Voice ready"
-						: "Voice needs configuration";
+	}, [conversationOpen, last?.question, last?.answer]);
+	const openRepository = () => {
+		setSidebar(true);
+		void reviews.poll();
+	};
+	const closeConversation = () => {
+		setConversationOpen(false);
+		conversationToggle.current?.focus();
+	};
 	return (
-		<div className="conversation-app">
+		<div className="conversation-app review-first">
 			<header className="app-header">
 				<div className="app-title">
 					<span className="app-symbol" aria-hidden="true">
 						◌
 					</span>
-					<strong>Conversation</strong>
+					<strong>Review</strong>
+					{prepared.inbox?.repository && (
+						<span className="header-repository">{prepared.inbox.repository}</span>
+					)}
 				</div>
-				<nav aria-label="App">
+				<nav aria-label="Workspace controls">
 					<button
 						type="button"
 						aria-expanded={sidebar}
 						onClick={() => {
-							setSidebar(!sidebar);
-							if (!sidebar) void reviews.poll();
+							if (sidebar) setSidebar(false);
+							else openRepository();
 						}}
 					>
 						Repository
 					</button>
 					<button
 						type="button"
+						ref={conversationToggle}
+						data-testid="conversation-toggle"
+						aria-controls="conversation-panel"
+						aria-expanded={conversationOpen}
+						onClick={() => setConversationOpen(!conversationOpen)}
+					>
+						Conversation
+					</button>
+					<button
+						type="button"
+						data-testid="local-preview-toggle"
+						aria-expanded={previewPrompt || !!local.page}
+						onClick={() => setPreviewPrompt(!previewPrompt)}
+					>
+						Local preview
+					</button>
+					<button
+						type="button"
 						data-testid="configuration-toggle"
-						onClick={() => {
-							setConfiguration(true);
-						}}
+						onClick={() => setConfiguration(true)}
 					>
 						Configuration
 					</button>
 				</nav>
 			</header>
-			<div className={`conversation-layout ${reviewOpen ? "reviewing" : ""}`}>
+			{previewPrompt && (
+				<form
+					className="open-local-preview"
+					aria-label="Open local preview"
+					onSubmit={(event) => {
+						event.preventDefault();
+						void browser.open(url).then(() => {
+							if (browser.store.getState().page && !browser.store.getState().error)
+								setPreviewPrompt(false);
+						});
+					}}
+				>
+					<label htmlFor="local-preview-url">Running local address</label>
+					<input
+						id="local-preview-url"
+						name="local-preview-url"
+						type="url"
+						placeholder="http://localhost:3000"
+						value={url}
+						onChange={(event) => setUrl(event.currentTarget.value)}
+						required
+						spellCheck={false}
+					/>
+					<button type="submit" disabled={local.busy}>
+						{local.busy ? "Opening…" : "Open"}
+					</button>
+					<button
+						type="button"
+						className="quiet"
+						aria-label="Close preview address form"
+						onClick={() => setPreviewPrompt(false)}
+					>
+						×
+					</button>
+					{local.error && <span role="alert">{local.error}</span>}
+				</form>
+			)}
+			<div className="workspace-body">
 				{sidebar && (
 					<ReviewInbox
 						controller={reviews}
@@ -187,177 +244,146 @@ export function ConversationApp({
 						onClose={() => setSidebar(false)}
 					/>
 				)}
-				{reviewOpen && <ReviewWorkspace controller={reviews} onPause={() => controller.stop()} />}
-				<main
-					className={`conversation-main ${reviewOpen ? "compact-conversation" : ""}`}
-					data-session-id={controller.sessionId}
-					data-turn-id={state.active?.turnId ?? last?.turnId}
-					data-generation={state.active?.generation ?? last?.generation}
-					data-request-id={last?.requestId}
-					data-conversation-state={state.phase}
-				>
-					{state.selected && (
-						<div className="selected-context">
-							<span>
-								PR context · {state.selected.pr.repository} #{state.selected.pr.number}
-								{state.selected.truncated ? " · Limited context" : ""}
-							</span>
-							<button
-								type="button"
-								className="quiet"
-								aria-label="Remove PR context"
-								onClick={() => void controller.selectPR(null)}
-							>
-								×
-							</button>
-						</div>
-					)}
-					<div className="conversation-scroll" ref={scroll} aria-label="Conversation messages">
-						{!state.exchanges.length && (
-							<div className="conversation-empty">
-								<span className="eyebrow">A place to think out loud</span>
-								<h1>{reviewOpen ? "Talk through the change." : "Start a conversation."}</h1>
-								<p>Talk or type. Add a pull request when you need it.</p>
-							</div>
-						)}
-						<div className="messages">
-							{state.exchanges.map((entry) => (
-								<article
-									className="exchange"
-									key={entry.turnId}
-									data-turn-id={entry.turnId}
-									data-phase={entry.phase}
-								>
-									<div className="user-message">
-										<span className="message-label">You</span>
-										<p>
-											{entry.question ||
-												(entry.phase === "cancelled" ? "Voice capture stopped" : "Listening…")}
-										</p>
+				<WorkSplit browser={local.page ? browser : undefined} obscured={configuration}>
+					<main
+						className={`conversation-main work-area ${reviewOpen ? "review-open" : ""}`}
+						data-session-id={controller.sessionId}
+						data-turn-id={state.active?.turnId ?? last?.turnId}
+						data-generation={state.active?.generation ?? last?.generation}
+						data-request-id={last?.requestId}
+						data-conversation-state={state.phase}
+					>
+						<div className="primary-work" hidden={!reviewOpen && conversationOpen}>
+							{reviewOpen ? (
+								<ReviewWorkspace controller={reviews} onPause={() => controller.stop()} />
+							) : (
+								<div className="review-empty">
+									<span className="eyebrow">Review workspace</span>
+									<h1>Choose a pull request.</h1>
+									<p>Open a repository to inspect its files and prepared reading order.</p>
+									<div>
+										<button type="button" onClick={openRepository}>
+											Open repository
+										</button>
+										<button
+											type="button"
+											className="quiet"
+											onClick={() => setConversationOpen(true)}
+										>
+											Type a question
+										</button>
 									</div>
-									{entry.answer && (
-										<div className="assistant-message">
-											<span className="message-label">Assistant</span>
-											<p>{entry.answer}</p>
-										</div>
-									)}
-									{entry.phase === "cancelled" && <span className="message-state">Stopped</span>}
-									{entry.phase === "error" && (
-										<span className="message-state">Reply unavailable</span>
-									)}
-								</article>
-							))}
+									<p className="small">You can talk at any time.</p>
+								</div>
+							)}
 						</div>
-					</div>
-					<div className="conversation-controls">
-						{state.error && (
-							<div className="conversation-error" role="alert">
-								<span>{state.error}</span>
+						<section
+							id="conversation-panel"
+							className="conversation-panel"
+							aria-label="Conversation and typing"
+							hidden={!conversationOpen}
+						>
+							<header className="conversation-panel-header">
+								<strong>Conversation</strong>
 								<button
 									type="button"
 									className="quiet"
-									aria-label="Dismiss error"
-									onClick={controller.dismissError}
+									aria-label="Hide conversation"
+									onClick={closeConversation}
 								>
 									×
 								</button>
-							</div>
-						)}
-						<div className="voice-row">
-							<button
-								type="button"
-								className={`talk-button ${running ? "active" : ""}`}
-								data-testid="voice-control"
-								aria-label={running ? "Stop" : "Hold to talk"}
-								onPointerDown={(event) => {
-									if (event.button !== 0) return;
-									event.currentTarget.setPointerCapture(event.pointerId);
-									if (running) controller.stop();
-									else controller.press();
-								}}
-								onPointerUp={controller.release}
-								onPointerCancel={controller.release}
-								onLostPointerCapture={controller.release}
-								onBlur={() => {
-									keyHeld.current = false;
-									controller.release();
-								}}
-								onKeyDown={(event) => {
-									if (event.key === "Enter" || event.code === "Space") {
-										event.preventDefault();
-										if (!event.repeat) {
-											keyHeld.current = true;
-											if (running) controller.stop();
-											else controller.press();
-										}
-									}
-								}}
-								onKeyUp={(event) => {
-									if (event.key === "Enter" || event.code === "Space") {
-										event.preventDefault();
-										keyHeld.current = false;
-										controller.release();
-									}
-								}}
-								onClick={(event) => {
-									if (event.detail === 0 && !keyHeld.current) controller.toggle();
-								}}
-							>
-								<span aria-hidden="true">{running ? "■" : "●"}</span>
-								{running ? "Stop" : "Hold to talk"}
-							</button>
-							<div className="voice-hint">
-								<output>{status}</output>
-								<span>
-									<kbd>⌘ ⇧ Space</kbd> to toggle
-								</span>
-							</div>
-							{!running &&
-								!voiceReady &&
-								state.voice?.phase !== "preparing" &&
-								state.config?.configured.meta &&
-								state.config.configured.elevenlabs &&
-								state.config.voiceId && (
+							</header>
+							{state.selected && (
+								<div className="selected-context">
+									<span>
+										PR context · {state.selected.pr.repository} #{state.selected.pr.number}
+									</span>
 									<button
 										type="button"
 										className="quiet"
-										onClick={() => void controller.retryVoice()}
+										aria-label="Remove PR context"
+										onClick={() => void controller.selectPR(null)}
 									>
-										Retry voice
+										×
 									</button>
+								</div>
+							)}
+							<div className="conversation-scroll" ref={scroll} aria-label="Conversation messages">
+								{!state.exchanges.length && (
+									<p className="conversation-note">
+										Your conversation will appear here. Talk or type to begin.
+									</p>
 								)}
-						</div>
-						<form
-							className="composer"
-							onSubmit={(event) => {
-								event.preventDefault();
-								if (!draft.trim()) return;
-								void controller.submit(draft);
-								setDraft("");
-							}}
-						>
-							<textarea
-								name="question"
-								aria-label="Message"
-								placeholder="Type a message…"
-								value={draft}
-								rows={2}
-								maxLength={32000}
-								onChange={(event) => setDraft(event.currentTarget.value)}
-								onKeyDown={(event) => {
-									if (event.key === "Enter" && !event.shiftKey && !event.nativeEvent.isComposing) {
-										event.preventDefault();
-										event.currentTarget.form?.requestSubmit();
-									}
+								<div className="messages">
+									{state.exchanges.map((entry) => (
+										<article
+											className="exchange"
+											key={entry.turnId}
+											data-turn-id={entry.turnId}
+											data-phase={entry.phase}
+										>
+											<div className="user-message">
+												<span className="message-label">You</span>
+												<p>
+													{entry.question ||
+														(entry.phase === "cancelled" ? "Voice capture stopped" : "Listening…")}
+												</p>
+											</div>
+											{entry.answer && (
+												<div className="assistant-message">
+													<span className="message-label">Assistant</span>
+													<p>{entry.answer}</p>
+												</div>
+											)}
+											{entry.phase === "cancelled" && (
+												<span className="message-state">Stopped</span>
+											)}
+											{entry.phase === "error" && (
+												<span className="message-state">Reply unavailable</span>
+											)}
+										</article>
+									))}
+								</div>
+							</div>
+							<form
+								className="composer"
+								onSubmit={(event) => {
+									event.preventDefault();
+									if (!draft.trim()) return;
+									void controller.submit(draft);
+									setDraft("");
 								}}
-							/>
-							<button type="submit" aria-label="Send message" disabled={!draft.trim()}>
-								Send <span aria-hidden="true">↑</span>
-							</button>
-						</form>
-					</div>
-				</main>
+							>
+								<textarea
+									ref={composer}
+									name="question"
+									aria-label="Message"
+									placeholder="Type a message…"
+									value={draft}
+									rows={2}
+									maxLength={32000}
+									onChange={(event) => setDraft(event.currentTarget.value)}
+									onKeyDown={(event) => {
+										if (
+											event.key === "Enter" &&
+											!event.shiftKey &&
+											!event.nativeEvent.isComposing
+										) {
+											event.preventDefault();
+											event.currentTarget.form?.requestSubmit();
+										}
+									}}
+								/>
+								<button type="submit" aria-label="Send message" disabled={!draft.trim()}>
+									Send <span aria-hidden="true">↑</span>
+								</button>
+							</form>
+						</section>
+					</main>
+				</WorkSplit>
 			</div>
+			<VoiceBar controller={controller} />
 			{configuration && (
 				<Configuration controller={controller} onClose={() => setConfiguration(false)} />
 			)}

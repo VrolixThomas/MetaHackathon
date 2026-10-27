@@ -6,6 +6,7 @@ import { connectShortcuts } from "./conversation/shortcuts";
 import { connectConversationVoice } from "./conversation/voice";
 import { createPreparedApi } from "./prepared/api";
 import { createPreparedController } from "./prepared/controller";
+import { createLocalBrowserController } from "./workspace/local-browser";
 
 export function App() {
 	const [runtime] = useState(() => {
@@ -13,7 +14,7 @@ export function App() {
 		const controller = createConversationController(api);
 		const reviews = createPreparedController(createPreparedApi(api.call), controller.sessionId);
 		controller.attachReview(reviews);
-		return { api, controller, reviews };
+		return { api, controller, reviews, browser: createLocalBrowserController(api.call) };
 	});
 	useEffect(() => {
 		const disconnectVoice = connectConversationVoice(runtime.api, runtime.controller);
@@ -23,6 +24,7 @@ export function App() {
 		);
 		void runtime.controller.configure();
 		runtime.reviews.start();
+		runtime.browser.start();
 		const release = () => runtime.controller.release();
 		window.addEventListener("blur", release);
 		return () => {
@@ -30,8 +32,15 @@ export function App() {
 			disconnectShortcuts();
 			runtime.controller.dispose();
 			runtime.reviews.dispose();
+			runtime.browser.dispose();
 			disconnectVoice();
 		};
 	}, [runtime]);
-	return <ConversationApp controller={runtime.controller} reviews={runtime.reviews} />;
+	return (
+		<ConversationApp
+			controller={runtime.controller}
+			reviews={runtime.reviews}
+			browser={runtime.browser}
+		/>
+	);
 }
