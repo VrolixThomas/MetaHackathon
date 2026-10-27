@@ -39,6 +39,11 @@ export function ReviewWorkspace({
 			data-review-id={plan?.id}
 			data-review-path={file?.path}
 			data-screen-sequence={state.screen.sequence}
+			data-review-paused={state.paused}
+			data-review-loading={state.fileBusy}
+			data-review-progress-path={state.detail?.progress?.path ?? ""}
+			data-base-sha={plan?.pr.baseSha}
+			data-head-sha={plan?.pr.headSha}
 		>
 			<header className="prepared-heading">
 				<div>
