@@ -5,11 +5,12 @@ import { MetaClient } from "./agent/meta-client";
 import { prepareReview } from "./agent/prepare-review";
 import { ScreenContextStore } from "./agent/screen-context";
 import { createAgentComposition } from "./composition";
+import { LocalBrowserSurface } from "./composition/browser-surface";
 import { ReviewCoordinator } from "./composition/reviews";
 import { type VoiceCompositionOptions, createVoiceComposition } from "./composition/voice";
 import type { EnvConfiguration } from "./config/env";
 import type { AppConfigurationPorts } from "./config/router";
-import { BrowserService, type BrowserServiceOptions } from "./runtime/browser";
+import { type BrowserPage, BrowserService, type BrowserServiceOptions } from "./runtime/browser";
 import type { RuntimeOptions, RuntimeService } from "./runtime/service";
 
 let runtime: RuntimeService | undefined;
@@ -17,6 +18,7 @@ let dataDirectory: string | undefined;
 let closing = false;
 let browser: BrowserService | undefined;
 let browserOptions: BrowserServiceOptions | undefined;
+let localBrowser: LocalBrowserSurface | undefined;
 let voice: ReturnType<typeof createVoiceComposition> | undefined;
 let configuration: EnvConfiguration | undefined;
 let configurationPorts: AppConfigurationPorts | undefined;
@@ -130,6 +132,14 @@ export async function closeBrowser(): Promise<void> {
 	browser = undefined;
 	await current?.dispose();
 }
+export function initializeLocalBrowser(createPage: (origin: string) => BrowserPage): void {
+	if (localBrowser) throw new Error("Local browser has already been initialized");
+	localBrowser = new LocalBrowserSurface({ createPage });
+}
+export function getLocalBrowser(): LocalBrowserSurface {
+	if (closing || !localBrowser) throw new Error("Local browser is unavailable");
+	return localBrowser;
+}
 export function initializeVoice(
 	options: Omit<VoiceCompositionOptions, "getCredentials" | "getDataDirectory">
 ): void {
@@ -194,7 +204,12 @@ export async function disposeRuntime(): Promise<void> {
 		}
 	} finally {
 		try {
-			await closeBrowser();
+			try {
+				await localBrowser?.dispose();
+			} finally {
+				localBrowser = undefined;
+				await closeBrowser();
+			}
 		} finally {
 			runtime = undefined;
 			voice = undefined;

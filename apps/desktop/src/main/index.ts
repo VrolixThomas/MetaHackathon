@@ -20,6 +20,7 @@ import {
 	initializeBrowser,
 	initializeConfiguration,
 	initializeConfigurationPorts,
+	initializeLocalBrowser,
 	initializeReviews,
 	initializeRuntime,
 	initializeVoice,
@@ -36,12 +37,12 @@ let shutdownFinished = false;
 function createWindow(): void {
 	mainWindow = new BrowserWindow({
 		title: "MetaHackathon",
-		width: 1080,
-		height: 800,
+		width: 1440,
+		height: 900,
 		minWidth: 800,
 		minHeight: 600,
 		show: false,
-		backgroundColor: "#15171b",
+		backgroundColor: "#0e0e0e",
 		webPreferences: {
 			preload: join(mainDirectory, "../preload/index.cjs"),
 			contextIsolation: true,
@@ -134,6 +135,13 @@ app
 					return mainWindow;
 				}),
 		});
+		initializeLocalBrowser((origin) =>
+			createElectronBrowserPage(origin, () => {
+				if (!mainWindow || mainWindow.isDestroyed())
+					throw new Error("Review window is unavailable");
+				return mainWindow;
+			})
+		);
 		const voiceRoot = join(mainDirectory, "../../../../services/voice");
 		const voiceCommand = app.isPackaged
 			? join(process.resourcesPath, "voice/metahackathon-voice")

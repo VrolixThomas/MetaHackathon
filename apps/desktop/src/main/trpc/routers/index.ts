@@ -5,6 +5,7 @@ import { createConversationRouter } from "../../agent/conversation-router";
 import { createAgentScreenRouter } from "../../agent/screen-context";
 import { createCompositionRouters } from "../../composition";
 import { createBrowserRouter } from "../../composition/browser-router";
+import { createLocalBrowserRouter } from "../../composition/browser-surface";
 import { createReviewRouter } from "../../composition/reviews-router";
 import { createConfiguredVoiceRouter } from "../../composition/voice";
 import { createAppConfigurationRouter } from "../../config/router";
@@ -14,6 +15,7 @@ import {
 	conversationService,
 	getBrowser,
 	getConfigurationPorts,
+	getLocalBrowser,
 	getReviews,
 	getRuntime,
 	getVoice,
@@ -41,6 +43,7 @@ export const appRouter = router({
 	bootstrap: bootstrapRouter,
 	runtime: createRuntimeRouter(getRuntime),
 	browser: createBrowserRouter(getBrowser),
+	localBrowser: createLocalBrowserRouter(getLocalBrowser),
 	voice: createConfiguredVoiceRouter(getVoice),
 	screen: createAgentScreenRouter(screenContexts),
 	...createCompositionRouters(agentComposition),

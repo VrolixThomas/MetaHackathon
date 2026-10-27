@@ -5,13 +5,17 @@ export const LocalBrowserUrlSchema = z
 	.url()
 	.max(4096)
 	.refine((value) => {
-		const url = new URL(value);
-		return (
-			url.protocol === "http:" &&
-			["localhost", "127.0.0.1", "[::1]"].includes(url.hostname) &&
-			!url.username &&
-			!url.password
-		);
+		try {
+			const url = new URL(value);
+			return (
+				url.protocol === "http:" &&
+				["localhost", "127.0.0.1", "[::1]"].includes(url.hostname) &&
+				!url.username &&
+				!url.password
+			);
+		} catch {
+			return false;
+		}
 	}, "Use a local HTTP address without credentials");
 export const LocalBrowserStateSchema = z.strictObject({
 	url: LocalBrowserUrlSchema,
