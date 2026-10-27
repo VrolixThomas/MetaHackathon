@@ -1,9 +1,10 @@
-import { useEffect, useRef, useState } from "react";
+import { type RefObject, useCallback, useEffect, useRef, useState } from "react";
 import { useStore } from "zustand";
 import { ReviewInbox } from "../prepared/Inbox";
 import { ReviewWorkspace } from "../prepared/ReviewWorkspace";
 import type { PreparedController } from "../prepared/controller";
 import { WorkSplit } from "../workspace/WorkSplit";
+import { WorkspaceDialog } from "../workspace/WorkspaceDialog";
 import type { LocalBrowserController } from "../workspace/local-browser";
 import { VoiceBar } from "./VoiceBar";
 import type { ConversationController } from "./controller";
@@ -11,16 +12,15 @@ import type { ConversationController } from "./controller";
 export function Configuration({
 	controller,
 	onClose,
-}: { controller: ConversationController; onClose(): void }) {
+	beforeOpen,
+	returnFocus,
+}: {
+	controller: ConversationController;
+	onClose(): void;
+	beforeOpen?: () => Promise<void>;
+	returnFocus?: RefObject<HTMLButtonElement | null>;
+}) {
 	const state = useStore(controller.store);
-	const dialog = useRef<HTMLDialogElement>(null);
-	useEffect(() => {
-		const previous = document.activeElement;
-		dialog.current?.showModal();
-		return () => {
-			if (previous instanceof HTMLElement && previous.isConnected) previous.focus();
-		};
-	}, []);
 	const microphone = state.config?.microphone;
 	const githubStatus = state.githubBusy
 		? "Connecting…"
@@ -34,21 +34,15 @@ export function Configuration({
 					? "Configured · account not checked"
 					: "Not connected";
 	return (
-		<dialog
+		<WorkspaceDialog
+			id="configuration"
+			title="Configuration"
+			position="center"
 			className="configuration"
-			ref={dialog}
-			onCancel={(event) => {
-				event.preventDefault();
-				onClose();
-			}}
-			aria-labelledby="configuration-title"
+			onClose={onClose}
+			beforeOpen={beforeOpen}
+			returnFocus={returnFocus}
 		>
-			<header>
-				<h2 id="configuration-title">Configuration</h2>
-				<button type="button" className="quiet" aria-label="Close configuration" onClick={onClose}>
-					Close
-				</button>
-			</header>
 			<p>Credentials stay in your local configuration file.</p>
 			<code className="env-path" data-testid="env-path">
 				{state.config?.envPath ??
@@ -140,7 +134,7 @@ export function Configuration({
 					{state.config?.error || state.error}
 				</p>
 			)}
-		</dialog>
+		</WorkspaceDialog>
 	);
 }
 
@@ -157,15 +151,22 @@ export function ConversationApp({
 	const prepared = useStore(reviews.store);
 	const local = useStore(browser.store);
 	const reviewOpen = prepared.screen.mode === "review";
-	const [sidebar, setSidebar] = useState(false);
-	const [configuration, setConfiguration] = useState(false);
+	const [overlay, setOverlay] = useState<
+		"repository" | "more" | "preview" | "configuration" | null
+	>(null);
 	const [conversationOpen, setConversationOpen] = useState(false);
-	const [previewPrompt, setPreviewPrompt] = useState(false);
 	const [url, setUrl] = useState("");
 	const [draft, setDraft] = useState("");
 	const scroll = useRef<HTMLDivElement>(null);
 	const composer = useRef<HTMLTextAreaElement>(null);
-	const conversationToggle = useRef<HTMLButtonElement>(null);
+	const moreToggle = useRef<HTMLButtonElement>(null);
+	const repositoryToggle = useRef<HTMLButtonElement>(null);
+	const hideNativePage = useCallback(async () => {
+		if (browser.store.getState().page) await browser.present(null);
+	}, [browser]);
+	const identity = prepared.detail?.pr;
+	const repository = identity?.repository ?? prepared.inbox?.repository;
+	const closeOverlay = () => setOverlay(null);
 	const last = state.exchanges.at(-1);
 	useEffect(() => {
 		if (conversationOpen) composer.current?.focus();
@@ -175,112 +176,55 @@ export function ConversationApp({
 			scroll.current.scrollTop = scroll.current.scrollHeight;
 	}, [conversationOpen, last?.question, last?.answer]);
 	const openRepository = () => {
-		setSidebar(true);
+		setOverlay("repository");
 		void reviews.poll();
 	};
 	const closeConversation = () => {
 		setConversationOpen(false);
-		conversationToggle.current?.focus();
+		moreToggle.current?.focus();
 	};
 	return (
 		<div className="conversation-app review-first">
 			<header className="app-header">
-				<div className="app-title">
+				<button
+					type="button"
+					className="repository-identity quiet"
+					ref={repositoryToggle}
+					data-testid="repository-selector"
+					aria-haspopup="dialog"
+					aria-controls="repository-selector"
+					aria-expanded={overlay === "repository"}
+					aria-label={`Choose repository or pull request${repository ? `: ${repository}${identity ? ` #${identity.number}` : ""}` : ""}`}
+					onClick={openRepository}
+				>
 					<span className="app-symbol" aria-hidden="true">
 						◌
 					</span>
-					<strong>Review</strong>
-					{prepared.inbox?.repository && (
-						<span className="header-repository">{prepared.inbox.repository}</span>
+					<span className="repository-identity-name">{repository ?? "Open repository"}</span>
+					{identity && (
+						<>
+							<span className="identity-number">#{identity.number}</span>
+							<span className="identity-title">{identity.title}</span>
+						</>
 					)}
-				</div>
-				<nav aria-label="Workspace controls">
-					<button
-						type="button"
-						aria-expanded={sidebar}
-						onClick={() => {
-							if (sidebar) setSidebar(false);
-							else openRepository();
-						}}
-					>
-						Repository
-					</button>
-					<button
-						type="button"
-						ref={conversationToggle}
-						data-testid="conversation-toggle"
-						aria-controls="conversation-panel"
-						aria-expanded={conversationOpen}
-						onClick={() => setConversationOpen(!conversationOpen)}
-					>
-						Conversation
-					</button>
-					<button
-						type="button"
-						data-testid="local-preview-toggle"
-						aria-expanded={previewPrompt || !!local.page}
-						onClick={() => setPreviewPrompt(!previewPrompt)}
-					>
-						Local preview
-					</button>
-					<button
-						type="button"
-						data-testid="configuration-toggle"
-						onClick={() => setConfiguration(true)}
-					>
-						Configuration
-					</button>
-				</nav>
-			</header>
-			{previewPrompt && (
-				<form
-					className="open-local-preview"
-					aria-label="Open local preview"
-					onSubmit={(event) => {
-						event.preventDefault();
-						void browser.open(url).then(() => {
-							if (browser.store.getState().page && !browser.store.getState().error)
-								setPreviewPrompt(false);
-						});
-					}}
+					<span aria-hidden="true">⌄</span>
+				</button>
+				<button
+					type="button"
+					className="quiet more-toggle"
+					ref={moreToggle}
+					data-testid="workspace-more"
+					aria-haspopup="dialog"
+					aria-controls="workspace-more"
+					aria-expanded={overlay === "more"}
+					aria-label="More workspace options"
+					onClick={() => setOverlay("more")}
 				>
-					<label htmlFor="local-preview-url">Running local address</label>
-					<input
-						id="local-preview-url"
-						name="local-preview-url"
-						type="url"
-						placeholder="http://localhost:3000"
-						value={url}
-						onChange={(event) => setUrl(event.currentTarget.value)}
-						required
-						spellCheck={false}
-					/>
-					<button type="submit" disabled={local.busy}>
-						{local.busy ? "Opening…" : "Open"}
-					</button>
-					<button
-						type="button"
-						className="quiet"
-						aria-label="Close preview address form"
-						onClick={() => setPreviewPrompt(false)}
-					>
-						×
-					</button>
-					{local.error && <span role="alert">{local.error}</span>}
-				</form>
-			)}
+					More <span aria-hidden="true">···</span>
+				</button>
+			</header>
 			<div className="workspace-body">
-				{sidebar && (
-					<ReviewInbox
-						controller={reviews}
-						onSelect={(detail) => {
-							setSidebar(false);
-							void reviews.open(detail.pr.id);
-						}}
-						onClose={() => setSidebar(false)}
-					/>
-				)}
-				<WorkSplit browser={local.page ? browser : undefined} obscured={configuration}>
+				<WorkSplit browser={local.page ? browser : undefined} obscured={overlay !== null}>
 					<main
 						className={`conversation-main work-area ${reviewOpen ? "review-open" : ""}`}
 						data-session-id={controller.sessionId}
@@ -317,6 +261,12 @@ export function ConversationApp({
 							id="conversation-panel"
 							className="conversation-panel"
 							aria-label="Conversation and typing"
+							onKeyDown={(event) => {
+								if (event.key === "Escape") {
+									event.preventDefault();
+									closeConversation();
+								}
+							}}
 							hidden={!conversationOpen}
 						>
 							<header className="conversation-panel-header">
@@ -420,8 +370,107 @@ export function ConversationApp({
 				</WorkSplit>
 			</div>
 			<VoiceBar controller={controller} />
-			{configuration && (
-				<Configuration controller={controller} onClose={() => setConfiguration(false)} />
+			{overlay === "repository" && (
+				<WorkspaceDialog
+					id="repository-selector"
+					title="Repositories and pull requests"
+					position="left"
+					onClose={closeOverlay}
+					beforeOpen={hideNativePage}
+					returnFocus={repositoryToggle}
+				>
+					<ReviewInbox
+						controller={reviews}
+						onSelect={(detail) => {
+							closeOverlay();
+							void reviews.open(detail.pr.id);
+						}}
+					/>
+				</WorkspaceDialog>
+			)}
+			{overlay === "more" && (
+				<WorkspaceDialog
+					id="workspace-more"
+					title="Workspace options"
+					className="workspace-options"
+					onClose={closeOverlay}
+					beforeOpen={hideNativePage}
+					returnFocus={moreToggle}
+				>
+					<button
+						type="button"
+						data-testid="conversation-toggle"
+						aria-controls="conversation-panel"
+						aria-expanded={conversationOpen}
+						onClick={() => {
+							closeOverlay();
+							setConversationOpen(!conversationOpen);
+						}}
+					>
+						{conversationOpen ? "Hide conversation and typing" : "Conversation and typing"}
+					</button>
+					<button
+						type="button"
+						data-testid="local-preview-toggle"
+						aria-haspopup="dialog"
+						onClick={() => setOverlay("preview")}
+					>
+						Open local preview
+					</button>
+					<button
+						type="button"
+						data-testid="configuration-toggle"
+						aria-haspopup="dialog"
+						onClick={() => setOverlay("configuration")}
+					>
+						Configuration
+					</button>
+				</WorkspaceDialog>
+			)}
+			{overlay === "preview" && (
+				<WorkspaceDialog
+					id="local-preview-prompt"
+					title="Local preview"
+					onClose={closeOverlay}
+					beforeOpen={hideNativePage}
+					returnFocus={moreToggle}
+				>
+					<form
+						className="open-local-preview"
+						aria-label="Open local preview"
+						noValidate
+						onSubmit={(event) => {
+							event.preventDefault();
+							void browser.open(url).then(() => {
+								if (browser.store.getState().page && !browser.store.getState().error)
+									setOverlay((current) => (current === "preview" ? null : current));
+							});
+						}}
+					>
+						<label htmlFor="local-preview-url">Running local address</label>
+						<input
+							id="local-preview-url"
+							name="local-preview-url"
+							type="url"
+							placeholder="http://localhost:3000"
+							value={url}
+							onChange={(event) => setUrl(event.currentTarget.value)}
+							spellCheck={false}
+						/>
+						<button type="submit" disabled={local.busy}>
+							{local.busy ? "Opening…" : "Open"}
+						</button>
+						{local.error && <span role="alert">{local.error}</span>}
+					</form>
+				</WorkspaceDialog>
+			)}
+			{overlay === "configuration" && (
+				<Configuration
+					controller={controller}
+					onClose={closeOverlay}
+					beforeOpen={hideNativePage}
+					returnFocus={moreToggle}
+				/>
 			)}
 		</div>
 	);

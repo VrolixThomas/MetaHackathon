@@ -1269,3 +1269,140 @@ h2 {
 	white-space: inherit;
 	font-family: inherit;
 }
+
+/* Overlay chrome leaves the measured work/browser split and source scroll position intact. */
+.repository-identity {
+	display: flex;
+	align-items: center;
+	gap: 9px;
+	min-width: 0;
+	max-width: calc(100% - 90px);
+	height: 32px;
+	font-size: 12px;
+}
+.repository-identity-name,
+.identity-title {
+	overflow: hidden;
+	white-space: nowrap;
+	text-overflow: ellipsis;
+}
+.repository-identity-name {
+	color: #e0e0e0;
+	flex-shrink: 0;
+	max-width: 44vw;
+}
+.identity-number {
+	flex-shrink: 0;
+	color: #bdbdbd;
+}
+.identity-title {
+	color: var(--muted);
+	font-size: 11px;
+}
+.more-toggle {
+	flex-shrink: 0;
+	font-size: 11px;
+}
+.workspace-dialog {
+	position: fixed;
+	inset: 54px 16px auto auto;
+	margin: 0;
+	padding: 0;
+	width: min(420px, calc(100vw - 32px));
+	max-width: none;
+	max-height: calc(100dvh - 80px);
+	border: 1px solid #3c3c3c;
+	border-radius: 9px;
+	background: #171717;
+	color: inherit;
+	box-shadow: 0 14px 48px #0009;
+	overflow: hidden;
+}
+.workspace-dialog[open] {
+	display: flex;
+	flex-direction: column;
+}
+.workspace-dialog::backdrop {
+	background: #0004;
+}
+.workspace-dialog[data-position="left"] {
+	left: 16px;
+	right: auto;
+}
+.workspace-dialog[data-position="center"] {
+	inset: 64px 0 auto;
+	margin-inline: auto;
+	width: min(530px, calc(100vw - 32px));
+}
+.workspace-dialog-heading {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	gap: 12px;
+	padding: 10px 14px;
+	border-bottom: 1px solid var(--line);
+	flex-shrink: 0;
+}
+.workspace-dialog-heading h2 {
+	font-size: 12px;
+	font-weight: 500;
+}
+.workspace-dialog-heading button {
+	font-size: 11px;
+}
+.workspace-dialog-content {
+	min-height: 0;
+	overflow: auto;
+	overscroll-behavior: contain;
+	scrollbar-gutter: stable;
+	padding: 14px;
+}
+.workspace-dialog .repository-inbox {
+	position: static;
+	width: auto;
+	padding: 0;
+	overflow: visible;
+	background: transparent;
+	border: 0;
+	box-shadow: none;
+}
+.workspace-dialog .choose-repository {
+	margin-top: 0;
+}
+.workspace-dialog .review-inbox-select[aria-current="true"] {
+	background: #272727;
+}
+.workspace-options {
+	width: 280px;
+}
+.workspace-options .workspace-dialog-content {
+	display: grid;
+	gap: 3px;
+	padding: 8px;
+}
+.workspace-options .workspace-dialog-content button {
+	text-align: left;
+	font-size: 12px;
+	border-color: transparent;
+	background: transparent;
+	border-radius: 5px;
+}
+.workspace-options .workspace-dialog-content button:hover {
+	background: #2b2b2b;
+}
+.workspace-dialog .open-local-preview {
+	padding: 0;
+	border: 0;
+	background: transparent;
+}
+.workspace-dialog .open-local-preview label {
+	flex-basis: 100%;
+}
+.workspace-dialog .configuration-actions {
+	flex-wrap: wrap;
+}
+input:focus-visible,
+summary:focus-visible {
+	outline: 2px solid var(--blue);
+	outline-offset: 3px;
+}

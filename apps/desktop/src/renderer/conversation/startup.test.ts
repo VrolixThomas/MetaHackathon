@@ -26,10 +26,11 @@ it("bundles the real startup without fixtures or the legacy artifact workspace",
 it("prioritizes review with persistent voice and a collapsed accessible conversation panel", () => {
 	const html = renderToStaticMarkup(createElement(App));
 	assert.match(html, /Choose a pull request/);
-	assert.match(
-		html,
-		/data-testid="conversation-toggle"[^>]*aria-controls="conversation-panel"[^>]*aria-expanded="false"/
-	);
+	assert.match(html, /data-testid="repository-selector"[^>]*aria-haspopup="dialog"/);
+	assert.match(html, /data-testid="workspace-more"[^>]*aria-haspopup="dialog"/);
+	const header = html.match(/<header class="app-header">(.*?)<\/header>/)?.[1] ?? "";
+	assert.equal((header.match(/<button/g) ?? []).length, 2);
+	assert.doesNotMatch(header, /Conversation|Local preview|Configuration/);
 	assert.match(html, /id="conversation-panel"[^>]*hidden=""/);
 	assert.match(html, /<footer[^>]*class="voice-bar"/);
 	assert.doesNotMatch(html, /<iframe|<webview|data-native-browser-content/);

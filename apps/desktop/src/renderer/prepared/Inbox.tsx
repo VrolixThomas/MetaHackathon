@@ -6,23 +6,11 @@ import type { PreparedController } from "./controller";
 export function ReviewInbox({
 	controller,
 	onSelect,
-	onClose,
-}: { controller: PreparedController; onSelect(detail: ReviewDetail): void; onClose(): void }) {
+}: { controller: PreparedController; onSelect(detail: ReviewDetail): void }) {
 	const state = useStore(controller.store);
 	const [repository, setRepository] = useState("");
 	return (
 		<aside className="repository-inbox" aria-label="Repository reviews">
-			<header>
-				<h2>Repository</h2>
-				<button
-					type="button"
-					className="quiet"
-					aria-label="Close repository inbox"
-					onClick={onClose}
-				>
-					×
-				</button>
-			</header>
 			<button
 				type="button"
 				className="choose-repository"
@@ -93,6 +81,7 @@ export function ReviewInbox({
 						<button
 							type="button"
 							className="review-inbox-select"
+							aria-current={state.detail?.pr.id === item.pr.id ? "true" : undefined}
 							disabled={item.status !== "ready"}
 							onClick={() => onSelect(item)}
 						>
