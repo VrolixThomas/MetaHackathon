@@ -11,4 +11,9 @@ export type TrpcResponse = { result: { data: SuperJSONResult } } | { error: TRPC
 
 export interface ElectronAPI {
 	trpc: { request: (request: TrpcRequest) => Promise<TrpcResponse> };
+	voiceShortcut: {
+		subscribe: (
+			listener: (event: { phase: "press" | "release" | "toggle" | "cancel" }) => void
+		) => () => void;
+	};
 }

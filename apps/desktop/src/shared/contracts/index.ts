@@ -7,3 +7,4 @@ export * from "./interaction";
 export * from "./review";
 export * from "./runtime-access";
 export * from "./voice-setup";
+export * from "./voice-diagnostics";

@@ -39,6 +39,11 @@ checkout alone launches and assesses the combined app; lanes feed reviewed imple
 
 ## Validation
 
+V1 reset (user direction, 2026-10-27): startup is a real conversation with no PR prerequisite
+or demo content. Voice input/output is the acceptance priority; real GitHub context is optional.
+Use repository `.env` in development and a user-provided `.env` for distribution. Rich review
+artifacts remain legacy modules until needed; fixtures are test-only. Coordinate this reset on MET-8.
+
 ```sh
 bun install --frozen-lockfile
 bun run type-check
@@ -58,6 +63,11 @@ local seeded repositories and no live provider credentials or GitHub writes.
 
 ## Shared interfaces (v1)
 
+- `ConversationTurnInput` supports general conversation with optional real `prId`; it does not
+  invent a review ScreenContext. Its poll/cancel identity matches existing agent events.
+  `AppConfiguration` returns only configuration path, presence flags, voice ID and microphone
+  permission. Read permission inside the actual app process; a helper launch may have a different
+  macOS responsible process. `VoiceDiagnostic` carries fixed categories and numeric status only.
 - `BrowserState` is an actual bounded observation of the visible page. `BrowserCommand` covers
   open/navigation/click/type/scroll/viewport; element actions carry the observation sequence.
   `browser.execute` returns a refreshed state, `browser.observe` returns state or null, and
