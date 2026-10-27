@@ -20,6 +20,7 @@ function adapterFixture() {
 	let finishLoad = () => {};
 	let afterAction: (() => void) | undefined;
 	let created = 0;
+	let visible = false;
 	const entries: string[] = [];
 	let activeIndex = -1;
 	const calls: string[] = [];
@@ -127,7 +128,10 @@ function adapterFixture() {
 			constructor() {
 				created++;
 			}
-			setVisible() {}
+			setVisible(value: boolean) {
+				visible = value;
+				calls.push(value ? "show" : "hide");
+			}
 			setBounds() {
 				calls.push("bounds");
 			}
@@ -161,6 +165,7 @@ function adapterFixture() {
 			afterAction = callback;
 		},
 		created: () => created,
+		visible: () => visible,
 		loseRenderer() {
 			renderExists = false;
 			contents.emit("render-process-gone");
@@ -332,4 +337,42 @@ test("closing during native history navigation rejects its pending settle wait",
 	assert.equal(f.contents.listenerCount("did-start-loading"), 0);
 	assert.equal(f.contents.listenerCount("did-stop-loading"), 0);
 	assert.equal(f.contents.listenerCount("destroyed"), 0);
+});
+
+test("hide precedes native layout changes and preserves the hidden viewport and document", async () => {
+	const f = adapterFixture();
+	const bounds = { x: 400, y: 100, width: 390, height: 700 };
+	await f.page.viewport({ width: 390, height: 844 });
+	f.page.present(bounds);
+	const loading = f.page.loadURL("http://127.0.0.1:43210/current");
+	f.finishLoad();
+	await loading;
+	assert.equal(f.visible(), true);
+	f.calls.length = 0;
+	f.page.present(null);
+	assert.deepEqual(f.calls, ["hide", "bounds", "emulate", "hide"]);
+	assert.equal(f.visible(), false);
+	assert.equal(f.emulations.at(-1)?.viewSize.width, 390);
+	assert.equal(f.emulations.at(-1)?.viewSize.height, 844);
+
+	// Explicit viewport updates and late load events must also remain hidden.
+	f.calls.length = 0;
+	await f.page.viewport({ width: 1024, height: 768 });
+	assert.deepEqual(f.calls, ["hide", "bounds", "emulate", "hide"]);
+	f.calls.length = 0;
+	f.contents.emit("did-finish-load");
+	assert.deepEqual(f.calls, ["hide", "bounds", "emulate", "hide"]);
+	assert.equal(f.visible(), false);
+	assert.equal(f.emulations.at(-1)?.viewSize.width, 1024);
+	assert.equal(f.emulations.at(-1)?.viewSize.height, 768);
+
+	f.calls.length = 0;
+	f.page.present(bounds);
+	assert.deepEqual(f.calls, ["bounds", "emulate", "show"]);
+	assert.equal(f.visible(), true);
+	assert.equal(f.emulations.at(-1)?.viewSize.width, 1024);
+	assert.equal(f.emulations.at(-1)?.viewSize.height, 768);
+	assert.equal(f.contents.getURL(), "http://127.0.0.1:43210/current");
+	assert.equal(f.created(), 1);
+	f.page.close();
 });

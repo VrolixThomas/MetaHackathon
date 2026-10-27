@@ -55,6 +55,8 @@ export function createElectronBrowserPage(
 	};
 	const layout = () => {
 		check();
+		// Remove the native surface before hidden layout/emulation can move it over app chrome.
+		if (bounds === null) view.setVisible(false);
 		const requested = bounds ?? { x: 0, y: 0, width: viewport.width, height: viewport.height };
 		const host = owner?.isDestroyed() === false ? owner.getContentBounds() : undefined;
 		const x = Math.max(0, Math.min(requested.x, host?.width ?? 0));
