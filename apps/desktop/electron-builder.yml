@@ -8,16 +8,41 @@ directories:
 files:
   - out/**/*
 
+extraResources:
+  - from: ../../fixtures/demo
+    to: demo
+    filter:
+      - "**/*"
+      - "!**/.git{,/**/*}"
+      - "!**/node_modules{,/**/*}"
+
 asar: true
 asarUnpack:
   - "node_modules/better-sqlite3/**/*"
   - "out/main/db/migrations/**/*"
 
 npmRebuild: true
+forceCodeSigning: true
+beforePack: packaging/before-pack.cjs
+afterSign: packaging/after-sign.cjs
+
+publish:
+  provider: github
+  owner: VrolixThomas
+  repo: MetaHackathon
+  releaseType: draft
 
 mac:
   category: public.app-category.developer-tools
-  identity: null
+  hardenedRuntime: true
+  notarize: true
+  entitlements: resources/entitlements.mac.plist
+  entitlementsInherit: resources/entitlements.mac.plist
+  extendInfo:
+    NSMicrophoneUsageDescription: Hold Space to speak to the pull request review assistant.
   target:
     - dmg
     - zip
+
+dmg:
+  sign: true

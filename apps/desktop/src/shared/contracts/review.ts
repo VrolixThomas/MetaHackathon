@@ -1,11 +1,13 @@
 import { z } from "zod";
 import {
 	CONTRACT_VERSION,
+	CodeExcerptSchema,
 	CodeLocationSchema,
 	CommitShaSchema,
 	EvidenceSchema,
 	ExecutionEvidenceSchema,
 	IdSchema,
+	MAX_CODE_EXCERPTS,
 	RepositoryPathSchema,
 	SourceReferenceSchema,
 } from "./common";
@@ -75,9 +77,19 @@ export const PRPreparationSchema = z
 		summary: z.string(),
 		files: z.array(FileTriageSchema),
 		whyNotes: z.array(WhyNoteSchema),
+		sourceContext: z.array(CodeExcerptSchema).max(MAX_CODE_EXCERPTS).optional(),
 		evidence: EvidenceSchema,
 	})
 	.superRefine((prep, ctx) => {
+		for (const excerpt of prep.sourceContext ?? []) {
+			const sha = excerpt.location.revision === "base" ? prep.pr.baseSha : prep.pr.headSha;
+			if (
+				excerpt.location.repository !== prep.pr.repository ||
+				excerpt.location.commitSha !== sha
+			) {
+				ctx.addIssue({ code: "custom", message: "Source excerpt must match the PR revision" });
+			}
+		}
 		if (
 			new Set(prep.files.map((file) => file.path)).size !== prep.files.length ||
 			new Set(prep.files.map((file) => file.readingOrder)).size !== prep.files.length

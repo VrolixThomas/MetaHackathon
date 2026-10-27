@@ -65,7 +65,22 @@ export const SourceReferenceSchema = z.strictObject({
 });
 export const JsonValuesSchema = z.record(z.string(), z.json());
 
+export const MAX_CODE_EXCERPTS = 16;
+export const MAX_CODE_EXCERPT_CHARS = 12_000;
+export const CodeExcerptSchema = z
+	.strictObject({
+		location: CodeLocationSchema,
+		text: z.string().max(MAX_CODE_EXCERPT_CHARS),
+		evidence: EvidenceSchema,
+	})
+	.refine(
+		(excerpt) =>
+			excerpt.text.split("\n").length === excerpt.location.endLine - excerpt.location.startLine + 1,
+		"Excerpt text must preserve its declared source lines"
+	);
+
 export type CodeLocation = z.infer<typeof CodeLocationSchema>;
 export type Evidence = z.infer<typeof EvidenceSchema>;
 export type ExecutionEvidence = z.infer<typeof ExecutionEvidenceSchema>;
 export type SourceReference = z.infer<typeof SourceReferenceSchema>;
+export type CodeExcerpt = z.infer<typeof CodeExcerptSchema>;
