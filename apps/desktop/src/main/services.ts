@@ -19,6 +19,7 @@ export const agentComposition = createAgentComposition({
 		return dataDirectory;
 	},
 	screenContexts,
+	actionReceipts: true,
 	browser: {
 		execute: (command, signal) => getBrowser().execute(command, signal),
 		observe: (sessionId, signal) => getBrowser().observe(sessionId, signal),

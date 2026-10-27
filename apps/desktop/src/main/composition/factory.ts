@@ -30,6 +30,8 @@ export interface AgentCompositionOptions extends ReviewOptions {
 	/** Supply the store registered under root screen; do not create a second screen cache. */
 	screenContexts: ScreenContextStore;
 	browser?: AgentPorts["browser"];
+	/** The app renderer acknowledges effects; headless consumers may leave this disabled. */
+	actionReceipts?: boolean;
 	fetch?: typeof fetch;
 	/** Main chooses exports/anchors; composition reads their committed source text. */
 	scenarioTargets?: (
@@ -251,7 +253,19 @@ export function createAgentComposition(options: AgentCompositionOptions) {
 			options.screenContexts.release(sessionId);
 		}
 	}
-	const service = new ComposedAgentService(client, ports);
+	const service = new ComposedAgentService(client, ports, {
+		actionReceipts: options.actionReceipts
+			? {
+					timeoutMs: 10_000,
+					updateScreen: (receipt) => {
+						options.screenContexts.update({
+							sessionId: receipt.sessionId,
+							screenContext: receipt.screenContext,
+						});
+					},
+				}
+			: undefined,
+	});
 	let disposal: Promise<void> | undefined;
 	return {
 		service,

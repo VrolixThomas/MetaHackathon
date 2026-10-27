@@ -83,6 +83,10 @@ local seeded repositories and no live provider credentials or GitHub writes.
   It returns the latest validated snapshot; older updates cannot overwrite it and equal-sequence
   conflicts reject. `screen.release` clears a retired session. Each action request ID identifies
   one effect; session/turn/generation fields correlate effects with the originating turn.
+- The app requires `agent.actionApplied(AgentActionReceipt)` after an effect settles. The receipt
+  supplies the exact action identity, applied/ignored status and final screen snapshot. Agent
+  tools wait for this bounded, cancellable acknowledgement before continuing; stale receipts
+  cannot advance another turn. Both typed and voice paths acknowledge ignored current effects.
 - Use the existing `window.electron.trpc.request` transport; bootstrap exposes
   `bootstrap.contract` and `bootstrap.fixture`. IPC supports query/mutation, not subscriptions.
   Request event/stream or lifecycle wiring through integration before implementing it.
