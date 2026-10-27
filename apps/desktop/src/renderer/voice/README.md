@@ -26,7 +26,9 @@ const voice = createVoiceController({
   media: createBrowserMediaFactory(),
   sessionId: reviewSessionId,
   allocateIdentity: allocateReviewTurn, // UI's shared allocator for typed AND spoken turns
-  onTurnStart: (identity) => externalVoiceTurn.begin(identity),
+  onTurnStart: (identity) => {
+    if (!externalVoiceTurn.begin(identity)) throw new Error("Review is not ready for voice");
+  },
   onTurnEnd: (identity, result) => externalVoiceTurn.finish(
     identity,
     result.status === "completed" ? "complete" : result.status === "failed" ? "error" : "cancelled",
