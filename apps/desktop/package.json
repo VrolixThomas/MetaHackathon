@@ -15,7 +15,9 @@
 		"pack": "electron-vite build && electron-builder --mac --dir --publish never",
 		"preview": "electron-vite preview",
 		"type-check": "tsc --noEmit -p tsconfig.main.json && tsc --noEmit -p tsconfig.preload.json && tsc --noEmit -p tsconfig.renderer.json",
-		"db:generate": "drizzle-kit generate"
+		"db:generate": "drizzle-kit generate",
+		"test:prepared-reviews": "electron-vite build && PREPARED_REVIEW_REQUIRE_SOURCE=1 env -u ELECTRON_RUN_AS_NODE electron src/main/prepared-review-smoke.cjs",
+		"test:local-browser": "electron-vite build && env -u ELECTRON_RUN_AS_NODE electron src/main/local-browser-smoke.cjs"
 	},
 	"dependencies": {
 		"@tanstack/react-query": "5.95.2",
@@ -28,6 +30,7 @@
 		"electron-updater": "6.8.11",
 		"react": "19.2.4",
 		"react-dom": "19.2.4",
+		"shiki": "4.5.0",
 		"superjson": "2.2.6",
 		"typescript": "5.9.3",
 		"zod": "4.3.6",
