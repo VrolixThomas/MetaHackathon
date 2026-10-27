@@ -38,6 +38,7 @@ export const AppConfigurationSchema = z.strictObject({
 	configured: z.strictObject({ meta: z.boolean(), elevenlabs: z.boolean(), github: z.boolean() }),
 	voiceId: z.string().nullable(),
 	microphone: MicrophoneStatusSchema,
+	error: z.string().max(300).optional(),
 });
 export type ConversationTurnInput = z.infer<typeof ConversationTurnInputSchema>;
 export type ConversationPRContext = z.infer<typeof ConversationPRContextSchema>;
