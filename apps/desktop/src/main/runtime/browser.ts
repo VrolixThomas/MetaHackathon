@@ -19,6 +19,10 @@ export interface BrowserPage {
 	act(command: BrowserCommand, expected: BrowserSnapshot): Promise<void>;
 	viewport(viewport: BrowserViewport): Promise<void>;
 	present(bounds: BrowserBounds | null): void;
+	history?(): { canGoBack: boolean; canGoForward: boolean };
+	back?(): Promise<void>;
+	forward?(): Promise<void>;
+	reload?(): Promise<void>;
 	close(): void;
 }
 export interface BrowserPreviewLease {

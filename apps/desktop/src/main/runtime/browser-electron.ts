@@ -135,6 +135,28 @@ export function createElectronBrowserPage(
 				throw new Error("Navigation outside the active preview is blocked");
 			await contents.loadURL(url);
 		},
+		history() {
+			check();
+			return {
+				canGoBack: contents.navigationHistory.canGoBack(),
+				canGoForward: contents.navigationHistory.canGoForward(),
+			};
+		},
+		async back() {
+			check();
+			if (contents.navigationHistory.canGoBack()) contents.navigationHistory.goBack();
+			await settle();
+		},
+		async forward() {
+			check();
+			if (contents.navigationHistory.canGoForward()) contents.navigationHistory.goForward();
+			await settle();
+		},
+		async reload() {
+			check();
+			contents.reload();
+			await settle();
+		},
 		async snapshot() {
 			await settle();
 			return (await contents.executeJavaScriptInIsolatedWorld(999, [

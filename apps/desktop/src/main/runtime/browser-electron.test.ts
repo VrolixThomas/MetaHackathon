@@ -20,6 +20,8 @@ function adapterFixture() {
 	let finishLoad = () => {};
 	let afterAction: (() => void) | undefined;
 	let created = 0;
+	const entries: string[] = [];
+	let activeIndex = -1;
 	const calls: string[] = [];
 	const emulations: Array<{ viewSize: { width: number; height: number }; scale: number }> = [];
 	const contents = Object.assign(new EventEmitter(), {
@@ -27,12 +29,36 @@ function adapterFixture() {
 		setWindowOpenHandler() {},
 		isDestroyed: () => destroyed,
 		isLoadingMainFrame: () => loading,
+		getURL: () => entries[activeIndex] ?? "about:blank",
+		navigationHistory: {
+			canGoBack: () => activeIndex > 0,
+			canGoForward: () => activeIndex >= 0 && activeIndex < entries.length - 1,
+			goBack() {
+				calls.push("back");
+				activeIndex--;
+				void contents.loadURL();
+			},
+			goForward() {
+				calls.push("forward");
+				activeIndex++;
+				void contents.loadURL();
+			},
+		},
+		reload() {
+			calls.push("reload");
+			void contents.loadURL();
+		},
 		enableDeviceEmulation(parameters: (typeof emulations)[number]) {
 			assert.equal(renderExists, true, "emulation must not precede the native render view");
 			calls.push("emulate");
 			emulations.push(parameters);
 		},
-		loadURL() {
+		loadURL(url?: string) {
+			if (url) {
+				entries.splice(activeIndex + 1);
+				entries.push(url);
+				activeIndex = entries.length - 1;
+			}
 			loading = true;
 			contents.emit("did-start-loading");
 			return new Promise<void>((resolve) => {
@@ -237,6 +263,72 @@ test("closing during the main-process settle wait rejects and removes listeners"
 	const observing = assert.rejects(f.page.snapshot(), /Browser page closed/);
 	f.page.close();
 	await observing;
+	assert.equal(f.contents.listenerCount("did-start-loading"), 0);
+	assert.equal(f.contents.listenerCount("did-stop-loading"), 0);
+	assert.equal(f.contents.listenerCount("destroyed"), 0);
+});
+
+test("native history capabilities, back, forward and reload use the same page and await loading", async () => {
+	const f = adapterFixture();
+	const { history, back, forward, reload } = f.page;
+	assert.ok(history && back && forward && reload);
+	assert.equal(history().canGoBack, false);
+	assert.equal(history().canGoForward, false);
+	await back();
+	await forward();
+	assert.ok(!f.calls.includes("back") && !f.calls.includes("forward"));
+	for (const path of ["first", "second"]) {
+		const load = f.page.loadURL(`http://127.0.0.1:43210/${path}`);
+		f.finishLoad();
+		await load;
+	}
+	assert.equal(history().canGoBack, true);
+	assert.equal(history().canGoForward, false);
+	let settled = false;
+	const goingBack = back().then(() => {
+		settled = true;
+	});
+	await delay(40);
+	assert.equal(settled, false);
+	f.finishLoad();
+	await goingBack;
+	assert.equal(f.contents.getURL(), "http://127.0.0.1:43210/first");
+	assert.equal(history().canGoBack, false);
+	assert.equal(history().canGoForward, true);
+	const goingForward = forward();
+	f.finishLoad();
+	await goingForward;
+	assert.equal(f.contents.getURL(), "http://127.0.0.1:43210/second");
+	const reloading = reload();
+	f.finishLoad();
+	await reloading;
+	assert.equal(f.contents.getURL(), "http://127.0.0.1:43210/second");
+	assert.equal(history().canGoBack, true);
+	assert.equal(history().canGoForward, false);
+	assert.equal(f.created(), 1);
+	assert.deepEqual(
+		f.calls.filter((call) => ["back", "forward", "reload"].includes(call)),
+		["back", "forward", "reload"]
+	);
+	await assert.rejects(f.page.loadURL("https://outside.example/"), /outside/);
+	f.page.close();
+	assert.throws(history, /closed/);
+	await assert.rejects(back(), /closed/);
+	await assert.rejects(forward(), /closed/);
+	await assert.rejects(reload(), /closed/);
+});
+
+test("closing during native history navigation rejects its pending settle wait", async () => {
+	const f = adapterFixture();
+	assert.ok(f.page.back);
+	for (const path of ["first", "second"]) {
+		const load = f.page.loadURL(`http://127.0.0.1:43210/${path}`);
+		f.finishLoad();
+		await load;
+	}
+	const stopped = assert.rejects(f.page.back(), /closed/);
+	f.page.close();
+	await stopped;
 	assert.equal(f.contents.listenerCount("did-start-loading"), 0);
 	assert.equal(f.contents.listenerCount("did-stop-loading"), 0);
 	assert.equal(f.contents.listenerCount("destroyed"), 0);
