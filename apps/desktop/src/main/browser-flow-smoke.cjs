@@ -111,6 +111,10 @@ const pageScript = `(() => {
 	await import(pathToFileURL(builtMain).href);
 	await app.whenReady();
 	const win = await until("built main window", () => BrowserWindow.getAllWindows()[0]);
+	// This acceptance checks a visible native surface; foreground the test window explicitly.
+	win.show();
+	app.focus({ steal: true });
+	win.focus();
 	await until("built renderer load", () => !win.webContents.isLoadingMainFrame());
 	const ui = () => win.webContents.executeJavaScript(uiScript);
 	const rawRpc = (type, path, input) =>
