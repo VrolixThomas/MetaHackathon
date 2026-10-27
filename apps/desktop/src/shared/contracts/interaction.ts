@@ -1,16 +1,27 @@
 import { z } from "zod";
 import { ScenarioRequestSchema } from "./artifacts";
+import { BrowserStateSchema } from "./browser";
 import { CodeLocationSchema, IdSchema } from "./common";
 import { DraftedCommentSchema } from "./review";
 
 export const ScreenContextSchema = z.strictObject({
 	prId: IdSchema,
 	sequence: z.int().nonnegative(),
-	panel: z.enum(["briefing", "diff", "why", "scenario", "diagram", "preview", "sign-off"]),
+	panel: z.enum([
+		"briefing",
+		"diff",
+		"why",
+		"scenario",
+		"diagram",
+		"preview",
+		"sign-off",
+		"browser",
+	]),
 	focusedLocation: CodeLocationSchema.nullable(),
 	artifactId: IdSchema.optional(),
 	scenarioStepId: IdSchema.optional(),
 	previewMarkerId: IdSchema.optional(),
+	browser: BrowserStateSchema.optional(),
 });
 export const TurnIdentitySchema = z.strictObject({
 	sessionId: IdSchema,
@@ -34,6 +45,7 @@ const actionFields = {
 	screenSequence: z.int().nonnegative(),
 };
 export const AgentActionSchema = z.discriminatedUnion("kind", [
+	z.strictObject({ ...actionFields, kind: z.literal("show-browser"), browser: BrowserStateSchema }),
 	z.strictObject({
 		...actionFields,
 		kind: z.literal("highlight-code"),
