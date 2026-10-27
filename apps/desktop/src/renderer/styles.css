@@ -1406,3 +1406,119 @@ summary:focus-visible {
 	outline: 2px solid var(--blue);
 	outline-offset: 3px;
 }
+
+/* Code gets the remaining height; explanations and the complete cached plan are opt-in. */
+.review-first .prepared-workspace {
+	overflow: hidden;
+}
+.review-first .prepared-heading {
+	flex-shrink: 0;
+	padding: 6px 14px;
+}
+.review-first .prepared-heading strong {
+	font-family: "SFMono-Regular", Consolas, monospace;
+	font-size: 11px;
+}
+.review-first .review-navigation {
+	flex-shrink: 0;
+	padding: 5px 14px;
+}
+.tour-progress {
+	white-space: nowrap;
+	color: #bdbdbd;
+	font-variant-numeric: tabular-nums;
+}
+.file-explanations {
+	display: grid;
+	grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+	gap: 16px;
+	padding: 10px 14px;
+	flex-shrink: 0;
+	max-height: 180px;
+	overflow: auto;
+	overscroll-behavior: contain;
+}
+.compact-explanation {
+	min-width: 0;
+	font-size: 11px;
+	color: #c4c4c4;
+}
+.compact-explanation summary {
+	cursor: pointer;
+}
+.explanation-label {
+	font-size: 10px;
+	color: var(--muted);
+}
+.explanation-preview {
+	display: -webkit-box;
+	-webkit-box-orient: vertical;
+	-webkit-line-clamp: 2;
+	overflow: hidden;
+	margin-top: 4px;
+	line-height: 1.6;
+	overflow-wrap: anywhere;
+}
+.compact-explanation[open] .explanation-preview {
+	display: none;
+}
+.explanation-full {
+	white-space: pre-wrap;
+	line-height: 1.65;
+	overflow-wrap: anywhere;
+	margin-top: 5px;
+}
+.review-first .real-source {
+	min-height: 140px;
+}
+.review-details {
+	flex-shrink: 0;
+	border-top: 1px solid var(--line);
+	font-size: 11px;
+}
+.review-details > summary {
+	padding: 8px 14px;
+	cursor: pointer;
+	color: #bcbcbc;
+}
+.review-evidence-label {
+	float: right;
+	font-size: 9px;
+	color: var(--muted);
+	margin: 2px 0 0 12px;
+}
+.review-details-scroll {
+	max-height: min(30dvh, 240px);
+	overflow: auto;
+	overscroll-behavior: contain;
+	scrollbar-gutter: stable;
+	padding: 0 14px 14px;
+}
+.review-details-scroll h3 {
+	font-size: 11px;
+	font-weight: 500;
+	margin: 14px 0 6px;
+}
+.review-details-scroll p {
+	white-space: pre-wrap;
+	overflow-wrap: anywhere;
+	color: #ababab;
+	line-height: 1.65;
+	margin: 4px 0 10px;
+}
+.review-details-scroll ol {
+	padding-left: 20px;
+}
+.review-details-scroll li {
+	padding-block: 3px;
+}
+.review-details-scroll li button {
+	font-family: monospace;
+	font-size: 11px;
+	text-align: left;
+	overflow-wrap: anywhere;
+	padding-left: 0;
+}
+.review-details-scroll [aria-current="step"] {
+	color: #ededed;
+}

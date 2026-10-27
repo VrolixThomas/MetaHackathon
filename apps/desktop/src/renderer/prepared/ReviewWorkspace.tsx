@@ -46,6 +46,32 @@ export function SyntaxText({ text, tokens }: { text: string; tokens?: SyntaxToke
 	);
 }
 
+/** Remove redundant labels only; retain uncertainty and every substantive word. */
+export function cleanExplanation(text: string) {
+	return text.trim().replace(/^(?:inferred(?: summary)?\s*:\s*)+/i, "");
+}
+
+export function explanationPreview(text: string) {
+	const clean = cleanExplanation(text);
+	if (clean.length <= 170) return clean;
+	const sentence = clean.slice(0, 170).match(/^.*?[.!?](?=\s)/)?.[0];
+	if (sentence) return sentence;
+	const boundary = clean.lastIndexOf(" ", 167);
+	return `${clean.slice(0, boundary > 60 ? boundary : 167)}…`;
+}
+
+export function CompactExplanation({ label, text }: { label: string; text: string }) {
+	return (
+		<details className="compact-explanation">
+			<summary>
+				<span className="explanation-label">{label}</span>
+				<span className="explanation-preview">{explanationPreview(text)}</span>
+			</summary>
+			<div className="explanation-full">{cleanExplanation(text)}</div>
+		</details>
+	);
+}
+
 export function ReviewWorkspace({
 	controller,
 	onPause,
@@ -105,10 +131,7 @@ export function ReviewWorkspace({
 		>
 			<header className="prepared-heading">
 				<div>
-					<span>
-						{state.detail?.pr.repository} {state.detail ? `#${state.detail.pr.number}` : ""}
-					</span>
-					<strong>{state.detail?.pr.title ?? "Opening review…"}</strong>
+					<strong title={file?.path}>{file?.path ?? "Opening review…"}</strong>
 				</div>
 				<button type="button" className="quiet" onClick={controller.close}>
 					Back to chat
@@ -119,35 +142,6 @@ export function ReviewWorkspace({
 					{state.reviewError}
 				</p>
 			)}
-			{plan && (
-				<details className="reading-plan">
-					<summary>
-						Reading order · {plan.files.length} files{" "}
-						{plan.coverage === "partial" ? "· Partial coverage" : ""}
-					</summary>
-					<p>{plan.summary}</p>
-					<p>{plan.orderRationale}</p>
-					<span className="inference-label">
-						Inferred from GitHub source · not executed verification
-					</span>
-					<ol>
-						{plan.files.map((entry) => (
-							<li key={entry.path}>
-								<button
-									type="button"
-									className="quiet"
-									aria-current={entry.path === file?.path ? "step" : undefined}
-									disabled={state.fileBusy || state.stale}
-									onClick={() => void controller.showPath(entry.path)}
-								>
-									{entry.path}
-								</button>
-								<p>{entry.reason}</p>
-							</li>
-						))}
-					</ol>
-				</details>
-			)}
 			<div className="review-navigation">
 				<button
 					type="button"
@@ -156,7 +150,9 @@ export function ReviewWorkspace({
 				>
 					Back
 				</button>
-				<span>{index >= 0 ? `${index + 1} / ${plan?.files.length}` : "—"}</span>
+				<span className="tour-progress">
+					{index >= 0 ? `File ${index + 1} of ${plan?.files.length}` : "—"}
+				</span>
 				<button
 					type="button"
 					disabled={
@@ -181,10 +177,9 @@ export function ReviewWorkspace({
 			</div>
 			{state.fileBusy && <output className="review-loading">Loading pinned source…</output>}
 			{note && (
-				<div className="file-explanation">
-					<strong>{note.path}</strong>
-					<p>{note.summary}</p>
-					<span className="inference-label">Inferred summary</span>
+				<div className="file-explanations" key={`${plan?.id}:${note.path}`}>
+					<CompactExplanation label="What changes" text={note.summary} />
+					<CompactExplanation label="Why this file now" text={note.reason} />
 				</div>
 			)}
 			{file && (
@@ -288,24 +283,77 @@ export function ReviewWorkspace({
 						: "Select a prepared file to inspect its source."}
 				</div>
 			)}
-			{note && (
-				<details className="suggested-comments">
-					<summary>Suggested comments · {note.suggestedComments.length}</summary>
-					<span className="inference-label">Inferred drafts · not posted</span>
-					{note.suggestedComments.length ? (
-						note.suggestedComments.map((comment) => (
-							<div className="suggestion-draft" key={comment.id}>
-								<p>{comment.body}</p>
-								{comment.location && (
-									<small>
-										{comment.location.path}:{comment.location.startLine}–{comment.location.endLine}
-									</small>
+			{plan && (
+				<details className="review-details" key={plan.id}>
+					<summary>
+						<span>Overview & reading order</span>
+						<span className="review-evidence-label">
+							Source inference ·{" "}
+							{plan.coverage === "partial" ? "Partial coverage" : "Coverage & evidence"}
+						</span>
+					</summary>
+					<section
+						className="review-details-scroll"
+						// biome-ignore lint/a11y/noNoninteractiveTabindex: Keyboard users must be able to scroll the complete overview before the reading-order buttons.
+						tabIndex={0}
+						aria-label="Review overview, reading order and evidence"
+					>
+						<section aria-label="Review overview">
+							<h3>Overview</h3>
+							<p>{cleanExplanation(plan.summary)}</p>
+						</section>
+						<section aria-label="Reading order">
+							<h3>Reading order · {plan.files.length} files</h3>
+							<p>{cleanExplanation(plan.orderRationale)}</p>
+							<ol>
+								{plan.files.map((entry) => (
+									<li key={entry.path}>
+										<button
+											type="button"
+											className="quiet"
+											aria-current={entry.path === file?.path ? "step" : undefined}
+											disabled={state.fileBusy || state.stale}
+											onClick={() => void controller.showPath(entry.path)}
+										>
+											{entry.path}
+										</button>
+										<p>{cleanExplanation(entry.reason)}</p>
+									</li>
+								))}
+							</ol>
+						</section>
+						<section aria-label="Coverage and evidence">
+							<h3>Coverage & evidence</h3>
+							<p>
+								{plan.coverage === "partial"
+									? "Partial coverage: some files or patch content were unavailable during preparation."
+									: "All changed-file patches were available during preparation."}{" "}
+								Explanations are inferred from GitHub source; they are not verified author intent.
+								Preparation does not run tests.
+							</p>
+						</section>
+						{note && (
+							<section aria-label="Suggested comments">
+								<h3>Suggested comments · {note.suggestedComments.length}</h3>
+								<span className="inference-label">Inferred drafts · not posted</span>
+								{note.suggestedComments.length ? (
+									note.suggestedComments.map((comment) => (
+										<div className="suggestion-draft" key={comment.id}>
+											<p>{comment.body}</p>
+											{comment.location && (
+												<small>
+													{comment.location.path}:{comment.location.startLine}–
+													{comment.location.endLine}
+												</small>
+											)}
+										</div>
+									))
+								) : (
+									<p className="small">No comments suggested for this file.</p>
 								)}
-							</div>
-						))
-					) : (
-						<p className="small">No comments suggested for this file.</p>
-					)}
+							</section>
+						)}
+					</section>
 				</details>
 			)}
 		</section>
