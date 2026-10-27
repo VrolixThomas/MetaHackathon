@@ -1,5 +1,35 @@
 # Agent lane integration
 
+## V1 conversation
+
+Import `ConversationService` from `./conversation` and `createConversationRouter` from
+`./conversation-router`. Root constructs `new ConversationService(metaClient, { getContext })`
+and registers only the V1 router for ordinary conversation. `getContext` is optional and
+receives `(prId, signal)` only when the turn explicitly includes `prId`; it returns the
+shared `ConversationPRContext` from selected real GitHub metadata and patches. No PR,
+screen, fixture, tool, action or acknowledgement receipt is required for conversation.
+Root owns credentials, speech input/output, router registration and shutdown wiring.
+
+The API is `start(ConversationTurnInput)`, `poll(PollTurn)`, `cancel(CancelTurnInput)`,
+`releaseSession(sessionId)` and `dispose()`. The router exposes start/poll/cancel/release.
+Polling uses existing agent events and full text snapshots, with `actions: []`. Drain
+terminal pages by event sequence. Retry an identical request ID without starting another
+inference; changed input requires a fresh request ID, turn ID and higher generation.
+The last 128 request IDs per session are deduplicated; old-generation admission remains
+rejected after that window. Historical polls return stale once a newer turn starts.
+
+Each of at most 100 sessions retains the last 12 completed user/assistant pairs within
+64,000 characters. Replies are capped at 32,000 characters; polling retains 512 events.
+Cancelled/failed partial replies never enter history. Selected PR context is refreshed
+per requested turn, bounded to 96,000 serialized characters with omitted patches marked
+truncated, and is not cached in conversation history. No PR selection is inferred from
+previous turns. Release clears history and dedup state; dispose ends admission and aborts
+all active work. Errors are sanitized and distinguish context, credential, quota,
+network and timeout failures without echoing provider/server text.
+
+The legacy screen-bound review engine below remains available for later integration;
+the V1 conversation service neither invokes it nor exposes its tools or comment routes.
+
 This module supplies agent intelligence for MET-19–26. Integration owns main composition,
 root tRPC registration, renderer/preload transport and dependency manifests. Runtime owns
 repository/GitHub operations and execution; UI renders actions; voice invokes turns and
