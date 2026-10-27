@@ -58,6 +58,20 @@ plan, saved progress and actual `ReviewScreen`; unavailable preparation is repor
 unavailable, not fabricated as ready. The loop permits one tool per round and six rounds.
 No selected PR keeps the original ordinary-chat path, with no tool/context port access.
 
+Optional `review.getFile(prId, reviewId, path, signal): Promise<ReviewFile>` supplies the
+actual displayed diff/source. Only the current ready file in review mode is fetched, once
+per model round and again after acknowledged navigation. PR/current path, head path and
+base/head SHAs must match the pinned plan; only runtime-verified renamed files may carry
+a different base path. All paths must be repository-relative and safe. Mismatches stop inference. No port, no displayed
+file or a failed read produces explicit unavailable source, never an inspected-source claim.
+`currentFileSource` preserves patch and side status with whole-line prefixes, one-based
+line ranges, total line counts and truncation flags. Patch ranges index patch text itself.
+Missing/binary/too-large source remains unavailable; a line too large for the budget is
+omitted completely. The full serialized model input is capped at 96,000 UTF-8 bytes,
+including JSON escaping. Old conversation pairs and inferred plan text/order may be
+trimmed with explicit flags to reserve source space. Each round has one latest context
+packet; old file patches are neither replayed nor copied into inspection tool results.
+
 Navigation emits shared `review-navigation` actions. The renderer acknowledges through
 `conversation.actionApplied(ConversationActionReceipt)` after the real file settles.
 Applied receipts must match the exact active identity/action, PR/review/path/SHAs, paused

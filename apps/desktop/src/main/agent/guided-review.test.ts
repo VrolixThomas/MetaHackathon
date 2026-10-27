@@ -5,6 +5,7 @@ import type {
 	ConversationActionReceipt,
 	ConversationTurnInput,
 	PreparedReview,
+	ReviewFile,
 	ReviewNavigation,
 	ReviewProgress,
 	ReviewScreen,
@@ -415,6 +416,265 @@ test("foreign cached plans/progress and fabricated path or navigation revisions 
 			h.service.start(h.input);
 			await finish(h, "error");
 			assert.deepEqual(h.poll().actions, []);
+		} finally {
+			await h.service.dispose();
+		}
+	}
+});
+
+function displayed(h: ReturnType<typeof harness>, path = "service.ts") {
+	const review = h.prepared;
+	h.setScreen({
+		sequence: 3,
+		mode: "review",
+		prId: review.pr.id,
+		reviewId: review.id,
+		baseSha: review.pr.baseSha,
+		headSha: review.pr.headSha,
+		path,
+		paused: false,
+	});
+}
+function fileSource(review: PreparedReview, path: string): ReviewFile {
+	return {
+		prId: review.pr.id,
+		path,
+		status: "modified",
+		patch: `@@ -1 +1 @@\n-const oldValue = 1;\n+const sourceOnly_${path} = 2;\n`,
+		base: {
+			path,
+			commitSha: review.pr.baseSha,
+			status: "available",
+			content: "const oldValue = 1;\n",
+		},
+		head: {
+			path,
+			commitSha: review.pr.headSha,
+			status: "available",
+			content: `const sourceOnly_${path} = 2;\n`,
+		},
+	};
+}
+function contextPacket(request: MetaRequest | undefined) {
+	assert(request);
+	const packets = request.input.filter(
+		(item) => item["role"] === "user" && Array.isArray(item["content"])
+	);
+	assert.equal(packets.length, 1, "Only the latest review context is sent");
+	const content = packets[0]?.["content"] as { text: string }[];
+	return JSON.parse(content[0]?.text ?? "{}");
+}
+
+test("actual pinned source enters model input and refreshes only the displayed file after navigation ack", async () => {
+	const h = harness([[call("next_review_file")], []]);
+	displayed(h);
+	const reads: string[] = [];
+	h.ports.getFile = async (prId, reviewId, path, signal) => {
+		assert.equal(prId, h.prepared.pr.id);
+		assert.equal(reviewId, h.prepared.id);
+		assert(!signal.aborted);
+		reads.push(path);
+		return fileSource(h.prepared, path);
+	};
+	try {
+		h.service.start(h.input);
+		const action = await h.action();
+		const first = contextPacket(h.requests[0]).currentFileSource;
+		assert.equal(first.status, "available");
+		assert.equal(first.path, "service.ts");
+		assert.equal(first.base.commitSha, h.prepared.pr.baseSha);
+		assert.equal(first.head.commitSha, h.prepared.pr.headSha);
+		assert.equal(first.head.excerpt.text, "const sourceOnly_service.ts = 2;\n");
+		assert.equal(first.head.excerpt.startLine, 1);
+		assert.equal(first.head.excerpt.endLine, 1);
+		assert.equal(first.head.excerpt.truncated, false);
+		assert(first.patch.excerpt.text.includes("@@ -1 +1 @@"));
+		assert.equal(h.requests.length, 1);
+		assert.equal(h.poll().text, "");
+		await h.service.actionApplied(h.receipt(action));
+		await finish(h);
+		assert.deepEqual(reads, ["service.ts", "test.ts"]);
+		const second = contextPacket(h.requests[1]).currentFileSource;
+		assert.equal(second.path, "test.ts");
+		assert.equal(second.head.excerpt.text, "const sourceOnly_test.ts = 2;\n");
+		assert(!JSON.stringify(h.requests[1]?.input).includes("sourceOnly_service.ts"));
+		assert(
+			h.requests.every(
+				(request) => Buffer.byteLength(JSON.stringify(request.input), "utf8") <= 96_000
+			)
+		);
+	} finally {
+		await h.service.dispose();
+	}
+});
+
+test("missing source port, headless screen and failed reads expose unavailable source explicitly", async () => {
+	for (const mode of ["no-port", "headless", "failed"] as const) {
+		const h = harness([[]]);
+		if (mode !== "headless") displayed(h);
+		let reads = 0;
+		if (mode !== "no-port")
+			h.ports.getFile = async () => {
+				reads++;
+				throw new Error("SECRET source failure");
+			};
+		try {
+			h.service.start(h.input);
+			await finish(h);
+			const source = contextPacket(h.requests[0]).currentFileSource;
+			assert.equal(source.status, "unavailable");
+			assert.equal(
+				source.reason,
+				mode === "no-port"
+					? "source-port-not-configured"
+					: mode === "headless"
+						? "no-current-review-file"
+						: "source-read-failed"
+			);
+			assert.equal(reads, mode === "failed" ? 1 : 0);
+			assert(!JSON.stringify(h.requests).includes("SECRET"));
+		} finally {
+			await h.service.dispose();
+		}
+	}
+});
+
+test("source file PR, path and both pinned side identities must match the prepared displayed file", async () => {
+	for (const field of ["prId", "path", "baseSha", "headSha", "basePath", "headPath"] as const) {
+		const h = harness([[]]);
+		displayed(h);
+		h.ports.getFile = async () => {
+			const file = fileSource(h.prepared, "service.ts");
+			if (field === "prId") file.prId = "foreign";
+			if (field === "path") file.path = "test.ts";
+			if (field === "baseSha") file.base.commitSha = "e".repeat(40);
+			if (field === "headSha") file.head.commitSha = "e".repeat(40);
+			if (field === "basePath") file.base.path = "foreign.ts";
+			if (field === "headPath") file.head.path = "foreign.ts";
+			return file;
+		};
+		try {
+			h.service.start(h.input);
+			await finish(h, "error");
+			assert.equal(h.requests.length, 0);
+			assert.deepEqual(h.poll().actions, []);
+		} finally {
+			await h.service.dispose();
+		}
+	}
+});
+
+test("source cancellation and screen changes during fetch suppress late inference", async () => {
+	for (const mode of ["cancel", "navigate"] as const) {
+		const h = harness([[]]);
+		displayed(h);
+		let resolve: ((file: ReviewFile) => void) | undefined;
+		let signal: AbortSignal | undefined;
+		h.ports.getFile = (_pr, _review, _path, active) => {
+			signal = active;
+			return new Promise((done) => {
+				resolve = done;
+			});
+		};
+		try {
+			h.service.start(h.input);
+			await eventually(() => resolve !== undefined);
+			if (mode === "cancel")
+				h.service.cancel({ ...h.identity, requestId: "cancel-source", reason: "user" });
+			else h.setScreen({ sequence: 99, mode: "conversation", prId: h.prepared.pr.id });
+			resolve?.(fileSource(h.prepared, "service.ts"));
+			await finish(h, mode === "cancel" ? "cancelled" : "error");
+			if (mode === "cancel") assert(signal?.aborted);
+			assert.equal(h.requests.length, 0);
+		} finally {
+			resolve?.(fileSource(h.prepared, "service.ts"));
+			await h.service.dispose();
+		}
+	}
+});
+
+test("oversized UTF-8 source fits the 96k serialized input budget without cutting source lines", async () => {
+	const h = harness([[call("inspect_ready_review")], []]);
+	displayed(h);
+	const raw = fileSource(h.prepared, "service.ts");
+	const line = '\tconst label = "漢字\\\\\\"é";\r\n';
+	raw.base.content = line.repeat(8000);
+	raw.head.content = line.repeat(8000);
+	raw.patch = `@@ -1,8000 +1,8000 @@\n${`+${line}`.repeat(2000)}`;
+	h.ports.getFile = async () => raw;
+	try {
+		h.service.start(h.input);
+		await finish(h);
+		for (const request of h.requests) {
+			assert(Buffer.byteLength(JSON.stringify(request.input), "utf8") <= 96_000);
+			const source = contextPacket(request).currentFileSource;
+			for (const key of ["patch", "base", "head"] as const) {
+				const excerpt = source[key].excerpt;
+				const original = key === "patch" ? raw.patch : raw[key].content;
+				assert(original);
+				assert(excerpt.truncated);
+				assert(excerpt.text.length > 0);
+				assert(original.startsWith(excerpt.text));
+				assert(excerpt.text.endsWith("\n"));
+				assert.equal(excerpt.startLine, 1);
+				assert.equal(excerpt.endLine, excerpt.text.split("\n").length - 1);
+				assert(excerpt.totalLines > excerpt.endLine);
+			}
+		}
+	} finally {
+		await h.service.dispose();
+	}
+});
+
+test("one oversized line is omitted honestly and missing/binary/too-large statuses are preserved", async () => {
+	for (const status of ["available", "missing", "binary", "too-large"] as const) {
+		const h = harness([[]]);
+		displayed(h);
+		const file = fileSource(h.prepared, "service.ts");
+		file.base.status = status;
+		file.base.content = status === "available" ? "x".repeat(250_000) : null;
+		h.ports.getFile = async () => file;
+		try {
+			h.service.start(h.input);
+			await finish(h);
+			const base = contextPacket(h.requests[0]).currentFileSource.base;
+			assert.equal(base.status, status);
+			if (status === "available")
+				assert.deepEqual(base.excerpt, {
+					text: "",
+					startLine: null,
+					endLine: null,
+					totalLines: 1,
+					truncated: true,
+				});
+			else assert.equal(base.excerpt, null);
+		} finally {
+			await h.service.dispose();
+		}
+	}
+});
+
+test("runtime-verified renamed source retains its actual safe base path without treating it as missing", async () => {
+	for (const path of ["previous/service.ts", "../escape.ts"]) {
+		const h = harness([[]]);
+		displayed(h);
+		h.ports.getFile = async () => {
+			const file = fileSource(h.prepared, "service.ts");
+			file.status = "renamed";
+			file.base.path = path;
+			return file;
+		};
+		try {
+			h.service.start(h.input);
+			await finish(h, path.startsWith("..") ? "error" : "completed");
+			if (path.startsWith("..")) assert.equal(h.requests.length, 0);
+			else {
+				const source = contextPacket(h.requests[0]).currentFileSource;
+				assert.equal(source.base.path, path);
+				assert.equal(source.base.status, "available");
+				assert.equal(source.base.excerpt.text, "const oldValue = 1;\n");
+				assert.equal(source.head.path, "service.ts");
+			}
 		} finally {
 			await h.service.dispose();
 		}
