@@ -11,4 +11,5 @@ export type {
 	VoiceControllerOptions,
 	VoiceMedia,
 	VoicePorts,
+	VoiceTurnEnd,
 } from "./types";

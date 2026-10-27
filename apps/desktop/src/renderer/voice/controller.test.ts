@@ -17,6 +17,7 @@ import type {
 	MediaFactory,
 	VoiceController,
 	VoiceControllerOptions,
+	VoiceTurnEnd,
 } from "./types";
 
 function deferred<T>() {
@@ -598,4 +599,180 @@ test("dispose invalidates before notifying listeners, so a reentrant begin canno
 	h.controller.dispose();
 	assert.equal(h.media.length, 1);
 	assert.equal(h.media[0]?.closed, true);
+});
+
+test("shared review identity reaches one agent turn, browser action and external UI lifecycle", async () => {
+	const shared = { sessionId: "review-session", turnId: "spoken-turn", generation: 4 };
+	const order: string[] = [];
+	const ends: Array<[TurnIdentity, VoiceTurnEnd]> = [];
+	const h = harness({
+		sessionId: shared.sessionId,
+		allocateIdentity: () => shared,
+		onTurnStart: (turn) => {
+			assert.deepEqual(turn, shared);
+			order.push("begin");
+		},
+		onTranscript: (update) => {
+			assert.deepEqual(identity(update), shared);
+			order.push("transcript");
+		},
+		onTurnEnd: (turn, result) => ends.push([turn, result]),
+	});
+	const browser = {
+		browserId: "visible-browser",
+		sessionId: shared.sessionId,
+		prId: "pr-1",
+		repository: "org/repo",
+		commitSha: "a".repeat(40),
+		revision: "head" as const,
+		url: "http://127.0.0.1:1234/",
+		title: "Review app",
+		viewport: { width: 1024, height: 768 },
+		sequence: 3,
+		observedAt: "2026-10-27T19:00:00Z",
+		text: "Cart",
+		elements: [],
+		scroll: { x: 0, y: 0 },
+		provenance: "live-browser" as const,
+	};
+	h.setScreen({ prId: "pr-1", sequence: 2, panel: "browser", focusedLocation: null, browser });
+	const action: AgentAction = {
+		...shared,
+		requestId: "show-current-browser",
+		screenSequence: 2,
+		kind: "show-browser",
+		browser,
+	};
+	h.setPoll(async (input) => ({
+		...identity(input),
+		status: "completed",
+		sequence: 3,
+		text: "The cart is visible.",
+		actions: [action],
+		events: [
+			{ ...shared, sequence: 1, kind: "text-delta", delta: "The cart is visible." },
+			{ ...shared, sequence: 2, kind: "action", action },
+			{ ...shared, sequence: 3, kind: "completed" },
+		],
+	}));
+	await h.capture();
+	await h.final("Explain this cart");
+	h.emit({ kind: "transcript", text: "Duplicate", final: true });
+	await until(() => h.actions.length === 1);
+	assert.deepEqual(order, ["begin", "transcript"]);
+	assert.equal(h.starts.length, 1);
+	assert.ok(h.starts[0]);
+	assert.deepEqual(identity(h.starts[0]), shared);
+	assert.deepEqual(h.starts[0]?.screenContext.browser, browser);
+	assert.deepEqual(h.actions, [action]);
+	assert.equal(h.answers.at(-1), "The cart is visible.");
+	assert.deepEqual(ends, [], "UI turn remains active while its speech is draining");
+	for (let index = 0; index < 2; index++) {
+		await until(() => h.speaks.length > index);
+		h.emit({ kind: "speech-ended", speechId: h.speaks[index]?.speechId ?? "missing" });
+	}
+	await until(() => ends.length === 1);
+	assert.deepEqual(ends, [[shared, { status: "completed" }]]);
+	assert.deepEqual(h.cancels.voice, [shared]);
+	assert.ok(h.cancels.agent[0]);
+	assert.deepEqual(identity(h.cancels.agent[0]), shared);
+	h.controller.dispose();
+	assert.equal(ends.length, 1);
+});
+
+test("UI allocator can skip typed generations but cannot reuse or switch the review session", () => {
+	let next = { sessionId: "review-session", turnId: "voice-1", generation: 4 };
+	const h = harness({ sessionId: next.sessionId, allocateIdentity: () => next });
+	h.controller.beginCapture();
+	assert.deepEqual(h.current(), next);
+	h.controller.interrupt();
+	next = { ...next, turnId: "voice-2", generation: 8 };
+	h.controller.beginCapture();
+	assert.deepEqual(h.current(), next);
+	h.controller.interrupt();
+	h.controller.beginCapture();
+	assert.equal(h.controller.getPhase(), "error");
+	assert.equal(h.media.length, 2);
+	next = { ...next, sessionId: "other-review", generation: 9 };
+	h.controller.beginCapture();
+	assert.equal(h.controller.getIdentity(), null);
+	assert.equal(h.media.length, 2);
+	assert.equal(h.errors.length, 2);
+	assert.throws(() => harness({ allocateIdentity: () => next }), /requires the review session/);
+});
+
+test("a browser snapshot from another session never starts the spoken agent turn", async () => {
+	const h = harness({ sessionId: "review-session" });
+	h.setScreen({
+		prId: "pr-1",
+		sequence: 2,
+		panel: "browser",
+		focusedLocation: null,
+		browser: {
+			browserId: "other-browser",
+			sessionId: "other-session",
+			prId: "pr-1",
+			repository: "org/repo",
+			commitSha: "a".repeat(40),
+			revision: "head",
+			url: "http://127.0.0.1:1234/",
+			title: "Old app",
+			viewport: { width: 1024, height: 768 },
+			sequence: 1,
+			observedAt: "2026-10-27T19:00:00Z",
+			text: "Old page",
+			elements: [],
+			scroll: { x: 0, y: 0 },
+			provenance: "live-browser",
+		},
+	});
+	await h.capture();
+	await h.final();
+	await until(() => h.controller.getPhase() === "error");
+	assert.equal(h.starts.length, 0);
+	assert.equal(h.cancels.agent.length, 1);
+	assert.equal(h.cancels.voice.length, 1);
+	assert.equal(h.media[0]?.closed, true);
+});
+
+test("external cancellation sink sees stopped media and both cancels once before late events", async () => {
+	const ends: VoiceTurnEnd[] = [];
+	const h = harness({
+		onTurnEnd: (_turn, result) => {
+			assert.equal(h.media[0]?.closed, true);
+			assert.equal(h.cancels.voice.length, 1);
+			assert.equal(h.cancels.agent.length, 1);
+			ends.push(result);
+		},
+	});
+	await h.capture();
+	await h.final();
+	h.controller.interrupt("navigation");
+	h.controller.interrupt("escape");
+	h.media[0]?.observer.disconnected(new Error("late"));
+	h.emit({ kind: "transcript", text: "Late final", final: true });
+	await wait();
+	assert.deepEqual(ends, [{ status: "cancelled", reason: "navigation" }]);
+	assert.equal(h.starts.length, 1);
+});
+
+test("external start interruption prevents media and failed turns notify their sink once", () => {
+	const ends: VoiceTurnEnd[] = [];
+	const h = harness({
+		onTurnStart: () => h.controller.interrupt("escape"),
+		onTurnEnd: (_turn, result) => {
+			ends.push(result);
+		},
+	});
+	h.controller.beginCapture();
+	assert.equal(h.media.length, 0);
+	assert.deepEqual(ends, [{ status: "cancelled", reason: "escape" }]);
+	h.options.onTurnStart = () => {
+		throw new Error("Sink unavailable");
+	};
+	h.controller.beginCapture();
+	assert.equal(h.media.length, 0);
+	assert.deepEqual(ends[1], { status: "failed", error: "Sink unavailable" });
+	h.controller.dispose();
+	assert.equal(ends.length, 2);
 });

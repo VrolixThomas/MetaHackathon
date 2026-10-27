@@ -24,19 +24,27 @@ const voice = createVoiceController({
   voice: voicePorts,
   agent: agentPorts,
   media: createBrowserMediaFactory(),
+  sessionId: reviewSessionId,
+  allocateIdentity: allocateReviewTurn, // UI's shared allocator for typed AND spoken turns
+  onTurnStart: (identity) => externalVoiceTurn.begin(identity),
+  onTurnEnd: (identity, result) => externalVoiceTurn.finish(
+    identity,
+    result.status === "completed" ? "complete" : result.status === "failed" ? "error" : "cancelled",
+    result.status === "failed" ? result.error : undefined,
+  ),
   getScreenContext: () => reviewStore.getState().screenContext,
   getKeywords: () => reviewStore.getState().prSymbolsAndPaths,
   acknowledgementText: "I’m checking that.", // product copy, not inferred intent
   completionText: "The background work has finished.", // optional generic copy
-  onTranscript: (update) => transcriptStore.set(update),
-  onAnswer: (text, identity) => answerStore.replace(identity, text),
+  onTranscript: (update) => externalVoiceTurn.transcript(update, update.text),
+  onAnswer: (text, identity) => externalVoiceTurn.replaceText(identity, text),
   onEvent: (event) => eventStore.observe(event),
   onVoiceEvent: (event) => voiceEventStore.observe(event),
   onAction: async (action, screen, signal) => {
     // Controller already checked turn identity, PR and exact screen sequence.
     // Recheck after any await, immediately before committing a UI effect.
     if (signal.aborted || reviewStore.getState().screenContext.sequence !== screen.sequence) return;
-    await applyAgentAction(action, signal);
+    await externalVoiceTurn.action(action);
   },
   onLatency: (sample) => latencyStore.record(sample),
   onError: (error) => voiceErrorStore.set(error.message),
@@ -48,6 +56,23 @@ const unsubscribe = voice.subscribe(() => renderVoiceState(voice.getSnapshot()))
 // On navigation: voice.interrupt("navigation");
 // On unmount/shutdown: unsubscribe(); voice.dispose();
 ```
+
+`reviewSessionId`, `allocateReviewTurn`, and `externalVoiceTurn` above are UI-owned seams.
+Supply both `sessionId` and `allocateIdentity` in the integrated app: the controller validates
+the returned identity, rejects a different session or non-increasing generation, and uses that
+exact identity for voice, agent, UI effects and cancellation. Gaps are valid when typed questions
+consume intervening generations. Standalone tests may omit both to use a private session.
+`onTurnStart` runs synchronously before microphone setup. `onTurnEnd` runs once after local media
+is closed and cancellation requests are sent, including early release, errors and navigation.
+Successful completion waits until queued speech drains. Hook errors cannot prevent teardown.
+Stop the current voice controller before starting a typed question, changing PR, or replacing it;
+the same UI allocator must survive controller recreation. UI owns subscription and action guards.
+
+The `agent.start` adapter must await `screen.update({sessionId, screenContext})` before invoking
+`agent.start`, and UI publishes subsequent screen changes for that same session. The controller
+passes the current shared `ScreenContext.browser` through unchanged and rejects a browser snapshot
+from another review/session. `onEvent` must not execute actions or append answer deltas again:
+`onAnswer` supplies replacement text and `onAction` is the single effect path.
 
 Port payloads:
 
@@ -76,6 +101,15 @@ true during permission/signaling. `beginCapture()` intentionally returns **synch
 the UI's serial capture gate can call `endCapture()` while permission is pending.
 
 ## Readiness and interruption
+
+Integration supplies `voice.status`, `voice.configure({voiceId})`, and `voice.prepare` backed by
+the shared `VoiceSetupStatusSchema`. UI setup controls use the existing encrypted credential
+set/status RPCs for `meta` and `elevenlabs`, then configure the public ElevenLabs voice ID and
+await preparation. Capture is available only when setup `phase === "ready"`. `preparing` may
+take up to the 180-second native startup deadline; setup errors and missing fields are displayed
+without keys. A ready sidecar has started locally; it does not prove live provider entitlement.
+Settings changes must interrupt the current turn before root disposes/recreates the service pair.
+There is no duplicate voice-local credential store, router or setup controller.
 
 The phase remains `idle` while `connecting` is true. It becomes `listening` only after ICE/DTLS
 establish the peer. UI should show a connecting cue and tell the user to wait for listening.
