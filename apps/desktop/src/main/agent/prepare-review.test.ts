@@ -136,7 +136,7 @@ test("renamed files omit base locations without a trusted previous path while re
 	assert.equal(comments[0]?.location?.path, renamed.path);
 	assert.equal(comments[0]?.location?.commitSha, input.pr.headSha);
 	assert.equal(comments[1]?.location, undefined);
-	assert.equal(comments[1]?.body, "Inferred: Old behavior needs discussion.");
+	assert.equal(comments[1]?.body, "Old behavior needs discussion.");
 });
 
 test("preparer accepts behavior order, pins identities and only cites actually supplied base/head lines", async () => {
@@ -157,7 +157,7 @@ test("preparer accepts behavior order, pins identities and only cites actually s
 	assert.deepEqual(review.pr, input.pr);
 	assert.equal(review.evidence, "inferred-from-github");
 	assert.equal(review.coverage, "complete");
-	assert(review.summary.startsWith("Inferred:"));
+	assert.equal(review.summary, analysis().summary);
 	assert(Number.isFinite(Date.parse(review.createdAt)));
 	const comments = review.files[1]?.suggestedComments;
 	assert(comments);
@@ -231,4 +231,110 @@ test("model cannot inject foreign location fields; no text-only fallback or late
 	controller.abort();
 	await assert.rejects(result, /cancelled/i);
 	assert(observed?.aborted);
+});
+
+test("provenance labels are removed once while useful uncertainty, evidence and normalized plan identity survive", async () => {
+	const input = context();
+	input.truncated = true;
+	const plain = analysis();
+	plain.summary = "This may prevent repeated retries; the patch does not show the caller.";
+	const labeled = {
+		...plain,
+		summary: `  **Inferred:** Inferred: ${plain.summary}  `,
+		orderRationale: `Inferred: inferred: ${plain.orderRationale}`,
+		files: plain.files.map((file) => ({
+			...file,
+			reason: `Inferred: Inferred: ${file.reason}`,
+			summary: `Inferred: ${file.summary}`,
+			suggestedComments: file.suggestedComments.map((comment) => ({
+				...comment,
+				body: `Inferred: Inferred: ${comment.body}`,
+			})),
+		})),
+	};
+	const expected = await prepareReview(model(plain), input, new AbortController().signal);
+	const actual = await prepareReview(model(labeled), input, new AbortController().signal);
+	assert.equal(actual.summary, plain.summary);
+	assert.equal(actual.evidence, "inferred-from-github");
+	assert.equal(actual.coverage, "partial");
+	assert.equal(actual.id, expected.id);
+	assert.deepEqual(actual.files, expected.files);
+	assert.equal(actual.orderRationale, expected.orderRationale);
+	assert(!JSON.stringify(actual.files).includes("Inferred:"));
+	await assert.rejects(
+		prepareReview(
+			model({ ...plain, summary: "Inferred: Inferred: " }),
+			input,
+			new AbortController().signal
+		)
+	);
+});
+
+test("oversized plan prose and comment lists reject instead of silently truncating into a ready review", async () => {
+	const tooLong = "This paragraph keeps explaining the same implementation detail. ".repeat(20);
+	const first = analysis().files[0];
+	const second = analysis().files[1];
+	assert(first && second);
+	const candidates = [
+		{ ...analysis(), summary: tooLong },
+		{ ...analysis(), orderRationale: tooLong },
+		{ ...analysis(), files: [{ ...first, reason: tooLong }, second] },
+		{ ...analysis(), files: [{ ...first, summary: tooLong }, second] },
+		{ ...analysis(), files: [first, { ...second, suggestedComments: [{ body: tooLong }] }] },
+		{
+			...analysis(),
+			files: [
+				first,
+				{
+					...second,
+					suggestedComments: Array.from({ length: 4 }, () => ({
+						body: "Could we check this boundary?",
+					})),
+				},
+			],
+		},
+		{ ...analysis(), evidence: "recorded-author-intent" },
+	];
+	for (const candidate of candidates)
+		await assert.rejects(prepareReview(model(candidate), context(), new AbortController().signal));
+});
+
+test("structured model contract advertises concise explanations separately from why this file is read now", async () => {
+	let request: MetaRequest | undefined;
+	await prepareReview(
+		model(analysis(), (value) => {
+			request = value;
+		}),
+		context(),
+		new AbortController().signal
+	);
+	assert(request);
+	const schema = request.tools?.[0]?.parameters as {
+		properties: {
+			summary: { maxLength: number; description: string };
+			orderRationale: { maxLength: number };
+			files: {
+				items: {
+					properties: {
+						reason: { maxLength: number; description: string };
+						summary: { maxLength: number };
+						suggestedComments: {
+							maxItems: number;
+							items: { properties: { body: { maxLength: number } } };
+						};
+					};
+				};
+			};
+		};
+	};
+	assert(schema.properties.summary.maxLength <= 600);
+	assert(schema.properties.orderRationale.maxLength <= 300);
+	const file = schema.properties.files.items.properties;
+	assert(file.reason.maxLength <= 240);
+	assert(file.summary.maxLength <= 360);
+	assert(file.suggestedComments.maxItems <= 3);
+	assert(file.suggestedComments.items.properties.body.maxLength <= 600);
+	assert.match(schema.properties.summary.description, /behavior/);
+	assert.match(file.reason.description, /read this file now/);
+	assert.match(request.instructions, /explicitly supplied authored wording/);
 });

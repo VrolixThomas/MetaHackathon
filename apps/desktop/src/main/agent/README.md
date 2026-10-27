@@ -41,6 +41,13 @@ comments. Comment locations are constructed only from actual supplied unified-pa
 lines; unsupported locations are omitted. Missing/truncated source remains partial.
 No provider failure or invalid output produces a substitute plan.
 
+Preparation uses plain-language behavior/impact rather than repeated provenance labels.
+`summary` is capped at 600 characters, `orderRationale` at 300, each file summary at 360,
+its why-read-now reason at 240, and suggested comments at three per file / 600 characters
+each. Repeated leading `Inferred:` labels are removed before validation and ID hashing;
+specific uncertainty is retained, and `evidence: inferred-from-github` remains unchanged.
+Oversized analysis is rejected instead of silently cutting an explanation.
+
 Optional `ConversationOptions.review` supplies `getReady(prId, signal)`,
 `getProgress(prId, signal)`, `getScreen(sessionId, initial?)` (sync or async), and
 `navigate(prId, {direction?, path?, line?, side?}, signal)`. Its types are exported from
@@ -57,6 +64,13 @@ Resume starts the first file when no saved progress exists. Each round uses the 
 plan, saved progress and actual `ReviewScreen`; unavailable preparation is reported as
 unavailable, not fabricated as ready. The loop permits one tool per round and six rounds.
 No selected PR keeps the original ordinary-chat path, with no tool/context port access.
+Guided replies lead with purpose/impact, point to specific shown source, and explain why
+that file matters now, normally in two to four short sentences. One applied navigation
+ends tool availability for that turn; the next response must answer and wait for the user.
+Interrupt follow-ups use the actual current file instead of repeating navigation. Guided
+generation has a 512-token output budget and a 1,600-character safety limit, including
+terminal-only replies; excessive prose fails before speech emission rather than being
+silently truncated. Generated plans are never evidence of recorded author intent.
 
 Optional `review.getFile(prId, reviewId, path, signal): Promise<ReviewFile>` supplies the
 actual displayed diff/source. Only the current ready file in review mode is fetched, once
