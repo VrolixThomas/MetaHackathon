@@ -1,10 +1,12 @@
 import { createHash } from "node:crypto";
 import {
+	type AgentAction,
 	type AgentEvent,
 	AgentEventSchema,
 	type AgentTurnStatus,
 	CancelTurnInputSchema,
 	CancelTurnResultSchema,
+	ConversationActionReceiptSchema,
 	type ConversationPRContext,
 	ConversationPRContextSchema,
 	type ConversationTurnInput,
@@ -15,10 +17,19 @@ import {
 } from "../../shared/contracts";
 import { abortable, throwIfAborted } from "./cancellation";
 import { StartTurnResultSchema } from "./events";
+import {
+	ConversationReceiptGate,
+	type ConversationReceiptOptions,
+	type ConversationReviewPorts,
+	GuidedReviewError,
+	runGuidedReview,
+} from "./guided-review";
 import { type AgentModelClient, MetaApiError, type MetaItem } from "./meta-client";
 
 export interface ConversationOptions {
 	getContext?: (prId: string, signal: AbortSignal) => Promise<ConversationPRContext>;
+	review?: ConversationReviewPorts;
+	actionReceipts?: ConversationReceiptOptions;
 }
 const INSTRUCTIONS = `You are a conversational assistant. Respond naturally to greetings, ordinary questions and follow-ups; no pull request is required. Keep spoken answers clear and reasonably brief unless the user asks for detail.
 Use the actual conversation history to understand follow-ups. Do not invent earlier messages or facts. Older exchanges may have been omitted to bound context.
@@ -41,9 +52,11 @@ type Turn = {
 	sequence: number;
 	events: AgentEvent[];
 	text: string;
+	actions: AgentAction[];
 };
 type Session = { current?: Turn; history: Exchange[]; requests: Set<string> };
 type EventPayload =
+	| { kind: "action"; action: AgentAction }
 	| { kind: "acknowledgement"; text: string }
 	| { kind: "text-delta"; delta: string }
 	| { kind: "completed" | "cancelled" }
@@ -57,10 +70,19 @@ export class ConversationService {
 	private readonly requests = new Map<string, RequestRecord>();
 	private readonly jobs = new Set<Promise<void>>();
 	private disposed = false;
+	private readonly reviewReceipts?: ConversationReceiptGate;
 	constructor(
 		private readonly client: AgentModelClient,
 		private readonly options: ConversationOptions = {}
-	) {}
+	) {
+		if (options.actionReceipts)
+			this.reviewReceipts = new ConversationReceiptGate(options.actionReceipts);
+	}
+
+	actionApplied(raw: unknown) {
+		const receipt = ConversationActionReceiptSchema.parse(raw);
+		return this.reviewReceipts?.accept(receipt) ?? { status: "stale" as const };
+	}
 
 	start(raw: unknown) {
 		if (this.disposed) throw new Error("Conversation service is disposed");
@@ -100,6 +122,7 @@ export class ConversationService {
 			sequence: 0,
 			events: [],
 			text: "",
+			actions: [],
 		};
 		session.current = turn;
 		session.requests.add(input.requestId);
@@ -141,7 +164,7 @@ export class ConversationService {
 				.filter((event) => event.sequence > input.afterSequence)
 				.slice(0, input.limit),
 			text: turn.text,
-			actions: [],
+			actions: turn.actions,
 		});
 	}
 
@@ -231,64 +254,87 @@ export class ConversationService {
 				{ role: "user", content: pair.user },
 				{ role: "assistant", content: pair.assistant },
 			]);
-			if (turn.input.prId !== undefined) {
-				try {
-					if (!this.options.getContext) throw new ContextError("Context unavailable");
-					const context = ConversationPRContextSchema.parse(
-						await abortable(this.options.getContext(turn.input.prId, signal), signal)
-					);
-					if (context.pr.id !== turn.input.prId) throw new ContextError("Wrong PR context");
-					history.push({
-						role: "user",
-						content: [
-							{
-								type: "input_text",
-								text: JSON.stringify({ selectedPullRequest: boundedContext(context) }),
-							},
-						],
-					});
-				} catch {
-					throwIfAborted(signal);
-					throw new ContextError("Selected PR unavailable");
-				}
-			}
-			history.push({ role: "user", content: turn.input.text });
-			throwIfAborted(signal);
-			const iterator = this.client
-				.stream(
-					{
-						requestId: turn.input.requestId,
-						workload: "quick",
-						instructions: INSTRUCTIONS,
-						input: history,
-						tools: [],
-					},
-					signal
-				)
-				[Symbol.asyncIterator]();
-			let complete = false;
-			try {
-				while (true) {
-					const next = await abortable(Promise.resolve(iterator.next()), signal);
-					if (next.done) break;
-					if (!this.active(session, turn)) return;
-					if (next.value.type === "text") this.append(turn, next.value.delta);
-					else {
-						const output = next.value.response.output;
-						if (output.some((item) => item["type"] === "function_call"))
-							throw new ReplyError("Unsupported tool output");
-						if (!turn.text) this.append(turn, completionText(output));
-						complete = true;
-						break;
+			if (turn.input.prId !== undefined && this.options.review) {
+				history.push({ role: "user", content: turn.input.text });
+				const gate = this.reviewReceipts;
+				const answer = await runGuidedReview(
+					this.client,
+					this.options.review,
+					turn.input,
+					history,
+					signal,
+					(action) => {
+						if (!gate)
+							throw new GuidedReviewError("Review workspace acknowledgements are not connected.");
+						return gate.publish(action, signal, () => {
+							if (!this.active(session, turn)) throw new Error("Turn is no longer active");
+							turn.actions.push(action);
+							this.emit(turn, { kind: "action", action });
+						});
+					}
+				);
+				if (!this.active(session, turn)) return;
+				this.append(turn, answer);
+			} else {
+				if (turn.input.prId !== undefined) {
+					try {
+						if (!this.options.getContext) throw new ContextError("Context unavailable");
+						const context = ConversationPRContextSchema.parse(
+							await abortable(this.options.getContext(turn.input.prId, signal), signal)
+						);
+						if (context.pr.id !== turn.input.prId) throw new ContextError("Wrong PR context");
+						history.push({
+							role: "user",
+							content: [
+								{
+									type: "input_text",
+									text: JSON.stringify({ selectedPullRequest: boundedContext(context) }),
+								},
+							],
+						});
+					} catch {
+						throwIfAborted(signal);
+						throw new ContextError("Selected PR unavailable");
 					}
 				}
-			} finally {
-				// An adapter ignoring cancellation must not block release/dispose or emit late data.
-				void Promise.resolve()
-					.then(() => iterator.return?.())
-					.catch(() => {});
+				history.push({ role: "user", content: turn.input.text });
+				throwIfAborted(signal);
+				const iterator = this.client
+					.stream(
+						{
+							requestId: turn.input.requestId,
+							workload: "quick",
+							instructions: INSTRUCTIONS,
+							input: history,
+							tools: [],
+						},
+						signal
+					)
+					[Symbol.asyncIterator]();
+				let complete = false;
+				try {
+					while (true) {
+						const next = await abortable(Promise.resolve(iterator.next()), signal);
+						if (next.done) break;
+						if (!this.active(session, turn)) return;
+						if (next.value.type === "text") this.append(turn, next.value.delta);
+						else {
+							const output = next.value.response.output;
+							if (output.some((item) => item["type"] === "function_call"))
+								throw new ReplyError("Unsupported tool output");
+							if (!turn.text) this.append(turn, completionText(output));
+							complete = true;
+							break;
+						}
+					}
+				} finally {
+					// An adapter ignoring cancellation must not block release/dispose or emit late data.
+					void Promise.resolve()
+						.then(() => iterator.return?.())
+						.catch(() => {});
+				}
+				if (!complete || !turn.text.trim()) throw new ReplyError("Incomplete response");
 			}
-			if (!complete || !turn.text.trim()) throw new ReplyError("Incomplete response");
 			if (!this.active(session, turn)) return;
 			session.history.push({ user: turn.input.text, assistant: turn.text });
 			let size = session.history.reduce(
@@ -336,6 +382,7 @@ function boundedContext(context: ConversationPRContext): ConversationPRContext {
 	return result;
 }
 function safeError(error: unknown): string {
+	if (error instanceof GuidedReviewError) return error.message;
 	if (error instanceof ContextError)
 		return "Could not load the selected pull request. Check GitHub access or continue without a PR.";
 	if (error instanceof MetaApiError) {

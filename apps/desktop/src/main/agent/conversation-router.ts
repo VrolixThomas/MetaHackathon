@@ -1,7 +1,9 @@
 import { z } from "zod";
 import {
+	AgentActionReceiptResultSchema,
 	CancelTurnInputSchema,
 	CancelTurnResultSchema,
+	ConversationActionReceiptSchema,
 	ConversationTurnInputSchema,
 	IdSchema,
 	PollTurnResultSchema,
@@ -14,6 +16,10 @@ import { StartTurnResultSchema } from "./events";
 /** Root registers this separate from the legacy screen-bound review agent. */
 export function createConversationRouter(service: ConversationService) {
 	return router({
+		actionApplied: publicProcedure
+			.input(ConversationActionReceiptSchema)
+			.output(AgentActionReceiptResultSchema)
+			.mutation(({ input }) => service.actionApplied(input)),
 		start: publicProcedure
 			.input(ConversationTurnInputSchema)
 			.output(StartTurnResultSchema)

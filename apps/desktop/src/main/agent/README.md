@@ -12,7 +12,7 @@ Root owns credentials, speech input/output, router registration and shutdown wir
 
 The API is `start(ConversationTurnInput)`, `poll(PollTurn)`, `cancel(CancelTurnInput)`,
 `releaseSession(sessionId)` and `dispose()`. The router exposes start/poll/cancel/release.
-Polling uses existing agent events and full text snapshots, with `actions: []`. Drain
+Ordinary chat polling uses existing agent events and full text snapshots, with `actions: []`. Drain
 terminal pages by event sequence. Retry an identical request ID without starting another
 inference; changed input requires a fresh request ID, turn ID and higher generation.
 The last 128 request IDs per session are deduplicated; old-generation admission remains
@@ -29,6 +29,42 @@ network and timeout failures without echoing provider/server text.
 
 The legacy screen-bound review engine below remains available for later integration;
 the V1 conversation service neither invokes it nor exposes its tools or comment routes.
+
+## Prepared guided review
+
+`prepareReview(client, context, signal)` in `prepare-review.ts` returns a shared
+`PreparedReview` using one deep structured `submit_prepared_review` call. Root schedules
+and caches this work; conversation turns do not regenerate it. Main creates IDs/time and
+pins the PR/repository/SHAs. The result must contain each supplied changed file once, in
+model-explained behavior/dependency order, with inferred reasons, summaries and draft
+comments. Comment locations are constructed only from actual supplied unified-patch
+lines; unsupported locations are omitted. Missing/truncated source remains partial.
+No provider failure or invalid output produces a substitute plan.
+
+Optional `ConversationOptions.review` supplies `getReady(prId, signal)`,
+`getProgress(prId, signal)`, `getScreen(sessionId, initial?)` (sync or async), and
+`navigate(prId, {direction?, path?, line?, side?}, signal)`. Its types are exported from
+`guided-review.ts`. A separate top-level `actionReceipts` option supplies `timeoutMs?`
+(at most 10 seconds) and `updateScreen(receipt, navigation, signal)` (sync or async).
+The navigation argument is the validated pending action, including its paused flag.
+The callback must honor the signal before committing screen/progress; it aborts on
+cancellation or receipt timeout. Agent awaits that commit before proceeding.
+
+For an explicitly selected PR the tools are `inspect_ready_review({})`,
+`open_review_file({path,line?,side?})`, `next_review_file({})`,
+`previous_review_file({})`, `pause_review({})`, and `resume_review({})`.
+Resume starts the first file when no saved progress exists. Each round uses the cached
+plan, saved progress and actual `ReviewScreen`; unavailable preparation is reported as
+unavailable, not fabricated as ready. The loop permits one tool per round and six rounds.
+No selected PR keeps the original ordinary-chat path, with no tool/context port access.
+
+Navigation emits shared `review-navigation` actions. The renderer acknowledges through
+`conversation.actionApplied(ConversationActionReceipt)` after the real file settles.
+Applied receipts must match the exact active identity/action, PR/review/path/SHAs, paused
+flag and `mode: review`; pause keeps the file visible. Retired/foreign receipts cannot
+update state. Ignored effects, screen changes, cancellation, timeout and persistence
+failure stop dependent narration. Review tool-round prose is discarded; only the final
+answer is emitted after acknowledgement. Existing voice no-filler behavior is unchanged.
 
 This module supplies agent intelligence for MET-19–26. Integration owns main composition,
 root tRPC registration, renderer/preload transport and dependency manifests. Runtime owns
