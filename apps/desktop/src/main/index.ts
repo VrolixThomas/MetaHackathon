@@ -3,7 +3,7 @@ import { existsSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { promisify } from "node:util";
-import { BrowserWindow, app, safeStorage, shell, systemPreferences } from "electron";
+import { BrowserWindow, app, dialog, safeStorage, shell, systemPreferences } from "electron";
 import electronUpdater from "electron-updater";
 import { MicrophoneStatusSchema } from "../shared/contracts";
 import { EnvConfiguration } from "./config/env";
@@ -20,6 +20,7 @@ import {
 	initializeBrowser,
 	initializeConfiguration,
 	initializeConfigurationPorts,
+	initializeReviews,
 	initializeRuntime,
 	initializeVoice,
 } from "./services";
@@ -114,6 +115,15 @@ app
 			credentialStore: config,
 			createPreviewPage: createElectronPreviewPage,
 			submissionLedger: database.runtime,
+		});
+		initializeReviews(database.reviews, async () => {
+			if (!mainWindow || mainWindow.isDestroyed()) throw new Error("App window is unavailable");
+			const selection = await dialog.showOpenDialog(mainWindow, {
+				title: "Connect a local GitHub repository",
+				properties: ["openDirectory"],
+			});
+			if (selection.canceled || !selection.filePaths[0]) return null;
+			return getRuntime().describeRepository(selection.filePaths[0], AbortSignal.timeout(15_000));
 		});
 		initializeBrowser({
 			openPreview: browserPreviewOpener(getRuntime),

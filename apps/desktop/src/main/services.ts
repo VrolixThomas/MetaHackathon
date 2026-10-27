@@ -1,8 +1,11 @@
 import { TRPCError } from "@trpc/server";
+import type { ReviewCache } from "../shared/contracts";
 import { ConversationService } from "./agent/conversation";
 import { MetaClient } from "./agent/meta-client";
+import { prepareReview } from "./agent/prepare-review";
 import { ScreenContextStore } from "./agent/screen-context";
 import { createAgentComposition } from "./composition";
+import { ReviewCoordinator } from "./composition/reviews";
 import { type VoiceCompositionOptions, createVoiceComposition } from "./composition/voice";
 import type { EnvConfiguration } from "./config/env";
 import type { AppConfigurationPorts } from "./config/router";
@@ -17,6 +20,8 @@ let browserOptions: BrowserServiceOptions | undefined;
 let voice: ReturnType<typeof createVoiceComposition> | undefined;
 let configuration: EnvConfiguration | undefined;
 let configurationPorts: AppConfigurationPorts | undefined;
+let reviews: ReviewCoordinator | undefined;
+let chooseRepository: (() => Promise<{ repository: string; localPath: string } | null>) | undefined;
 export const screenContexts = new ScreenContextStore();
 export const agentComposition = createAgentComposition({
 	getRuntime: runtimeForActiveJobs,
@@ -42,7 +47,60 @@ const conversationClient = new MetaClient({
 });
 export const conversationService = new ConversationService(conversationClient, {
 	getContext: (prId, signal) => getRuntime().github.prContext(prId, signal),
+	review: {
+		getReady: (prId, signal) => getReviews().getReady(prId, signal),
+		getProgress: (prId, signal) => getReviews().getProgress(prId, signal),
+		getScreen: (sessionId, initial) => getReviews().getScreen(sessionId, initial),
+		navigate: (prId, request, signal) => getReviews().navigate(prId, request, signal),
+		getFile: (prId, reviewId, path, signal) => getReviews().file({ prId, reviewId, path }, signal),
+	},
+	actionReceipts: {
+		updateScreen: (receipt, navigation, signal) =>
+			getReviews().actionApplied(receipt, navigation, signal),
+	},
 });
+
+export function initializeReviews(
+	store: {
+		load(): ReviewCache | Promise<ReviewCache>;
+		save(cache: ReviewCache): void | Promise<void>;
+	},
+	picker: () => Promise<{ repository: string; localPath: string } | null>
+): void {
+	chooseRepository = picker;
+	reviews = new ReviewCoordinator({
+		loadCache: () => store.load(),
+		saveCache: (cache) => store.save(cache),
+		listOpen: (repository, signal) =>
+			runtimeForActiveJobs().repositoryPullRequests(repository, signal),
+		readPR: (prId, signal) => {
+			const match = /^([^#]+)#([1-9][0-9]*)$/.exec(prId);
+			if (!match) throw new Error("Invalid pull request identifier");
+			return runtimeForActiveJobs().github.readPullRequest(
+				match[1] ?? "",
+				Number(match[2]),
+				signal
+			);
+		},
+		getContext: (prId, signal) => runtimeForActiveJobs().prContext(prId, signal),
+		readFile: (input, localPath, signal) =>
+			runtimeForActiveJobs().reviewFile(input, signal, localPath ?? undefined),
+		validateLocal: (path, repository, signal) =>
+			runtimeForActiveJobs().validateLocalRepository(path, repository, signal),
+		prepare: (context, signal) => prepareReview(conversationClient, context, signal),
+	});
+	void reviews
+		.initialize()
+		.catch(() => console.warn("Saved review connection could not initialize."));
+}
+export function getReviews(): ReviewCoordinator {
+	if (closing || !reviews) throw new Error("Review preparation is unavailable");
+	return reviews;
+}
+export function pickReviewRepository(): Promise<{ repository: string; localPath: string } | null> {
+	if (closing || !chooseRepository) throw new Error("Repository picker is unavailable");
+	return chooseRepository();
+}
 
 export function initializeConfiguration(value: EnvConfiguration): void {
 	configuration = value;
@@ -130,6 +188,7 @@ export async function disposeRuntime(): Promise<void> {
 			await voice?.dispose();
 		} finally {
 			await conversationService.dispose();
+			await reviews?.dispose();
 			// Drain provider, confirmation and source jobs while runtime/ledger remain available.
 			await agentComposition.dispose();
 		}

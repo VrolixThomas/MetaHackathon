@@ -1,8 +1,11 @@
-import { router } from "..";
+import { z } from "zod";
+import { mergeRouters, publicProcedure, router } from "..";
+import { GitHubRepositorySchema } from "../../../shared/contracts";
 import { createConversationRouter } from "../../agent/conversation-router";
 import { createAgentScreenRouter } from "../../agent/screen-context";
 import { createCompositionRouters } from "../../composition";
 import { createBrowserRouter } from "../../composition/browser-router";
+import { createReviewRouter } from "../../composition/reviews-router";
 import { createConfiguredVoiceRouter } from "../../composition/voice";
 import { createAppConfigurationRouter } from "../../config/router";
 import { createRuntimeRouter } from "../../runtime/router";
@@ -11,8 +14,10 @@ import {
 	conversationService,
 	getBrowser,
 	getConfigurationPorts,
+	getReviews,
 	getRuntime,
 	getVoice,
+	pickReviewRepository,
 	screenContexts,
 } from "../../services";
 import { bootstrapRouter } from "./bootstrap";
@@ -21,6 +26,18 @@ import { bootstrapRouter } from "./bootstrap";
 export const appRouter = router({
 	app: createAppConfigurationRouter(getConfigurationPorts),
 	conversation: createConversationRouter(conversationService),
+	reviews: mergeRouters(
+		createReviewRouter(getReviews),
+		router({
+			chooseRepository: publicProcedure
+				.output(
+					z
+						.strictObject({ repository: GitHubRepositorySchema, localPath: z.string().min(1) })
+						.nullable()
+				)
+				.mutation(pickReviewRepository),
+		})
+	),
 	bootstrap: bootstrapRouter,
 	runtime: createRuntimeRouter(getRuntime),
 	browser: createBrowserRouter(getBrowser),
