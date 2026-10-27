@@ -2,6 +2,7 @@ import { z } from "zod";
 import { ScenarioRequestSchema } from "./artifacts";
 import { BrowserStateSchema } from "./browser";
 import { CodeLocationSchema, IdSchema } from "./common";
+import { ReviewNavigationSchema, ReviewScreenSchema } from "./prepared-review";
 import { DraftedCommentSchema } from "./review";
 
 export const ScreenContextSchema = z.strictObject({
@@ -41,6 +42,12 @@ export const AgentActionReceiptSchema = z.strictObject({
 export const AgentActionReceiptResultSchema = z.strictObject({
 	status: z.enum(["accepted", "stale"]),
 });
+export const ConversationActionReceiptSchema = z.strictObject({
+	...TurnIdentitySchema.shape,
+	requestId: IdSchema,
+	status: z.enum(["applied", "ignored"]),
+	screen: ReviewScreenSchema,
+});
 export const AgentTurnInputSchema = z.strictObject({
 	...TurnIdentitySchema.shape,
 	requestId: IdSchema,
@@ -54,6 +61,11 @@ const actionFields = {
 	screenSequence: z.int().nonnegative(),
 };
 export const AgentActionSchema = z.discriminatedUnion("kind", [
+	z.strictObject({
+		...actionFields,
+		kind: z.literal("review-navigation"),
+		navigation: ReviewNavigationSchema,
+	}),
 	z.strictObject({ ...actionFields, kind: z.literal("show-browser"), browser: BrowserStateSchema }),
 	z.strictObject({
 		...actionFields,
@@ -116,6 +128,7 @@ export type ScreenContext = z.infer<typeof ScreenContextSchema>;
 export type ScreenContextUpdate = z.infer<typeof ScreenContextUpdateSchema>;
 export type AgentActionReceipt = z.infer<typeof AgentActionReceiptSchema>;
 export type AgentActionReceiptResult = z.infer<typeof AgentActionReceiptResultSchema>;
+export type ConversationActionReceipt = z.infer<typeof ConversationActionReceiptSchema>;
 export type TurnIdentity = z.infer<typeof TurnIdentitySchema>;
 export type AgentTurnInput = z.infer<typeof AgentTurnInputSchema>;
 export type AgentAction = z.infer<typeof AgentActionSchema>;
