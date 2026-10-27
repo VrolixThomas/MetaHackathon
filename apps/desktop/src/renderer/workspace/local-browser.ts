@@ -23,6 +23,19 @@ export function createLocalBrowserController(call: ConversationApi["call"]) {
 	let latestBounds: BrowserBounds | null = null;
 	let presentations = Promise.resolve();
 	let lastPresentation: string | undefined;
+	let presentationEpoch = 0;
+	async function sendPresentation(input: {
+		bounds: BrowserBounds | null;
+		viewport?: BrowserViewport;
+	}) {
+		const key = JSON.stringify(input);
+		if (key === lastPresentation) return;
+		const current = ++presentationEpoch;
+		// A pending show may already be visible, even if the last settled call hid it.
+		lastPresentation = undefined;
+		await call("mutation", "localBrowser.present", input);
+		if (current === presentationEpoch) lastPresentation = key;
+	}
 	function queuePresentation(viewport?: BrowserViewport) {
 		const next = presentations
 			.catch(() => {})
@@ -32,16 +45,15 @@ export function createLocalBrowserController(call: ConversationApi["call"]) {
 					bounds: latestBounds,
 					...(viewport ? { viewport } : {}),
 				});
-				const key = JSON.stringify(input);
-				if (key === lastPresentation) return;
-				await call("mutation", "localBrowser.present", input);
-				lastPresentation = key;
+				await sendPresentation(input);
 			});
 		presentations = next;
 		return next;
 	}
 	function present(bounds: BrowserBounds | null) {
 		latestBounds = LocalBrowserPresentSchema.parse({ bounds }).bounds;
+		// Native views sit above dialogs. A hide must reach main even while a show RPC is stalled.
+		if (latestBounds === null) return sendPresentation({ bounds: null });
 		return queuePresentation();
 	}
 	function schedule() {

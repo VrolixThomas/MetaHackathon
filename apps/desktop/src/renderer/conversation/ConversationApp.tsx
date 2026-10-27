@@ -256,7 +256,7 @@ export function ConversationApp({
 					>
 						<div className="primary-work" hidden={!reviewOpen && conversationOpen}>
 							{reviewOpen ? (
-								<ReviewWorkspace controller={reviews} onPause={() => controller.stop()} />
+								<ReviewWorkspace controller={reviews} onInteraction={controller.interruptReply} />
 							) : (
 								<div className="review-empty">
 									<span className="eyebrow">Review workspace</span>
@@ -310,7 +310,10 @@ export function ConversationApp({
 										type="button"
 										className="quiet"
 										aria-label="Remove PR context"
-										onClick={() => void controller.selectPR(null)}
+										onClick={() => {
+											controller.interruptReply();
+											void controller.selectPR(null);
+										}}
 									>
 										×
 									</button>
@@ -405,6 +408,7 @@ export function ConversationApp({
 						controller={reviews}
 						onSelect={(detail) => {
 							closeOverlay();
+							controller.interruptReply();
 							void reviews.open(detail.pr.id);
 						}}
 					/>

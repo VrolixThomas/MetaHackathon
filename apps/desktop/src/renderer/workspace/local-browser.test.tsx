@@ -128,13 +128,60 @@ it("a queued viewport change cannot reveal a pane hidden while presentation was 
 		const presenting = controller.present({ x: 500, y: 100, width: 500, height: 600 });
 		await Promise.resolve();
 		await Promise.resolve();
+		const queuedShow = controller.present({ x: 510, y: 100, width: 490, height: 600 });
 		const resizing = controller.setViewport("phone");
 		const hidden = controller.present(null);
+		assert.equal(calls.at(-1)?.bounds, null, "Hide is dispatched before the held show resolves");
 		finish();
-		await Promise.all([presenting, resizing, hidden]);
+		await Promise.all([presenting, queuedShow, resizing, hidden]);
 		assert.equal(calls.find((call) => call.viewport)?.bounds, null);
 		assert.equal(calls.at(-1)?.bounds, null);
+		assert.ok(calls.slice(1).every((call) => call.bounds === null));
 	} finally {
+		finish();
+		controller.dispose();
+	}
+});
+
+it("priority hide settles during a held show and its late completion cannot suppress restoration", async () => {
+	const bounds = { x: 500, y: 100, width: 500, height: 600 };
+	const calls: unknown[] = [];
+	let finish = () => {};
+	let entered = () => {};
+	const started = new Promise<void>((resolve) => {
+		entered = resolve;
+	});
+	const controller = createLocalBrowserController(async (_type, path, input) => {
+		if (path !== "localBrowser.present") return;
+		calls.push(input);
+		if (calls.length === 1)
+			await new Promise<void>((resolve) => {
+				finish = resolve;
+				entered();
+			});
+	});
+	try {
+		const showing = controller.present(bounds);
+		await started;
+		let hidden = false;
+		const hiding = controller.present(null).then(() => {
+			hidden = true;
+		});
+		await new Promise((resolve) => setTimeout(resolve, 0));
+		assert.equal(hidden, true, "A dialog can open before the old presentation RPC completes");
+		assert.deepEqual(calls, [{ bounds }, { bounds: null }]);
+		finish();
+		await Promise.all([showing, hiding]);
+		await controller.present(bounds);
+		assert.deepEqual(
+			calls,
+			[{ bounds }, { bounds: null }, { bounds }],
+			"The old show must not replace the hide cache"
+		);
+		await controller.present(bounds);
+		assert.equal(calls.length, 3, "Current settled bounds still deduplicate");
+	} finally {
+		finish();
 		controller.dispose();
 	}
 });

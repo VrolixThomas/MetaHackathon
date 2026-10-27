@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { type ButtonHTMLAttributes, useEffect, useRef, useState } from "react";
 import { useStore } from "zustand";
 import type { PreparedController } from "./controller";
 import { patchLines, sourceLines } from "./diff";
@@ -72,10 +72,27 @@ export function CompactExplanation({ label, text }: { label: string; text: strin
 	);
 }
 
+/** Only explicit review controls interrupt narration; observing agent-driven state never does. */
+export function ReviewActionButton({
+	onInteraction,
+	...props
+}: ButtonHTMLAttributes<HTMLButtonElement> & { onInteraction?: () => void }) {
+	return (
+		<button
+			{...props}
+			onClick={(event) => {
+				if (props.disabled) return;
+				onInteraction?.();
+				props.onClick?.(event);
+			}}
+		/>
+	);
+}
+
 export function ReviewWorkspace({
 	controller,
-	onPause,
-}: { controller: PreparedController; onPause(): void }) {
+	onInteraction,
+}: { controller: PreparedController; onInteraction(): void }) {
 	const state = useStore(controller.store);
 	const [view, setView] = useState<"diff" | "base" | "head">("diff");
 	const content = useRef<HTMLDivElement>(null);
@@ -133,9 +150,14 @@ export function ReviewWorkspace({
 				<div>
 					<strong title={file?.path}>{file?.path ?? "Opening review…"}</strong>
 				</div>
-				<button type="button" className="quiet" onClick={controller.close}>
+				<ReviewActionButton
+					type="button"
+					className="quiet"
+					onInteraction={onInteraction}
+					onClick={controller.close}
+				>
 					Back to chat
-				</button>
+				</ReviewActionButton>
 			</header>
 			{state.reviewError && (
 				<p className="review-error" role="alert">
@@ -143,36 +165,38 @@ export function ReviewWorkspace({
 				</p>
 			)}
 			<div className="review-navigation">
-				<button
+				<ReviewActionButton
 					type="button"
+					onInteraction={onInteraction}
 					disabled={state.fileBusy || state.stale || index <= 0}
 					onClick={() => void controller.move(-1)}
 				>
 					Back
-				</button>
+				</ReviewActionButton>
 				<span className="tour-progress">
 					{index >= 0 ? `File ${index + 1} of ${plan?.files.length}` : "—"}
 				</span>
-				<button
+				<ReviewActionButton
 					type="button"
+					onInteraction={onInteraction}
 					disabled={
 						state.fileBusy || state.stale || index < 0 || index >= (plan?.files.length ?? 0) - 1
 					}
 					onClick={() => void controller.move(1)}
 				>
 					Next
-				</button>
-				<button
+				</ReviewActionButton>
+				<ReviewActionButton
 					type="button"
+					onInteraction={onInteraction}
 					className="pause-review"
 					disabled={state.fileBusy || state.stale || !file}
 					onClick={() => {
-						if (!state.paused) onPause();
 						void controller.pause(!state.paused);
 					}}
 				>
 					{state.paused ? "Resume review" : "Pause review"}
-				</button>
+				</ReviewActionButton>
 				<span className="review-pause-state">{state.paused ? "Paused" : "Guided review"}</span>
 			</div>
 			{state.fileBusy && <output className="review-loading">Loading pinned source…</output>}
@@ -186,14 +210,15 @@ export function ReviewWorkspace({
 				<>
 					<nav className="source-tabs" aria-label="File view">
 						{(["diff", "base", "head"] as const).map((tab) => (
-							<button
+							<ReviewActionButton
 								type="button"
+								onInteraction={view === tab ? undefined : onInteraction}
 								key={tab}
 								aria-pressed={view === tab}
 								onClick={() => setView(tab)}
 							>
 								{{ diff: "Changes", base: "Before", head: "After" }[tab]}
-							</button>
+							</ReviewActionButton>
 						))}
 						<span>
 							{view === "base"
@@ -308,15 +333,18 @@ export function ReviewWorkspace({
 							<ol>
 								{plan.files.map((entry) => (
 									<li key={entry.path}>
-										<button
+										<ReviewActionButton
 											type="button"
+											onInteraction={entry.path === file?.path ? undefined : onInteraction}
 											className="quiet"
 											aria-current={entry.path === file?.path ? "step" : undefined}
 											disabled={state.fileBusy || state.stale}
-											onClick={() => void controller.showPath(entry.path)}
+											onClick={() => {
+												if (entry.path !== file?.path) void controller.showPath(entry.path);
+											}}
 										>
 											{entry.path}
-										</button>
+										</ReviewActionButton>
 										<p>{cleanExplanation(entry.reason)}</p>
 									</li>
 								))}

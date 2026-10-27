@@ -330,7 +330,7 @@ it("renders only the fetched plan/source and labels suggested comments as unpost
 		const html = renderToStaticMarkup(
 			createElement(ReviewWorkspace, {
 				controller: { ...h.ui, store: { ...h.ui.store, getInitialState: h.ui.store.getState } },
-				onPause() {},
+				onInteraction() {},
 			})
 		);
 		assert.match(html, /Why a.ts/);

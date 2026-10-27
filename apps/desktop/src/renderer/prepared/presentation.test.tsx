@@ -1,8 +1,16 @@
 import assert from "node:assert/strict";
 import { it } from "node:test";
+import type { MouseEvent } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import type { PreparedReview, ReviewFile } from "../../shared/contracts";
-import { ReviewWorkspace, cleanExplanation, explanationPreview } from "./ReviewWorkspace";
+import { createConversationApi } from "../conversation/api";
+import { createConversationController } from "../conversation/controller";
+import {
+	ReviewActionButton,
+	ReviewWorkspace,
+	cleanExplanation,
+	explanationPreview,
+} from "./ReviewWorkspace";
 import { createPreparedApi } from "./api";
 import { createPreparedController } from "./controller";
 
@@ -15,6 +23,49 @@ it("shortens cached prose only in the preview and retains uncertainty", () => {
 		"Inferred from partial source; intent is unknown."
 	);
 	assert.ok(explanationPreview("word ".repeat(100)).length <= 170);
+});
+
+it("manual review controls retire the reply before navigation while leaving hands-free armed", () => {
+	const events: string[] = [];
+	const conversation = createConversationController(
+		createConversationApi(async () => {
+			throw new Error("No IPC expected");
+		})
+	);
+	conversation.attachHandsFree({
+		start: async () => {},
+		stop: () => events.push("stop-mic"),
+		interrupt: () => events.push("interrupt"),
+	});
+	conversation.store.setState({ handsFree: true });
+	const turn = conversation.allocateIdentity();
+	conversation.beginVoice(turn);
+	try {
+		const button = ReviewActionButton({
+			onInteraction: conversation.interruptReply,
+			onClick: () => {
+				assert.equal(conversation.store.getState().active, null);
+				assert.equal(conversation.store.getState().handsFree, true);
+				events.push("navigate");
+			},
+		});
+		// Rendering or changing observed source is not a user interaction.
+		renderToStaticMarkup(button);
+		assert.deepEqual([...events], []);
+		button.props.onClick({} as MouseEvent<HTMLButtonElement>);
+		assert.deepEqual([...events], ["interrupt", "navigate"]);
+		conversation.answer(turn, "Old file narration arriving late");
+		assert.equal(conversation.store.getState().exchanges.at(-1)?.answer, "");
+		assert.equal(conversation.store.getState().handsFree, true);
+		ReviewActionButton({
+			disabled: true,
+			onInteraction: conversation.interruptReply,
+			onClick: () => events.push("disabled-navigation"),
+		}).props.onClick({} as MouseEvent<HTMLButtonElement>);
+		assert.deepEqual([...events], ["interrupt", "navigate"]);
+	} finally {
+		conversation.dispose();
+	}
 });
 
 it("keeps complete cached notes behind closed disclosures and preserves pinned code identity", () => {
@@ -90,7 +141,7 @@ it("keeps complete cached notes behind closed disclosures and preserves pinned c
 					...controller,
 					store: { ...controller.store, getInitialState: controller.store.getState },
 				}}
-				onPause={() => {}}
+				onInteraction={() => {}}
 			/>
 		);
 		assert.match(html, /What changes/);
