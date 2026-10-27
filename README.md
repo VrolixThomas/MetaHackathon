@@ -1,9 +1,9 @@
 # MetaHackathon
 
-A macOS workspace for investigating GitHub pull requests. The renderer provides the review
-sidebar, diff/Why lens and artifacts. Integration supplies validated contracts, a real local
-Git/scenario/preview runtime, and main-process agent APIs. Live agent/voice UI bindings and
-provider acceptance remain tracked integration work.
+A macOS workspace for investigating GitHub pull requests by conversation. A compact transcript
+sits alongside the main browser, code, scenario or diagram surface. The agent observes and
+operates the same persistent browser page the reviewer sees. Desktop is the default viewport;
+phone is available on request. GitHub comments always require explicit confirmation.
 
 ## Built during the hackathon
 
@@ -66,6 +66,35 @@ bun run format
 `bun run build` writes the main process, preload, and renderer to `apps/desktop/out`.
 To run that production build locally, use `bun run --filter @metahackathon/desktop preview`.
 
+Use `hack/integration` for the combined application; the other branches feed implementation
+handoffs into it. On this machine the launch checkout is
+`/Users/Werk/Documents/Repositories/MetaHackathon-worktrees/integration`.
+Load the local demo once, then use the conversation or hold-to-talk control:
+
+1. “Walk me through this PR.”
+2. “Show me the checkout.”
+3. “Apply the promo code.”
+4. “Show it on a phone.”
+5. “Scroll to the payment button.”
+6. “Show me the code responsible.”
+7. “Compare what happens before this PR.”
+
+Typed agent turns require a Meta key in Settings. Browser controls, pinned source reads and
+local scenario execution work without provider credentials. For speech, install the pinned
+Python environment once (Python 3.13), then save Meta/ElevenLabs keys and a voice ID in Settings:
+
+```sh
+python3.13 -m venv services/voice/.venv
+services/voice/.venv/bin/python -m pip install -r services/voice/requirements.lock
+```
+
+Choose Prepare voice and wait for Ready before capture. Local startup can take up to three
+minutes on the first launch; readiness does not prove live provider entitlement. Keys remain
+in the OS-encrypted main-process store. `METAHACKATHON_VOICE_PYTHON` can select an existing
+Python executable; `ELEVENLABS_VOICE_ID` supplies an optional default public voice identifier.
+Interruption stops audio and cancels the active agent/voice turn. Closing the review window
+shuts down its browser, voice sidecar, preview servers and owned worktrees.
+
 ## Layout
 
 ```text
@@ -126,6 +155,12 @@ catalog lookup and ordered screen updates. Preparation includes bounded, verbati
 excerpts pinned to repository/SHA/line ranges, so the model receives code as well as triage
 metadata. Excerpts do not claim recorded intent or execution. Without a configured Meta key,
 the native check verifies acknowledgement and the explicit setup error without an external call.
+
+The `browser` router owns one visible page per review session and exposes validated navigation,
+observation, click, type, scroll and viewport commands. It restricts the page to its owned preview
+origin. Ref-based actions reject stale observations. The `voice` router adds readiness/setup and
+the generation-aware speech pipeline. Scripted-provider acceptance tests exercise real local
+browser/scenario results but are separate from live microphone, STT, model and TTS verification.
 
 ## Local packaging
 

@@ -1,5 +1,5 @@
 import { AsyncLocalStorage } from "node:async_hooks";
-import { createHash } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import { appendFileSync, mkdirSync } from "node:fs";
 import { join } from "node:path";
 import { isDeepStrictEqual } from "node:util";
@@ -29,6 +29,7 @@ export interface AgentCompositionOptions extends ReviewOptions {
 	getDataDirectory: () => string;
 	/** Supply the store registered under root screen; do not create a second screen cache. */
 	screenContexts: ScreenContextStore;
+	browser?: AgentPorts["browser"];
 	fetch?: typeof fetch;
 	/** Main chooses exports/anchors; composition reads their committed source text. */
 	scenarioTargets?: (
@@ -143,6 +144,20 @@ export function createAgentComposition(options: AgentCompositionOptions) {
 			}, signal),
 	});
 	const ports: AgentPorts = {
+		browser: options.browser,
+		runScenario: (prId, signal) =>
+			jobs.run(async (active) => {
+				const runtime = options.getRuntime();
+				const requestId = `agent-scenario:${randomUUID()}`;
+				const cancel = () => runtime.cancel(requestId);
+				active.addEventListener("abort", cancel, { once: true });
+				try {
+					active.throwIfAborted();
+					return (await runtime.runScenario(requestId, prId, "C")).trace;
+				} finally {
+					active.removeEventListener("abort", cancel);
+				}
+			}, signal),
 		getPreparation: (prId, signal) => review.prepare(prId, signal),
 		getScreenContext: (sessionId, initial) =>
 			jobs.run(async (signal) => {

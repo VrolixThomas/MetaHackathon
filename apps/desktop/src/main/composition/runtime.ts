@@ -46,9 +46,14 @@ export class CatalogRuntimeService extends RuntimeService {
 		});
 	}
 
-	override startPreview(requestId: string, prId: string, mode: "phone" | "desktop") {
+	override startPreview(
+		requestId: string,
+		prId: string,
+		mode: "phone" | "desktop",
+		revision: "base" | "head" = "head"
+	) {
 		return this.capture(requestId, async (signal) => {
-			const preview = await super.startPreview(requestId, prId, mode);
+			const preview = await super.startPreview(requestId, prId, mode, revision);
 			try {
 				signal.throwIfAborted();
 				return await this.catalog.savePreview(preview, signal);
