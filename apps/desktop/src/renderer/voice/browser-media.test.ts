@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
+import { VoiceDiagnosticError } from "../../main/voice/diagnostics";
 import { createBrowserMediaFactory } from "./browser-media";
 
 function deferred<T>() {
@@ -119,6 +120,33 @@ test("browser media stops late permission stream after close without negotiating
 	assert.equal(offers, 0);
 	assert.equal(b.peer.connectionState, "closed");
 	assert.equal(b.context.state, "closed");
+});
+
+test("microphone denial, missing device and unavailable device have precise safe messages", async () => {
+	for (const [name, code, message] of [
+		["NotAllowedError", "denied", /blocked for this app/],
+		["NotFoundError", "not-found", /No microphone/],
+		["NotReadableError", "busy", /unavailable or in use/],
+	] as const) {
+		const b = browser();
+		b.setPermission(async () => {
+			throw new DOMException("private-device-detail", name);
+		});
+		await assert.rejects(
+			b.media.connect(
+				async () => ({ type: "answer", sdp: "unused" }),
+				new AbortController().signal
+			),
+			(error: Error) => {
+				assert.ok(error instanceof VoiceDiagnosticError);
+				assert.deepEqual(error.diagnostic, { stage: "microphone", code });
+				assert.match(error.message, message);
+				assert.equal(error.message.includes("private-device-detail"), false);
+				return true;
+			}
+		);
+		assert.equal(b.peer.connectionState, "closed");
+	}
 });
 
 test("browser offer has gathered SDP, mic track, pipecat channel, no STUN; release preserves receiving peer", async () => {

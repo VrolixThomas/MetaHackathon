@@ -110,6 +110,8 @@ export type VoiceControllerOptions = {
 	id?: () => string;
 	pollIntervalMs?: number;
 	rpcTimeoutMs?: number;
+	/** Whole media setup budget, including human permission prompt; defaults to 90 seconds. */
+	mediaSetupTimeoutMs?: number;
 	turnTimeoutMs?: number;
 	speechTimeoutMs?: number;
 };

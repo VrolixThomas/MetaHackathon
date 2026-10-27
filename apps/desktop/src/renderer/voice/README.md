@@ -185,11 +185,16 @@ activates Chromium's RTC decoder; only the Web Audio graph is audible. See
 [Chromium receive-stream issue](https://issues.chromium.org/issues/40094084).
 
 Defaults: 50 ms polling; at most 100 events per page; 32,000 answer characters; 256 action IDs;
-128 queued speech chunks of at most 1,000 characters (ack copy may be up to 4,000); 15 s RPC/setup,
+128 queued speech chunks of at most 1,000 characters (ack copy may be up to 4,000); 15 s per RPC,
+90 s whole media setup (including a separate 60 s microphone permission budget),
 45 s speech-ended, 10 s continuous-audio drain, and 180 s whole-turn limits. ICE gathering has a
 5 s limit and peer connection a 10 s limit. Overflow/timeouts fail and cancel explicitly. Timers,
 listeners and media are cleaned on interruption/disposal. `pollIntervalMs`, `rpcTimeoutMs`,
-`speechTimeoutMs` and `turnTimeoutMs` are configurable for composition/testing.
+`speechTimeoutMs`, `mediaSetupTimeoutMs` and `turnTimeoutMs` are configurable for composition/testing.
+The browser factory also accepts `permissionTimeoutMs`. Permission denial, missing microphone and
+unavailable/in-use input return canonical messages with a `VoiceDiagnosticError` from the app's own
+capture attempt. A separate launcher's microphone permission is not evidence about this app.
+The first turn failure remains the reported failure even when media close or cancellation also fails.
 
 ## Validation
 

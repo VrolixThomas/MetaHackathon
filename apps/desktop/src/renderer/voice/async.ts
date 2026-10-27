@@ -6,7 +6,8 @@ export function aborted(): Error {
 export function bounded<T>(
 	promise: Promise<T>,
 	signal: AbortSignal,
-	timeoutMs: number
+	timeoutMs: number,
+	timeoutError: Error = new Error("Voice operation timed out")
 ): Promise<T> {
 	return new Promise((resolve, reject) => {
 		const finish = (operation: () => void) => {
@@ -15,10 +16,7 @@ export function bounded<T>(
 			operation();
 		};
 		const cancel = () => finish(() => reject(aborted()));
-		const timer = setTimeout(
-			() => finish(() => reject(new Error("Voice operation timed out"))),
-			timeoutMs
-		);
+		const timer = setTimeout(() => finish(() => reject(timeoutError)), timeoutMs);
 		// Always attach rejection handlers, including when already cancelled.
 		promise.then(
 			(value) => finish(() => resolve(value)),

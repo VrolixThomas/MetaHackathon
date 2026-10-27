@@ -284,6 +284,59 @@ test("keyup during permission/setup cancels synchronously and cannot resume late
 	assert.equal(h.starts.length, 0);
 });
 
+test("human media setup can outlast the RPC deadline while the offer remains bounded", async () => {
+	const ready = deferred<void>();
+	const h = harness({
+		rpcTimeoutMs: 100,
+		mediaSetupTimeoutMs: 1000,
+		media: () => ({
+			connect: async (offer) => {
+				await ready.promise;
+				await offer({ type: "offer", sdp: "offer" });
+			},
+			close() {},
+			stopCapture() {},
+			drain: async () => {},
+		}),
+	});
+	h.controller.beginCapture();
+	await new Promise((resolve) => setTimeout(resolve, 150));
+	assert.equal(h.controller.connecting, true);
+	assert.deepEqual(h.errors, []);
+	h.options.voice.offer = () => new Promise(() => {});
+	ready.resolve();
+	await until(() => h.controller.getPhase() === "error");
+	assert.equal(h.cancels.voice.length, 1);
+	assert.equal(h.cancels.agent.length, 1);
+});
+
+test("the first failure survives synchronous media teardown and late cancellation errors", async () => {
+	const first = new Error("Primary microphone failure");
+	const h = harness({
+		media: () => ({
+			connect: async () => {
+				throw first;
+			},
+			close: () => {
+				throw new Error("Secondary close failure");
+			},
+			stopCapture() {},
+			drain: async () => {},
+		}),
+	});
+	h.options.voice.cancel = async () => {
+		throw new Error("Secondary cancel failure");
+	};
+	h.options.agent.cancel = async () => {
+		throw new Error("Secondary agent cancel failure");
+	};
+	h.controller.beginCapture();
+	await until(() => h.controller.getPhase() === "error");
+	await wait();
+	assert.equal(h.controller.getSnapshot().error, first.message);
+	assert.deepEqual(h.errors, [first]);
+});
+
 test("release stops capture but preserves peer, accepts one final, starts agent and ack concurrently", async () => {
 	const h = harness();
 	await h.capture();

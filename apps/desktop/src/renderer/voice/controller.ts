@@ -1,3 +1,4 @@
+import { VoiceDiagnosticError } from "../../main/voice/diagnostics";
 import {
 	SpeakSchema,
 	VoiceAnswerSchema,
@@ -63,6 +64,7 @@ type Turn = {
 	agentDone: boolean;
 	speaking: boolean;
 	hasAnswer: boolean;
+	failure: Error | null;
 };
 
 export function sameTurn(left: TurnIdentity, right: TurnIdentity): boolean {
@@ -86,6 +88,7 @@ export function createVoiceController(options: VoiceControllerOptions): VoiceCon
 			: SpeakSchema.shape.text.parse(options.completionText.trim());
 	const pollInterval = Math.max(10, options.pollIntervalMs ?? 50);
 	const rpcTimeout = Math.max(100, options.rpcTimeoutMs ?? 15_000);
+	const mediaSetupTimeout = Math.max(100, options.mediaSetupTimeoutMs ?? 90_000);
 	const speechTimeout = Math.max(100, options.speechTimeoutMs ?? 45_000);
 	const turnTimeout = Math.max(100, options.turnTimeoutMs ?? 180_000);
 	const listeners = new Set<() => void>();
@@ -122,6 +125,17 @@ export function createVoiceController(options: VoiceControllerOptions): VoiceCon
 		}
 	};
 	const rpc = <T>(turn: Turn, work: Promise<T>) => bounded(work, turn.abort.signal, rpcTimeout);
+	const reportCleanup = (turn: Turn, error: unknown) => {
+		if (
+			turn.failure ||
+			disposed ||
+			state.turnId !== turn.identity.turnId ||
+			state.generation !== turn.identity.generation
+		)
+			return;
+		turn.failure = asError(error);
+		report(turn.failure);
+	};
 
 	// Cancellation has its own signal: aborting the capture transport must not abort the cancel RPC.
 	function cancelRemote(turn: Turn, reason: CancelTurnInput["reason"], target?: "voice" | "agent") {
@@ -133,7 +147,7 @@ export function createVoiceController(options: VoiceControllerOptions): VoiceCon
 						options.voice.cancel(TurnIdentitySchema.parse(turn.identity), signal),
 						signal,
 						rpcTimeout
-					).catch(report);
+					).catch((error) => reportCleanup(turn, error));
 					continue;
 				}
 				const input = CancelTurnInputSchema.parse({ ...turn.identity, requestId: id(), reason });
@@ -143,9 +157,9 @@ export function createVoiceController(options: VoiceControllerOptions): VoiceCon
 						if (!sameTurn(parsed, input) || parsed.requestId !== input.requestId)
 							throw new Error("Mismatched cancellation result");
 					})
-					.catch(report);
+					.catch((error) => reportCleanup(turn, error));
 			} catch (error) {
-				report(error);
+				reportCleanup(turn, error);
 			}
 		}
 	}
@@ -161,13 +175,14 @@ export function createVoiceController(options: VoiceControllerOptions): VoiceCon
 		try {
 			turn.media?.close();
 		} catch (error) {
-			report(error);
+			reportCleanup(turn, error);
 		}
 	}
 
 	function stop(reason: CancelTurnInput["reason"], error?: Error) {
 		const turn = active;
 		if (!turn) return;
+		if (error) turn.failure ??= error;
 		detach(turn);
 		cancelRemote(turn, reason);
 		publish({
@@ -471,8 +486,7 @@ export function createVoiceController(options: VoiceControllerOptions): VoiceCon
 	async function connect(turn: Turn) {
 		try {
 			if (!turn.media) throw new Error("Voice media unavailable");
-			await rpc(
-				turn,
+			await bounded(
 				turn.media.connect(async (description) => {
 					if (!live(turn)) throw new Error("Voice turn cancelled");
 					const offer = VoiceOfferSchema.parse({
@@ -483,7 +497,10 @@ export function createVoiceController(options: VoiceControllerOptions): VoiceCon
 					return VoiceAnswerSchema.parse(
 						await allocation(turn, "voice", () => options.voice.offer(offer, turn.abort.signal))
 					);
-				}, turn.abort.signal)
+				}, turn.abort.signal),
+				turn.abort.signal,
+				mediaSetupTimeout,
+				new VoiceDiagnosticError({ stage: "media", code: "timeout" })
 			);
 			if (!live(turn)) return;
 			turn.ready = true;
@@ -546,6 +563,7 @@ export function createVoiceController(options: VoiceControllerOptions): VoiceCon
 				agentDone: false,
 				speaking: false,
 				hasAnswer: false,
+				failure: null,
 			};
 			active = turn;
 			publish({

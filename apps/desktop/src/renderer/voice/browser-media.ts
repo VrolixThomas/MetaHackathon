@@ -1,3 +1,4 @@
+import { VoiceDiagnosticError } from "../../main/voice/diagnostics";
 import { VoiceAnswerSchema } from "../../main/voice/protocol";
 import { aborted, asError, bounded, delay } from "./async";
 import type { MediaFactory, VoiceMedia } from "./types";
@@ -10,6 +11,7 @@ export type BrowserMediaOptions = {
 	now?: () => number;
 	iceTimeoutMs?: number;
 	connectionTimeoutMs?: number;
+	permissionTimeoutMs?: number;
 	rmsThreshold?: number;
 };
 
@@ -93,7 +95,7 @@ export function createBrowserMediaFactory(options: BrowserMediaOptions = {}): Me
 			track.onended = () => disconnected(new Error("Remote audio disconnected"));
 			try {
 				if (!context || context.state !== "running")
-					throw new Error("Audio output is suspended; start capture from a user gesture");
+					throw new VoiceDiagnosticError({ stage: "media", code: "denied" });
 				const remote = new MediaStream([track]);
 				// Chromium needs a media element to pull/decode remote RTC audio (crbug.com/40094084).
 				// Muted here: only the analyser -> destination graph produces audible output.
@@ -187,13 +189,29 @@ export function createBrowserMediaFactory(options: BrowserMediaOptions = {}): Me
 					channel.onclose = () => disconnected(new Error("Voice data channel disconnected"));
 					channel.onerror = () => disconnected(new Error("Voice data channel failed"));
 					// No data channel commands: all identity-bearing service messages use the typed port.
-					const permission = (
+					const getMicrophone =
 						options.getUserMedia ??
-						((constraints) => navigator.mediaDevices.getUserMedia(constraints))
-					)({
-						audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true },
-						video: false,
-					});
+						((constraints) => navigator.mediaDevices.getUserMedia(constraints));
+					const permission = (async () => {
+						try {
+							return await getMicrophone({
+								audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true },
+								video: false,
+							});
+						} catch (error) {
+							const name = error instanceof Error ? error.name : "";
+							const code = ["NotAllowedError", "PermissionDeniedError", "SecurityError"].includes(
+								name
+							)
+								? "denied"
+								: ["NotFoundError", "DevicesNotFoundError"].includes(name)
+									? "not-found"
+									: ["NotReadableError", "TrackStartError", "AbortError"].includes(name)
+										? "busy"
+										: "failed";
+							throw new VoiceDiagnosticError({ stage: "microphone", code });
+						}
+					})();
 					// Permission cannot be aborted by browsers. Own and stop a late stream explicitly.
 					void permission.then(
 						(acquired) => {
@@ -202,7 +220,12 @@ export function createBrowserMediaFactory(options: BrowserMediaOptions = {}): Me
 						},
 						() => {}
 					);
-					stream = await bounded(permission, lifetime.signal, 60_000);
+					stream = await bounded(
+						permission,
+						lifetime.signal,
+						options.permissionTimeoutMs ?? 60_000,
+						new VoiceDiagnosticError({ stage: "microphone", code: "timeout" })
+					);
 					ensureOpen();
 					if (captureStopped) throw aborted();
 					const tracks = stream.getAudioTracks();
