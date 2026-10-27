@@ -9,6 +9,7 @@ import type {
 	CredentialStatus,
 	DiagramSpec,
 	DraftedComment,
+	PRPreparation,
 	Preview,
 	PullRequest,
 	ScenarioTrace,
@@ -28,9 +29,12 @@ export type SettingsAdapter = {
 export type VoiceAdapter = {
 	beginCapture: () => void | Promise<void>;
 	endCapture: () => void | Promise<void>;
-	interrupt: () => void | Promise<void>;
+	interrupt: (reason?: CancelTurnInput["reason"]) => void | Promise<void>;
 	getPhase: () => string;
 	subscribe: (listener: () => void) => () => void;
+};
+export type ReviewAdapter = {
+	prepare: (prId: string) => Promise<PRPreparation>;
 };
 export type AgentAdapter = {
 	updateScreen?: (sessionId: string, screenContext: ScreenContext) => Promise<void>;
@@ -81,6 +85,7 @@ export const useServices = create<{
 	drafts: DraftAdapter | null;
 	sources: SourceAdapter | null;
 	runtime: RuntimeAdapter | null;
+	review: ReviewAdapter | null;
 }>(() => ({
 	settings: null,
 	voice: null,
@@ -89,6 +94,7 @@ export const useServices = create<{
 	drafts: null,
 	sources: null,
 	runtime: null,
+	review: null,
 }));
 export function configureReviewServices(
 	services: Partial<ReturnType<typeof useServices.getState>>

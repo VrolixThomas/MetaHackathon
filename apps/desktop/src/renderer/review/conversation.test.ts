@@ -261,3 +261,48 @@ it("does not adopt a new screen after an asynchronous source highlight was super
 	h.finish();
 	await running;
 });
+
+it("voice transcript, text and actions share the UI session without starting a second turn", async () => {
+	const { allocateReviewTurn, externalVoiceTurn, reviewSessionId } = await import("./conversation");
+	const h = harness();
+	const identity = allocateReviewTurn();
+	assert.equal(identity.sessionId, reviewSessionId);
+	assert.equal(externalVoiceTurn.begin(identity), true);
+	externalVoiceTurn.transcript(identity, "Show the scenario");
+	externalVoiceTurn.replaceText(identity, "Here is the trace.");
+	assert.throws(() => h.input()); // ask() has never run.
+	await externalVoiceTurn.action({
+		...identity,
+		requestId: "voice-scenario",
+		screenSequence: 0,
+		kind: "show-scenario",
+		scenarioId: fixture.scenario.id,
+	});
+	assert.equal(useReview.getState().panel, "scenario");
+	assert.equal(useConversation.getState().question, "Show the scenario");
+	externalVoiceTurn.finish(identity, "complete");
+	externalVoiceTurn.replaceText(identity, "late voice response");
+	assert.equal(useConversation.getState().answer, "Here is the trace.");
+	assert.equal(useConversation.getState().state, "complete");
+});
+
+it("retiring a voice generation rejects old transcripts and actions", async () => {
+	const { allocateReviewTurn, externalVoiceTurn } = await import("./conversation");
+	harness();
+	const first = allocateReviewTurn();
+	externalVoiceTurn.begin(first);
+	await cancelActiveQuestion("push-to-talk");
+	const second = allocateReviewTurn();
+	externalVoiceTurn.begin(second);
+	externalVoiceTurn.transcript(second, "Current question");
+	externalVoiceTurn.transcript(first, "Old question");
+	await externalVoiceTurn.action({
+		...first,
+		requestId: "old-voice-effect",
+		screenSequence: 0,
+		kind: "show-scenario",
+		scenarioId: fixture.scenario.id,
+	});
+	assert.equal(useConversation.getState().question, "Current question");
+	assert.equal(useReview.getState().panel, null);
+});

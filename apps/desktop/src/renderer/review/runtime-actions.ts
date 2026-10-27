@@ -1,5 +1,4 @@
 import { create } from "zustand";
-import type { PRPreparation } from "../../shared/contracts";
 import { openReviewArtifact, useReview } from "./controller";
 import { useServices } from "./services";
 import { focusCodeLocation, loadPreparedReview } from "./source-adapter";
@@ -38,55 +37,20 @@ export function cancelRuntimeAction() {
 }
 
 export function loadLocalDemo() {
-	const { runtime, sources } = useServices.getState();
-	if (!runtime || !sources) return;
+	const { runtime, sources, review } = useServices.getState();
+	if (!runtime || !sources || !review) return;
 	return perform("Preparing local demo repositories…", async (signal) => {
 		const prs = await runtime.prepareDemo();
 		signal.throwIfAborted();
 		const pr = prs.find((pr) => pr.repository.endsWith("shop-web")) ?? prs[0];
 		if (!pr) throw new Error("No seeded demo PR is available.");
-		const paths = await runtime.changedFiles(pr.id);
+		const preparation = await review.prepare(pr.id);
 		signal.throwIfAborted();
-		const preferred = [
-			"pricing/applyDiscounts.ts",
-			"orders/finalizeOrder.ts",
-			"migrations/0047_order_promo.sql",
-			"checkout/PromoField.ts",
-			"promo/PromoCache.ts",
-		];
-		const ordered = [...paths].sort(
-			(a, b) =>
-				(preferred.indexOf(a) < 0 ? 100 : preferred.indexOf(a)) -
-					(preferred.indexOf(b) < 0 ? 100 : preferred.indexOf(b)) || a.localeCompare(b)
-		);
-		const evidence = {
-			kind: "fixture" as const,
-			fixtureId: "local-demo-reading-route",
-			label:
-				"Illustrative preparation for a real seeded repository; no agent triage or Why analysis is claimed.",
-		};
-		const preparation: PRPreparation = {
-			contractVersion: 1,
-			pr,
-			status: "ready",
-			summary:
-				"Local seeded demo at pinned Git revisions. Review labels are illustrative; source, scenarios and previews come from the runtime.",
-			files: ordered.map((path, readingOrder) => ({
-				path,
-				readingOrder,
-				category: "needs-review",
-				attention: "read",
-				reason: "Changed source · awaiting agent triage",
-				evidence,
-			})),
-			whyNotes: [],
-			evidence,
-		};
 		await loadPreparedReview(preparation, sources, signal);
 		useReview.getState().setPanel(null);
 		useReview
 			.getState()
-			.announce("Loaded pinned local source. No automated review conclusions have been added.");
+			.announce("Review prepared from pinned local source. Ask me to walk you through the PR.");
 	});
 }
 

@@ -11,6 +11,7 @@ import {
 	SourceFileSchema,
 } from "../../shared/contracts";
 import type { TrpcRequest, TrpcResponse } from "../../shared/types";
+import { createCompositionBridge } from "./composition-bridge";
 import {
 	type ArtifactAdapter,
 	type RuntimeAdapter,
@@ -105,7 +106,11 @@ export function connectAvailableRuntime() {
 	void bridge.settings
 		.status()
 		.then(() => {
-			if (!disposed) configureReviewServices(bridge);
+			if (!disposed)
+				configureReviewServices({
+					...bridge,
+					...createCompositionBridge((input) => window.electron.trpc.request(input)),
+				});
 		})
 		.catch(() => {});
 	return () => {

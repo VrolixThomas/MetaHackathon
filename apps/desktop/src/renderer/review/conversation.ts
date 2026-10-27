@@ -8,18 +8,21 @@ import {
 	PreviewSchema,
 	ScenarioTraceSchema,
 	type TurnIdentity,
+	TurnIdentitySchema,
 } from "../../shared/contracts";
 import { getScreenContext, useReview } from "./controller";
 import { type AgentAdapter, useServices } from "./services";
 import { focusCodeLocation } from "./source-adapter";
 
+type Exchange = { question: string; answer: string; state: string };
 export const useConversation = create<{
+	history: Exchange[];
 	question: string;
 	answer: string;
 	state: "idle" | "working" | "complete" | "cancelled" | "error";
 	context: string;
 	error: string;
-}>(() => ({ question: "", answer: "", state: "idle", context: "", error: "" }));
+}>(() => ({ history: [], question: "", answer: "", state: "idle", context: "", error: "" }));
 
 type ActiveTurn = {
 	unsubscribe?: () => void;
@@ -28,11 +31,46 @@ type ActiveTurn = {
 	adapter: AgentAdapter;
 	sequence: number;
 	actions: Set<string>;
+	external?: boolean;
 };
 let active: ActiveTurn | null = null;
 let generation = 0;
+let lastStartedGeneration = -1;
 let launchSequence = 0;
-const sessionId = `review-ui-${crypto.randomUUID()}`;
+export const reviewSessionId = `review-ui-${crypto.randomUUID()}`;
+const sessionId = reviewSessionId;
+
+export function allocateReviewTurn(): TurnIdentity {
+	return { sessionId, turnId: crypto.randomUUID(), generation: ++generation };
+}
+
+function startExchange(question: string, context: string) {
+	useConversation.setState((state) => ({
+		history:
+			state.question || state.answer
+				? [
+						...state.history,
+						{ question: state.question, answer: state.answer, state: state.state },
+					].slice(-30)
+				: state.history,
+		question,
+		answer: "",
+		context,
+		state: "working",
+		error: "",
+	}));
+}
+
+function watchScreen(turn: ActiveTurn) {
+	turn.unsubscribe = useReview.subscribe((state, previous) => {
+		if (state.sequence !== previous.sequence && valid(turn) && turn.adapter.updateScreen)
+			void turn.adapter
+				.updateScreen(sessionId, getScreenContext())
+				.catch(() =>
+					useReview.getState().announce("The agent could not refresh its screen context.")
+				);
+	});
+}
 
 function locationMatchesReview(location: {
 	repository: string;
@@ -56,9 +94,8 @@ function currentScreen(turn: ActiveTurn, action: AgentAction) {
 	const sequence = useReview.getState().sequence;
 	return (
 		valid(turn) &&
-		sequence === turn.sequence &&
 		(action.screenSequence === sequence ||
-			action.screenSequence === turn.input.screenContext.sequence)
+			(sequence === turn.sequence && action.screenSequence === turn.input.screenContext.sequence))
 	);
 }
 
@@ -162,6 +199,7 @@ async function stopActiveQuestion(
 	active = null;
 	turn.unsubscribe?.();
 	turn.controller.abort();
+	if (turn.external) void useServices.getState().voice?.interrupt(reason);
 	useConversation.setState({ state: "cancelled" });
 	try {
 		await turn.adapter.cancel({
@@ -195,14 +233,13 @@ export async function runAgentQuestion(text: string) {
 	}
 	if (!text.trim()) return;
 	const launch = ++launchSequence;
+	void useServices.getState().voice?.interrupt("user");
 	await stopActiveQuestion();
 	if (launch !== launchSequence) return;
 	const screenContext = getScreenContext();
 	const input: AgentTurnInput = {
 		requestId: crypto.randomUUID(),
-		sessionId,
-		turnId: crypto.randomUUID(),
-		generation: ++generation,
+		...allocateReviewTurn(),
 		text: text.trim(),
 		screenContext,
 	};
@@ -214,22 +251,12 @@ export async function runAgentQuestion(text: string) {
 		actions: new Set(),
 	};
 	active = turn;
-	turn.unsubscribe = useReview.subscribe((state, previous) => {
-		if (state.sequence !== previous.sequence && valid(turn) && adapter.updateScreen)
-			void adapter
-				.updateScreen(sessionId, getScreenContext())
-				.catch(() =>
-					useReview.getState().announce("The agent could not refresh its screen context.")
-				);
-	});
-	useConversation.setState({
-		question: input.text,
-		answer: "",
-		state: "working",
-		context: screenContext.focusedLocation?.path ?? "Review",
-		error: "",
-	});
+	lastStartedGeneration = input.generation;
+	watchScreen(turn);
+	startExchange(input.text, screenContext.focusedLocation?.path ?? "Review");
 	try {
+		await adapter.updateScreen?.(sessionId, screenContext);
+		if (!valid(turn)) return;
 		await adapter.ask(
 			input,
 			{
@@ -263,3 +290,53 @@ export async function runAgentQuestion(text: string) {
 		}
 	}
 }
+
+/** Display/effect sink for a turn already owned by the voice controller. Never calls ask/start. */
+export const externalVoiceTurn = {
+	begin(identity: TurnIdentity) {
+		const parsed = TurnIdentitySchema.parse(identity);
+		const adapter = useServices.getState().agent;
+		if (!adapter || parsed.sessionId !== sessionId || parsed.generation !== generation)
+			return false;
+		if (active && sameTurn(active.input, parsed)) return true;
+		if (parsed.generation <= lastStartedGeneration) return false;
+		lastStartedGeneration = parsed.generation;
+		launchSequence++;
+		void stopActiveQuestion("push-to-talk");
+		const screenContext = getScreenContext();
+		const turn: ActiveTurn = {
+			input: { ...parsed, requestId: crypto.randomUUID(), text: "Voice question", screenContext },
+			controller: new AbortController(),
+			adapter,
+			sequence: screenContext.sequence,
+			actions: new Set(),
+			external: true,
+		};
+		active = turn;
+		watchScreen(turn);
+		startExchange("Listening…", screenContext.focusedLocation?.path ?? "Review");
+		return true;
+	},
+	transcript(identity: TurnIdentity, text: string) {
+		if (active?.external && sameTurn(active.input, identity) && valid(active))
+			useConversation.setState({ question: text.slice(0, 50_000) });
+	},
+	text(identity: TurnIdentity, delta: string) {
+		if (active?.external && sameTurn(active.input, identity) && valid(active))
+			useConversation.setState((state) => ({ answer: (state.answer + delta).slice(0, 50_000) }));
+	},
+	replaceText(identity: TurnIdentity, text: string) {
+		if (active?.external && sameTurn(active.input, identity) && valid(active))
+			useConversation.setState({ answer: text.slice(0, 50_000) });
+	},
+	async action(action: AgentAction) {
+		if (active?.external) await applyAction(active, action);
+	},
+	finish(identity: TurnIdentity, state: "complete" | "cancelled" | "error", error = "") {
+		if (!active?.external || !sameTurn(active.input, identity) || !valid(active)) return;
+		active.unsubscribe?.();
+		active.controller.abort();
+		active = null;
+		useConversation.setState({ state, error });
+	},
+};
