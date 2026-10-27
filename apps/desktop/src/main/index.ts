@@ -47,6 +47,8 @@ function createWindow(): void {
 			preload: join(mainDirectory, "../preload/index.cjs"),
 			// Voice can start via the native shortcut while focus is in the guest browser.
 			autoplayPolicy: "no-user-gesture-required",
+			// Keep controls and voice state repainting beside the native child view.
+			backgroundThrottling: false,
 			contextIsolation: true,
 			nodeIntegration: false,
 			sandbox: true,

@@ -277,7 +277,7 @@ async function native() {
 		assert.equal(preferences.sandbox, true);
 		assert.equal(preferences.contextIsolation, true);
 		assert.equal(preferences.nodeIntegration, false);
-		await guest.executeJavaScript("document.querySelector('#two').click()");
+		await guest.executeJavaScript("document.querySelector('#two').click()", true);
 		await wait(
 			"real linked-page navigation",
 			() => !guest.isLoadingMainFrame() && guest.getURL() === `${origin}/two`
@@ -307,7 +307,13 @@ async function native() {
 		const reloaded = await inspect("reload");
 		assert.ok(reloaded.dom.serial > submitted.dom.serial, "Reload must fetch new server bytes");
 		assert.equal(reloaded.dom.echo, "native & safe");
-		await rpc("mutation", "localBrowser.present", { bounds: await hostBounds(), viewport: phone });
+		await js(
+			`([...document.querySelectorAll('.browser-viewport-controls button')].find(e => e.textContent === 'Phone')).click()`
+		);
+		await wait("phone control applied", async () => (await state()).viewport.width === phone.width);
+		await wait("phone chrome settled", () =>
+			js(`document.querySelector('[data-testid="browser-viewport"]')?.textContent === "390 × 844"`)
+		);
 		await inspect("phone", phone);
 		await guest.executeJavaScript(
 			"document.querySelector('#message').value='preserved unsubmitted draft'"
@@ -319,11 +325,31 @@ async function native() {
 		const shown = await inspect("shown", phone);
 		assert.equal(shown.dom.value, hidden.dom.value);
 		assert.equal(shown.dom.serial, hidden.dom.serial);
-		await rpc("mutation", "localBrowser.present", {
-			bounds: await hostBounds(),
-			viewport: desktop,
-		});
+		await wait("desktop control ready", () =>
+			js(`!!document.querySelector('.browser-viewport-controls button:not(:disabled)')`)
+		);
+		await js(
+			`([...document.querySelectorAll('.browser-viewport-controls button')].find(e => e.textContent === 'Desktop')).click()`
+		);
+		await wait(
+			"desktop control applied",
+			async () => (await state()).viewport.width === desktop.width
+		);
+		await wait("desktop chrome settled", () =>
+			js(`document.querySelector('[data-testid="browser-viewport"]')?.textContent === "1024 × 768"`)
+		);
 		await inspect("desktop restored");
+		await js(`document.querySelector('[data-testid="configuration-toggle"]').click()`);
+		await wait("modal hides native page", () => !view.getVisible());
+		await js(`document.querySelector('[aria-label="Close configuration"]').click()`);
+		await wait("modal restores native page", () => view.getVisible());
+		await inspect("modal dismissed");
+		const priorBounds = view.getBounds();
+		await js(
+			`document.querySelector('.workspace-divider').dispatchEvent(new KeyboardEvent('keydown',{key:'ArrowLeft',bubbles:true}))`
+		);
+		await wait("divider resizes native pane", () => view.getBounds().x < priorBounds.x);
+		await inspect("resized split");
 		const rejected = await raw("mutation", "localBrowser.command", {
 			kind: "navigate",
 			url: external,
@@ -334,7 +360,8 @@ async function native() {
 			navigation = { url, prevented: event.defaultPrevented };
 		};
 		guest.once("will-navigate", onNavigate);
-		await guest.executeJavaScript("document.querySelector('#external').click()");
+		guest.once("will-frame-navigate", (event) => onNavigate(event, event.url));
+		await guest.executeJavaScript("document.querySelector('#external').click()", true);
 		await wait("blocked page-origin external link", () => navigation);
 		assert.equal(navigation.url, external);
 		assert.equal(navigation.prevented, true);
@@ -353,6 +380,17 @@ async function native() {
 		report.externalPolicy = { navigationPrevented: true, sessionBlocked: true, networkError };
 		assert.deepEqual(report.blockedMainRequests, []);
 		if (holdMs) {
+			if (process.env.LOCAL_BROWSER_SMOKE_HOLD_VIEWPORT === "phone") {
+				await js(
+					`([...document.querySelectorAll('.browser-viewport-controls button')].find(e => e.textContent === 'Phone')).click()`
+				);
+				await wait("QA phone chrome", () =>
+					js(
+						`document.querySelector('[data-testid="browser-viewport"]')?.textContent === "390 × 844"`
+					)
+				);
+				await inspect("phone visual QA", phone);
+			}
 			report.holdForRootQA = { milliseconds: holdMs, status: "pre-close checks passed" };
 			save();
 			console.log(
