@@ -4,10 +4,12 @@ import {
 	CredentialStatusListSchema,
 	GitHubRepositorySchema,
 	IdSchema,
+	PinnedReviewFileRequestSchema,
 	PreviewSchema,
 	PullRequestSchema,
 	RemoveCredentialInputSchema,
 	RepositoryPathSchema,
+	ReviewFileSchema,
 	ScenarioTraceSchema,
 	SetCredentialInputSchema,
 	SourceFileRequestSchema,
@@ -50,6 +52,14 @@ export function createRuntimeRouter(getRuntime: () => RuntimeService) {
 			.input(z.strictObject({ repository: GitHubRepositorySchema.max(240) }))
 			.output(z.array(PullRequestSchema).max(200))
 			.query(({ input }) => getRuntime().repositoryPullRequests(input.repository)),
+		reviewFile: publicProcedure
+			.input(PinnedReviewFileRequestSchema)
+			.output(ReviewFileSchema)
+			.query(({ input }) => getRuntime().reviewFile(input)),
+		describeRepository: publicProcedure
+			.input(z.strictObject({ path: z.string().min(1).max(4096) }))
+			.output(z.strictObject({ repository: GitHubRepositorySchema, localPath: z.string().min(1) }))
+			.query(({ input }) => getRuntime().describeRepository(input.path)),
 		prepareDemo: publicProcedure
 			.output(z.array(PullRequestSchema))
 			.mutation(() => getRuntime().prepareDemo()),

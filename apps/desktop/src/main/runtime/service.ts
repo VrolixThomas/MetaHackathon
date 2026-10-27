@@ -1,12 +1,17 @@
 import { randomUUID } from "node:crypto";
 import { join } from "node:path";
 import { PullRequestSchema, RepositoryPathSchema, SourceFileSchema } from "../../shared/contracts";
-import type { PullRequest } from "../../shared/contracts";
+import type { PinnedReviewFileRequest, PullRequest } from "../../shared/contracts";
 import type { SubmissionLedger } from "../db/runtime-state";
 import { type CredentialAccess, CredentialStore, type SecretEncryption } from "./credentials";
 import { seedDemoRepositories } from "./demo";
 import { executionEnvironment } from "./environment";
-import { GitHubClient } from "./github";
+import { GitHubClient, GitHubPRIdSchema } from "./github";
+import {
+	describeLocalRepository,
+	readLocalReviewSource,
+	validateLocalRepository,
+} from "./local-review";
 import { type PreviewPageFactory, PreviewRunner } from "./preview";
 import { runProcess } from "./process";
 import { type PreparedRepository, RepositoryManager } from "./repositories";
@@ -162,6 +167,39 @@ export class RuntimeService {
 	repositoryPullRequests(repository: string, signal?: AbortSignal) {
 		return this.operation(`repository-prs:${randomUUID()}`, (localSignal) =>
 			this.github.openPullRequests(
+				repository,
+				signal ? AbortSignal.any([signal, localSignal]) : localSignal
+			)
+		);
+	}
+
+	reviewFile(input: PinnedReviewFileRequest, signal?: AbortSignal, localPath?: string) {
+		return this.operation(`review-file:${randomUUID()}`, async (localSignal) => {
+			const combined = signal ? AbortSignal.any([signal, localSignal]) : localSignal;
+			const repository = GitHubPRIdSchema.parse(input.prId).split("#")[0] as string;
+			const root = localPath
+				? await validateLocalRepository(localPath, repository, combined)
+				: undefined;
+			return this.github.reviewFile(
+				input,
+				combined,
+				root
+					? (_repository, path, sha, signal) =>
+							readLocalReviewSource(root, repository, path, sha, signal)
+					: undefined
+			);
+		});
+	}
+
+	describeRepository(path: string, signal?: AbortSignal) {
+		return this.operation(`describe-repository:${randomUUID()}`, (localSignal) =>
+			describeLocalRepository(path, signal ? AbortSignal.any([signal, localSignal]) : localSignal)
+		);
+	}
+	validateLocalRepository(path: string, repository: string, signal?: AbortSignal) {
+		return this.operation(`validate-repository:${randomUUID()}`, (localSignal) =>
+			validateLocalRepository(
+				path,
 				repository,
 				signal ? AbortSignal.any([signal, localSignal]) : localSignal
 			)

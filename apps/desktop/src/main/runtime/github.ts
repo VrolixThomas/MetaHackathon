@@ -7,14 +7,18 @@ import {
 	ConversationPRContextSchema,
 	DraftedCommentSchema,
 	GitHubRepositorySchema,
+	PinnedReviewFileRequestSchema,
 	PullRequestSchema,
 	RepositoryPathSchema,
+	ReviewFileSchema,
 } from "../../shared/contracts";
 import type {
 	ConfirmCommentInput,
 	ConversationPRContext,
 	DraftedComment,
+	PinnedReviewFileRequest,
 	PullRequest,
+	ReviewFile,
 } from "../../shared/contracts";
 import type { SubmissionLedger } from "../db/runtime-state";
 import type { CredentialAccess } from "./credentials";
@@ -38,6 +42,7 @@ const listedPR = remotePR.extend({
 	base: z.object({ sha: z.string(), repo: repositoryRef }),
 	head: z.object({ sha: z.string(), repo: repositoryRef.nullable() }),
 });
+const pinnedPR = listedPR.omit({ state: true });
 const remoteFile = z.object({
 	filename: RepositoryPathSchema.max(4096),
 	status: z.string().max(32),
@@ -46,6 +51,51 @@ const remoteFile = z.object({
 	patch: z.string().optional(),
 });
 const MAX_CONTEXT_CHARS = 120_000;
+// Reuses SuperiorSwarm main/github/github.ts getPRFiles' filename/previous_filename mapping.
+const reviewChangedFile = remoteFile.extend({
+	previous_filename: RepositoryPathSchema.max(4096).optional(),
+});
+export type ReviewSourceReader = (
+	repository: string,
+	path: string,
+	commitSha: string,
+	signal?: AbortSignal
+) => Promise<ReviewFile["base"] | undefined>;
+const contentsFile = z.object({
+	path: RepositoryPathSchema.max(4096),
+	type: z.string(),
+	size: z.int().nonnegative(),
+	encoding: z.string().optional(),
+	content: z.string().optional(),
+	submodule_git_url: z.string().nullable().optional(),
+});
+
+class GitHubReadLimitError extends Error {}
+async function boundedJson(
+	response: Response,
+	maxBytes: number,
+	signal: AbortSignal
+): Promise<unknown> {
+	if (!response.body) throw new Error("Missing GitHub response body");
+	const reader = response.body.getReader();
+	const chunks: Uint8Array[] = [];
+	let size = 0;
+	try {
+		while (true) {
+			signal.throwIfAborted();
+			const { done, value } = await reader.read();
+			if (done) break;
+			size += value.byteLength;
+			if (size > maxBytes)
+				throw new GitHubReadLimitError("GitHub response exceeds the bounded read limit");
+			chunks.push(value);
+		}
+		return JSON.parse(Buffer.concat(chunks).toString("utf8"));
+	} finally {
+		void reader.cancel().catch(() => undefined);
+		reader.releaseLock();
+	}
+}
 const component = (value: string) => {
 	if (!/^[A-Za-z0-9_.-]+$/.test(value) || value === "." || value === "..")
 		throw new Error("Invalid GitHub repository");
@@ -141,7 +191,13 @@ export class GitHubClient {
 
 	private async request(
 		path: string,
-		options: { method?: string; body?: unknown; signal?: AbortSignal } = {}
+		options: {
+			method?: string;
+			body?: unknown;
+			signal?: AbortSignal;
+			accept?: string;
+			maxBytes?: number;
+		} = {}
 	): Promise<unknown> {
 		const token = await this.credentials.get("github");
 		if (!token)
@@ -159,7 +215,7 @@ export class GitHubClient {
 				signal,
 				redirect: "error",
 				headers: {
-					Accept: "application/vnd.github+json",
+					Accept: options.accept ?? "application/vnd.github+json",
 					Authorization: `Bearer ${token}`,
 					"X-GitHub-Api-Version": "2022-11-28",
 					"Content-Type": "application/json",
@@ -189,8 +245,12 @@ export class GitHubClient {
 		if (signal.aborted) throw new Error("GitHub request cancelled before completion");
 		let data: unknown;
 		try {
-			data = await response.json();
-		} catch {
+			data = options.maxBytes
+				? await boundedJson(response, options.maxBytes, signal)
+				: await response.json();
+		} catch (error) {
+			if (error instanceof GitHubReadLimitError) throw error;
+			if (signal.aborted) throw new Error("GitHub request cancelled before completion");
 			throw new Error("GitHub returned an invalid JSON response");
 		}
 		if (signal.aborted) throw new Error("GitHub request cancelled before completion");
@@ -237,6 +297,125 @@ export class GitHubClient {
 			if (batch.length < 100) break;
 		}
 		return [...found.values()];
+	}
+
+	/** HTTP-only pinned file reader. Missing sides derive from GitHub's change status, never a 404. */
+	async reviewFile(
+		input: PinnedReviewFileRequest,
+		signal?: AbortSignal,
+		readLocal?: ReviewSourceReader
+	): Promise<ReviewFile> {
+		const request = PinnedReviewFileRequestSchema.parse(input);
+		const { repository, number } = parsePRId(request.prId);
+		if (request.path.length > 4096) throw new Error("Review path is too long");
+		const prPath = `${repositoryPath(repository)}/pulls/${number}`;
+		const current = pinnedPR.parse(await this.request(prPath, { signal, maxBytes: 2_000_000 }));
+		const pr = pullRequest(repository, number, current);
+		if (current.base.repo.full_name.toLowerCase() !== repository.toLowerCase())
+			throw new Error("GitHub returned a PR for another repository");
+		this.assertReviewRevision(pr, request);
+		let changed: z.infer<typeof reviewChangedFile> | undefined;
+		for (let page = 1; page <= 30; page++) {
+			const batch = z
+				.array(reviewChangedFile)
+				.max(100)
+				.parse(
+					await this.request(`${prPath}/files?per_page=100&page=${page}`, {
+						signal,
+						maxBytes: 4_000_000,
+					})
+				);
+			changed = batch.find((file) => file.filename === request.path);
+			if (changed || batch.length < 100) break;
+		}
+		if (!changed)
+			throw new Error("Requested path was not found in the bounded PR changed-file list");
+		if (changed.status === "renamed" && !changed.previous_filename)
+			throw new Error("Renamed file is missing its original path");
+		const basePath =
+			changed.status === "renamed" ? (changed.previous_filename as string) : request.path;
+		const missing = (path: string, commitSha: string): ReviewFile["base"] => ({
+			path,
+			commitSha,
+			status: "missing",
+			content: null,
+		});
+		const source: ReviewSourceReader = async (repository, path, sha, signal) => {
+			const result =
+				(await readLocal?.(repository, path, sha, signal)) ??
+				(await this.reviewSource(repository, path, sha, signal));
+			if (result.path !== path || result.commitSha !== sha)
+				throw new Error("Review source identity mismatch");
+			return result;
+		};
+		const base =
+			changed.status === "added" || changed.status === "copied"
+				? missing(basePath, request.baseSha)
+				: await source(current.base.repo.full_name, basePath, request.baseSha, signal);
+		const head =
+			changed.status === "removed"
+				? missing(request.path, request.headSha)
+				: await source(
+						current.head.repo?.full_name ?? repository,
+						request.path,
+						request.headSha,
+						signal
+					);
+		this.assertReviewRevision(await this.readPullRequest(repository, number, signal), request);
+		return ReviewFileSchema.parse({
+			prId: request.prId,
+			path: request.path,
+			status: changed.status,
+			patch: changed.patch !== undefined && changed.patch.length <= 100_000 ? changed.patch : null,
+			base,
+			head,
+		});
+	}
+
+	private assertReviewRevision(pr: PullRequest, input: PinnedReviewFileRequest) {
+		if (pr.baseSha !== input.baseSha || pr.headSha !== input.headSha)
+			throw new Error("PR revision changed. Reload the prepared review before opening this file.");
+	}
+
+	private async reviewSource(
+		repository: string,
+		path: string,
+		commitSha: string,
+		signal?: AbortSignal
+	): Promise<ReviewFile["base"]> {
+		const encodedPath = path.split("/").map(encodeURIComponent).join("/");
+		const file = contentsFile.parse(
+			await this.request(`${repositoryPath(repository)}/contents/${encodedPath}?ref=${commitSha}`, {
+				signal,
+				accept: "application/vnd.github.object+json",
+				maxBytes: 2_000_000,
+			})
+		);
+		if (file.path !== path || file.type !== "file" || file.submodule_git_url)
+			throw new Error("GitHub review source is not the requested regular file");
+		const unavailable = (status: "binary" | "too-large"): ReviewFile["base"] => ({
+			path,
+			commitSha,
+			status,
+			content: null,
+		});
+		if (file.size > 300_000) return unavailable("too-large");
+		if (file.encoding !== "base64" || file.content === undefined)
+			throw new Error("GitHub did not provide complete file content");
+		const encoded = file.content.replace(/\s/g, "");
+		if (encoded.length > 400_004) return unavailable("too-large");
+		if (!/^(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$/.test(encoded))
+			throw new Error("GitHub returned invalid file encoding");
+		const bytes = Buffer.from(encoded, "base64");
+		if (bytes.length !== file.size) throw new Error("GitHub returned incomplete file content");
+		if (bytes.includes(0)) return unavailable("binary");
+		let content: string;
+		try {
+			content = new TextDecoder("utf-8", { fatal: true, ignoreBOM: true }).decode(bytes);
+		} catch {
+			return unavailable("binary");
+		}
+		return { path, commitSha, status: "available", content };
 	}
 
 	/** Bounded HTTP-only context. Recheck both SHAs so a moving PR cannot mix revisions. */
