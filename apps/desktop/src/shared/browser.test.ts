@@ -1,24 +1,28 @@
-import { describe, expect, test } from "bun:test";
+import assert from "node:assert/strict";
+import { describe, test } from "node:test";
 import { BrowserCommandSchema, BrowserStateSchema } from "./contracts";
 
 describe("visible browser boundary", () => {
 	test("element actions require an observation and scroll cannot be empty", () => {
 		const target = { sessionId: "review", requestId: "effect", browserId: "page" };
-		expect(
-			BrowserCommandSchema.safeParse({ ...target, kind: "click", elementId: "e1" }).success
-		).toBe(false);
-		expect(BrowserCommandSchema.safeParse({ ...target, kind: "scroll" }).success).toBe(false);
-		expect(
-			BrowserCommandSchema.safeParse({ ...target, kind: "scroll", elementId: "e1" }).success
-		).toBe(false);
-		expect(
+		assert.equal(
+			BrowserCommandSchema.safeParse({ ...target, kind: "click", elementId: "e1" }).success,
+			false
+		);
+		assert.equal(BrowserCommandSchema.safeParse({ ...target, kind: "scroll" }).success, false);
+		assert.equal(
+			BrowserCommandSchema.safeParse({ ...target, kind: "scroll", elementId: "e1" }).success,
+			false
+		);
+		assert.equal(
 			BrowserCommandSchema.parse({
 				...target,
 				kind: "scroll",
 				elementId: "e1",
 				observationSequence: 3,
-			}).kind
-		).toBe("scroll");
+			}).kind,
+			"scroll"
+		);
 	});
 	test("observations stay bounded and element IDs are unambiguous", () => {
 		const state = {
@@ -38,8 +42,11 @@ describe("visible browser boundary", () => {
 			scroll: { x: 0, y: 0 },
 			provenance: "live-browser",
 		};
-		expect(BrowserStateSchema.safeParse(state).success).toBe(true);
-		expect(BrowserStateSchema.safeParse({ ...state, text: "a".repeat(16001) }).success).toBe(false);
+		assert.equal(BrowserStateSchema.safeParse(state).success, true);
+		assert.equal(
+			BrowserStateSchema.safeParse({ ...state, text: "a".repeat(16001) }).success,
+			false
+		);
 		const element = {
 			id: "e1",
 			role: "button",
@@ -49,9 +56,10 @@ describe("visible browser boundary", () => {
 			visible: false,
 			enabled: true,
 		};
-		expect(BrowserStateSchema.safeParse({ ...state, elements: [element, element] }).success).toBe(
+		assert.equal(
+			BrowserStateSchema.safeParse({ ...state, elements: [element, element] }).success,
 			false
 		);
-		expect(BrowserStateSchema.safeParse({ ...state, provenance: "fixture" }).success).toBe(false);
+		assert.equal(BrowserStateSchema.safeParse({ ...state, provenance: "fixture" }).success, false);
 	});
 });
