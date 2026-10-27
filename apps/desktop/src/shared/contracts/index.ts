@@ -5,3 +5,4 @@ export * from "./common";
 export * from "./interaction";
 export * from "./review";
 export * from "./runtime-access";
+export * from "./voice-setup";
