@@ -413,3 +413,64 @@ test("a late viewport update cannot show a retired page or change a reopened sur
 		await f.surface.dispose();
 	}
 });
+
+test("modal hide bypasses slow page observation and fences an already queued show", async () => {
+	const f = fixture();
+	const entered = deferred<void>();
+	const observed = deferred<BrowserSnapshot>();
+	const bounds = { x: 600, y: 40, width: 500, height: 600 };
+	try {
+		await f.surface.open({ url: "http://localhost:3000/page" });
+		await f.surface.present({ bounds });
+		const page = f.pages[0];
+		assert(page);
+		page.onSnapshot = () => {
+			entered.resolve();
+			return observed.promise;
+		};
+		const polling = f.surface.state();
+		await entered.promise;
+		const queued = f.surface.present({ bounds: { ...bounds, width: 490 } });
+		await promptly(f.surface.present({ bounds: null }));
+		assert.equal(page.presentations.at(-1), null);
+		observed.resolve(page.data);
+		await polling;
+		await queued;
+		assert.equal(page.presentations.at(-1), null);
+		assert.equal(page.closes, 0);
+		page.onSnapshot = undefined;
+		await f.surface.present({ bounds });
+		assert.deepEqual(page.presentations.at(-1), bounds);
+	} finally {
+		observed.resolve(f.pages[0]?.data as BrowserSnapshot);
+		await f.surface.dispose();
+	}
+});
+
+test("a resize completing after modal hide cannot reveal the native page", async () => {
+	const f = fixture();
+	const entered = deferred<void>();
+	const resized = deferred<void>();
+	try {
+		await f.surface.open({ url: "http://localhost:3000/page" });
+		const page = f.pages[0];
+		assert(page);
+		page.onViewport = async () => {
+			entered.resolve();
+			await resized.promise;
+		};
+		const changing = f.surface.present({
+			bounds: { x: 0, y: 0, width: 390, height: 844 },
+			viewport: { width: 390, height: 844 },
+		});
+		await entered.promise;
+		await promptly(f.surface.present({ bounds: null }));
+		resized.resolve();
+		await changing;
+		assert.equal(page.presentations.at(-1), null);
+		assert.deepEqual((await f.surface.state())?.viewport, { width: 390, height: 844 });
+	} finally {
+		resized.resolve();
+		await f.surface.dispose();
+	}
+});

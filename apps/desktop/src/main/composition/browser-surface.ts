@@ -61,6 +61,7 @@ export class LocalBrowserSurface {
 	private active?: OwnedPage;
 	private viewport = defaultViewport();
 	private bounds: BrowserBounds | null = null;
+	private hideEpoch = 0;
 	private tail: Promise<unknown> = Promise.resolve();
 	private readonly pending = new Set<AbortController>();
 	private disposed = false;
@@ -102,15 +103,29 @@ export class LocalBrowserSurface {
 
 	async present(raw: LocalBrowserPresent): Promise<void> {
 		const presentation = input(LocalBrowserPresentSchema, raw);
+		if (this.disposed) throw new Error("Local browser has shut down");
+		if (presentation.bounds === null) {
+			// Native child views sit above renderer dialogs. Hide cannot wait for page I/O.
+			this.hideEpoch++;
+			this.bounds = null;
+			try {
+				this.active?.page.present(null);
+			} catch {
+				throw failure();
+			}
+			if (!presentation.viewport) return;
+		}
+		const epoch = this.hideEpoch;
 		return this.enqueue(async (signal) => {
+			if (epoch !== this.hideEpoch) return;
 			const active = this.active;
 			if (active) {
-				// Hide immediately within this operation, before a potentially slow resize.
-				if (presentation.bounds === null) active.page.present(null);
 				if (presentation.viewport) {
 					await active.page.viewport(presentation.viewport);
 					this.check(active, signal);
+					this.viewport = presentation.viewport;
 				}
+				if (epoch !== this.hideEpoch) return;
 				active.page.present(presentation.bounds);
 			}
 			signal.throwIfAborted();
@@ -123,6 +138,7 @@ export class LocalBrowserSurface {
 		// Do not queue teardown behind page APIs that may never settle.
 		const active = this.active;
 		this.active = undefined;
+		this.hideEpoch++;
 		for (const controller of this.pending) controller.abort();
 		this.pending.clear();
 		this.tail = Promise.resolve();
