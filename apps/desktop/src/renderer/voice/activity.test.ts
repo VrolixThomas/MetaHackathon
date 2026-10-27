@@ -8,7 +8,10 @@ function tone(frequency = 440, amplitude = 0.1): Float32Array {
 		(_, i) => amplitude * Math.sin((i * 2 * Math.PI * frequency) / 48000)
 	);
 }
-function frame(samples = new Float32Array(960), reference = new Float32Array(960)): SpeechFrame {
+function frame(
+	samples: Float32Array = new Float32Array(960),
+	reference: Float32Array = new Float32Array(960)
+): SpeechFrame {
 	return { samples, reference, sampleRate: 48000 };
 }
 test("detector requires sustained onset then endpoints after bounded silence", () => {

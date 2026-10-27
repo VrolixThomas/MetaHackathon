@@ -30,6 +30,11 @@ export class VoiceActivityDetector {
 	private reference: number[] = [];
 	private playbackTail = 0;
 	private rate = 0;
+	private echoOnly = false;
+	/** High-confidence correlated playback may be zeroed in preroll, never mistaken for new user PCM. */
+	get isPlaybackEcho() {
+		return this.echoOnly;
+	}
 	private readonly onset: number;
 	private readonly playbackOnset: number;
 	private readonly silence: number;
@@ -105,6 +110,7 @@ export class VoiceActivityDetector {
 			}
 		}
 		const zcr = crossings / samples.length;
+		this.echoOnly = playback && correlation >= 0.85;
 		const threshold = Math.max(
 			this.active ? 0.008 : playback ? 0.025 : 0.012,
 			this.noiseFloor * (this.active ? 2 : 3)

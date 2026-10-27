@@ -13,7 +13,23 @@ export type BrowserMediaOptions = {
 	connectionTimeoutMs?: number;
 	permissionTimeoutMs?: number;
 	rmsThreshold?: number;
+	/** Session-owned context: a per-turn close must not close the microphone graph. */
+	keepAudioContextOpen?: boolean;
+	/** Local playback reference for echo-aware input detection; never transmitted or logged. */
+	onRemoteStream?: (stream: MediaStream) => void;
 };
+
+export function microphoneError(error: unknown): VoiceDiagnosticError {
+	const name = error instanceof Error ? error.name : "";
+	const code = ["NotAllowedError", "PermissionDeniedError", "SecurityError"].includes(name)
+		? "denied"
+		: ["NotFoundError", "DevicesNotFoundError"].includes(name)
+			? "not-found"
+			: ["NotReadableError", "TrackStartError", "AbortError"].includes(name)
+				? "busy"
+				: "failed";
+	return new VoiceDiagnosticError({ stage: "microphone", code });
+}
 
 /** A fresh localhost peer and output graph for every generation; no STUN/TURN or credentials. */
 export function createBrowserMediaFactory(options: BrowserMediaOptions = {}): MediaFactory {
@@ -70,7 +86,8 @@ export function createBrowserMediaFactory(options: BrowserMediaOptions = {}): Me
 			source?.disconnect();
 			analyser?.disconnect();
 			peer?.close();
-			if (context && context.state !== "closed") void context.close().catch(() => {});
+			if (!options.keepAudioContextOpen && context && context.state !== "closed")
+				void context.close().catch(() => {});
 		}
 		function disconnected(error: unknown) {
 			if (closed) return;
@@ -97,6 +114,7 @@ export function createBrowserMediaFactory(options: BrowserMediaOptions = {}): Me
 				if (!context || context.state !== "running")
 					throw new VoiceDiagnosticError({ stage: "media", code: "denied" });
 				const remote = new MediaStream([track]);
+				options.onRemoteStream?.(remote);
 				// Chromium needs a media element to pull/decode remote RTC audio (crbug.com/40094084).
 				// Muted here: only the analyser -> destination graph produces audible output.
 				decoder = new Audio();
@@ -199,17 +217,7 @@ export function createBrowserMediaFactory(options: BrowserMediaOptions = {}): Me
 								video: false,
 							});
 						} catch (error) {
-							const name = error instanceof Error ? error.name : "";
-							const code = ["NotAllowedError", "PermissionDeniedError", "SecurityError"].includes(
-								name
-							)
-								? "denied"
-								: ["NotFoundError", "DevicesNotFoundError"].includes(name)
-									? "not-found"
-									: ["NotReadableError", "TrackStartError", "AbortError"].includes(name)
-										? "busy"
-										: "failed";
-							throw new VoiceDiagnosticError({ stage: "microphone", code });
+							throw microphoneError(error);
 						}
 					})();
 					// Permission cannot be aborted by browsers. Own and stop a late stream explicitly.
