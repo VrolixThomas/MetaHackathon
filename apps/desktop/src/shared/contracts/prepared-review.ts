@@ -71,6 +71,7 @@ export const ReviewDetailSchema = z.strictObject({
 });
 export const ReviewInboxSchema = z.strictObject({
 	repository: GitHubRepositorySchema.nullable(),
+	localPath: z.string().min(1).nullable().default(null),
 	items: z.array(ReviewDetailSchema).max(200),
 	refreshing: z.boolean(),
 	lastRefreshedAt: z.iso.datetime().nullable(),
@@ -103,6 +104,7 @@ export const ReviewFileSchema = z.strictObject({
 });
 export const ReviewCacheSchema = z.strictObject({
 	repository: GitHubRepositorySchema.nullable(),
+	localPath: z.string().min(1).nullable().default(null),
 	prepared: z.array(PreparedReviewSchema).max(200),
 	progress: z.array(ReviewProgressSchema).max(200),
 });
