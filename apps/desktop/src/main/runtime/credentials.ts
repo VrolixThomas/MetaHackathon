@@ -6,10 +6,18 @@ import {
 	CredentialStatusListSchema,
 	SetCredentialInputSchema,
 } from "../../shared/contracts";
-import type { CredentialProvider } from "../../shared/contracts";
+import type { CredentialProvider, CredentialStatusList } from "../../shared/contracts";
 
 export const credentialProviders = CredentialProviderSchema.options;
 export type { CredentialProvider } from "../../shared/contracts";
+
+/** Main-only credential port; implementations may use encrypted storage or V1's env file. */
+export interface CredentialAccess {
+	get(provider: CredentialProvider): Promise<string | undefined>;
+	set(provider: CredentialProvider, secret: string): Promise<void>;
+	delete(provider: CredentialProvider): Promise<void>;
+	status(): Promise<CredentialStatusList>;
+}
 
 /** Inject Electron safeStorage after app.whenReady(). macOS uses Keychain encryption keys. */
 export interface SecretEncryption {
@@ -20,7 +28,7 @@ export interface SecretEncryption {
 }
 
 /** Main-process service. Only status/set/delete may be adapted into renderer RPCs. */
-export class CredentialStore {
+export class CredentialStore implements CredentialAccess {
 	private pending: Promise<unknown> = Promise.resolve();
 	private readonly path: string;
 

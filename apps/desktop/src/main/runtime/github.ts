@@ -4,22 +4,41 @@ import { promisify } from "node:util";
 import { z } from "zod";
 import {
 	ConfirmCommentInputSchema,
+	ConversationPRContextSchema,
 	DraftedCommentSchema,
 	PullRequestSchema,
+	RepositoryPathSchema,
 } from "../../shared/contracts";
-import type { ConfirmCommentInput, DraftedComment, PullRequest } from "../../shared/contracts";
+import type {
+	ConfirmCommentInput,
+	ConversationPRContext,
+	DraftedComment,
+	PullRequest,
+} from "../../shared/contracts";
 import type { SubmissionLedger } from "../db/runtime-state";
-import type { CredentialStore } from "./credentials";
+import type { CredentialAccess } from "./credentials";
 
 const execFileAsync = promisify(execFile);
 const remotePR = z.object({
 	number: z.number().int().positive(),
-	html_url: z.string().url(),
-	title: z.string(),
-	user: z.object({ login: z.string() }),
+	html_url: z.string().url().max(2048),
+	title: z.string().min(1).max(1024),
+	user: z.object({ login: z.string().min(1).max(100) }),
 	base: z.object({ sha: z.string() }),
 	head: z.object({ sha: z.string() }),
 });
+const contextPR = remotePR.extend({
+	body: z.string().nullable(),
+	changed_files: z.int().nonnegative(),
+});
+const remoteFile = z.object({
+	filename: RepositoryPathSchema.max(4096),
+	status: z.string().max(32),
+	additions: z.int().nonnegative(),
+	deletions: z.int().nonnegative(),
+	patch: z.string().optional(),
+});
+const MAX_CONTEXT_CHARS = 120_000;
 const component = (value: string) => {
 	if (!/^[A-Za-z0-9_.-]+$/.test(value) || value === "." || value === "..")
 		throw new Error("Invalid GitHub repository");
@@ -31,34 +50,84 @@ function repositoryPath(repository: string) {
 	return `/repos/${component(parts[0] ?? "")}/${component(parts[1] ?? "")}`;
 }
 
+function parsePRId(prId: string) {
+	const match = /^([A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+)#([1-9][0-9]*)$/.exec(prId);
+	const number = Number(match?.[2]);
+	if (!match || prId.length > 240 || !Number.isSafeInteger(number))
+		throw new Error("Expected a GitHub PR identifier: owner/repository#number");
+	const repository = match[1] as string;
+	repositoryPath(repository);
+	return { repository, number };
+}
+export const GitHubPRIdSchema = z
+	.string()
+	.max(240)
+	.refine((value) => {
+		try {
+			parsePRId(value);
+			return true;
+		} catch {
+			return false;
+		}
+	}, "Expected a GitHub PR identifier: owner/repository#number");
+
+function pullRequest(
+	repository: string,
+	number: number,
+	pr: z.infer<typeof remotePR>
+): PullRequest {
+	if (pr.number !== number) throw new Error("GitHub returned a different PR");
+	return PullRequestSchema.parse({
+		id: `${repository}#${number}`,
+		repository,
+		number,
+		url: pr.html_url,
+		title: pr.title,
+		author: pr.user.login,
+		baseSha: pr.base.sha,
+		headSha: pr.head.sha,
+	});
+}
+
+/** Read only an existing CLI session; never open an interactive subprocess or expose its output. */
+async function readGhToken(): Promise<string> {
+	for (const executable of ["gh", "/opt/homebrew/bin/gh", "/usr/local/bin/gh"]) {
+		try {
+			const result = await execFileAsync(
+				executable,
+				["auth", "token", "--hostname", "github.com"],
+				{ timeout: 10_000, maxBuffer: 32_768 }
+			);
+			if (result.stdout.trim()) return result.stdout.trim();
+		} catch {
+			/* Subprocess errors may contain credentials; do not propagate them. */
+		}
+	}
+	throw new Error("GitHub CLI session unavailable");
+}
+
 export class GitHubClient {
 	private readonly posts = new Map<
 		string,
 		{ signature: string; result: Promise<{ url: string; id: number }> }
 	>();
 	constructor(
-		private readonly credentials: CredentialStore,
+		private readonly credentials: CredentialAccess,
 		private readonly transport: typeof fetch = fetch,
-		private readonly ledger?: SubmissionLedger
+		private readonly ledger?: SubmissionLedger,
+		private readonly ghTokenReader: () => Promise<string> = readGhToken
 	) {}
 
 	async importGhToken() {
-		let token: string | undefined;
-		for (const executable of ["gh", "/opt/homebrew/bin/gh", "/usr/local/bin/gh"]) {
-			try {
-				const result = await execFileAsync(
-					executable,
-					["auth", "token", "--hostname", "github.com"],
-					{ timeout: 10_000, maxBuffer: 32_768 }
-				);
-				token = result.stdout.trim();
-				if (token) break;
-			} catch {
-				/* Never propagate subprocess errors containing tokens. */
-			}
+		let token: string;
+		try {
+			token = (await this.ghTokenReader()).trim();
+			if (!token || token.length > 16_384) throw new Error("Invalid token");
+		} catch {
+			throw new Error(
+				"No GitHub CLI session found. Run gh auth login --hostname github.com, then connect again, or configure GITHUB_TOKEN in the app .env file."
+			);
 		}
-		if (!token)
-			throw new Error("No GitHub CLI token available; sign in with gh or save a token in Settings");
 		await this.credentials.set("github", token);
 		return this.account();
 	}
@@ -68,7 +137,10 @@ export class GitHubClient {
 		options: { method?: string; body?: unknown; signal?: AbortSignal } = {}
 	): Promise<unknown> {
 		const token = await this.credentials.get("github");
-		if (!token) throw new Error("GitHub sign-in required");
+		if (!token)
+			throw new Error(
+				"GitHub sign-in required. Connect your GitHub CLI session or configure GITHUB_TOKEN in the app .env file."
+			);
 		const signal = options.signal
 			? AbortSignal.any([options.signal, AbortSignal.timeout(20_000)])
 			: AbortSignal.timeout(20_000);
@@ -92,15 +164,36 @@ export class GitHubClient {
 				signal.aborted ? "GitHub request cancelled or timed out" : "GitHub request failed"
 			);
 		}
-		if (!response.ok) throw new Error(`GitHub returned HTTP ${response.status}`);
+		if (!response.ok) {
+			if (response.status === 401)
+				throw new Error(
+					"GitHub session expired or invalid. Run gh auth login --hostname github.com, then connect again."
+				);
+			if (response.status === 403 || response.status === 429)
+				throw new Error(
+					"GitHub access denied or rate-limited. Check repository access and organization SSO, or retry after the rate limit resets."
+				);
+			if (response.status === 404)
+				throw new Error(
+					"GitHub resource not found or inaccessible. Check the repository, PR number and account access."
+				);
+			throw new Error(`GitHub returned HTTP ${response.status}`);
+		}
 		if (signal.aborted) throw new Error("GitHub request cancelled before completion");
-		return response.json();
+		let data: unknown;
+		try {
+			data = await response.json();
+		} catch {
+			throw new Error("GitHub returned an invalid JSON response");
+		}
+		if (signal.aborted) throw new Error("GitHub request cancelled before completion");
+		return data;
 	}
 
-	async account() {
+	async account(signal?: AbortSignal) {
 		return z
 			.object({ login: z.string(), avatar_url: z.string().url() })
-			.parse(await this.request("/user"));
+			.parse(await this.request("/user", { signal }));
 	}
 
 	async readPullRequest(
@@ -112,35 +205,78 @@ export class GitHubClient {
 		const pr = remotePR.parse(
 			await this.request(`${repositoryPath(repository)}/pulls/${number}`, { signal })
 		);
-		return PullRequestSchema.parse({
-			id: `${repository}#${pr.number}`,
-			repository,
-			number: pr.number,
-			url: pr.html_url,
-			title: pr.title,
-			author: pr.user.login,
-			baseSha: pr.base.sha,
-			headSha: pr.head.sha,
-		});
+		return pullRequest(repository, number, pr);
+	}
+
+	/** Bounded HTTP-only context. Recheck both SHAs so a moving PR cannot mix revisions. */
+	async prContext(prId: string, signal?: AbortSignal): Promise<ConversationPRContext> {
+		const { repository, number } = parsePRId(prId);
+		const path = `${repositoryPath(repository)}/pulls/${number}`;
+		const metadata = contextPR.parse(await this.request(path, { signal }));
+		const pr = pullRequest(repository, number, metadata);
+		const batch = z
+			.array(remoteFile)
+			.max(100)
+			.parse(await this.request(`${path}/files?per_page=100&page=1`, { signal }));
+		const description = metadata.body?.slice(0, 32_000) ?? "";
+		let remaining = MAX_CONTEXT_CHARS - description.length;
+		let truncated =
+			(metadata.body?.length ?? 0) > description.length || metadata.changed_files > batch.length;
+		const files: ConversationPRContext["files"] = [];
+		for (const file of batch) {
+			const size = file.filename.length + file.status.length;
+			if (size > remaining) {
+				truncated = true;
+				break;
+			}
+			remaining -= size;
+			const patch = file.patch?.slice(0, Math.min(20_000, remaining));
+			if (patch !== undefined) remaining -= patch.length;
+			if (
+				(file.patch !== undefined && patch?.length !== file.patch.length) ||
+				(file.patch === undefined && file.additions + file.deletions > 0)
+			)
+				truncated = true;
+			files.push({
+				path: file.filename,
+				status: file.status,
+				additions: file.additions,
+				deletions: file.deletions,
+				...(patch === undefined ? {} : { patch }),
+			});
+		}
+		const current = await this.readPullRequest(repository, number, signal);
+		if (current.baseSha !== pr.baseSha || current.headSha !== pr.headSha)
+			throw new Error("PR revision changed while reading context. Reload the pull request.");
+		return ConversationPRContextSchema.parse({ pr, description, files, truncated });
 	}
 
 	async reviewRequests(signal?: AbortSignal): Promise<PullRequest[]> {
-		const { login } = await this.account();
+		const { login } = await this.account(signal);
+		if (!/^[A-Za-z0-9-]+$/.test(login)) throw new Error("Invalid GitHub account login");
 		const found: PullRequest[] = [];
-		for (let page = 1; page <= 10; page++) {
-			const query = encodeURIComponent(`is:pr is:open review-requested:${login}`);
-			const result = z
-				.object({ items: z.array(z.object({ number: z.number(), repository_url: z.string() })) })
-				.parse(
-					await this.request(`/search/issues?q=${query}&per_page=100&page=${page}`, { signal })
-				);
-			for (const item of result.items) {
-				const url = new URL(item.repository_url);
-				if (url.origin !== "https://api.github.com" || !url.pathname.startsWith("/repos/"))
-					throw new Error("Invalid GitHub search result");
-				found.push(await this.readPullRequest(url.pathname.slice(7), item.number, signal));
+		const seen = new Set<string>();
+		for (const scope of ["review-requested", "author"]) {
+			for (let page = 1; page <= 10; page++) {
+				const query = encodeURIComponent(`is:pr is:open ${scope}:${login}`);
+				const result = z
+					.object({ items: z.array(z.object({ number: z.number(), repository_url: z.string() })) })
+					.parse(
+						await this.request(`/search/issues?q=${query}&per_page=100&page=${page}`, { signal })
+					);
+				for (const item of result.items) {
+					const url = new URL(item.repository_url);
+					if (url.origin !== "https://api.github.com" || !url.pathname.startsWith("/repos/"))
+						throw new Error("Invalid GitHub search result");
+					const repository = url.pathname.slice(7);
+					const key = `${repository.toLowerCase()}#${item.number}`;
+					if (!seen.has(key)) {
+						seen.add(key);
+						found.push(await this.readPullRequest(repository, item.number, signal));
+					}
+				}
+				if (result.items.length < 100) break;
 			}
-			if (result.items.length < 100) break;
 		}
 		return found;
 	}

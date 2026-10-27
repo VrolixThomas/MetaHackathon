@@ -1,8 +1,9 @@
+import { randomUUID } from "node:crypto";
 import { join } from "node:path";
 import { PullRequestSchema, RepositoryPathSchema, SourceFileSchema } from "../../shared/contracts";
 import type { PullRequest } from "../../shared/contracts";
 import type { SubmissionLedger } from "../db/runtime-state";
-import { CredentialStore, type SecretEncryption } from "./credentials";
+import { type CredentialAccess, CredentialStore, type SecretEncryption } from "./credentials";
 import { seedDemoRepositories } from "./demo";
 import { executionEnvironment } from "./environment";
 import { GitHubClient } from "./github";
@@ -15,6 +16,7 @@ export interface RuntimeOptions {
 	userDataPath: string;
 	fixturesPath: string;
 	encryption: SecretEncryption;
+	credentialStore?: CredentialAccess;
 	createPreviewPage: PreviewPageFactory;
 	submissionLedger: SubmissionLedger;
 	nodeExecutable?: string;
@@ -22,7 +24,7 @@ export interface RuntimeOptions {
 
 /** Main owns this instance. Router methods return JSON contracts, never credentials or processes. */
 export class RuntimeService {
-	readonly credentials: CredentialStore;
+	readonly credentials: CredentialAccess;
 	readonly github: GitHubClient;
 	readonly repositories: RepositoryManager;
 	readonly scenarios: ScenarioRunner;
@@ -47,10 +49,9 @@ export class RuntimeService {
 	private disposal?: Promise<void>;
 
 	constructor(private readonly options: RuntimeOptions) {
-		this.credentials = new CredentialStore(
-			join(options.userDataPath, "credentials"),
-			options.encryption
-		);
+		this.credentials =
+			options.credentialStore ??
+			new CredentialStore(join(options.userDataPath, "credentials"), options.encryption);
 		this.github = new GitHubClient(this.credentials, fetch, options.submissionLedger);
 		this.repositories = new RepositoryManager(join(options.userDataPath, "runtime", "worktrees"));
 		this.scenarios = new ScenarioRunner(
@@ -149,6 +150,13 @@ export class RuntimeService {
 		const prepared = this.prepared.get(prId);
 		if (!prepared) throw new Error("PR is not prepared");
 		return prepared;
+	}
+
+	/** V1 context is a bounded GitHub read and never seeds or clones a repository. */
+	prContext(prId: string, signal?: AbortSignal) {
+		return this.operation(`pr-context:${randomUUID()}`, (localSignal) =>
+			this.github.prContext(prId, signal ? AbortSignal.any([signal, localSignal]) : localSignal)
+		);
 	}
 
 	async changedFiles(prId: string) {

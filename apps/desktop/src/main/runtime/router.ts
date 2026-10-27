@@ -1,5 +1,6 @@
 import { z } from "zod";
 import {
+	ConversationPRContextSchema,
 	CredentialStatusListSchema,
 	IdSchema,
 	PreviewSchema,
@@ -12,6 +13,7 @@ import {
 	SourceFileSchema,
 } from "../../shared/contracts";
 import { publicProcedure, router } from "../trpc";
+import { GitHubPRIdSchema } from "./github";
 import type { RuntimeService } from "./service";
 
 /** Integration registers this factory's result in the root router after app.whenReady(). */
@@ -39,6 +41,10 @@ export function createRuntimeRouter(getRuntime: () => RuntimeService) {
 		reviewRequests: publicProcedure
 			.output(z.array(PullRequestSchema))
 			.query(() => getRuntime().github.reviewRequests()),
+		prContext: publicProcedure
+			.input(z.strictObject({ prId: GitHubPRIdSchema }))
+			.output(ConversationPRContextSchema)
+			.query(({ input }) => getRuntime().prContext(input.prId)),
 		prepareDemo: publicProcedure
 			.output(z.array(PullRequestSchema))
 			.mutation(() => getRuntime().prepareDemo()),
