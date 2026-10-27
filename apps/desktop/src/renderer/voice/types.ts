@@ -13,6 +13,7 @@ import type {
 	AgentTurnStatus,
 	CancelTurnInput,
 	CancelTurnResult,
+	ConversationTurnInput,
 	PollTurn,
 	PollTurnResult,
 	ScreenContext,
@@ -29,7 +30,7 @@ export type VoicePorts = {
 };
 export type AgentPorts = {
 	start(
-		input: AgentTurnInput,
+		input: AgentTurnInput | ConversationTurnInput,
 		signal: AbortSignal
 	): Promise<TurnIdentity & { status: AgentTurnStatus }>;
 	poll(input: PollTurn, signal: AbortSignal): Promise<PollTurnResult>;
@@ -85,7 +86,10 @@ export type VoiceControllerOptions = {
 	/** Display lifecycle only. These hooks must never start a second agent turn. */
 	onTurnStart?(identity: TurnIdentity): void;
 	onTurnEnd?(identity: TurnIdentity, result: VoiceTurnEnd): void;
-	getScreenContext(): ScreenContext;
+	/** V1 conversation mode: no screen or review is required; takes precedence over getScreenContext. */
+	getConversationContext?(): { prId?: string };
+	/** Legacy review mode requires a real screen context. */
+	getScreenContext?(): ScreenContext;
 	/** PR symbols and paths supplied by composition; snapshotted when capture begins. */
 	getKeywords?(): string[];
 	/** Product copy is injected; the renderer never routes user phrases or chooses tools. */

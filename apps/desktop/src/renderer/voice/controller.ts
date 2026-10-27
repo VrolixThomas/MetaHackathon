@@ -9,11 +9,14 @@ import {
 import {
 	type AgentAction,
 	type AgentEvent,
+	type AgentTurnInput,
 	AgentTurnInputSchema,
 	AgentTurnStatusSchema,
 	type CancelTurnInput,
 	CancelTurnInputSchema,
 	CancelTurnResultSchema,
+	type ConversationTurnInput,
+	ConversationTurnInputSchema,
 	PollTurnResultSchema,
 	PollTurnSchema,
 	ScreenContextSchema,
@@ -300,9 +303,11 @@ export function createVoiceController(options: VoiceControllerOptions): VoiceCon
 	}
 	async function action(turn: Turn, value: AgentAction) {
 		if (!live(turn) || !sameTurn(value, turn.identity) || turn.actions.has(value.requestId)) return;
+		// Simple V1 conversation has no artifact effects or fabricated screen receipts.
+		if (options.getConversationContext) return;
 		if (turn.actions.size >= MAX_ACTIONS) throw new Error("Agent action limit exceeded");
 		turn.actions.add(value.requestId);
-		const current = ScreenContextSchema.parse(options.getScreenContext());
+		const current = ScreenContextSchema.parse(options.getScreenContext?.());
 		if (!live(turn)) return;
 		if (current.prId !== turn.prId || current.sequence !== value.screenSequence) {
 			if (options.onActionIgnored)
@@ -337,20 +342,25 @@ export function createVoiceController(options: VoiceControllerOptions): VoiceCon
 	}
 	async function runAgent(turn: Turn, text: string) {
 		try {
-			const screenContext = ScreenContextSchema.parse(options.getScreenContext());
-			if (
-				screenContext.browser &&
-				(screenContext.browser.sessionId !== turn.identity.sessionId ||
-					screenContext.browser.prId !== screenContext.prId)
-			)
-				throw new Error("Browser context does not belong to the current review session");
-			turn.prId = screenContext.prId;
-			const input = AgentTurnInputSchema.parse({
-				...turn.identity,
-				requestId: id(),
-				text,
-				screenContext,
-			});
+			const base = { ...turn.identity, requestId: id(), text };
+			let input: AgentTurnInput | ConversationTurnInput;
+			if (options.getConversationContext) {
+				const context = options.getConversationContext();
+				input = ConversationTurnInputSchema.parse({
+					...base,
+					...(context.prId === undefined ? {} : { prId: context.prId }),
+				});
+			} else {
+				const screenContext = ScreenContextSchema.parse(options.getScreenContext?.());
+				if (
+					screenContext.browser &&
+					(screenContext.browser.sessionId !== turn.identity.sessionId ||
+						screenContext.browser.prId !== screenContext.prId)
+				)
+					throw new Error("Browser context does not belong to the current review session");
+				turn.prId = screenContext.prId;
+				input = AgentTurnInputSchema.parse({ ...base, screenContext });
+			}
 			const started = StartResultSchema.parse(
 				await allocation(turn, "agent", () => options.agent.start(input, turn.abort.signal))
 			);

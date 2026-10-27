@@ -5,7 +5,20 @@ This directory owns media and turn coordination. The agent owns tools, intent, a
 integration owns router registration, transport adapters, UI composition, and lifecycle wiring.
 There are no credentials, global key handlers, visible controls, or phrase-based tool routes here.
 
-## Composition example
+## V1 conversation
+
+Pass `getConversationContext: () => ({ prId: selectedPR?.id })` for the simple talk/reply flow.
+Omit `getScreenContext`; no PR, fixture, screen update, browser or artifact surface is needed.
+`AgentPorts.start` accepts `ConversationTurnInput | AgentTurnInput`; the V1 adapter parses with
+`ConversationTurnInputSchema` and calls `conversation.start`, with polling and cancellation sent
+to that same conversation namespace. The existing identity allocator, lifecycle/transcript/answer
+hooks, serial speech and explicit dual cancellation are retained. The conversation getter takes
+precedence when both context getters are supplied. V1 does not dispatch review action/receipt hooks.
+
+Without the conversation getter, the legacy path still requires `getScreenContext` and sends an
+`AgentTurnInput`. Legacy adapters should parse that schema before reading `input.screenContext`.
+
+## Legacy review composition example
 
 ```ts
 import {

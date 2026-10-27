@@ -1,11 +1,13 @@
 import assert from "node:assert/strict";
 import { afterEach, test } from "node:test";
 import type { SpeakInput, VoiceEvent, VoicePollResult } from "../../main/voice/protocol";
+import { AgentTurnInputSchema, ConversationTurnInputSchema } from "../../shared/contracts";
 import type {
 	AgentAction,
 	AgentEvent,
 	AgentTurnInput,
 	CancelTurnInput,
+	ConversationTurnInput,
 	PollTurn,
 	PollTurnResult,
 	ScreenContext,
@@ -104,7 +106,7 @@ function harness(overrides: Partial<VoiceControllerOptions> = {}) {
 		},
 		agent: {
 			start: async (input) => {
-				starts.push(input);
+				starts.push(AgentTurnInputSchema.parse(input));
 				return { ...identity(input), status: "running" };
 			},
 			poll: (input) => poll(input),
@@ -190,6 +192,72 @@ function identity(value: TurnIdentity): TurnIdentity {
 	return { sessionId: value.sessionId, turnId: value.turnId, generation: value.generation };
 }
 
+test("V1 conversation speaks one reply without a PR or screen, optionally attaches a real PR", async () => {
+	for (const context of [{}, { prId: "selected-pr" }]) {
+		const starts: ConversationTurnInput[] = [];
+		const h = harness({
+			getConversationContext: () => context,
+			getScreenContext: undefined,
+		});
+		h.options.agent.start = async (input) => {
+			starts.push(ConversationTurnInputSchema.parse(input));
+			return { ...identity(input), status: "running" };
+		};
+		h.setPoll(async (input) => ({
+			...identity(input),
+			status: "completed",
+			sequence: 2,
+			text: "Hello there.",
+			actions: [],
+			events: [
+				{ ...identity(input), sequence: 1, kind: "text-delta", delta: "Hello there." },
+				{ ...identity(input), sequence: 2, kind: "completed" },
+			],
+		}));
+		await h.capture();
+		await h.final("Hello");
+		h.emit({ kind: "transcript", text: "duplicate", final: true });
+		await until(() => h.answers.includes("Hello there."));
+		assert.equal(starts.length, 1);
+		assert.ok(starts[0]);
+		assert.deepEqual(identity(starts[0]), h.current());
+		assert.equal("screenContext" in starts[0], false);
+		assert.equal("prId" in starts[0], "prId" in context);
+		assert.equal(starts[0].prId, context.prId);
+		for (let index = 0; index < 2; index++) {
+			await until(() => h.speaks.length > index);
+			h.emit({ kind: "speech-ended", speechId: h.speaks[index]?.speechId ?? "missing" });
+		}
+		await until(() => h.controller.getPhase() === "idle");
+		assert.equal(h.speaks[1]?.text, "Hello there.");
+		assert.equal(h.cancels.voice.length, 1);
+		assert.equal(h.cancels.agent.length, 1);
+	}
+});
+
+test("V1 preserves the shared identity when a late start is cancelled without reading a screen", async () => {
+	const pending = deferred<TurnIdentity & { status: "running" }>();
+	const shared = { sessionId: "conversation", turnId: "spoken", generation: 8 };
+	const h = harness({
+		sessionId: shared.sessionId,
+		allocateIdentity: () => shared,
+		getConversationContext: () => ({}),
+		getScreenContext: () => {
+			throw new Error("V1 must not read a screen");
+		},
+	});
+	h.options.agent.start = () => pending.promise;
+	await h.capture();
+	await h.final();
+	h.controller.interrupt();
+	pending.resolve({ ...shared, status: "running" });
+	await until(() => h.cancels.agent.length === 2);
+	assert.ok(h.cancels.agent.every((input) => input.generation === shared.generation));
+	assert.equal(h.media[0]?.closed, true);
+	assert.equal(h.controller.getPhase(), "cancelled");
+	assert.deepEqual(h.actions, []);
+});
+
 test("keyup during permission/setup cancels synchronously and cannot resume late", async () => {
 	const setup = deferred<void>();
 	let closed = false;
@@ -259,7 +327,7 @@ test("cancel during agent start aborts immediately and re-cancels a late server 
 	const start = deferred<TurnIdentity & { status: "running" }>();
 	let signal: AbortSignal | undefined;
 	h.options.agent.start = (input, value) => {
-		h.starts.push(input);
+		h.starts.push(AgentTurnInputSchema.parse(input));
 		signal = value;
 		return start.promise;
 	};
