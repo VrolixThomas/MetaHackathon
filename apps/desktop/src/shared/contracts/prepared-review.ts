@@ -52,6 +52,7 @@ export const ReviewScreenSchema = z.strictObject({
 	path: RepositoryPathSchema.optional(),
 	baseSha: CommitShaSchema.optional(),
 	headSha: CommitShaSchema.optional(),
+	paused: z.boolean().optional(),
 });
 export const ReviewNavigationSchema = z.strictObject({
 	reviewId: IdSchema,
