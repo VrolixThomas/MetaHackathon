@@ -2,6 +2,8 @@ import assert from "node:assert/strict";
 import { EventEmitter } from "node:events";
 import { readFileSync } from "node:fs";
 import { test } from "node:test";
+import * as timers from "node:timers";
+import { setTimeout as delay } from "node:timers/promises";
 import { runInNewContext } from "node:vm";
 import type { BrowserWindow } from "electron";
 import { ModuleKind, transpileModule } from "typescript";
@@ -16,6 +18,7 @@ function adapterFixture() {
 	let destroyed = false;
 	let loading = false;
 	let finishLoad = () => {};
+	let afterAction: (() => void) | undefined;
 	let created = 0;
 	const calls: string[] = [];
 	const emulations: Array<{ viewSize: { width: number; height: number }; scale: number }> = [];
@@ -31,6 +34,7 @@ function adapterFixture() {
 		},
 		loadURL() {
 			loading = true;
+			contents.emit("did-start-loading");
 			return new Promise<void>((resolve) => {
 				finishLoad = () => {
 					renderExists = true;
@@ -42,8 +46,21 @@ function adapterFixture() {
 				};
 			});
 		},
-		async executeJavaScriptInIsolatedWorld(_world: number, scripts: { code: string }[]) {
-			if (scripts[0]?.code === browserDOM.browserSnapshotScript) calls.push("observe");
+		async executeJavaScriptInIsolatedWorld(
+			_world: number,
+			scripts: { code: string }[]
+		): Promise<unknown> {
+			const code = scripts[0]?.code ?? "";
+			if (code.includes("new Promise")) {
+				// Model a renderer timer lost when form navigation destroys its document.
+				calls.push("renderer-timer");
+				return new Promise(() => {});
+			}
+			if (code === browserDOM.browserSnapshotScript) calls.push("observe");
+			else {
+				calls.push("act");
+				afterAction?.();
+			}
 			return {
 				url: "http://127.0.0.1:43210/",
 				title: "Mock page",
@@ -100,6 +117,7 @@ function adapterFixture() {
 		require: (id: string) => {
 			if (id === "electron") return electron;
 			if (id === "node:crypto") return { randomUUID: () => "test-partition" };
+			if (id === "node:timers") return timers;
 			if (id === "./browser-dom") return browserDOM;
 			if (id === "./browser-policy") return browserPolicy;
 			throw new Error(`Unexpected adapter dependency: ${id}`);
@@ -113,6 +131,9 @@ function adapterFixture() {
 		emulations,
 		children,
 		finishLoad: () => finishLoad(),
+		afterAction(callback: () => void) {
+			afterAction = callback;
+		},
 		created: () => created,
 		loseRenderer() {
 			renderExists = false;
@@ -154,4 +175,69 @@ test("native adapter defers emulation until load and applies the latest viewport
 	f.contents.emit("did-finish-load");
 	assert.equal(f.emulations.length, count + 1);
 	assert.equal(f.children.length, 0);
+});
+
+test("form navigation starting after click acknowledgement settles in main before observation", async () => {
+	const f = adapterFixture();
+	const opening = f.page.loadURL("http://127.0.0.1:43210/");
+	f.finishLoad();
+	await opening;
+	f.calls.length = 0;
+	let navigation: Promise<void> | undefined;
+	f.afterAction(() => {
+		navigation = (async () => {
+			await delay(5); // Evaluation acknowledged while isLoadingMainFrame is still false.
+			const loading = f.contents.loadURL();
+			await delay(60); // Navigation outlasts the old renderer's 32 ms timer.
+			f.finishLoad();
+			await loading;
+		})();
+	});
+	const command = {
+		kind: "click",
+		sessionId: "test",
+		requestId: "click",
+		browserId: "page",
+		elementId: "apply",
+		observationSequence: 1,
+	} as const;
+	const expected = {
+		url: "http://127.0.0.1:43210/",
+		title: "Mock page",
+		text: "",
+		elements: [],
+		scroll: { x: 0, y: 0 },
+	};
+	let deadline: ReturnType<typeof timers.setTimeout> | undefined;
+	try {
+		await Promise.race([
+			f.page.act(command, expected).then(() => f.page.snapshot()),
+			new Promise<never>((_resolve, reject) => {
+				deadline = timers.setTimeout(
+					() => reject(new Error("Action waited on a destroyed renderer timer")),
+					1000
+				);
+			}),
+		]);
+		assert.equal(f.calls.filter((call) => call === "act").length, 1);
+		assert.ok(f.calls.indexOf("loaded") < f.calls.indexOf("observe"));
+		assert.ok(!f.calls.includes("renderer-timer"));
+		assert.equal(f.contents.listenerCount("did-start-loading"), 0);
+		assert.equal(f.contents.listenerCount("did-stop-loading"), 0);
+		assert.equal(f.contents.listenerCount("destroyed"), 0);
+	} finally {
+		timers.clearTimeout(deadline);
+		await navigation;
+		f.page.close();
+	}
+});
+
+test("closing during the main-process settle wait rejects and removes listeners", async () => {
+	const f = adapterFixture();
+	const observing = assert.rejects(f.page.snapshot(), /Browser page closed/);
+	f.page.close();
+	await observing;
+	assert.equal(f.contents.listenerCount("did-start-loading"), 0);
+	assert.equal(f.contents.listenerCount("did-stop-loading"), 0);
+	assert.equal(f.contents.listenerCount("destroyed"), 0);
 });

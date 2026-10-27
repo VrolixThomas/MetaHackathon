@@ -1,4 +1,5 @@
 import { randomUUID } from "node:crypto";
+import { clearTimeout, setTimeout } from "node:timers";
 import { type BrowserWindow, WebContentsView, session } from "electron";
 import type { BrowserBounds, BrowserViewport } from "../../shared/contracts";
 import type { BrowserPage, BrowserSnapshot } from "./browser";
@@ -94,27 +95,38 @@ export function createElectronBrowserPage(
 	});
 	const settle = async () => {
 		check();
-		if (contents.isLoadingMainFrame())
-			await new Promise<void>((resolve, reject) => {
-				const done = () => {
-					contents.off("did-stop-loading", done);
-					contents.off("destroyed", gone);
+		// A form click can acknowledge before navigation starts. A renderer-world timer
+		// would then disappear with the old document and leave its evaluation unresolved.
+		await new Promise<void>((resolve, reject) => {
+			let timer: ReturnType<typeof setTimeout> | undefined;
+			const loading = () => clearTimeout(timer);
+			const cleanup = () => {
+				clearTimeout(timer);
+				contents.off("did-start-loading", loading);
+				contents.off("did-stop-loading", idle);
+				contents.off("destroyed", gone);
+			};
+			const gone = () => {
+				cleanup();
+				reject(new Error("Browser page closed"));
+			};
+			const idle = () => {
+				clearTimeout(timer);
+				if (closed || contents.isDestroyed()) return gone();
+				if (contents.isLoadingMainFrame()) return;
+				timer = setTimeout(() => {
+					if (closed || contents.isDestroyed()) return gone();
+					if (contents.isLoadingMainFrame()) return;
+					cleanup();
 					resolve();
-				};
-				const gone = () => {
-					contents.off("did-stop-loading", done);
-					reject(new Error("Browser page closed"));
-				};
-				contents.once("did-stop-loading", done);
-				contents.once("destroyed", gone);
-			});
-		check();
-		await contents.executeJavaScriptInIsolatedWorld(999, [
-			{
-				// Hidden views may not paint before the UI publishes its content rectangle.
-				code: "new Promise(resolve => setTimeout(resolve, 32))",
-			},
-		]);
+				}, 32);
+			};
+			// Register before checking loading so transitions cannot be missed.
+			contents.on("did-start-loading", loading);
+			contents.on("did-stop-loading", idle);
+			contents.once("destroyed", gone);
+			idle();
+		});
 	};
 	return {
 		async loadURL(url) {
