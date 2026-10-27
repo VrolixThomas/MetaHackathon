@@ -28,8 +28,10 @@ export function BrowserWorkspace({ visible }: { visible: boolean }) {
 		let disposed = false;
 		const report = () => {
 			const box = host.current?.getBoundingClientRect();
+			// The native view can occlude this renderer. Its visibility must follow the workspace,
+			// not document.hidden; main owns the parent window's visibility.
 			const bounds =
-				visible && !document.hidden && browserId && box && box.width > 0 && box.height > 0
+				visible && browserId && box && box.width > 0 && box.height > 0
 					? {
 							x: Math.round(box.x),
 							y: Math.round(box.y),
@@ -50,14 +52,12 @@ export function BrowserWorkspace({ visible }: { visible: boolean }) {
 		if (host.current) resize.observe(host.current);
 		window.addEventListener("resize", report);
 		window.addEventListener("scroll", report, true);
-		document.addEventListener("visibilitychange", report);
 		report();
 		return () => {
 			disposed = true;
 			resize.disconnect();
 			window.removeEventListener("resize", report);
 			window.removeEventListener("scroll", report, true);
-			document.removeEventListener("visibilitychange", report);
 			void present(null).catch(() => {});
 		};
 	}, [present, visible, browserId]);
