@@ -17,7 +17,8 @@
 		"type-check": "tsc --noEmit -p tsconfig.main.json && tsc --noEmit -p tsconfig.preload.json && tsc --noEmit -p tsconfig.renderer.json",
 		"db:generate": "drizzle-kit generate",
 		"test:prepared-reviews": "electron-vite build && PREPARED_REVIEW_REQUIRE_SOURCE=1 PREPARED_REVIEW_REQUIRE_SYNTAX=1 env -u ELECTRON_RUN_AS_NODE electron src/main/prepared-review-smoke.cjs",
-		"test:local-browser": "electron-vite build && env -u ELECTRON_RUN_AS_NODE electron src/main/local-browser-smoke.cjs"
+		"test:local-browser": "electron-vite build && env -u ELECTRON_RUN_AS_NODE electron src/main/local-browser-smoke.cjs",
+		"test:hands-free": "electron-vite build && HANDS_FREE_MODAL_CHECKS=1 env -u ELECTRON_RUN_AS_NODE electron src/main/hands-free-smoke.cjs"
 	},
 	"dependencies": {
 		"@tanstack/react-query": "5.95.2",

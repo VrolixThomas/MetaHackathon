@@ -61,6 +61,7 @@ export function VoiceBar({ controller }: { controller: ConversationController })
 					data-testid="voice-control"
 					aria-label={sessionOpen ? "End conversation" : "Start conversation"}
 					aria-pressed={sessionOpen}
+					disabled={!sessionOpen && (state.configBusy || state.voice?.phase === "preparing")}
 					onClick={controller.toggleConversation}
 				>
 					<span aria-hidden="true">{sessionOpen ? "■" : "●"}</span>
