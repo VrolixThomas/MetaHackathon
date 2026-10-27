@@ -70,10 +70,21 @@ export type MediaFactory = (observer: {
 }) => VoiceMedia;
 
 export type TranscriptUpdate = TurnIdentity & { text: string; final: boolean };
+export type VoiceTurnEnd =
+	| { status: "completed" }
+	| { status: "cancelled"; reason: CancelTurnInput["reason"] }
+	| { status: "failed"; error: string };
 export type VoiceControllerOptions = {
 	voice: VoicePorts;
 	agent: AgentPorts;
 	media: MediaFactory;
+	/** Use the UI review session for both typed and spoken turns. */
+	sessionId?: string;
+	/** Synchronous shared allocator; requires sessionId and an increasing generation. */
+	allocateIdentity?(): TurnIdentity;
+	/** Display lifecycle only. These hooks must never start a second agent turn. */
+	onTurnStart?(identity: TurnIdentity): void;
+	onTurnEnd?(identity: TurnIdentity, result: VoiceTurnEnd): void;
 	getScreenContext(): ScreenContext;
 	/** PR symbols and paths supplied by composition; snapshotted when capture begins. */
 	getKeywords?(): string[];

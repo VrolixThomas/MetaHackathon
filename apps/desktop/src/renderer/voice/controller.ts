@@ -24,7 +24,13 @@ import {
 } from "../../shared/contracts";
 import { asError, bounded, delay } from "./async";
 import { Sentences } from "./sentences";
-import type { PcmObservation, VoiceController, VoiceControllerOptions, VoiceMedia } from "./types";
+import type {
+	PcmObservation,
+	VoiceController,
+	VoiceControllerOptions,
+	VoiceMedia,
+	VoiceTurnEnd,
+} from "./types";
 
 const StartResultSchema = TurnIdentitySchema.extend({ status: AgentTurnStatusSchema });
 const MAX_TEXT = 32_000;
@@ -67,7 +73,9 @@ export function sameTurn(left: TurnIdentity, right: TurnIdentity): boolean {
 export function createVoiceController(options: VoiceControllerOptions): VoiceController {
 	const now = options.now ?? (() => performance.now());
 	const id = options.id ?? (() => crypto.randomUUID());
-	const sessionId = id();
+	if (options.allocateIdentity && options.sessionId === undefined)
+		throw new Error("Shared voice identity allocation requires the review session ID");
+	const sessionId = TurnIdentitySchema.shape.sessionId.parse(options.sessionId ?? id());
 	const ack = SpeakSchema.shape.text.parse(options.acknowledgementText.trim());
 	const completion =
 		options.completionText === undefined
@@ -79,6 +87,7 @@ export function createVoiceController(options: VoiceControllerOptions): VoiceCon
 	const turnTimeout = Math.max(100, options.turnTimeoutMs ?? 180_000);
 	const listeners = new Set<() => void>();
 	let generation = 0;
+	let captureSequence = 0;
 	let active: Turn | null = null;
 	let disposed = false;
 	let state: Readonly<VoiceState> = Object.freeze(
@@ -162,7 +171,23 @@ export function createVoiceController(options: VoiceControllerOptions): VoiceCon
 			phase: error ? "error" : "cancelled",
 			...(error ? { error: error.message || "Voice failed" } : {}),
 		});
+		end(
+			turn,
+			error
+				? { status: "failed", error: error.message || "Voice failed" }
+				: {
+						status: "cancelled",
+						reason,
+					}
+		);
 		if (error) report(error);
+	}
+	function end(turn: Turn, result: VoiceTurnEnd) {
+		try {
+			options.onTurnEnd?.({ ...turn.identity }, result);
+		} catch (error) {
+			report(error);
+		}
 	}
 	function fail(turn: Turn, error: unknown) {
 		if (live(turn)) stop("user", asError(error));
@@ -173,6 +198,7 @@ export function createVoiceController(options: VoiceControllerOptions): VoiceCon
 		// Explicitly release main/sidecar state as well as the browser peer.
 		cancelRemote(turn, "user");
 		publish({ phase: "idle" });
+		end(turn, { status: "completed" });
 	}
 
 	/** If cancel beats an in-flight server allocation, cancel again when it settles. */
@@ -268,7 +294,7 @@ export function createVoiceController(options: VoiceControllerOptions): VoiceCon
 		if (turn.text.length + delta.length > MAX_TEXT)
 			throw new Error("Agent response limit exceeded");
 		turn.text += delta;
-		options.onAnswer?.(turn.text, turn.identity);
+		options.onAnswer?.(turn.text, { ...turn.identity });
 		if (!live(turn)) return;
 		for (const sentence of turn.sentences.push(delta, final)) queue(turn, sentence, "answer");
 	}
@@ -312,6 +338,12 @@ export function createVoiceController(options: VoiceControllerOptions): VoiceCon
 	async function runAgent(turn: Turn, text: string) {
 		try {
 			const screenContext = ScreenContextSchema.parse(options.getScreenContext());
+			if (
+				screenContext.browser &&
+				(screenContext.browser.sessionId !== turn.identity.sessionId ||
+					screenContext.browser.prId !== screenContext.prId)
+			)
+				throw new Error("Browser context does not belong to the current review session");
 			turn.prId = screenContext.prId;
 			const input = AgentTurnInputSchema.parse({
 				...turn.identity,
@@ -456,14 +488,31 @@ export function createVoiceController(options: VoiceControllerOptions): VoiceCon
 	return {
 		beginCapture() {
 			if (disposed) return;
-			const nextGeneration = ++generation;
+			const launch = ++captureSequence;
 			stop("push-to-talk");
-			if (disposed || generation !== nextGeneration) return;
-			const identity = TurnIdentitySchema.parse({
-				sessionId,
-				turnId: id(),
-				generation: nextGeneration,
-			});
+			if (disposed || captureSequence !== launch) return;
+			let identity: TurnIdentity;
+			try {
+				identity = TurnIdentitySchema.parse(
+					options.allocateIdentity
+						? options.allocateIdentity()
+						: {
+								sessionId,
+								turnId: id(),
+								generation: generation + 1,
+							}
+				);
+				if (identity.sessionId !== sessionId || identity.generation <= generation)
+					throw new Error("Voice identity must advance the current review session generation");
+			} catch (error) {
+				if (!disposed && captureSequence === launch) {
+					publish({ phase: "error", error: asError(error).message });
+					report(error);
+				}
+				return;
+			}
+			if (disposed || captureSequence !== launch) return;
+			generation = identity.generation;
 			const turn: Turn = {
 				identity,
 				keywords: [],
@@ -497,6 +546,12 @@ export function createVoiceController(options: VoiceControllerOptions): VoiceCon
 				error: undefined,
 			});
 			if (!live(turn)) return;
+			try {
+				options.onTurnStart?.({ ...identity });
+			} catch (error) {
+				fail(turn, error);
+			}
+			if (!live(turn)) return;
 			turn.deadline = setTimeout(() => fail(turn, new Error("Voice turn timed out")), turnTimeout);
 			try {
 				turn.keywords = VoiceOfferSchema.shape.keywords.parse(options.getKeywords?.() ?? []);
@@ -527,7 +582,10 @@ export function createVoiceController(options: VoiceControllerOptions): VoiceCon
 				fail(turn, error);
 			}
 		},
-		interrupt: (reason = "user") => stop(reason),
+		interrupt: (reason = "user") => {
+			captureSequence++;
+			stop(reason);
+		},
 		getPhase: () => state.phase,
 		subscribe(listener) {
 			if (disposed) return () => {};
