@@ -159,6 +159,15 @@ export class RuntimeService {
 		);
 	}
 
+	repositoryPullRequests(repository: string, signal?: AbortSignal) {
+		return this.operation(`repository-prs:${randomUUID()}`, (localSignal) =>
+			this.github.openPullRequests(
+				repository,
+				signal ? AbortSignal.any([signal, localSignal]) : localSignal
+			)
+		);
+	}
+
 	async changedFiles(prId: string) {
 		const { pr, worktrees } = this.getPrepared(prId);
 		const result = await runProcess({

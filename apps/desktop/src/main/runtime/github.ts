@@ -6,6 +6,7 @@ import {
 	ConfirmCommentInputSchema,
 	ConversationPRContextSchema,
 	DraftedCommentSchema,
+	GitHubRepositorySchema,
 	PullRequestSchema,
 	RepositoryPathSchema,
 } from "../../shared/contracts";
@@ -30,6 +31,12 @@ const remotePR = z.object({
 const contextPR = remotePR.extend({
 	body: z.string().nullable(),
 	changed_files: z.int().nonnegative(),
+});
+const repositoryRef = z.object({ full_name: GitHubRepositorySchema.max(240) });
+const listedPR = remotePR.extend({
+	state: z.literal("open"),
+	base: z.object({ sha: z.string(), repo: repositoryRef }),
+	head: z.object({ sha: z.string(), repo: repositoryRef.nullable() }),
 });
 const remoteFile = z.object({
 	filename: RepositoryPathSchema.max(4096),
@@ -206,6 +213,30 @@ export class GitHubClient {
 			await this.request(`${repositoryPath(repository)}/pulls/${number}`, { signal })
 		);
 		return pullRequest(repository, number, pr);
+	}
+
+	/** Repository inbox: at most two 100-item pages, using each PR's actual base/fork SHAs. */
+	async openPullRequests(repositoryInput: string, signal?: AbortSignal): Promise<PullRequest[]> {
+		const repository = GitHubRepositorySchema.max(240).parse(repositoryInput);
+		const found = new Map<number, PullRequest>();
+		for (let page = 1; page <= 2; page++) {
+			const batch = z
+				.array(listedPR)
+				.max(100)
+				.parse(
+					await this.request(
+						`${repositoryPath(repository)}/pulls?state=open&per_page=100&page=${page}&sort=updated&direction=desc`,
+						{ signal }
+					)
+				);
+			for (const pr of batch) {
+				if (pr.base.repo.full_name.toLowerCase() !== repository.toLowerCase())
+					throw new Error("GitHub returned a PR for another repository");
+				if (!found.has(pr.number)) found.set(pr.number, pullRequest(repository, pr.number, pr));
+			}
+			if (batch.length < 100) break;
+		}
+		return [...found.values()];
 	}
 
 	/** Bounded HTTP-only context. Recheck both SHAs so a moving PR cannot mix revisions. */

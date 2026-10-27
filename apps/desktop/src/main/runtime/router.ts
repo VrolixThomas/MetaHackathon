@@ -2,6 +2,7 @@ import { z } from "zod";
 import {
 	ConversationPRContextSchema,
 	CredentialStatusListSchema,
+	GitHubRepositorySchema,
 	IdSchema,
 	PreviewSchema,
 	PullRequestSchema,
@@ -45,6 +46,10 @@ export function createRuntimeRouter(getRuntime: () => RuntimeService) {
 			.input(z.strictObject({ prId: GitHubPRIdSchema }))
 			.output(ConversationPRContextSchema)
 			.query(({ input }) => getRuntime().prContext(input.prId)),
+		repositoryPullRequests: publicProcedure
+			.input(z.strictObject({ repository: GitHubRepositorySchema.max(240) }))
+			.output(z.array(PullRequestSchema).max(200))
+			.query(({ input }) => getRuntime().repositoryPullRequests(input.repository)),
 		prepareDemo: publicProcedure
 			.output(z.array(PullRequestSchema))
 			.mutation(() => getRuntime().prepareDemo()),
