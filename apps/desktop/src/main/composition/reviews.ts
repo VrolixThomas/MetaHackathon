@@ -187,23 +187,26 @@ export class ReviewCoordinator {
 			...(this.error ? { error: this.error } : {}),
 		});
 	}
-	private cache(progress?: { entry: Entry; value: ReviewProgress }): ReviewCache {
+	private cache(
+		progress?: { entry: Entry; value: ReviewProgress },
+		connection?: { repository: string; localPath: string | null; entries: Map<string, Entry> }
+	): ReviewCache {
+		const entries = [...(connection?.entries ?? this.entries).values()];
 		return ReviewCacheSchema.parse({
-			repository: this.repository,
-			localPath: this.localPath,
-			prepared: [...this.entries.values()].flatMap((entry) =>
-				entry.prepared ? [entry.prepared] : []
-			),
-			progress: [...this.entries.values()].flatMap((entry) => {
+			repository: connection ? connection.repository : this.repository,
+			localPath: connection ? connection.localPath : this.localPath,
+			prepared: entries.flatMap((entry) => (entry.prepared ? [entry.prepared] : [])),
+			progress: entries.flatMap((entry) => {
 				const value = progress?.entry === entry ? progress.value : entry.progress;
 				return entry.prepared && value ? [value] : [];
 			}),
 		});
 	}
 	private save(work: () => Promise<void>): Promise<void> {
-		const operation = this.storage
-			.then(work)
-			.catch(() => fail("Could not save review progress. Check local storage and try again."));
+		const operation = this.storage.then(work).catch((error) => {
+			if (error instanceof ReviewError) throw error;
+			fail("Could not save review progress. Check local storage and try again.");
+		});
 		this.storage = operation.catch(() => {});
 		return this.track(operation);
 	}
@@ -388,26 +391,68 @@ export class ReviewCoordinator {
 		return this.request(async (signal) => {
 			const input = ConnectReviewSchema.parse(raw);
 			const active = AbortSignal.any([signal, candidate.signal]);
+			const revision = this.revision;
 			const result = await this.validateConnection(
 				input.repository,
 				input.localPath ?? null,
 				active
 			);
-			this.live(active);
-			this.connection.abort();
-			this.connection = new AbortController();
-			this.refreshing = undefined;
-			for (const entry of this.entries.values()) entry.abort.abort();
-			if (this.repository?.toLowerCase() !== input.repository.toLowerCase()) this.entries.clear();
-			this.repository = input.repository;
-			this.localPath = result.localPath;
-			this.connected = true;
-			this.reconcile(result.prs);
-			await this.persist();
-			this.live(active);
-			this.startPolling();
-			this.schedule();
-			return this.snapshot();
+			let committed: ReviewInbox | undefined;
+			await this.save(async () => {
+				const valid = () => {
+					this.live(active);
+					if (this.candidate !== candidate || this.revision !== revision)
+						fail("Repository changed while connecting. Try connecting again.");
+				};
+				valid();
+				const entries = new Map<string, Entry>();
+				for (const pr of result.prs) {
+					const previous =
+						this.repository?.toLowerCase() === input.repository.toLowerCase()
+							? this.entries.get(pr.id)
+							: undefined;
+					entries.set(
+						pr.id,
+						previous && sameRevision(previous.pr, pr)
+							? {
+									...this.detail(previous),
+									pr,
+									abort: new AbortController(),
+									status: previous.status === "preparing" ? "queued" : previous.status,
+								}
+							: this.queued(pr)
+					);
+				}
+				try {
+					await this.ports.saveCache(
+						this.cache(undefined, {
+							repository: input.repository,
+							localPath: result.localPath,
+							entries,
+						})
+					);
+					valid();
+				} catch (error) {
+					// The accepted connection remains live; restore its latest state, including progress.
+					await this.ports.saveCache(this.cache());
+					throw error;
+				}
+				this.connection.abort();
+				for (const entry of this.entries.values()) entry.abort.abort();
+				this.connection = new AbortController();
+				this.refreshing = undefined;
+				this.repository = input.repository;
+				this.localPath = result.localPath;
+				this.connected = true;
+				this.entries = entries;
+				this.revision++;
+				this.error = undefined;
+				this.lastRefreshedAt = new Date().toISOString();
+				this.startPolling();
+				this.schedule();
+				committed = this.snapshot();
+			});
+			return committed as ReviewInbox;
 		});
 	}
 	disconnect(): Promise<ReviewInbox> {

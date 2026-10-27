@@ -340,6 +340,164 @@ describe("prepared review queue and durable cache", () => {
 	});
 });
 
+describe("repository connection transactions", () => {
+	it("keeps the accepted connection, cache and progress when candidate persistence fails", async (t) => {
+		const { coordinator, state, ports } = harness(t);
+		await coordinator.connect({ repository: repo, localPath: "/accepted" });
+		const review = await ready(coordinator);
+		await coordinator.progress({
+			prId: pr().id,
+			reviewId: review.id,
+			path: "src/second.ts",
+			paused: true,
+		});
+		const accepted = structuredClone(state.cache);
+		const inbox = await coordinator.inbox();
+		ports.listOpen = async () => [];
+		ports.saveCache = async () => {
+			throw new Error("fake-secret unavailable store");
+		};
+		await assert.rejects(
+			coordinator.connect({ repository: "other/repo" }),
+			(error: Error) => !error.message.includes("fake-secret")
+		);
+		assert.deepEqual(await coordinator.inbox(), inbox);
+		assert.deepEqual(state.cache, accepted);
+		assert.equal((await coordinator.getReady(pr().id, signal())).id, review.id);
+		assert.equal((await coordinator.getProgress(pr().id, signal()))?.paused, true);
+	});
+	it("rolls back an aborted candidate after a newer invalid selection and retains queued progress", async (t) => {
+		const { coordinator, state, ports } = harness(t);
+		await coordinator.connect({ repository: repo });
+		const review = await ready(coordinator);
+		await coordinator.progress({
+			prId: pr().id,
+			reviewId: review.id,
+			path: "src/first.ts",
+			paused: false,
+		});
+		const saving = deferred<void>();
+		let writing = false;
+		const save = ports.saveCache;
+		ports.listOpen = async (repository) => {
+			if (repository === "invalid/newer") throw new Error("fake-secret denied");
+			return [];
+		};
+		ports.saveCache = async (cache) => {
+			if (cache.repository === "valid/older") {
+				writing = true;
+				await saving.promise;
+			}
+			await save(cache);
+		};
+		try {
+			const older = coordinator.connect({ repository: "valid/older" });
+			const rejected = assert.rejects(older, /cancelled/);
+			await until(() => writing);
+			assert.equal((await coordinator.inbox()).repository, repo);
+			assert.equal((await coordinator.getReady(pr().id, signal())).id, review.id);
+			const progress = coordinator.progress({
+				prId: pr().id,
+				reviewId: review.id,
+				path: "src/second.ts",
+				paused: true,
+			});
+			await assert.rejects(coordinator.connect({ repository: "invalid/newer" }), /GitHub token/);
+			saving.resolve();
+			await Promise.all([rejected, progress]);
+			assert.equal((await coordinator.inbox()).repository, repo);
+			assert.equal(state.cache.repository, repo);
+			assert.equal(state.cache.prepared[0]?.id, review.id);
+			assert.equal(state.cache.progress[0]?.path, "src/second.ts");
+			assert.equal(state.cache.progress[0]?.paused, true);
+			const candidateWrite = state.saves.findIndex((cache) => cache.repository === "valid/older");
+			assert.ok(candidateWrite >= 0);
+			assert.equal(state.saves[candidateWrite + 1]?.repository, repo);
+		} finally {
+			saving.resolve();
+		}
+	});
+	it("publishes the new connection and aborts old preparation only after a guarded save", async (t) => {
+		const oldWork = deferred<PreparedReview>();
+		let oldSignal: AbortSignal | undefined;
+		const { coordinator, state, ports } = harness(t, {
+			prepare: async (input, active) => {
+				if (input.pr.repository === repo) {
+					oldSignal = active;
+					return oldWork.promise;
+				}
+				return prepared(input.pr);
+			},
+		});
+		await coordinator.connect({ repository: repo });
+		await until(() => Boolean(oldSignal));
+		const other = {
+			...pr(),
+			id: "other/repo#1",
+			repository: "other/repo",
+			url: "https://github.com/other/repo/pull/1",
+		};
+		state.current.set(other.id, other);
+		ports.listOpen = async () => [other];
+		const saving = deferred<void>();
+		let writing = false;
+		const save = ports.saveCache;
+		ports.saveCache = async (cache) => {
+			if (cache.repository === other.repository) {
+				writing = true;
+				await saving.promise;
+			}
+			await save(cache);
+		};
+		try {
+			const connection = coordinator.connect({ repository: other.repository });
+			await until(() => writing);
+			assert.equal(oldSignal?.aborted, false);
+			assert.equal((await coordinator.inbox()).repository, repo);
+			assert.equal(state.cache.repository, repo);
+			saving.resolve();
+			assert.equal((await connection).repository, other.repository);
+			assert.equal(oldSignal?.aborted, true);
+			assert.equal((await ready(coordinator, other.id)).pr.repository, other.repository);
+			assert.equal(state.cache.repository, other.repository);
+		} finally {
+			saving.resolve();
+			oldWork.resolve(prepared(pr()));
+		}
+	});
+	it("rejects a stale reconnect snapshot if the accepted PR changes during its save", async (t) => {
+		const { coordinator, state, ports } = harness(t);
+		await coordinator.connect({ repository: repo });
+		await ready(coordinator);
+		const saving = deferred<void>();
+		let writing = false;
+		const save = ports.saveCache;
+		ports.saveCache = async (cache) => {
+			if (cache.localPath === "/canonical/local") {
+				writing = true;
+				await saving.promise;
+			}
+			await save(cache);
+		};
+		try {
+			const connection = coordinator.connect({ repository: repo, localPath: "/new/path" });
+			const rejected = assert.rejects(connection, /changed while connecting/);
+			await until(() => writing);
+			state.open = [pr(1, nextHead)];
+			state.current.set(pr().id, pr(1, nextHead));
+			const refresh = coordinator.refresh();
+			await until(async () => (await coordinator.get(pr().id)).pr.headSha === nextHead);
+			saving.resolve();
+			await Promise.all([rejected, refresh]);
+			assert.equal((await ready(coordinator)).pr.headSha, nextHead);
+			assert.equal(state.cache.localPath, null);
+			assert.equal(state.cache.prepared[0]?.pr.headSha, nextHead);
+		} finally {
+			saving.resolve();
+		}
+	});
+});
+
 describe("prepared review durable publication", () => {
 	it("keeps a pending candidate private until its save succeeds", async (t) => {
 		const { coordinator, state, ports } = harness(t);
