@@ -167,6 +167,13 @@ async function native() {
 		const win = await wait("main window", () => BrowserWindow.getAllWindows()[0]);
 		await wait("renderer", () => !win.webContents.isLoadingMainFrame());
 		const js = (code) => win.webContents.executeJavaScript(code);
+		const openOption = async (testId) => {
+			await js(`document.querySelector('[data-testid="workspace-more"]').click()`);
+			await wait("visible workspace menu", () =>
+				js(`document.querySelector('#workspace-more')?.open === true`)
+			);
+			await js(`document.querySelector('[data-testid="${testId}"]').click()`);
+		};
 		const rpc = async (type, path, input) => {
 			const result = await js(
 				`window.electron.trpc.request(${JSON.stringify({ type, path, input: { json: input ?? null } })})`
@@ -180,7 +187,7 @@ async function native() {
 			);
 		const initial = await wait("empty V1", async () => {
 			const s = await snapshot();
-			return s.text.includes("Choose a pull request.") ? s : null;
+			return s.sessionId ? s : null;
 		});
 		assert.equal(initial.count, 0);
 		assert.equal(await js(`document.querySelector('#conversation-panel')?.hidden`), true);
@@ -225,17 +232,15 @@ async function native() {
 		);
 		report.config = config;
 		report.envMode = "0600";
-		await js(`document.querySelector('[data-testid="configuration-toggle"]').click()`);
+		await openOption("configuration-toggle");
 		await wait("configuration path", () =>
 			js(
 				`document.querySelector('[data-testid="env-path"]')?.textContent === ${JSON.stringify(envPath)}`
 			)
 		);
 		assert.ok(!(await snapshot()).text.includes(dummy));
-		await js(`document.querySelector('[aria-label="Close configuration"]').click()`);
-		await js(
-			`document.querySelector('[data-testid="conversation-toggle"][aria-expanded="false"]')?.click()`
-		);
+		await js(`document.querySelector('#configuration .workspace-dialog-heading button').click()`);
+		await openOption("conversation-toggle");
 		const submit = async (index) => {
 			const old = await snapshot();
 			await js(
@@ -271,7 +276,7 @@ async function native() {
 		const third = await submit(2);
 		await wait("delayed provider", () => releaseLate);
 		await js(
-			`(() => { const e=document.querySelector('button[aria-label="Stop"]'); if(!e || !e.getBoundingClientRect().width) throw Error('Visible Stop missing'); e.click(); })()`
+			`(() => { const e=document.querySelector('button[data-testid="interrupt-reply"]'); if(!e || !e.getBoundingClientRect().width) throw Error('Visible Stop missing'); e.click(); })()`
 		);
 		await wait("real cancellation RPC", async () => (await poll(third)).status === "cancelled");
 		releaseLate();

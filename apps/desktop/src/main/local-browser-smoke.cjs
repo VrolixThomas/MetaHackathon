@@ -190,6 +190,13 @@ async function native() {
 		const win = await wait("main window", () => BrowserWindow.getAllWindows()[0]);
 		await wait("built renderer", () => !win.webContents.isLoadingMainFrame());
 		const js = (code) => win.webContents.executeJavaScript(code);
+		const openOption = async (testId) => {
+			await js(`document.querySelector('[data-testid="workspace-more"]').click()`);
+			await wait("visible workspace menu", () =>
+				js(`document.querySelector('#workspace-more')?.open === true`)
+			);
+			await js(`document.querySelector('[data-testid="${testId}"]').click()`);
+		};
 		const raw = (type, path, input) =>
 			js(
 				`window.electron.trpc.request(${JSON.stringify({ type, path, input: serialize(input) })})`
@@ -217,10 +224,10 @@ async function native() {
 		assert.equal(config.voiceId, null);
 		assert.equal(fs.statSync(envPath).mode & 0o777, 0o600);
 		assert.equal(await state(), null);
-		await wait("local preview toggle", () =>
-			js(`!!document.querySelector('[data-testid="local-preview-toggle"]')`)
+		await wait("workspace options", () =>
+			js(`!!document.querySelector('[data-testid="workspace-more"]')`)
 		);
-		await js(`document.querySelector('[data-testid="local-preview-toggle"]').click()`);
+		await openOption("local-preview-toggle");
 		await wait("local URL form", () =>
 			js(`!!document.querySelector('input[name="local-preview-url"]')`)
 		);
@@ -339,9 +346,9 @@ async function native() {
 			js(`document.querySelector('[data-testid="browser-viewport"]')?.textContent === "1024 × 768"`)
 		);
 		await inspect("desktop restored");
-		await js(`document.querySelector('[data-testid="configuration-toggle"]').click()`);
+		await openOption("configuration-toggle");
 		await wait("modal hides native page", () => !view.getVisible());
-		await js(`document.querySelector('[aria-label="Close configuration"]').click()`);
+		await js(`document.querySelector('#configuration .workspace-dialog-heading button').click()`);
 		await wait("modal restores native page", () => view.getVisible());
 		await inspect("modal dismissed");
 		const priorBounds = view.getBounds();

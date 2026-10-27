@@ -414,6 +414,13 @@ async function native() {
 		const win = await wait("main window", () => BrowserWindow.getAllWindows()[0]);
 		await wait("built renderer", () => !win.webContents.isLoadingMainFrame());
 		const js = (code) => win.webContents.executeJavaScript(code);
+		const openOption = async (testId) => {
+			await js(`document.querySelector('[data-testid="workspace-more"]').click()`);
+			await wait("visible workspace menu", () =>
+				js(`document.querySelector('#workspace-more')?.open === true`)
+			);
+			await js(`document.querySelector('[data-testid="${testId}"]').click()`);
+		};
 		const rpc = async (type, path, input) => {
 			const result = await js(
 				`window.electron.trpc.request(${JSON.stringify({ type, path, input: { json: input ?? null } })})`
@@ -444,8 +451,9 @@ async function native() {
 		assert.deepEqual(config.configured, { meta: true, github: true, elevenlabs: false });
 		assert.equal(config.voiceId, null);
 		await rpc("mutation", "reviews.connect", { repository, localPath: fixture.localPath });
-		await js(
-			`([...document.querySelectorAll('header nav button')].find(e=>e.textContent.trim()==='Repository')).click()`
+		await js(`document.querySelector('[data-testid="repository-selector"]').click()`);
+		await wait("visible repository chooser", () =>
+			js(`document.querySelector('#repository-selector')?.open === true`)
 		);
 		const ready = await wait("cached ready review", async () => {
 			const inbox = await rpc("query", "reviews.inbox");
@@ -481,9 +489,7 @@ async function native() {
 			const state = await readUI();
 			return state.path === order[0] && state.loading === "false";
 		});
-		await js(
-			`document.querySelector('[data-testid="conversation-toggle"][aria-expanded="false"]')?.click()`
-		);
+		await openOption("conversation-toggle");
 		for (const step of steps) {
 			const prior = await readUI();
 			await js(
@@ -587,9 +593,7 @@ async function native() {
 			Math.max(0, Number(process.env.PREPARED_REVIEW_SMOKE_HOLD_MS) || 0)
 		);
 		if (holdMs) {
-			await js(
-				`document.querySelector('[data-testid="conversation-toggle"][aria-expanded="true"]')?.click()`
-			);
+			await js(`document.querySelector('[aria-label="Hide conversation"]')?.click()`);
 			console.log("PREPARED_REVIEW_VISUAL_READY: controlled source; optional transcript hidden");
 			await new Promise((done) => setTimeout(done, holdMs));
 		}
