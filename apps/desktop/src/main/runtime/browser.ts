@@ -56,6 +56,7 @@ export class BrowserService {
 	private readonly requests = new Map<string, Set<string>>();
 	private readonly bounds = new Map<string, BrowserBounds | null>();
 	private readonly closing = new Set<Promise<void>>();
+	private readonly retiring = new Map<string, Set<Promise<void>>>();
 	private closed = false;
 	private presentedSession?: string;
 	private disposal?: Promise<void>;
@@ -120,10 +121,11 @@ export class BrowserService {
 	}
 
 	async close(sessionId: string): Promise<void> {
-		for (const controller of this.controllers.get(sessionId) ?? []) controller.abort();
 		const active = this.sessions.get(sessionId);
+		for (const controller of this.controllers.get(sessionId) ?? []) controller.abort();
 		if (active) await this.destroy(sessionId, active);
 		await this.queues.get(sessionId)?.catch(() => undefined);
+		await Promise.all([...(this.retiring.get(sessionId) ?? [])]);
 		this.bounds.delete(sessionId);
 		// Retain request tombstones: a late repeated mutation must never reopen a retired page.
 	}
@@ -291,9 +293,17 @@ export class BrowserService {
 			.then(() => {
 				if (pageError) throw pageError;
 			})
-			.finally(() => this.closing.delete(closing));
+			.finally(() => {
+				this.closing.delete(closing);
+				const pending = this.retiring.get(sessionId);
+				pending?.delete(closing);
+				if (!pending?.size) this.retiring.delete(sessionId);
+			});
 		active.closing = closing;
 		this.closing.add(closing);
+		const pending = this.retiring.get(sessionId) ?? new Set<Promise<void>>();
+		pending.add(closing);
+		this.retiring.set(sessionId, pending);
 		return closing;
 	}
 }

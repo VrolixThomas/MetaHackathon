@@ -12,7 +12,7 @@ const open = {
 	prId: "demo/shop#1",
 	revision: "head",
 } as const;
-function fixture(timeoutMs = 1000) {
+function fixture(timeoutMs = 1000, finishClose: () => Promise<void> = async () => {}) {
 	// Deliberately fake page port: these tests prove service ownership, not native DOM execution.
 	const pages: Array<
 		BrowserPage & {
@@ -35,6 +35,7 @@ function fixture(timeoutMs = 1000) {
 				url: "http://127.0.0.1:43210/checkout?runId=test",
 				async close() {
 					stopped++;
+					await finishClose();
 				},
 			};
 		},
@@ -333,3 +334,57 @@ test("an owned preview that resolves after cancellation is closed without creati
 	await service.dispose();
 	assert.equal(stopped, 1);
 });
+
+for (const previouslyAborted of [false, true])
+	test(`close awaits preview cleanup (already aborted: ${previouslyAborted})`, async () => {
+		const controller = new AbortController();
+		let finish = () => {};
+		const cleanup = new Promise<void>((resolve) => {
+			finish = resolve;
+		});
+		const f = fixture(1000, () => cleanup);
+		const state = await f.service.execute(open);
+		const page = f.pages[0];
+		assert.ok(page);
+		let entered = () => {};
+		const started = new Promise<void>((resolve) => {
+			entered = resolve;
+		});
+		page.onAct = async () => {
+			entered();
+			await new Promise(() => {});
+		};
+		const action = assert.rejects(
+			f.service.execute(
+				{
+					kind: "click",
+					sessionId: open.sessionId,
+					requestId: "close-race",
+					browserId: state.browserId,
+					elementId: "button-1",
+					observationSequence: state.sequence,
+				},
+				controller.signal
+			)
+		);
+		await started;
+		if (previouslyAborted) {
+			controller.abort();
+			await action;
+		}
+		let settled = false;
+		const closing = f.service.close(open.sessionId).then(() => {
+			settled = true;
+		});
+		await action;
+		await delay(1);
+		try {
+			assert.equal(settled, false);
+			assert.equal(page.closed, true);
+		} finally {
+			finish();
+			await closing;
+			await f.service.dispose();
+		}
+		assert.equal(f.stopped(), 1);
+	});
