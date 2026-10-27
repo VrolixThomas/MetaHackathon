@@ -321,10 +321,13 @@ export function createVoiceController(options: VoiceControllerOptions): VoiceCon
 	}
 	async function action(turn: Turn, value: AgentAction) {
 		if (!live(turn) || !sameTurn(value, turn.identity) || turn.actions.has(value.requestId)) return;
-		// Simple V1 conversation has no artifact effects or fabricated screen receipts.
-		if (options.getConversationContext) return;
 		if (turn.actions.size >= MAX_ACTIONS) throw new Error("Agent action limit exceeded");
 		turn.actions.add(value.requestId);
+		if (options.getConversationContext) {
+			if (options.onConversationAction)
+				await rpc(turn, Promise.resolve(options.onConversationAction(value, turn.abort.signal)));
+			return;
+		}
 		const current = ScreenContextSchema.parse(options.getScreenContext?.());
 		if (!live(turn)) return;
 		if (current.prId !== turn.prId || current.sequence !== value.screenSequence) {
@@ -367,6 +370,7 @@ export function createVoiceController(options: VoiceControllerOptions): VoiceCon
 				input = ConversationTurnInputSchema.parse({
 					...base,
 					...(context.prId === undefined ? {} : { prId: context.prId }),
+					...(context.screen === undefined ? {} : { screen: context.screen }),
 				});
 			} else {
 				const screenContext = ScreenContextSchema.parse(options.getScreenContext?.());

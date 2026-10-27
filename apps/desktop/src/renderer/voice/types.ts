@@ -87,7 +87,7 @@ export type VoiceControllerOptions = {
 	onTurnStart?(identity: TurnIdentity): void;
 	onTurnEnd?(identity: TurnIdentity, result: VoiceTurnEnd): void;
 	/** V1 conversation mode: no screen or review is required; takes precedence over getScreenContext. */
-	getConversationContext?(): { prId?: string };
+	getConversationContext?(): Pick<ConversationTurnInput, "prId" | "screen">;
 	/** Legacy review mode requires a real screen context. */
 	getScreenContext?(): ScreenContext;
 	/** PR symbols and paths supplied by composition; snapshotted when capture begins. */
@@ -100,6 +100,8 @@ export type VoiceControllerOptions = {
 	onEvent?(event: AgentEvent): void;
 	onVoiceEvent?(event: VoiceEvent): void;
 	onAnswer?(text: string, identity: TurnIdentity): void;
+	/** Same live conversation turn, deduplicated by requestId. UI applies/ignores and awaits its receipt. */
+	onConversationAction?(action: AgentAction, signal: AbortSignal): void | Promise<void>;
 	/** Check signal/current screen again immediately before any asynchronous UI effect. */
 	onAction?(action: AgentAction, screen: ScreenContext, signal: AbortSignal): void | Promise<void>;
 	/** Same live turn only: report a PR/screen-filtered action once so UI can send an ignored receipt. */

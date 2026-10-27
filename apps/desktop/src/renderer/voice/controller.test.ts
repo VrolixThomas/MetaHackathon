@@ -194,11 +194,28 @@ function identity(value: TurnIdentity): TurnIdentity {
 }
 
 test("V1 conversation speaks one reply without a PR or screen, optionally attaches a real PR", async () => {
-	for (const context of [{}, { prId: "selected-pr" }]) {
+	const contexts: Pick<ConversationTurnInput, "prId" | "screen">[] = [
+		{},
+		{ prId: "selected-pr" },
+		{
+			prId: "selected-pr",
+			screen: {
+				sequence: 7,
+				mode: "review",
+				prId: "selected-pr",
+				reviewId: "prepared-review",
+				path: "src/cart.ts",
+				baseSha: "a".repeat(40),
+				headSha: "b".repeat(40),
+			},
+		},
+	];
+	for (const context of contexts) {
 		const starts: ConversationTurnInput[] = [];
 		const h = harness({
 			getConversationContext: () => context,
 			getScreenContext: undefined,
+			acknowledgementText: undefined,
 		});
 		h.options.agent.start = async (input) => {
 			starts.push(ConversationTurnInputSchema.parse(input));
@@ -225,15 +242,184 @@ test("V1 conversation speaks one reply without a PR or screen, optionally attach
 		assert.equal("screenContext" in starts[0], false);
 		assert.equal("prId" in starts[0], "prId" in context);
 		assert.equal(starts[0].prId, context.prId);
-		for (let index = 0; index < 2; index++) {
-			await until(() => h.speaks.length > index);
-			h.emit({ kind: "speech-ended", speechId: h.speaks[index]?.speechId ?? "missing" });
-		}
+		assert.equal("screen" in starts[0], "screen" in context);
+		assert.deepEqual(starts[0].screen, context.screen);
+		h.emit({ kind: "speech-ended", speechId: h.speaks[0]?.speechId ?? "missing" });
 		await until(() => h.controller.getPhase() === "idle");
-		assert.equal(h.speaks[1]?.text, "Hello there.");
+		assert.deepEqual(
+			h.speaks.map((speech) => speech.text),
+			["Hello there."]
+		);
 		assert.equal(h.cancels.voice.length, 1);
 		assert.equal(h.cancels.agent.length, 1);
 	}
+});
+
+function reviewNavigation(turn: TurnIdentity, requestId: string): AgentAction {
+	return {
+		...identity(turn),
+		requestId,
+		screenSequence: 7,
+		kind: "review-navigation",
+		navigation: {
+			reviewId: "prepared-review",
+			prId: "selected-pr",
+			baseSha: "a".repeat(40),
+			headSha: "b".repeat(40),
+			path: "src/cart.ts",
+			paused: false,
+		},
+	};
+}
+
+test("conversation event and snapshot actions flow once and wait for the UI receipt before reply", async () => {
+	const receipt = deferred<void>();
+	const delivered: AgentAction[] = [];
+	const h = harness({
+		acknowledgementText: undefined,
+		getConversationContext: () => ({ prId: "selected-pr" }),
+		getScreenContext: () => {
+			throw new Error("Conversation must not read a legacy screen");
+		},
+		onConversationAction: (action, signal) => {
+			assert.equal(signal.aborted, false);
+			delivered.push(action);
+			return receipt.promise;
+		},
+	});
+	h.options.agent.start = async (input) => ({ ...identity(input), status: "running" });
+	h.setPoll(async (input) => {
+		const eventAction = reviewNavigation(input, "event-and-snapshot");
+		return {
+			...identity(input),
+			status: "completed",
+			sequence: 3,
+			text: "Here is the change.",
+			events: [
+				{ ...identity(input), sequence: 1, kind: "action", action: eventAction },
+				{ ...identity(input), sequence: 2, kind: "text-delta", delta: "Here is the change." },
+				{ ...identity(input), sequence: 3, kind: "completed" },
+			],
+			actions: [eventAction, reviewNavigation(input, "snapshot-only")],
+		};
+	});
+	await h.capture();
+	h.emit({ kind: "transcript", text: "Next file", final: true });
+	await until(() => delivered.length === 1);
+	assert.deepEqual(h.answers, []);
+	assert.equal(h.speaks.length, 0, "No filler or answer before the UI receipt settles");
+	receipt.resolve();
+	await until(() => delivered.length === 2 && h.speaks.length === 1);
+	assert.deepEqual(
+		delivered.map((action) => action.requestId),
+		["event-and-snapshot", "snapshot-only"]
+	);
+	assert.ok(delivered.every((action) => action.turnId === h.current().turnId));
+	assert.deepEqual(h.actions, [], "Legacy review callback is not used");
+	h.emit({ kind: "speech-ended", speechId: h.speaks[0]?.speechId ?? "missing" });
+	await until(() => h.controller.getPhase() === "idle");
+	assert.equal(delivered.length, 2);
+});
+
+test("conversation action cancellation aborts the receipt and drops the remaining old turn effects", async () => {
+	const receipt = deferred<void>();
+	const delivered: AgentAction[] = [];
+	let signal: AbortSignal | undefined;
+	const h = harness({
+		getConversationContext: () => ({}),
+		acknowledgementText: undefined,
+		onConversationAction: (action, abort) => {
+			delivered.push(action);
+			signal = abort;
+			return receipt.promise;
+		},
+	});
+	h.options.agent.start = async (input) => ({ ...identity(input), status: "running" });
+	h.setPoll(async (input) => ({
+		...identity(input),
+		status: "running",
+		sequence: 0,
+		text: "",
+		events: [],
+		actions: [reviewNavigation(input, "first"), reviewNavigation(input, "late")],
+	}));
+	await h.capture();
+	h.emit({ kind: "transcript", text: "Next", final: true });
+	await until(() => delivered.length === 1);
+	const old = h.current();
+	h.controller.interrupt("navigation");
+	assert.equal(signal?.aborted, true);
+	assert.equal(h.media[0]?.closed, true);
+	assert.equal(h.cancels.voice.length, 1);
+	assert.equal(h.cancels.agent.length, 1);
+	h.controller.beginCapture();
+	const next = h.current();
+	assert.equal(next.sessionId, old.sessionId);
+	assert.ok(next.generation > old.generation);
+	receipt.resolve();
+	await until(() => h.controller.getPhase() === "listening");
+	await wait();
+	assert.deepEqual(h.controller.getIdentity(), next);
+	assert.deepEqual(
+		delivered.map((action) => action.requestId),
+		["first"]
+	);
+	assert.deepEqual(h.speaks, []);
+	assert.deepEqual(h.errors, []);
+});
+
+test("foreign conversation action identities never reach the UI callback", async () => {
+	for (const foreign of [{ sessionId: "foreign" }, { turnId: "foreign" }, { generation: 999 }]) {
+		const delivered: AgentAction[] = [];
+		const h = harness({
+			getConversationContext: () => ({}),
+			acknowledgementText: undefined,
+			onConversationAction: (action) => {
+				delivered.push(action);
+			},
+		});
+		h.options.agent.start = async (input) => ({ ...identity(input), status: "running" });
+		h.setPoll(async (input) => {
+			const other = { ...identity(input), ...foreign };
+			return {
+				...other,
+				status: "running",
+				sequence: 0,
+				text: "",
+				events: [],
+				actions: [reviewNavigation(other, "foreign")],
+			};
+		});
+		await h.capture();
+		h.emit({ kind: "transcript", text: "Next", final: true });
+		await until(() => h.controller.getPhase() === "error");
+		assert.deepEqual(delivered, []);
+		assert.deepEqual(h.speaks, []);
+	}
+});
+
+test("a stalled conversation action receipt remains bounded and cancels both services", async () => {
+	const h = harness({
+		getConversationContext: () => ({}),
+		acknowledgementText: undefined,
+		rpcTimeoutMs: 100,
+		onConversationAction: () => new Promise(() => {}),
+	});
+	h.options.agent.start = async (input) => ({ ...identity(input), status: "running" });
+	h.setPoll(async (input) => ({
+		...identity(input),
+		status: "running",
+		sequence: 0,
+		text: "",
+		events: [],
+		actions: [reviewNavigation(input, "stalled")],
+	}));
+	await h.capture();
+	h.emit({ kind: "transcript", text: "Next", final: true });
+	await until(() => h.controller.getPhase() === "error");
+	assert.equal(h.cancels.voice.length, 1);
+	assert.equal(h.cancels.agent.length, 1);
+	assert.equal(h.media[0]?.closed, true);
 });
 
 test("V1 preserves the shared identity when a late start is cancelled without reading a screen", async () => {
