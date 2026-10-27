@@ -57,6 +57,19 @@ optional sanitized `error`. UI uses `voice.status`, `voice.configure({voiceId})`
 `voice.prepare`, plus the existing credential set/status routes. There is no credential getter
 in the renderer. The voice ID is public configuration (trimmed, 1–200 characters).
 
+Root checkpoint `d95ad3a` selects `services/voice/.venv/bin/python` in development;
+`METAHACKATHON_VOICE_PYTHON` may override it with an absolute Python executable path. Its source
+argument remains the repository's `services/voice/sidecar.py`. Packaged mode selects
+`process.resourcesPath/voice/metahackathon-voice`. `ELEVENLABS_VOICE_ID` provides an optional
+main-process default; a voice ID saved through `voice.configure` takes precedence. Meta and
+ElevenLabs API keys come from the encrypted runtime credential store, not renderer environment
+variables. Source setup commands are in `services/voice/README.md`.
+
+The root **RPC** `voice.prepare` returns promptly with `preparing`; poll `voice.status` until
+`ready` before capture. This differs from the internal `VoiceSidecar.prepare()` below, which
+awaits process readiness. Configure/retry retires the old service pair and retains the manager's
+generation tombstones, so delayed offers cannot revive a cancelled turn after replacement.
+
 | Main input | Required value / mapping |
 | --- | --- |
 | `command` | Absolute path to the local Python 3.13 venv executable, or the rebuilt frozen executable |
