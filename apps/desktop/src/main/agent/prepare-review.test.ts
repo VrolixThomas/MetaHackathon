@@ -89,6 +89,21 @@ function model(value: unknown, inspect?: (request: MetaRequest) => void): AgentM
 	};
 }
 
+test("renamed files omit base locations without a trusted previous path while retaining head citations", async () => {
+	const input = context();
+	const renamed = input.files[0];
+	assert(renamed);
+	renamed.status = "renamed";
+	const review = await prepareReview(model(analysis()), input, new AbortController().signal);
+	const comments = review.files.find((file) => file.path === renamed.path)?.suggestedComments;
+	assert(comments);
+	assert.equal(comments[0]?.location?.revision, "head");
+	assert.equal(comments[0]?.location?.path, renamed.path);
+	assert.equal(comments[0]?.location?.commitSha, input.pr.headSha);
+	assert.equal(comments[1]?.location, undefined);
+	assert.equal(comments[1]?.body, "Inferred: Old behavior needs discussion.");
+});
+
 test("preparer accepts behavior order, pins identities and only cites actually supplied base/head lines", async () => {
 	const input = context();
 	const review = await prepareReview(

@@ -109,8 +109,8 @@ Optional comment location contains only side/base-or-head and inclusive one-base
 		throw new Error("Review reading order must be a permutation of the supplied changed files");
 	const id = `review-${digest}`;
 	const files = analysis.files.map((file) => {
-		const patch = context.files.find((source) => source.path === file.path)?.patch;
-		const lines = patchLines(patch);
+		const source = context.files.find((source) => source.path === file.path);
+		const lines = patchLines(source?.patch);
 		return {
 			path: file.path,
 			reason: inferred(file.reason),
@@ -119,6 +119,8 @@ Optional comment location contains only side/base-or-head and inclusive one-base
 				const ref = comment.location;
 				const hasLocation =
 					ref &&
+					// Context has only the new path for a rename; the base path is uninspected.
+					!(ref.side === "base" && source?.status === "renamed") &&
 					ref.endLine >= ref.startLine &&
 					ref.endLine - ref.startLine < 20_000 &&
 					Array.from(
