@@ -180,9 +180,16 @@ async function native() {
 			);
 		const initial = await wait("empty V1", async () => {
 			const s = await snapshot();
-			return s.text.includes("Start a conversation.") ? s : null;
+			return s.text.includes("Choose a pull request.") ? s : null;
 		});
 		assert.equal(initial.count, 0);
+		assert.equal(await js(`document.querySelector('#conversation-panel')?.hidden`), true);
+		assert.ok(
+			await js(
+				`document.querySelector('[data-testid="voice-control"]')?.getBoundingClientRect().height > 0`
+			)
+		);
+		report.optionalTranscript = true;
 		assert.ok(
 			!/Load local demo|Noor|stackable|shop-web|finance-service|#1284|#412/i.test(initial.text)
 		);
@@ -217,6 +224,9 @@ async function native() {
 		);
 		assert.ok(!(await snapshot()).text.includes(dummy));
 		await js(`document.querySelector('[aria-label="Close configuration"]').click()`);
+		await js(
+			`document.querySelector('[data-testid="conversation-toggle"][aria-expanded="false"]')?.click()`
+		);
 		const submit = async (index) => {
 			const old = await snapshot();
 			await js(
