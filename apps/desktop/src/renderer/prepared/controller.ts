@@ -50,7 +50,24 @@ export function createPreparedController(api: PreparedApi, sessionId: string, po
 	let inboxRead = 0;
 	let progressQueue: Promise<unknown> = Promise.resolve();
 	const deliveries = new Map<string, Promise<"applied" | "ignored">>();
-	const currentScreen = () => ReviewScreenSchema.parse(store.getState().screen);
+	const currentScreen = (): ReviewScreen => {
+		const state = store.getState();
+		const value = ReviewScreenSchema.parse(state.screen);
+		const file = state.file;
+		if (
+			value.mode === "review" &&
+			(!file ||
+				!value.reviewId ||
+				value.path !== file.path ||
+				value.prId !== file.prId ||
+				value.baseSha !== file.base.commitSha ||
+				value.headSha !== file.head.commitSha)
+		) {
+			// Keep the local loading pane, but never claim a file is shown before its source arrives.
+			return { sequence: value.sequence, mode: "conversation", prId: value.prId };
+		}
+		return value;
+	};
 	function screen(next: Omit<ReviewScreen, "sequence"> = store.getState().screen) {
 		const value = ReviewScreenSchema.parse({
 			...next,
@@ -119,7 +136,7 @@ export function createPreparedController(api: PreparedApi, sessionId: string, po
 		if (
 			file.prId !== plan.pr.id ||
 			file.path !== path ||
-			file.base.path !== path ||
+			(file.status !== "renamed" && file.base.path !== path) ||
 			file.head.path !== path ||
 			file.base.commitSha !== plan.pr.baseSha ||
 			file.head.commitSha !== plan.pr.headSha
@@ -133,7 +150,7 @@ export function createPreparedController(api: PreparedApi, sessionId: string, po
 			const lines = source.content ? source.content.replace(/\n$/, "").split("\n").length : 0;
 			if (
 				highlight.repository !== plan.pr.repository ||
-				highlight.path !== path ||
+				highlight.path !== source.path ||
 				highlight.commitSha !== source.commitSha ||
 				highlight.endLine > lines
 			)

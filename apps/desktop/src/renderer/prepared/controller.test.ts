@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { it } from "node:test";
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
-import type { ReviewInbox } from "../../shared/contracts";
+import type { ReviewInbox, ReviewScreen } from "../../shared/contracts";
 import { ReviewWorkspace } from "./ReviewWorkspace";
 import { createPreparedApi } from "./api";
 import { createPreparedController } from "./controller";
@@ -366,6 +366,178 @@ it("invalidates a pending file immediately on cancellation and ignores its later
 		assert.equal(await pending, "ignored");
 		assert.equal(h.ui.store.getState().screen, screen);
 		assert.equal(h.ui.store.getState().file?.path, "a.ts");
+	} finally {
+		h.ui.dispose();
+	}
+});
+
+it("accepts a renamed base path and binds each highlight to its own revision path", async () => {
+	const previousPath = "previous/b.ts";
+	const renamed = {
+		...source("b.ts"),
+		status: "renamed",
+		base: { ...source("b.ts").base, path: previousPath },
+	};
+	const h = reviewHarness((path, input) =>
+		path === "reviews.file" && input["path"] === "b.ts" ? Promise.resolve(renamed) : undefined
+	);
+	try {
+		await h.ui.open(pr.id);
+		const baseHighlight = {
+			repository: pr.repository,
+			revision: "base" as const,
+			commitSha: pr.baseSha,
+			path: previousPath,
+			startLine: 1,
+			endLine: 1,
+		};
+		assert.equal(
+			await h.ui.applyAction(h.action("renamed-base", { highlight: baseHighlight }), () => true),
+			"applied"
+		);
+		assert.equal(h.ui.store.getState().file?.base.path, previousPath);
+		assert.equal(h.ui.store.getState().highlight?.path, previousPath);
+		assert.equal(h.ui.store.getState().screen.path, "b.ts");
+		assert.equal(h.ui.store.getState().detail?.progress?.path, "b.ts");
+		const headHighlight = {
+			...baseHighlight,
+			revision: "head" as const,
+			commitSha: pr.headSha,
+			path: "b.ts",
+		};
+		assert.equal(
+			await h.ui.applyAction(h.action("renamed-head", { highlight: headHighlight }), () => true),
+			"applied"
+		);
+		assert.equal(
+			await h.ui.applyAction(
+				h.action("wrong-base-path", { highlight: { ...baseHighlight, path: "b.ts" } }),
+				() => true
+			),
+			"ignored"
+		);
+		assert.equal(
+			await h.ui.applyAction(
+				h.action("wrong-head-path", { highlight: { ...headHighlight, path: previousPath } }),
+				() => true
+			),
+			"ignored"
+		);
+	} finally {
+		h.ui.dispose();
+	}
+});
+
+it("limits the rename exception to base path and retains PR/head/base revision checks", async () => {
+	const renamed = {
+		...source("a.ts"),
+		status: "renamed",
+		base: { ...source("a.ts").base, path: "previous/a.ts" },
+	};
+	const invalid = [
+		{ ...renamed, status: "modified" },
+		{ ...renamed, head: { ...renamed.head, path: "other.ts" } },
+		{ ...renamed, base: { ...renamed.base, commitSha: "c".repeat(40) } },
+		{ ...renamed, head: { ...renamed.head, commitSha: "c".repeat(40) } },
+		{ ...renamed, prId: "other/repository#2" },
+	];
+	for (const response of invalid) {
+		const h = reviewHarness((path) =>
+			path === "reviews.file" ? Promise.resolve(response) : undefined
+		);
+		try {
+			await h.ui.open(pr.id);
+			assert.equal(h.ui.store.getState().file, null);
+			assert.equal(
+				h.calls.some((call) => call.path === "reviews.progress"),
+				false
+			);
+		} finally {
+			h.ui.dispose();
+		}
+	}
+});
+
+it("publishes no review file identity while its plan or initial source is still loading", async () => {
+	let resolveDetail: (value: unknown) => void = () => {};
+	let resolveFile: (value: unknown) => void = () => {};
+	let fileStarted = () => {};
+	const fetchingFile = new Promise<void>((resolve) => {
+		fileStarted = resolve;
+	});
+	const h = reviewHarness((path) => {
+		if (path === "reviews.get")
+			return new Promise((resolve) => {
+				resolveDetail = resolve;
+			});
+		if (path === "reviews.file") {
+			fileStarted();
+			return new Promise((resolve) => {
+				resolveFile = resolve;
+			});
+		}
+		return undefined;
+	});
+	const published = () =>
+		h.calls
+			.filter((call) => call.path === "reviews.screen")
+			.map((call) => call.input["screen"] as ReviewScreen);
+	try {
+		const opening = h.ui.open(pr.id);
+		assert.equal(
+			h.ui.store.getState().screen.mode,
+			"review",
+			"Keep the local loading pane visible"
+		);
+		assert.ok(published().length > 0);
+		assert.ok(
+			published().every(
+				(screen) =>
+					screen.mode === "conversation" && !screen.path && !screen.reviewId && !screen.paused
+			)
+		);
+		resolveDetail(detail);
+		await fetchingFile;
+		assert.equal(h.ui.getContext().screen?.mode, "conversation");
+		assert.ok(
+			published().every(
+				(screen) => screen.mode === "conversation" && !screen.path && !screen.reviewId
+			)
+		);
+		resolveFile(source("a.ts"));
+		await opening;
+		const ready = published().filter((screen) => screen.mode === "review");
+		assert.ok(ready.length > 0);
+		for (const screen of ready) {
+			assert.equal(screen.path, "a.ts");
+			assert.equal(screen.reviewId, plan.id);
+			assert.equal(screen.baseSha, pr.baseSha);
+			assert.equal(screen.headSha, pr.headSha);
+		}
+	} finally {
+		h.ui.dispose();
+	}
+});
+
+it("does not publish a pathless review for an empty prepared plan", async () => {
+	const h = reviewHarness((path) =>
+		path === "reviews.get"
+			? Promise.resolve({ ...detail, prepared: { ...plan, files: [] } })
+			: undefined
+	);
+	try {
+		await h.ui.open(pr.id);
+		const screens = h.calls
+			.filter((call) => call.path === "reviews.screen")
+			.map((call) => call.input["screen"] as ReviewScreen);
+		assert.ok(
+			screens.every((screen) => screen.mode === "conversation" && !screen.reviewId && !screen.path)
+		);
+		assert.equal(h.ui.getContext().screen?.mode, "conversation");
+		assert.equal(
+			h.calls.some((call) => call.path === "reviews.progress"),
+			false
+		);
 	} finally {
 		h.ui.dispose();
 	}
