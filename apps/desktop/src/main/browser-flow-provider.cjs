@@ -241,7 +241,17 @@ function createBrowserFlowProvider({ forwardFetch } = {}) {
 			const body = JSON.parse(String(options.body));
 			assert.equal(body.stream, true);
 			assert.equal(body.store, false);
-			const reply = chooseReply(body);
+			let reply;
+			try {
+				reply = chooseReply(body);
+			} catch (error) {
+				console.error(
+					"SCRIPTED_PROVIDER_REJECTED",
+					error.message,
+					body.input.filter((item) => item.type === "function_call_output").at(-1)
+				);
+				throw error;
+			}
 			const sequence = records.length + 1;
 			records.push({
 				sequence,

@@ -32,6 +32,15 @@ export const ScreenContextUpdateSchema = z.strictObject({
 	sessionId: IdSchema,
 	screenContext: ScreenContextSchema,
 });
+export const AgentActionReceiptSchema = z.strictObject({
+	...TurnIdentitySchema.shape,
+	requestId: IdSchema,
+	status: z.enum(["applied", "ignored"]),
+	screenContext: ScreenContextSchema,
+});
+export const AgentActionReceiptResultSchema = z.strictObject({
+	status: z.enum(["accepted", "stale"]),
+});
 export const AgentTurnInputSchema = z.strictObject({
 	...TurnIdentitySchema.shape,
 	requestId: IdSchema,
@@ -105,6 +114,8 @@ export const CancelTurnResultSchema = z.strictObject({
 
 export type ScreenContext = z.infer<typeof ScreenContextSchema>;
 export type ScreenContextUpdate = z.infer<typeof ScreenContextUpdateSchema>;
+export type AgentActionReceipt = z.infer<typeof AgentActionReceiptSchema>;
+export type AgentActionReceiptResult = z.infer<typeof AgentActionReceiptResultSchema>;
 export type TurnIdentity = z.infer<typeof TurnIdentitySchema>;
 export type AgentTurnInput = z.infer<typeof AgentTurnInputSchema>;
 export type AgentAction = z.infer<typeof AgentActionSchema>;
