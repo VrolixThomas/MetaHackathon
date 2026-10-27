@@ -213,6 +213,40 @@ export class ReviewCoordinator {
 			await this.ports.saveCache(this.cache());
 		});
 	}
+	private commitPrepared(
+		entry: Entry,
+		prepared: PreparedReview,
+		signal: AbortSignal
+	): Promise<void> {
+		return this.save(async () => {
+			const valid = () => {
+				this.current(entry, signal);
+				if (
+					entry.status !== "preparing" ||
+					entry.prepared ||
+					entry.progress ||
+					!sameRevision(entry.pr, prepared.pr)
+				)
+					fail("Prepared review was replaced. Open its latest version.");
+			};
+			valid();
+			// Build from the latest committed state inside the storage queue. The candidate stays private.
+			const candidate = this.cache();
+			candidate.prepared.push(prepared);
+			try {
+				await this.ports.saveCache(ReviewCacheSchema.parse(candidate));
+				valid();
+			} catch (error) {
+				// Head changes/cancellation may occur during an async save. Restore current state,
+				// not a captured older snapshot, before releasing the queue or completing shutdown.
+				await this.ports.saveCache(this.cache());
+				throw error;
+			}
+			entry.prepared = prepared;
+			entry.progress = null;
+			entry.status = "ready";
+		});
+	}
 	private validatePrepared(raw: PreparedReview, context?: ConversationPRContext): PreparedReview {
 		const review = PreparedReviewSchema.parse(raw);
 		if (
@@ -506,10 +540,7 @@ export class ReviewCoordinator {
 						this.current(entry, signal);
 						if (!sameRevision(prepared.pr, entry.pr))
 							fail("Prepared review changed revision. Prepare it again.");
-						entry.prepared = prepared;
-						entry.progress = null;
-						entry.status = "ready";
-						await this.persist();
+						await this.commitPrepared(entry, prepared, signal);
 					} catch (error) {
 						if (
 							!signal.aborted &&

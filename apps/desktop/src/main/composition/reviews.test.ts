@@ -21,10 +21,12 @@ const signal = () => new AbortController().signal;
 const tick = () => new Promise<void>((resolve) => setImmediate(resolve));
 function deferred<T>() {
 	let resolve!: (value: T) => void;
-	const promise = new Promise<T>((done) => {
+	let reject!: (error: Error) => void;
+	const promise = new Promise<T>((done, failed) => {
 		resolve = done;
+		reject = failed;
 	});
-	return { promise, resolve };
+	return { promise, resolve, reject };
 }
 function pr(number = 1, headSha = head): PullRequest {
 	return {
@@ -335,6 +337,170 @@ describe("prepared review queue and durable cache", () => {
 		const count = state.listed.length;
 		await new Promise((resolve) => setTimeout(resolve, 30));
 		assert.equal(state.listed.length, count);
+	});
+});
+
+describe("prepared review durable publication", () => {
+	it("keeps a pending candidate private until its save succeeds", async (t) => {
+		const { coordinator, state, ports } = harness(t);
+		const saving = deferred<void>();
+		let started = false;
+		const save = ports.saveCache;
+		ports.saveCache = async (cache) => {
+			if (cache.prepared.length) {
+				started = true;
+				await saving.promise;
+			}
+			await save(cache);
+		};
+		try {
+			await coordinator.connect({ repository: repo });
+			await until(() => started);
+			const pending = (await coordinator.inbox()).items[0];
+			assert.equal(pending?.status, "preparing");
+			assert.equal(pending?.prepared, null);
+			assert.equal(pending?.progress, null);
+			assert.deepEqual(state.cache.prepared, []);
+			await assert.rejects(coordinator.getReady(pr().id, signal()), /still being prepared/);
+			saving.resolve();
+			const review = await ready(coordinator);
+			assert.deepEqual(state.cache.prepared, [review]);
+		} finally {
+			saving.resolve();
+		}
+	});
+	it("never exposes ready when the delayed save fails", async (t) => {
+		const { coordinator, state, ports } = harness(t);
+		const saving = deferred<void>();
+		let started = false;
+		const save = ports.saveCache;
+		ports.saveCache = async (cache) => {
+			if (cache.prepared.length) {
+				started = true;
+				await saving.promise;
+			}
+			await save(cache);
+		};
+		try {
+			await coordinator.connect({ repository: repo });
+			await until(() => started);
+			assert.equal((await coordinator.get(pr().id)).status, "preparing");
+			saving.reject(new Error("fake-secret database unavailable"));
+			await until(async () => (await coordinator.get(pr().id)).status === "error");
+			const failed = await coordinator.get(pr().id);
+			assert.equal(failed.prepared, null);
+			assert.equal(JSON.stringify(failed).includes("fake-secret"), false);
+			assert.deepEqual(state.cache.prepared, []);
+			await coordinator.refresh();
+			assert.equal(state.prepared.length, 1);
+		} finally {
+			saving.resolve();
+		}
+	});
+	it("rolls back a superseded candidate and preserves queued newer progress", async (t) => {
+		const { coordinator, state, ports } = harness(t);
+		state.open = [pr(), pr(2)];
+		state.current.set(pr(2).id, pr(2));
+		await coordinator.connect({ repository: repo });
+		await ready(coordinator);
+		const other = await ready(coordinator, pr(2).id);
+		await coordinator.progress({
+			prId: other.pr.id,
+			reviewId: other.id,
+			path: "src/first.ts",
+			paused: false,
+		});
+		const saving = deferred<void>();
+		let held = false;
+		const save = ports.saveCache;
+		const writes: ReviewCache[] = [];
+		ports.saveCache = async (cache) => {
+			if (
+				!held &&
+				cache.prepared.some((review) => review.pr.id === pr().id && review.pr.headSha === head)
+			) {
+				held = true;
+				await saving.promise;
+			}
+			writes.push(structuredClone(cache));
+			await save(cache);
+		};
+		try {
+			await coordinator.prepareReview(pr().id, true);
+			await until(() => held);
+			assert.equal((await coordinator.get(pr().id)).status, "preparing");
+			const progress = coordinator.progress({
+				prId: other.pr.id,
+				reviewId: other.id,
+				path: "src/second.ts",
+				paused: true,
+			});
+			state.open = [pr(1, nextHead), pr(2)];
+			state.current.set(pr().id, pr(1, nextHead));
+			const refresh = coordinator.refresh();
+			await until(async () => (await coordinator.get(pr().id)).pr.headSha === nextHead);
+			saving.resolve();
+			await Promise.all([progress, refresh]);
+			const current = await ready(coordinator);
+			assert.equal(current.pr.headSha, nextHead);
+			const oldWrite = writes.findIndex((cache) =>
+				cache.prepared.some((review) => review.pr.id === pr().id && review.pr.headSha === head)
+			);
+			assert.ok(oldWrite >= 0);
+			assert.equal(
+				writes[oldWrite + 1]?.prepared.some((review) => review.pr.id === pr().id),
+				false
+			);
+			assert.equal(
+				state.cache.prepared.some(
+					(review) => review.pr.id === pr().id && review.pr.headSha === head
+				),
+				false
+			);
+			assert.deepEqual(
+				state.cache.progress.find((item) => item.prId === other.pr.id),
+				await coordinator.getProgress(other.pr.id, signal())
+			);
+			assert.equal(
+				state.cache.progress.find((item) => item.prId === other.pr.id)?.path,
+				"src/second.ts"
+			);
+			assert.equal(state.cache.progress.find((item) => item.prId === other.pr.id)?.paused, true);
+		} finally {
+			saving.resolve();
+		}
+	});
+	it("drains and rolls back an aborted candidate before shutdown completes", async (t) => {
+		const { coordinator, state, ports } = harness(t);
+		const saving = deferred<void>();
+		let started = false;
+		const save = ports.saveCache;
+		ports.saveCache = async (cache) => {
+			if (cache.prepared.length) {
+				started = true;
+				await saving.promise;
+			}
+			await save(cache);
+		};
+		try {
+			await coordinator.connect({ repository: repo });
+			await until(() => started);
+			let finished = false;
+			const disposal = coordinator.dispose().then(() => {
+				finished = true;
+			});
+			await tick();
+			assert.equal(finished, false);
+			saving.resolve();
+			await disposal;
+			assert.deepEqual(state.cache.prepared, []);
+			state.closed = true;
+			const writes = state.saves.length;
+			await tick();
+			assert.equal(state.saves.length, writes);
+		} finally {
+			saving.resolve();
+		}
 	});
 });
 
