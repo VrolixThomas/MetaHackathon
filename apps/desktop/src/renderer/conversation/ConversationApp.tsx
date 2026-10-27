@@ -8,7 +8,7 @@ import type { LocalBrowserController } from "../workspace/local-browser";
 import { VoiceBar } from "./VoiceBar";
 import type { ConversationController } from "./controller";
 
-function Configuration({
+export function Configuration({
 	controller,
 	onClose,
 }: { controller: ConversationController; onClose(): void }) {
@@ -22,6 +22,17 @@ function Configuration({
 		};
 	}, []);
 	const microphone = state.config?.microphone;
+	const githubStatus = state.githubBusy
+		? "Connecting…"
+		: state.githubError
+			? state.account
+				? `Last account: @${state.account.login}`
+				: "Connection unavailable"
+			: state.account
+				? `Connected as @${state.account.login}`
+				: state.config?.configured.github
+					? "Configured · account not checked"
+					: "Not connected";
 	return (
 		<dialog
 			className="configuration"
@@ -63,11 +74,17 @@ function Configuration({
 					<div key={key}>
 						<dt>{{ meta: "Meta", elevenlabs: "ElevenLabs", github: "GitHub (optional)" }[key]}</dt>
 						<dd>
-							{state.config
-								? state.config.configured[key]
-									? "Configured"
-									: "Not configured"
-								: "Checking…"}
+							{key === "github" ? (
+								<output data-testid="github-account-status">{githubStatus}</output>
+							) : state.config ? (
+								state.config.configured[key] ? (
+									"Configured"
+								) : (
+									"Not configured"
+								)
+							) : (
+								"Checking…"
+							)}
 						</dd>
 					</div>
 				))}
@@ -90,6 +107,25 @@ function Configuration({
 					</dd>
 				</div>
 			</dl>
+			<div className="configuration-actions" aria-busy={state.githubBusy}>
+				<button
+					type="button"
+					data-testid="github-connect"
+					aria-describedby="github-connection-help"
+					disabled={state.githubBusy}
+					onClick={() => void controller.refreshGitHub(true)}
+				>
+					Connect GitHub
+				</button>
+				<span id="github-connection-help" className="small">
+					Import your existing <code>gh</code> CLI sign-in.
+				</span>
+			</div>
+			{state.githubError && (
+				<p className="inline-error" role="alert">
+					{state.githubError}
+				</p>
+			)}
 			{microphone !== "granted" && (
 				<button type="button" onClick={() => void controller.requestMicrophone()}>
 					Request microphone access
