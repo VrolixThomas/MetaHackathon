@@ -5,6 +5,85 @@ This directory owns media and turn coordination. The agent owns tools, intent, a
 integration owns router registration, transport adapters, UI composition, and lifecycle wiring.
 There are no credentials, global key handlers, visible controls, or phrase-based tool routes here.
 
+## Hands-free sessions — MET-30 / MET-33
+
+`createHandsFreeVoiceController(options)` is the continuous conversation entry point. Pass the
+existing voice/agent ports, shared session/generation allocator, context getter and UI hooks;
+omit `media` and acknowledgement copy. The session never adds spoken filler. The browser audio
+factory is the default; `audio?: HandsFreeAudioFactory` is the deterministic test seam.
+
+```ts
+const conversation = createHandsFreeVoiceController({
+  voice: voicePorts,
+  agent: conversationPorts,
+  sessionId,
+  allocateIdentity,
+  getConversationContext,
+  onTurnStart,
+  onTurnEnd,
+  onTranscript,
+  onAnswer,
+  onConversationAction,
+  onError,
+});
+await conversation.startListening(); // call from the user's Start gesture
+conversation.interrupt();            // stop this reply/turn, keep the explicitly opened mic armed
+conversation.stopListening();        // End/Escape: stop the turn AND release hardware immediately
+conversation.dispose();             // terminal; a disposed instance cannot start again
+```
+
+`subscribe` notifies for both session and turn changes. `getSessionSnapshot()` returns an
+immutable `{phase, active, error?}`; phases are `stopped`, `starting`, `listening`, `capturing`,
+`responding`, `error`. Use it for microphone/session labels. `getSnapshot`, `getPhase` and
+`getIdentity` retain the existing **utterance** semantics; after an explicit restart they can
+still describe the prior cancelled/error turn until new speech begins. `onTurnEnd` completes
+one utterance, not the microphone session. Stop, error and disposal never auto-rearm. A late
+permission result is stopped, and old turn cancellation failures cannot close a new hardware
+session before its first utterance. An explicit new Start may create a new hardware session.
+
+One `getUserMedia` capture with echo cancellation/noise suppression and one resumed AudioContext
+belong to each explicit session. No new hardware capture or permission prompt occurs per turn.
+A local AudioWorklet produces 20ms PCM frames for signal detection; it also paces a bounded FIFO
+into a virtual MediaStream track. Each existing WebRTC generation receives a clone of that virtual
+track. The sender remains silent until its peer is connected, then sends all retained onset PCM in
+order at the render clock. Endpointing seals the FIFO; only its drained acknowledgement triggers
+the existing `endCapture`/release RPC. This retains short utterances that end during setup rather
+than cancelling them. Old senders stop before release, and future microphone frames cannot enter
+their sealed FIFO. Barge-in synchronously disconnects old playback, closes its peer and sends both
+voice/agent cancellation RPCs before creating the new turn with the shared allocator.
+
+Signal detection is local energy/zero-crossing gating with an adaptive noise floor, not a semantic
+speech model. Playback gets a longer onset guard plus a delayed correlation check against the
+actual remote output reference. Highly correlated echo-only input is zeroed in preroll; assistant
+reference PCM is never enqueued as microphone audio. Tests demonstrate these mechanics with
+generated waveforms, not acoustic immunity in arbitrary rooms. Integration must assess speakers,
+headsets, quiet voices, room echo and device processing in the actual app. No raw microphone PCM,
+reference PCM or transcript is written to storage/logs by this layer; idle PCM remains local.
+
+| Limit | Default / behavior |
+| --- | --- |
+| Onset | 120ms sustained input; 240ms during playback/tail (configurable `activity`) |
+| Silence endpoint | 700ms; configurable 400–1500ms |
+| Preroll | Most recent 700ms, with onset-through-setup retained for the new turn |
+| Continuous utterance | 30s; configurable 1–45s, then error stops the session |
+| Short noise | Below 160ms accepted voice discarded; 3 false starts within 30s stop the session |
+| Media setup | 12s default for hands-free; existing RPC deadline remains 15s |
+| Outgoing FIFO | 15s of PCM, hard overflow error instead of dropping/clipping input |
+| Drain | 17s bound, then error stops session |
+| Renderer frame stall | 2s; worklet independently caps unacknowledged capture at 100 frames |
+| Idle / total session | No automatic cutoff by default; optional explicit `idleTimeoutMs` / `sessionTimeoutMs` |
+
+`hands-free-worklet.js` is emitted as a separate self-origin asset (`?no-inline`), compatible with
+the existing CSP without blob/eval policy changes. Keep it alongside the built renderer assets.
+No provider/main RPC changes or new package dependency are required. The sidecar still uses the
+bounded single-utterance Meta stream; only accepted utterances go upstream. Existing provider,
+identity, event, action-receipt, cancellation and speech serialisation guards remain in force.
+
+Deterministic checks cover actual processor FIFO prefix/order/drain, epoch tombstones, overflow,
+capture credits, local signal classification, one hardware acquisition across replies, delayed
+setup, short utterances, barge-in, pending permission, device failure, retired-session errors and
+explicit stop/disposal. The asset check builds with Vite but launches no app or microphone.
+
 ## V1 conversation
 
 Pass `getConversationContext: () => ({ prId: selectedPR?.id })` for the simple talk/reply flow.
