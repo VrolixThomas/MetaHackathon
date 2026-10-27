@@ -1,0 +1,17 @@
+test_auth_every_path_body_bounds_and_validation (test_voice.VoiceTests.test_auth_every_path_body_bounds_and_validation) ... ok
+test_bad_handshake_is_sanitized_and_tears_down (test_voice.VoiceTests.test_bad_handshake_is_sanitized_and_tears_down) ... ok
+test_buffered_meta_pcm_is_paced_at_realtime (test_voice.VoiceTests.test_buffered_meta_pcm_is_paced_at_realtime) ... ok
+test_cancel_during_offer_and_cancel_before_offer (test_voice.VoiceTests.test_cancel_during_offer_and_cancel_before_offer) ... ok
+test_cancel_late_final_and_inflight_tts (test_voice.VoiceTests.test_cancel_late_final_and_inflight_tts) ... ok
+test_capture_timeout_closes_peer (test_voice.VoiceTests.test_capture_timeout_closes_peer) ... ok
+test_identity_and_concurrency_caps (test_voice.VoiceTests.test_identity_and_concurrency_caps) ... ok
+test_limits_pagination_and_duplicate_speech (test_voice.VoiceTests.test_limits_pagination_and_duplicate_speech) ... ok
+test_missing_final_is_error_not_success (test_voice.VoiceTests.test_missing_final_is_error_not_success) ... ok
+test_new_generation_replaces_peer_and_old_cancel_is_harmless (test_voice.VoiceTests.test_new_generation_replaces_peer_and_old_cancel_is_harmless) ... ok
+test_real_peer_release_pcm_serial_tts_and_cancel (test_voice.VoiceTests.test_real_peer_release_pcm_serial_tts_and_cancel) ... ok
+test_replaced_but_still_closing_sessions_count_toward_limit (test_voice.VoiceTests.test_replaced_but_still_closing_sessions_count_toward_limit) ... ok
+
+----------------------------------------------------------------------
+Ran 12 tests in 9.386s
+
+OK

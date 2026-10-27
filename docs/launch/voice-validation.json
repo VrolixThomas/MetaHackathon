@@ -1,0 +1,93 @@
+{
+	"date": "2026-10-26",
+	"branch": "hack/voice",
+	"sourceCommit": "1d6cabd",
+	"validation": {
+		"typescriptVoiceTests": 38,
+		"pythonVoiceTests": 12,
+		"contractTests": 29,
+		"typeCheck": "passed",
+		"lint": "passed",
+		"build": "passed",
+		"nativeRuntimeIpcSmoke": "passed; unchanged runtime routes only, voice not registered"
+	},
+	"chromiumSmoke": {
+		"ok": true,
+		"synthetic": true,
+		"dataChannel": "pipecat",
+		"speeches": 3,
+		"measurementScope": "synthetic localhost oscillator; not a live provider benchmark or acoustic measurement",
+		"pcmObservations": [
+			{
+				"sessionId": "133cedbb-7b33-4a1c-892a-f9d5d4a3c905",
+				"turnId": "8764aa08-e508-40a3-a64f-91dce9808550",
+				"generation": 1,
+				"speechId": "4f3e7612-690d-4b39-96ba-cfb5c864d51e",
+				"kind": "acknowledgement",
+				"releasedAt": 797.8000001907349,
+				"observedAt": 916.6000003814697,
+				"elapsedMs": 118.80000019073486,
+				"basis": "webaudio-output-analyser",
+				"origin": "renderer-release"
+			},
+			{
+				"sessionId": "133cedbb-7b33-4a1c-892a-f9d5d4a3c905",
+				"turnId": "8764aa08-e508-40a3-a64f-91dce9808550",
+				"generation": 1,
+				"speechId": "5fc1a927-7590-414f-ad02-f40a357fcff8",
+				"kind": "answer",
+				"releasedAt": 797.8000001907349,
+				"observedAt": 1674.6999998092651,
+				"elapsedMs": 876.8999996185303,
+				"basis": "webaudio-output-analyser",
+				"origin": "renderer-release"
+			}
+		],
+		"checks": [
+			"real localhost WebRTC",
+			"fake microphone release",
+			"serial speech",
+			"separate acknowledgement/answer PCM",
+			"closed peer and mic",
+			"late permission stopped",
+			"begin during speech creates a fresh peer",
+			"keyup during setup never resumes"
+		]
+	},
+	"liveProviderMeasurement": null,
+	"liveProviderBlockers": [
+		"MODEL_API_KEY not configured in checked environment",
+		"ELEVENLABS_API_KEY not configured in checked environment",
+		"ELEVENLABS_VOICE_ID not configured in checked environment",
+		"Integrated secure-store/provider entitlement not verified"
+	],
+	"packaging": {
+		"evidence": "services/voice/evidence/validation.json",
+		"coldFirstServerSeconds": 127.376,
+		"warmServerSeconds": 0.493,
+		"state": "local freeze and runtime bridge work; Python.framework sealing repair, Developer ID/notarization and signed clean-machine performance pending runtime"
+	},
+	"frozenBridge": {
+		"ok": true,
+		"scope": "real main TypeScript to frozen Python loopback lifecycle",
+		"readyMs": 772.024541,
+		"shutdownMs": 190.64225,
+		"cancelBeforeOffer": true,
+		"providerRequests": 0
+	},
+	"localSignatureAudit": {
+		"scope": "local frozen bundle Mach-O verification only; no Developer ID or notarization acceptance",
+		"checked": 274,
+		"passed": 273,
+		"failed": [
+			{
+				"path": "_internal/Python.framework/Versions/3.13/Python",
+				"exitCode": 1,
+				"error": "_internal/Python.framework/Versions/3.13/Python: code has no resources but signature indicates they must be present"
+			}
+		],
+		"executableAdHoc": true,
+		"seconds": 0.878,
+		"frameworkRootVerification": "failed with same missing-resources signature error"
+	}
+}
