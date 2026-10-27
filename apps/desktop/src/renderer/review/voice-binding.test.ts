@@ -3,6 +3,8 @@ import { it } from "node:test";
 import superjson from "superjson";
 import type { VoiceEvent } from "../../main/voice/protocol";
 import {
+	type AgentActionReceipt,
+	AgentActionReceiptSchema,
 	type AgentTurnInput,
 	AgentTurnInputSchema,
 	type BrowserState,
@@ -37,6 +39,7 @@ it("binds one voice start, transcript, answer and browser effect to the same typ
 		sequence: 0,
 	});
 	const starts: AgentTurnInput[] = [];
+	const receipts: AgentActionReceipt[] = [];
 	const events: VoiceEvent[] = [];
 	let closed = 0;
 	let requestCount = 0;
@@ -81,6 +84,10 @@ it("binds one voice start, transcript, answer and browser effect to the same typ
 			});
 		}
 		if (rpc.path === "screen.update") value = input["screenContext"];
+		if (rpc.path === "agent.actionApplied") {
+			receipts.push(AgentActionReceiptSchema.parse(input));
+			value = { status: "accepted" };
+		}
 		if (rpc.path === "agent.start") {
 			const start = AgentTurnInputSchema.parse(input);
 			starts.push(start);
@@ -123,16 +130,24 @@ it("binds one voice start, transcript, answer and browser effect to the same typ
 				kind: "show-browser",
 				browser,
 			};
+			const ignored = {
+				...action,
+				requestId: "filtered-voice-browser",
+				screenSequence: Math.max(0, start.screenContext.sequence - 1),
+			};
 			value = {
 				...identity,
 				status: "completed",
-				sequence: 3,
+				sequence: starts.length === 1 ? 4 : 3,
 				text: "Checkout is open.",
-				actions: [action],
+				actions: starts.length === 1 ? [action, ignored] : [action],
 				events: [
 					{ ...identity, sequence: 1, kind: "text-delta", delta: "Checkout is open." },
 					{ ...identity, sequence: 2, kind: "action", action },
-					{ ...identity, sequence: 3, kind: "completed" },
+					...(starts.length === 1
+						? [{ ...identity, sequence: 3, kind: "action", action: ignored }]
+						: []),
+					{ ...identity, sequence: starts.length === 1 ? 4 : 3, kind: "completed" },
 				],
 			};
 		}
@@ -174,11 +189,22 @@ it("binds one voice start, transcript, answer and browser effect to the same typ
 		assert.equal(useConversation.getState().answer, "Checkout is open.");
 		assert.equal(useReview.getState().browser?.browserId, "one-visible-page");
 		assert.ok(closed > 0);
+		assert.deepEqual(
+			receipts.map((receipt) => receipt.status),
+			["applied", "ignored"]
+		);
+		assert.equal(receipts[1]?.requestId, "filtered-voice-browser");
+		assert.ok(
+			Number(receipts[1]?.screenContext.sequence) > Number(receipts[0]?.screenContext.sequence)
+		);
 		await runAgentQuestion("Now compare the PR");
 		assert.equal(starts.length, 2);
 		assert.equal(starts[1]?.sessionId, starts[0]?.sessionId);
 		assert.ok(Number(starts[1]?.generation) > Number(starts[0]?.generation));
 		assert.equal(useReview.getState().browser?.sequence, 2);
+		assert.equal(receipts.length, 3);
+		assert.equal(receipts[2]?.status, "applied");
+		assert.equal(receipts[2]?.turnId, starts[1]?.turnId);
 		assert.ok(requestCount > 5);
 		useReview.getState().announce("");
 		voice.beginCapture();

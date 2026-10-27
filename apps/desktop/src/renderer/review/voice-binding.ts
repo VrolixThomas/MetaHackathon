@@ -102,7 +102,11 @@ export function connectReviewVoice(
 		onTranscript: (update) => externalVoiceTurn.transcript(update, update.text),
 		onAnswer: (text, identity) => externalVoiceTurn.replaceText(identity, text),
 		onAction: async (action, _screen, signal) => {
-			if (!signal.aborted) await externalVoiceTurn.action(action);
+			if (signal.aborted) await externalVoiceTurn.ignoreAction(action);
+			else await externalVoiceTurn.action(action);
+		},
+		onActionIgnored: async (action) => {
+			await externalVoiceTurn.ignoreAction(action);
 		},
 		onTurnEnd: (identity, result) =>
 			externalVoiceTurn.finish(

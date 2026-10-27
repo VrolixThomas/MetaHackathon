@@ -1,6 +1,8 @@
 import { create } from "zustand";
 import {
 	type AgentAction,
+	type AgentActionReceipt,
+	AgentActionReceiptSchema,
 	AgentActionSchema,
 	type AgentTurnInput,
 	DiagramSpecSchema,
@@ -35,6 +37,7 @@ export const useConversation = create<{
 	error: "",
 }));
 
+type ActionStatus = AgentActionReceipt["status"];
 type ActiveTurn = {
 	unsubscribe?: () => void;
 	input: AgentTurnInput;
@@ -42,10 +45,12 @@ type ActiveTurn = {
 	adapter: AgentAdapter;
 	sequence: number;
 	actions: Set<string>;
+	deliveries: Map<string, Promise<ActionStatus>>;
 	screens: Set<number>;
 	external?: boolean;
 };
 let active: ActiveTurn | null = null;
+let capturingReceipt = false;
 let generation = 0;
 let lastStartedGeneration = -1;
 let launchSequence = 0;
@@ -90,7 +95,12 @@ function watchScreen(turn: ActiveTurn) {
 			turn.sequence = state.sequence;
 			turn.screens.add(state.sequence);
 		}
-		if (state.sequence !== previous.sequence && valid(turn) && turn.adapter.updateScreen)
+		if (
+			!capturingReceipt &&
+			state.sequence !== previous.sequence &&
+			valid(turn) &&
+			turn.adapter.updateScreen
+		)
 			void turn.adapter
 				.updateScreen(sessionId, getScreenContext())
 				.catch(() =>
@@ -127,20 +137,20 @@ function currentScreen(turn: ActiveTurn, action: AgentAction) {
 }
 
 /** Reject late generations, duplicate effects and references to a screen the reviewer has left. */
-async function applyAction(turn: ActiveTurn, input: AgentAction) {
+async function applyAction(turn: ActiveTurn, input: AgentAction): Promise<ActionStatus> {
 	const action = AgentActionSchema.parse(input);
 	if (
 		!sameTurn(action, turn.input) ||
 		!currentScreen(turn, action) ||
 		turn.actions.has(action.requestId)
 	)
-		return;
+		return "ignored";
 	turn.actions.add(action.requestId);
 	const state = useReview.getState();
 	switch (action.kind) {
 		case "show-browser": {
-			if (acceptBrowserState(action.browser, true) && state.panel !== "browser")
-				state.setPanel("browser");
+			if (!acceptBrowserState(action.browser, true)) return "ignored";
+			if (state.panel !== "browser") state.setPanel("browser");
 			break;
 		}
 		case "highlight-code":
@@ -151,7 +161,9 @@ async function applyAction(turn: ActiveTurn, input: AgentAction) {
 					action.note,
 					turn.controller.signal
 				);
-				if (!valid(turn) || useReview.getState().sequence !== sequence + (applied ? 1 : 0)) return;
+				if (!valid(turn) || useReview.getState().sequence !== sequence + (applied ? 1 : 0))
+					return "ignored";
+				if (!applied) return "ignored";
 			}
 			state.setPanel("code");
 			break;
@@ -167,7 +179,7 @@ async function applyAction(turn: ActiveTurn, input: AgentAction) {
 					(step) => !locationMatchesReview(step.location)
 				)
 			)
-				return;
+				return "ignored";
 			const index = scenario.divergenceIndex ?? 0;
 			useReview.setState({ scenario, scenarioIndex: index });
 			state.setPanel("scenario");
@@ -179,7 +191,8 @@ async function applyAction(turn: ActiveTurn, input: AgentAction) {
 					`Following scenario, step ${index + 1}`,
 					turn.controller.signal
 				);
-				if (!valid(turn) || useReview.getState().sequence !== sequence + (applied ? 1 : 0)) return;
+				if (!valid(turn) || useReview.getState().sequence !== sequence + (applied ? 1 : 0))
+					return "ignored";
 				useReview.setState((state) => ({ scenarioStepId: step.id, sequence: state.sequence + 1 }));
 			}
 			break;
@@ -196,7 +209,7 @@ async function applyAction(turn: ActiveTurn, input: AgentAction) {
 						: state.preparation.pr.headSha) ||
 				preview.markers.some((marker) => !locationMatchesReview(marker.location))
 			)
-				return;
+				return "ignored";
 			useReview.setState({ preview });
 			state.setPanel("preview");
 			break;
@@ -209,7 +222,7 @@ async function applyAction(turn: ActiveTurn, input: AgentAction) {
 				diagram.prId !== state.preparation.pr.id ||
 				diagram.nodes.some((node) => !locationMatchesReview(node.location))
 			)
-				return;
+				return "ignored";
 			useReview.setState({ diagram });
 			state.setPanel("diagram");
 			break;
@@ -217,7 +230,7 @@ async function applyAction(turn: ActiveTurn, input: AgentAction) {
 		case "draft-comment": {
 			const draft = DraftedCommentSchema.parse(action.draft);
 			if (draft.prId !== state.preparation.pr.id || draft.headSha !== state.preparation.pr.headSha)
-				return;
+				return "ignored";
 			useReview.setState({ drafts: [...state.drafts.filter((d) => d.id !== draft.id), draft] });
 			state.announce("Comment drafted. Review its wording and confirm at sign-off before posting.");
 			break;
@@ -228,6 +241,70 @@ async function applyAction(turn: ActiveTurn, input: AgentAction) {
 	}
 	turn.sequence = useReview.getState().sequence;
 	turn.screens.add(turn.sequence);
+	return "applied";
+}
+
+/** The receipt alone publishes this fresh sequence; no same-sequence screen.update races it. */
+async function acknowledgeAction(
+	adapter: AgentAdapter | null,
+	action: AgentAction,
+	status: ActionStatus
+) {
+	if (!adapter?.actionApplied) return;
+	const current = active;
+	const ownsCurrentTurn = current && valid(current) && sameTurn(current.input, action);
+	const previousSequence = useReview.getState().sequence;
+	let receipt: AgentActionReceipt;
+	capturingReceipt = true;
+	try {
+		if (ownsCurrentTurn) useReview.setState({ sequence: previousSequence + 1 });
+		receipt = AgentActionReceiptSchema.parse({
+			sessionId: action.sessionId,
+			turnId: action.turnId,
+			generation: action.generation,
+			requestId: action.requestId,
+			status,
+			screenContext: getScreenContext(),
+		});
+	} finally {
+		capturingReceipt = false;
+	}
+	if (ownsCurrentTurn && valid(current) && current.sequence === previousSequence) {
+		current.sequence = receipt.screenContext.sequence;
+		current.screens.add(current.sequence);
+	}
+	await adapter.actionApplied(receipt);
+}
+
+/** Repeated deliveries await the original effect and receipt instead of executing again. */
+function deliverAction(
+	turn: ActiveTurn | null,
+	input: AgentAction,
+	ignored = false
+): Promise<ActionStatus> {
+	const action = AgentActionSchema.parse(input);
+	const key = JSON.stringify([
+		action.sessionId,
+		action.turnId,
+		action.generation,
+		action.requestId,
+	]);
+	const existing = turn?.deliveries.get(key);
+	if (existing) return existing;
+	const adapter = turn?.adapter ?? useServices.getState().agent;
+	const delivery = Promise.resolve().then(async () => {
+		let status: ActionStatus;
+		try {
+			status = ignored || !turn ? "ignored" : await applyAction(turn, action);
+		} catch (error) {
+			await acknowledgeAction(adapter, action, "ignored");
+			throw error;
+		}
+		await acknowledgeAction(adapter, action, status);
+		return status;
+	});
+	turn?.deliveries.set(key, delivery);
+	return delivery;
 }
 
 async function stopActiveQuestion(
@@ -290,6 +367,7 @@ export async function runAgentQuestion(text: string) {
 		adapter,
 		sequence: screenContext.sequence,
 		actions: new Set(),
+		deliveries: new Map(),
 		screens: new Set([screenContext.sequence]),
 	};
 	active = turn;
@@ -311,7 +389,9 @@ export async function runAgentQuestion(text: string) {
 				replaceText: (text) => {
 					if (valid(turn)) useConversation.setState({ answer: text.slice(0, 50_000) });
 				},
-				action: (action) => applyAction(turn, action),
+				action: async (action) => {
+					await deliverAction(turn, action);
+				},
 			},
 			turn.controller.signal
 		);
@@ -352,6 +432,7 @@ export const externalVoiceTurn = {
 			adapter,
 			sequence: screenContext.sequence,
 			actions: new Set(),
+			deliveries: new Map(),
 			screens: new Set([screenContext.sequence]),
 			external: true,
 		};
@@ -372,8 +453,11 @@ export const externalVoiceTurn = {
 		if (active?.external && sameTurn(active.input, identity) && valid(active))
 			useConversation.setState({ answer: text.slice(0, 50_000) });
 	},
-	async action(action: AgentAction) {
-		if (active?.external) await applyAction(active, action);
+	action(action: AgentAction) {
+		return deliverAction(active?.external ? active : null, action);
+	},
+	ignoreAction(action: AgentAction) {
+		return deliverAction(active?.external ? active : null, action, true);
 	},
 	finish(identity: TurnIdentity, state: "complete" | "cancelled" | "error", error = "") {
 		if (!active?.external || !sameTurn(active.input, identity) || !valid(active)) return;

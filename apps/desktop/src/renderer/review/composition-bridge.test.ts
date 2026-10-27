@@ -30,3 +30,31 @@ it("prepares the review and binds explicit exact-draft confirmation to compositi
 	);
 	assert.equal(calls.length, 3);
 });
+
+it("validates action receipts and their acknowledgement across the production RPC", async () => {
+	const fixture = getReviewFixture();
+	const calls: Array<{ path: string; input: unknown }> = [];
+	let result: unknown = { status: "accepted" };
+	const bridge = createCompositionBridge(async (request) => {
+		calls.push({ path: request.path, input: superjson.deserialize(request.input) });
+		return { result: { data: superjson.serialize(result) } };
+	});
+	assert.ok(bridge.agent.actionApplied);
+	const receipt = {
+		sessionId: fixture.agentTurn.sessionId,
+		turnId: fixture.agentTurn.turnId,
+		generation: fixture.agentTurn.generation,
+		requestId: "rendered-effect",
+		status: "applied" as const,
+		screenContext: fixture.agentTurn.screenContext,
+	};
+	assert.deepEqual(await bridge.agent.actionApplied(receipt), { status: "accepted" });
+	assert.deepEqual(calls[0], { path: "agent.actionApplied", input: receipt });
+	await assert.rejects(
+		() =>
+			bridge.agent.actionApplied?.({ ...receipt, status: "unknown" } as never) as Promise<unknown>
+	);
+	assert.equal(calls.length, 1);
+	result = { status: "invalid" };
+	await assert.rejects(() => bridge.agent.actionApplied?.(receipt) as Promise<unknown>);
+});

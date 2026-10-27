@@ -1,6 +1,12 @@
 import assert from "node:assert/strict";
 import { afterEach, beforeEach, it } from "node:test";
-import type { AgentAction, AgentTurnInput, BrowserState } from "../../shared/contracts";
+import type {
+	AgentAction,
+	AgentActionReceipt,
+	AgentTurnInput,
+	BrowserState,
+	ScreenContext,
+} from "../../shared/contracts";
 import { getReviewFixture } from "../../shared/fixtures/review";
 import { refreshReviewBrowser } from "./browser-session";
 import { useReview } from "./controller";
@@ -31,7 +37,7 @@ afterEach(async () => {
 	configureReviewServices({ agent: null, sources: null, browser: null });
 });
 
-function harness() {
+function harness(overrides: Partial<AgentAdapter> = {}) {
 	let resolve = () => {};
 	let observer: Parameters<AgentAdapter["ask"]>[1] | undefined;
 	let input: AgentTurnInput | undefined;
@@ -50,6 +56,7 @@ function harness() {
 		getScenario: async () => fixture.scenario,
 		getPreview: async () => fixture.preview,
 		getDiagram: async () => fixture.diagram,
+		...overrides,
 	};
 	configureReviewServices({ agent: adapter });
 	return {
@@ -459,3 +466,249 @@ for (const [timing, actionObservedAt] of [
 		}
 	});
 }
+
+it("awaits a settled effect and its receipt, deduplicating concurrent delivery before the next effect", async () => {
+	const receipts: AgentActionReceipt[] = [];
+	const updates: ScreenContext[] = [];
+	let releaseDiagram = () => {};
+	let releaseReceipt = () => {};
+	let reads = 0;
+	const ack = new Promise<{ status: "accepted" }>((resolve) => {
+		releaseReceipt = () => resolve({ status: "accepted" });
+	});
+	const h = harness({
+		updateScreen: async (_session, screen) => {
+			updates.push(screen);
+		},
+		getDiagram: () => {
+			reads++;
+			return new Promise((resolve) => {
+				releaseDiagram = () => resolve(fixture.diagram);
+			});
+		},
+		actionApplied: async (receipt) => {
+			receipts.push(receipt);
+			return ack;
+		},
+	});
+	const running = runAgentQuestion("Show callers");
+	await Promise.resolve();
+	await Promise.resolve();
+	await Promise.resolve();
+	const input = h.input();
+	const action: AgentAction = {
+		sessionId: input.sessionId,
+		turnId: input.turnId,
+		generation: input.generation,
+		requestId: "settled-diagram",
+		screenSequence: input.screenContext.sequence,
+		kind: "show-diagram",
+		diagramId: fixture.diagram.id,
+	};
+	let finished = false;
+	const applying = h
+		.observer()
+		.action(action)
+		.then(() => {
+			finished = true;
+		});
+	const duplicate = h.observer().action(action);
+	await Promise.resolve();
+	await Promise.resolve();
+	assert.equal(reads, 1);
+	assert.equal(receipts.length, 0);
+	releaseDiagram();
+	for (let i = 0; i < 8; i++) await Promise.resolve();
+	assert.equal(useReview.getState().panel, "diagram");
+	assert.equal(receipts.length, 1);
+	const receipt = receipts[0];
+	assert.ok(receipt);
+	assert.equal(receipt.status, "applied");
+	assert.equal(receipt.requestId, action.requestId);
+	assert.equal(receipt.screenContext.panel, "diagram");
+	assert.equal(receipt.screenContext.sequence, input.screenContext.sequence + 2);
+	assert.ok(updates.every((screen) => screen.sequence < receipt.screenContext.sequence));
+	assert.equal(finished, false);
+	releaseReceipt();
+	await Promise.all([applying, duplicate]);
+	const node = fixture.diagram.nodes[0];
+	assert.ok(node);
+	await h.observer().action({
+		sessionId: action.sessionId,
+		turnId: action.turnId,
+		generation: action.generation,
+		requestId: "following-highlight",
+		screenSequence: receipt.screenContext.sequence,
+		kind: "highlight-code",
+		location: node.location,
+		note: "Call site",
+	});
+	assert.equal(receipts.length, 2);
+	assert.equal(receipts[1]?.status, "applied");
+	assert.equal(useReview.getState().panel, "code");
+	h.finish();
+	await running;
+});
+
+it("acknowledges ignored stale and cancelled effects without moving the reviewer", async () => {
+	const receipts: AgentActionReceipt[] = [];
+	const h = harness({
+		actionApplied: async (receipt) => {
+			receipts.push(receipt);
+			return { status: "stale" };
+		},
+	});
+	const running = runAgentQuestion("Show callers");
+	await Promise.resolve();
+	await Promise.resolve();
+	const input = h.input();
+	useReview.getState().openFile("checkout/PromoField.tsx");
+	const leftSequence = useReview.getState().sequence;
+	const action: AgentAction = {
+		sessionId: input.sessionId,
+		turnId: input.turnId,
+		generation: input.generation,
+		requestId: "stale-context-effect",
+		screenSequence: input.screenContext.sequence,
+		kind: "show-diagram",
+		diagramId: fixture.diagram.id,
+	};
+	await h.observer().action(action);
+	assert.equal(receipts[0]?.status, "ignored");
+	assert.equal(receipts[0]?.screenContext.sequence, leftSequence + 1);
+	assert.equal(useReview.getState().file, "checkout/PromoField.tsx");
+	await cancelActiveQuestion();
+	await h.observer().action({ ...action, requestId: "cancelled-effect" });
+	assert.equal(receipts[1]?.status, "ignored");
+	assert.equal(receipts[1]?.generation, input.generation);
+	assert.equal(useReview.getState().panel, "code");
+	h.finish();
+	await running;
+});
+
+it("acknowledges an async effect ignored after navigation and a failed highlight truthfully", async () => {
+	const receipts: AgentActionReceipt[] = [];
+	let releaseDiagram = () => {};
+	const h = harness({
+		getDiagram: () =>
+			new Promise((resolve) => {
+				releaseDiagram = () => resolve(fixture.diagram);
+			}),
+		actionApplied: async (receipt) => {
+			receipts.push(receipt);
+			return { status: "accepted" };
+		},
+	});
+	const running = runAgentQuestion("Show callers");
+	await Promise.resolve();
+	await Promise.resolve();
+	const input = h.input();
+	const action: AgentAction = {
+		sessionId: input.sessionId,
+		turnId: input.turnId,
+		generation: input.generation,
+		requestId: "late-diagram",
+		screenSequence: input.screenContext.sequence,
+		kind: "show-diagram",
+		diagramId: fixture.diagram.id,
+	};
+	const pending = h.observer().action(action);
+	await Promise.resolve();
+	await Promise.resolve();
+	useReview.getState().setPanel("browser");
+	releaseDiagram();
+	await pending;
+	assert.equal(receipts[0]?.status, "ignored");
+	assert.equal(useReview.getState().panel, "browser");
+	const node = fixture.diagram.nodes[0];
+	assert.ok(node);
+	await h.observer().action({
+		sessionId: action.sessionId,
+		turnId: action.turnId,
+		generation: action.generation,
+		kind: "highlight-code",
+		requestId: "missing-source",
+		screenSequence: useReview.getState().sequence,
+		location: { ...node.location, startLine: 99999, endLine: 99999 },
+		note: "Unavailable",
+	});
+	assert.equal(receipts[1]?.status, "ignored");
+	assert.equal(useReview.getState().panel, "browser");
+	h.finish();
+	await running;
+});
+
+it("external ignored voice actions use the same receipt sink without executing the effect", async () => {
+	const { allocateReviewTurn, externalVoiceTurn } = await import("./conversation");
+	const receipts: AgentActionReceipt[] = [];
+	harness({
+		actionApplied: async (receipt) => {
+			receipts.push(receipt);
+			return { status: "accepted" };
+		},
+	});
+	const identity = allocateReviewTurn();
+	externalVoiceTurn.begin(identity);
+	const sequence = useReview.getState().sequence;
+	const action: AgentAction = {
+		...identity,
+		requestId: "voice-filtered",
+		screenSequence: sequence,
+		kind: "show-diagram",
+		diagramId: fixture.diagram.id,
+	};
+	assert.equal(await externalVoiceTurn.ignoreAction(action), "ignored");
+	assert.equal(receipts[0]?.status, "ignored");
+	assert.equal(receipts[0]?.screenContext.sequence, sequence + 1);
+	assert.equal(useReview.getState().panel, null);
+	assert.equal(await externalVoiceTurn.action(action), "ignored");
+	assert.equal(receipts.length, 1);
+	externalVoiceTurn.finish(identity, "complete");
+});
+
+it("a retired asynchronous effect acknowledges ignored without changing the new turn's screen", async () => {
+	const receipts: AgentActionReceipt[] = [];
+	let release = () => {};
+	const first = harness({
+		getDiagram: () =>
+			new Promise((resolve) => {
+				release = () => resolve(fixture.diagram);
+			}),
+		actionApplied: async (receipt) => {
+			receipts.push(receipt);
+			return { status: "stale" };
+		},
+	});
+	const firstRunning = runAgentQuestion("Old question");
+	await Promise.resolve();
+	await Promise.resolve();
+	const old = first.input();
+	const effect = first.observer().action({
+		sessionId: old.sessionId,
+		turnId: old.turnId,
+		generation: old.generation,
+		requestId: "retired-diagram",
+		screenSequence: old.screenContext.sequence,
+		kind: "show-diagram",
+		diagramId: fixture.diagram.id,
+	});
+	await Promise.resolve();
+	await Promise.resolve();
+	await cancelActiveQuestion();
+	const second = harness();
+	const secondRunning = runAgentQuestion("Current question");
+	await Promise.resolve();
+	await Promise.resolve();
+	const current = second.input();
+	const before = useReview.getState();
+	release();
+	await effect;
+	assert.equal(receipts[0]?.status, "ignored");
+	assert.equal(receipts[0]?.turnId, old.turnId);
+	assert.equal(receipts[0]?.screenContext.sequence, current.screenContext.sequence);
+	assert.equal(useReview.getState(), before);
+	assert.equal(useConversation.getState().identity?.turnId, current.turnId);
+	first.finish();
+	second.finish();
+	await Promise.all([firstRunning, secondRunning]);
+});

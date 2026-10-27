@@ -1,6 +1,8 @@
 import { create } from "zustand";
 import type {
 	AgentAction,
+	AgentActionReceipt,
+	AgentActionReceiptResult,
 	AgentTurnInput,
 	BrowserBounds,
 	BrowserCommand,
@@ -52,6 +54,7 @@ export type ReviewAdapter = {
 	prepare: (prId: string) => Promise<PRPreparation>;
 };
 export type AgentAdapter = {
+	actionApplied?: (receipt: AgentActionReceipt) => Promise<AgentActionReceiptResult>;
 	updateScreen?: (sessionId: string, screenContext: ScreenContext) => Promise<void>;
 	ask: (
 		input: AgentTurnInput,

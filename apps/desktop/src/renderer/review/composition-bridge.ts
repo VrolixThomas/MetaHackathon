@@ -1,6 +1,8 @@
 import superjson from "superjson";
 import { z } from "zod";
 import {
+	AgentActionReceiptResultSchema,
+	AgentActionReceiptSchema,
 	AgentTurnInputSchema,
 	BrowserCommandSchema,
 	BrowserObserveInputSchema,
@@ -38,6 +40,10 @@ export function createReviewRpc(request: ReviewRequest) {
 export function createCompositionBridge(request: ReviewRequest) {
 	const call = createReviewRpc(request);
 	const agent = createPollingAgentAdapter({
+		actionApplied: async (receipt) =>
+			AgentActionReceiptResultSchema.parse(
+				await call("mutation", "agent.actionApplied", AgentActionReceiptSchema.parse(receipt))
+			),
 		updateScreen: async (sessionId, screenContext) => {
 			ScreenContextSchema.parse(
 				await call(
