@@ -45,6 +45,7 @@ bun run type-check
 bun run lint
 bun run test:contracts
 bun run test:integration
+bun run test:browser-flow
 bun run build
 bun run --filter @metahackathon/desktop preview
 ```

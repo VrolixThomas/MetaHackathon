@@ -59,6 +59,7 @@ bun run type-check
 bun run lint
 bun run test:contracts
 bun run test:integration
+bun run test:browser-flow
 bun run build
 bun run format
 ```
@@ -161,6 +162,14 @@ observation, click, type, scroll and viewport commands. It restricts the page to
 origin. Ref-based actions reject stale observations. The `voice` router adds readiness/setup and
 the generation-aware speech pipeline. Scripted-provider acceptance tests exercise real local
 browser/scenario results but are separate from live microphone, STT, model and TTS verification.
+
+`bun run test:browser-flow` drives the seven requests through the built renderer with a scripted
+Meta response provider and temporary dummy credentials. It compares the native visible page
+with agent observations, checks executed before/after evidence, cancellation and confirmation
+guards, and verifies shutdown. Reports live in `apps/desktop/out/browser-flow-smoke/`.
+It also prepares the actual local voice sidecar when installed, without sending audio or calling
+speech providers. `BROWSER_FLOW_HOLD=1` keeps the successful final workspace open for inspection;
+close its window to finish the cleanup check. No test uses the user's saved credentials.
 
 ## Local packaging
 
