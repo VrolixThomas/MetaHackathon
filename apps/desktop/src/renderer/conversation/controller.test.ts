@@ -1,0 +1,220 @@
+import assert from "node:assert/strict";
+import { it } from "node:test";
+import type {
+	AppConfiguration,
+	ConversationTurnInput,
+	PollTurnResult,
+	PullRequest,
+} from "../../shared/contracts";
+import type { ConversationApi } from "./api";
+import { createConversationController } from "./controller";
+
+const config: AppConfiguration = {
+	envPath: "/test/.env",
+	configured: { meta: true, elevenlabs: true, github: false },
+	voiceId: "voice",
+	microphone: "granted",
+};
+const pr: PullRequest = {
+	id: "owner/project#12",
+	repository: "owner/project",
+	number: 12,
+	title: "A real API result",
+	url: "https://github.com/owner/project/pull/12",
+	author: "owner",
+	baseSha: "a".repeat(40),
+	headSha: "b".repeat(40),
+};
+function harness(overrides: Partial<ConversationApi> = {}) {
+	const starts: ConversationTurnInput[] = [];
+	const cancels: unknown[] = [];
+	let prepares = 0;
+	const api: ConversationApi = {
+		call: async () => undefined,
+		start: async (input) => {
+			starts.push(input);
+			return {
+				sessionId: input.sessionId,
+				turnId: input.turnId,
+				generation: input.generation,
+				status: "running",
+			};
+		},
+		poll: async (input) => ({
+			sessionId: input.sessionId,
+			turnId: input.turnId,
+			generation: input.generation,
+			status: "completed",
+			sequence: 1,
+			events: [
+				{
+					sessionId: input.sessionId,
+					turnId: input.turnId,
+					generation: input.generation,
+					sequence: 1,
+					kind: "completed",
+				},
+			],
+			text: "Actual API response",
+			actions: [],
+		}),
+		cancel: async (input) => {
+			cancels.push(input);
+			return {
+				sessionId: input.sessionId,
+				turnId: input.turnId,
+				generation: input.generation,
+				requestId: input.requestId,
+				status: "cancelled",
+			};
+		},
+		release: async () => {},
+		config: async () => config,
+		reloadConfig: async () => config,
+		openEnv: async () => {},
+		requestMicrophone: async () => "granted",
+		voiceStatus: async () => ({ phase: "stopped", voiceId: "voice", missing: [] }),
+		prepareVoice: async () => {
+			prepares++;
+			return { phase: "ready", voiceId: "voice", missing: [] };
+		},
+		githubAccount: async () => ({ login: "owner", avatar_url: "https://github.com/owner.png" }),
+		githubSignIn: async () => ({ login: "owner", avatar_url: "https://github.com/owner.png" }),
+		reviewRequests: async () => [pr],
+		prContext: async () => ({ pr, description: "PR description", files: [], truncated: false }),
+		...overrides,
+	};
+	let count = 0;
+	return {
+		api,
+		starts,
+		cancels,
+		prepares: () => prepares,
+		controller: createConversationController(api, { id: () => `test-${++count}`, pollInterval: 0 }),
+	};
+}
+it("starts empty and talks without a PR or screen; adds only selected GitHub context", async () => {
+	const h = harness();
+	try {
+		assert.deepEqual(h.controller.store.getState().exchanges, []);
+		assert.deepEqual(h.controller.store.getState().prs, []);
+		await h.controller.submit("Hello");
+		assert.equal(h.starts.length, 1);
+		assert.equal("prId" in (h.starts[0] ?? {}), false);
+		assert.equal("screenContext" in (h.starts[0] ?? {}), false);
+		assert.equal(h.controller.store.getState().exchanges[0]?.answer, "Actual API response");
+		await h.controller.refreshGitHub();
+		await h.controller.selectPR(pr);
+		await h.controller.submit("Explain this change");
+		assert.equal(h.starts[1]?.prId, pr.id);
+		assert.equal(h.starts[0]?.sessionId, h.starts[1]?.sessionId);
+		assert.ok(Number(h.starts[1]?.generation) > Number(h.starts[0]?.generation));
+	} finally {
+		h.controller.dispose();
+	}
+});
+it("auto prepares configured voice and release during microphone permission cannot start capture", async () => {
+	let grant: (value: "granted") => void = () => {};
+	const h = harness({
+		config: async () => ({ ...config, microphone: "not-determined" }),
+		requestMicrophone: () =>
+			new Promise((resolve) => {
+				grant = resolve;
+			}),
+	});
+	let captures = 0;
+	h.controller.attachVoice({
+		beginCapture: () => {
+			captures++;
+		},
+		endCapture() {},
+		interrupt() {},
+		dispose() {},
+	});
+	try {
+		await h.controller.configure();
+		assert.equal(h.prepares(), 1);
+		h.controller.press();
+		h.controller.release();
+		grant("granted");
+		await Promise.resolve();
+		await Promise.resolve();
+		assert.equal(captures, 0);
+		assert.equal(h.controller.store.getState().config?.microphone, "granted");
+		h.controller.press();
+		assert.equal(captures, 1);
+	} finally {
+		h.controller.dispose();
+	}
+});
+it("one shared voice identity displays transcript without starting another typed turn", async () => {
+	const h = harness();
+	try {
+		const turn = h.controller.allocateIdentity();
+		assert.equal(h.controller.beginVoice(turn), true);
+		h.controller.transcript(turn, "Spoken question");
+		h.controller.answer(turn, "Spoken response");
+		assert.equal(h.starts.length, 0);
+		h.controller.finishVoice(turn, "complete");
+		await h.controller.submit("Typed follow-up");
+		h.controller.answer(turn, "Late output");
+		assert.equal(h.controller.store.getState().exchanges[0]?.answer, "Spoken response");
+		assert.equal(h.starts[0]?.sessionId, turn.sessionId);
+		assert.ok(Number(h.starts[0]?.generation) > turn.generation);
+		assert.equal(h.controller.beginVoice(turn), false);
+	} finally {
+		h.controller.dispose();
+	}
+});
+it("cancels main work and ignores a late response after stop", async () => {
+	let finish: (value: PollTurnResult) => void = () => {};
+	const h = harness({
+		poll: () =>
+			new Promise((resolve) => {
+				finish = resolve;
+			}),
+	});
+	try {
+		const work = h.controller.submit("Question");
+		for (let i = 0; i < 8; i++) await Promise.resolve();
+		const turn = h.starts[0];
+		assert.ok(turn);
+		h.controller.stop();
+		finish({
+			sessionId: turn.sessionId,
+			turnId: turn.turnId,
+			generation: turn.generation,
+			status: "completed",
+			sequence: 1,
+			events: [],
+			actions: [],
+			text: "Late response",
+		});
+		await work;
+		assert.equal(h.cancels.length, 1);
+		assert.equal(h.controller.store.getState().exchanges[0]?.answer, "");
+		assert.equal(h.controller.store.getState().exchanges[0]?.phase, "cancelled");
+	} finally {
+		h.controller.dispose();
+	}
+});
+it("does not synthesize fallback replies or PRs after API failures", async () => {
+	const h = harness({
+		start: async () => {
+			throw new Error("private upstream detail");
+		},
+		reviewRequests: async () => {
+			throw new Error("offline");
+		},
+	});
+	try {
+		await h.controller.submit("Hello");
+		await h.controller.refreshGitHub();
+		assert.equal(h.controller.store.getState().exchanges[0]?.answer, "");
+		assert.deepEqual(h.controller.store.getState().prs, []);
+		assert.ok(h.controller.store.getState().error);
+		assert.equal(h.controller.store.getState().error.includes("private"), false);
+	} finally {
+		h.controller.dispose();
+	}
+});
