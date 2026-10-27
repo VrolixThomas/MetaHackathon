@@ -98,6 +98,8 @@ export type VoiceControllerOptions = {
 	onAnswer?(text: string, identity: TurnIdentity): void;
 	/** Check signal/current screen again immediately before any asynchronous UI effect. */
 	onAction?(action: AgentAction, screen: ScreenContext, signal: AbortSignal): void | Promise<void>;
+	/** Same live turn only: report a PR/screen-filtered action once so UI can send an ignored receipt. */
+	onActionIgnored?(action: AgentAction, screen: ScreenContext): void | Promise<void>;
 	onLatency?(observation: LatencyObservation): void;
 	onError?(error: Error): void;
 	now?: () => number;

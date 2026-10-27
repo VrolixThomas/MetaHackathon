@@ -48,6 +48,11 @@ const voice = createVoiceController({
     if (signal.aborted || reviewStore.getState().screenContext.sequence !== screen.sequence) return;
     await externalVoiceTurn.action(action);
   },
+  onActionIgnored: async (action, screen) => {
+    // UI sends agent.actionApplied with the action's exact identity/requestId,
+    // status: "ignored", and screenContext: screen using AgentActionReceiptSchema.
+    await sendIgnoredActionReceipt(action, screen);
+  },
   onLatency: (sample) => latencyStore.record(sample),
   onError: (error) => voiceErrorStore.set(error.message),
 });
@@ -75,6 +80,16 @@ The `agent.start` adapter must await `screen.update({sessionId, screenContext})`
 passes the current shared `ScreenContext.browser` through unchanged and rejects a browser snapshot
 from another review/session. `onEvent` must not execute actions or append answer deltas again:
 `onAnswer` supplies replacement text and `onAction` is the single effect path.
+
+`onActionIgnored(action, screen)` is optional and called once when an action from the same
+active turn fails the current PR or screen-sequence guard. It receives the current validated
+screen, never executes the effect, and shares action request-ID deduplication with `onAction`.
+Foreign session/turn/generation identities, duplicate actions and cancelled turns do not invoke
+either hook. The callback is awaited with the existing RPC deadline and turn cancellation;
+rejection or timeout fails/cancels the turn. UI owns the actual `agent.actionApplied` receipt for
+both applied and ignored actions. Preserve the action's identity/requestId; never allocate a new
+generation to acknowledge it. If UI defers sending a receipt, recheck its active identity before
+sending. Agent cancellation resolves its waiters, so no receipt is needed after cancellation.
 
 Port payloads:
 

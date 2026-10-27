@@ -299,16 +299,16 @@ export function createVoiceController(options: VoiceControllerOptions): VoiceCon
 		for (const sentence of turn.sentences.push(delta, final)) queue(turn, sentence, "answer");
 	}
 	async function action(turn: Turn, value: AgentAction) {
-		if (!live(turn) || turn.actions.has(value.requestId)) return;
+		if (!live(turn) || !sameTurn(value, turn.identity) || turn.actions.has(value.requestId)) return;
 		if (turn.actions.size >= MAX_ACTIONS) throw new Error("Agent action limit exceeded");
 		turn.actions.add(value.requestId);
 		const current = ScreenContextSchema.parse(options.getScreenContext());
-		if (
-			!sameTurn(value, turn.identity) ||
-			current.prId !== turn.prId ||
-			current.sequence !== value.screenSequence
-		)
+		if (!live(turn)) return;
+		if (current.prId !== turn.prId || current.sequence !== value.screenSequence) {
+			if (options.onActionIgnored)
+				await rpc(turn, Promise.resolve(options.onActionIgnored(value, current)));
 			return;
+		}
 		if (options.onAction)
 			await rpc(turn, Promise.resolve(options.onAction(value, current, turn.abort.signal)));
 	}

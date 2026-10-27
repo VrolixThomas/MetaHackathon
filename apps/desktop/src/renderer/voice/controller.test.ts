@@ -398,7 +398,12 @@ test("duplicate event pages do not repeat text or acknowledgement", async () => 
 });
 
 test("stale screen actions are skipped and current actions are applied once", async () => {
-	const h = harness();
+	const ignored: Array<{ action: AgentAction; screen: ScreenContext }> = [];
+	const h = harness({
+		onActionIgnored: (action, screen) => {
+			ignored.push({ action, screen });
+		},
+	});
 	await h.capture();
 	await h.final();
 	h.setScreen({ prId: "pr-1", sequence: 3, panel: "why", focusedLocation: null });
@@ -429,6 +434,155 @@ test("stale screen actions are skipped and current actions are applied once", as
 		h.actions.map((a) => a.requestId),
 		["current"]
 	);
+	assert.equal(ignored.length, 1, "event, snapshot and repeat polls share receipt deduplication");
+	assert.equal(ignored[0]?.action.requestId, "old");
+	assert.deepEqual(identity(ignored[0]?.action as AgentAction), h.current());
+	assert.deepEqual(ignored[0]?.screen, {
+		prId: "pr-1",
+		sequence: 3,
+		panel: "why",
+		focusedLocation: null,
+	});
+});
+
+test("same-turn actions filtered by a changed PR report ignored with the current screen", async () => {
+	const ignored: ScreenContext[] = [];
+	const h = harness({
+		onActionIgnored: (_action, screen) => {
+			ignored.push(screen);
+		},
+	});
+	await h.capture();
+	await h.final();
+	const current: ScreenContext = {
+		prId: "pr-2",
+		sequence: 2,
+		panel: "diff",
+		focusedLocation: null,
+	};
+	h.setScreen(current);
+	h.setPoll(async (input) => ({
+		...identity(input),
+		status: "running",
+		sequence: 0,
+		text: "",
+		events: [],
+		actions: [
+			{
+				...identity(input),
+				requestId: "old-pr",
+				screenSequence: 2,
+				kind: "show-diagram",
+				diagramId: "diagram-1",
+			},
+		],
+	}));
+	await until(() => ignored.length === 1);
+	await wait();
+	assert.deepEqual(ignored, [current]);
+	assert.deepEqual(h.actions, []);
+});
+
+test("foreign session, turn and generation actions never receive an ignored receipt", async () => {
+	for (const foreign of [{ sessionId: "foreign" }, { turnId: "foreign" }, { generation: 999 }]) {
+		const ignored: AgentAction[] = [];
+		const h = harness({
+			onActionIgnored: (action) => {
+				ignored.push(action);
+			},
+		});
+		h.setPoll(async (input) => {
+			const other = { ...identity(input), ...foreign };
+			return {
+				...other,
+				status: "running",
+				sequence: 0,
+				text: "",
+				events: [],
+				actions: [
+					{
+						...other,
+						requestId: "foreign-action",
+						screenSequence: 1,
+						kind: "show-diagram",
+						diagramId: "diagram-1",
+					},
+				],
+			};
+		});
+		await h.capture();
+		await h.final();
+		await until(() => h.controller.getPhase() === "error");
+		assert.deepEqual(ignored, []);
+		assert.deepEqual(h.actions, []);
+		h.controller.dispose();
+	}
+});
+
+test("cancelling a pending ignored callback stops audio and both services without later receipts", async () => {
+	const receipt = deferred<void>();
+	const ignored: AgentAction[] = [];
+	const h = harness({
+		onActionIgnored: (action) => {
+			ignored.push(action);
+			return receipt.promise;
+		},
+	});
+	h.setPoll(async (input) => ({
+		...identity(input),
+		status: "running",
+		sequence: 0,
+		text: "",
+		events: [],
+		actions: ["first", "later"].map((requestId) => ({
+			...identity(input),
+			requestId,
+			screenSequence: 1,
+			kind: "show-diagram",
+			diagramId: "diagram-1",
+		})),
+	}));
+	await h.capture();
+	await h.final();
+	await until(() => ignored.length === 1);
+	h.controller.interrupt("navigation");
+	assert.equal(h.media[0]?.closed, true);
+	assert.equal(h.cancels.voice.length, 1);
+	assert.equal(h.cancels.agent.length, 1);
+	receipt.resolve();
+	await wait();
+	assert.deepEqual(
+		ignored.map((action) => action.requestId),
+		["first"]
+	);
+	assert.deepEqual(h.actions, []);
+	assert.equal(h.controller.getPhase(), "cancelled");
+});
+
+test("an ignored receipt callback that stalls is bounded and cancels the turn", async () => {
+	const h = harness({ rpcTimeoutMs: 100, onActionIgnored: () => new Promise(() => {}) });
+	h.setPoll(async (input) => ({
+		...identity(input),
+		status: "running",
+		sequence: 0,
+		text: "",
+		events: [],
+		actions: [
+			{
+				...identity(input),
+				requestId: "stalled",
+				screenSequence: 1,
+				kind: "show-diagram",
+				diagramId: "diagram-1",
+			},
+		],
+	}));
+	await h.capture();
+	await h.final();
+	await until(() => h.controller.getPhase() === "error");
+	assert.equal(h.media[0]?.closed, true);
+	assert.equal(h.cancels.voice.length, 1);
+	assert.equal(h.cancels.agent.length, 1);
 });
 
 test("latency uses PCM observations with separate acknowledgement/answer identity and release baseline", async () => {
