@@ -107,7 +107,11 @@ Optional comment location contains only side/base-or-head and inclusive one-base
 		analysis.files.some((file) => !paths.includes(file.path))
 	)
 		throw new Error("Review reading order must be a permutation of the supplied changed files");
-	const id = `review-${digest}`;
+	// Forced preparation can change the plan without changing its pinned source context.
+	// Bind identity to the validated analysis as well; timestamps do not affect identity.
+	const id = `review-${createHash("sha256")
+		.update(JSON.stringify([digest, analysis]))
+		.digest("hex")}`;
 	const files = analysis.files.map((file) => {
 		const source = context.files.find((source) => source.path === file.path);
 		const lines = patchLines(source?.patch);

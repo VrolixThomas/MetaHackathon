@@ -89,6 +89,41 @@ function model(value: unknown, inspect?: (request: MetaRequest) => void): AgentM
 	};
 }
 
+test("same-context plans have stable IDs for identical analysis and new IDs for changed order or comment bodies", async () => {
+	const input = context();
+	const requestIds: string[] = [];
+	const prepare = (value: ReturnType<typeof analysis>) =>
+		prepareReview(
+			model(value, (request) => requestIds.push(request.requestId)),
+			input,
+			new AbortController().signal
+		);
+	const original = analysis();
+	const first = await prepare(original);
+	const repeat = await prepare(structuredClone(original));
+	assert.equal(first.id, repeat.id);
+	assert.deepEqual(first.files, repeat.files);
+	const reordered = await prepare({ ...original, files: [...original.files].reverse() });
+	const edited = structuredClone(original);
+	const comment = edited.files[1]?.suggestedComments[0];
+	assert(comment);
+	comment.body = "Could this also cover the timeout boundary?";
+	const changedBody = await prepare(edited);
+	assert.equal(new Set([first.id, reordered.id, changedBody.id]).size, 3);
+	const originalSuggestionIds = new Set(
+		first.files.flatMap((file) => file.suggestedComments.map((suggestion) => suggestion.id))
+	);
+	for (const changed of [reordered, changedBody]) {
+		assert.deepEqual(changed.pr, first.pr);
+		assert(
+			changed.files
+				.flatMap((file) => file.suggestedComments)
+				.every((suggestion) => !originalSuggestionIds.has(suggestion.id))
+		);
+	}
+	assert.equal(new Set(requestIds).size, 1);
+});
+
 test("renamed files omit base locations without a trusted previous path while retaining head citations", async () => {
 	const input = context();
 	const renamed = input.files[0];
