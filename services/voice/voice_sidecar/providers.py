@@ -165,6 +165,8 @@ async def eleven_pcm(http, config, text):
             url, params={"output_format": "pcm_24000"},
             headers={"xi-api-key": config.eleven_key, "Content-Type": "application/json"},
             json={"text": text, "model_id": config.tts_model},
+            # Never forward the custom API-key header or speech body to a redirect.
+            allow_redirects=False,
             timeout=aiohttp.ClientTimeout(total=120, connect=10, sock_read=15),
         ) as response:
             if response.status != 200:
