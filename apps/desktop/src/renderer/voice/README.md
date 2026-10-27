@@ -155,8 +155,8 @@ after cancellation, a compensating cancel follows so a late server allocation ca
 The main services must also reject/tombstone cancelled identities; renderer abort alone cannot
 undo server work. Late permission streams are owned and stopped even between promise callbacks.
 
-A final transcript queues the injected acknowledgement immediately and starts agent work without
-waiting for speech. Agent acknowledgement events are published but never spoken twice. Text deltas
+A final transcript starts agent work immediately. An explicitly injected acknowledgement is
+optional; V1 omits it and speaks only answers. Server acknowledgement events are never spoken. Text deltas
 feed a serial sentence queue. Each sentence waits for its matching `speech-ended` and local drain.
 Terminal agent snapshots still page through all events using the **last returned event sequence**,
 not the snapshot sequence. Compacted windows recover unsaid snapshot suffixes; conflicting already

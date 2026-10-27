@@ -21,6 +21,7 @@ it("speaks without a PR, starts once per final utterance and shares identity wit
 	const paths: string[] = [];
 	const starts: ConversationTurnInput[] = [];
 	const events: VoiceEvent[] = [];
+	const spoken: string[] = [];
 	const api = createConversationApi(async (request) => {
 		paths.push(request.path);
 		const input = superjson.deserialize<Record<string, unknown>>(request.input);
@@ -45,7 +46,8 @@ it("speaks without a PR, starts once per final utterance and shares identity wit
 					text: "Hello from speech",
 				});
 		}
-		if (request.path === "voice.speak")
+		if (request.path === "voice.speak") {
+			spoken.push(String(input["text"]));
 			events.push({
 				sessionId: String(input["sessionId"]),
 				turnId: String(input["turnId"]),
@@ -54,6 +56,7 @@ it("speaks without a PR, starts once per final utterance and shares identity wit
 				kind: "speech-ended",
 				speechId: String(input["speechId"]),
 			});
+		}
 		if (request.path === "voice.poll")
 			value = { events: events.filter((event) => event.sequence > Number(input["afterSequence"])) };
 		if (request.path === "conversation.start") {
@@ -117,6 +120,7 @@ it("speaks without a PR, starts once per final utterance and shares identity wit
 		assert.equal("screenContext" in (starts[0] ?? {}), false);
 		assert.equal(ui.store.getState().exchanges[0]?.question, "Hello from speech");
 		assert.equal(ui.store.getState().exchanges[0]?.answer, "Provider reply.");
+		assert.deepEqual(spoken, ["Provider reply."], "Speak only the actual answer, without filler");
 		await ui.submit("Typed follow-up");
 		assert.equal(starts.length, 2);
 		assert.equal(starts[0]?.sessionId, starts[1]?.sessionId);

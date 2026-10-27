@@ -81,7 +81,10 @@ export function createVoiceController(options: VoiceControllerOptions): VoiceCon
 	if (options.allocateIdentity && options.sessionId === undefined)
 		throw new Error("Shared voice identity allocation requires the review session ID");
 	const sessionId = TurnIdentitySchema.shape.sessionId.parse(options.sessionId ?? id());
-	const ack = SpeakSchema.shape.text.parse(options.acknowledgementText.trim());
+	const ack =
+		options.acknowledgementText === undefined
+			? null
+			: SpeakSchema.shape.text.parse(options.acknowledgementText.trim());
 	const completion =
 		options.completionText === undefined
 			? null
@@ -339,7 +342,7 @@ export function createVoiceController(options: VoiceControllerOptions): VoiceCon
 		if (!live(turn)) return;
 		switch (event.kind) {
 			case "acknowledgement":
-				break; // The immediate local acknowledgement was already queued.
+				break; // Server acknowledgements never synthesize speech.
 			case "text-delta":
 				answer(turn, event.delta);
 				break;
@@ -445,7 +448,7 @@ export function createVoiceController(options: VoiceControllerOptions): VoiceCon
 			finish(turn);
 			return;
 		}
-		queue(turn, ack, "acknowledgement");
+		if (ack) queue(turn, ack, "acknowledgement");
 		if (live(turn)) void runAgent(turn, text);
 	}
 	function voiceEvent(turn: Turn, event: VoiceEvent) {

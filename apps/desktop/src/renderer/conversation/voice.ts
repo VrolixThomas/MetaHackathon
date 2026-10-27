@@ -25,7 +25,6 @@ export function connectConversationVoice(
 		sessionId: ui.sessionId,
 		allocateIdentity: ui.allocateIdentity,
 		getConversationContext: ui.getConversationContext,
-		acknowledgementText: "One moment.",
 		media,
 		agent: {
 			start: (input, signal) => {

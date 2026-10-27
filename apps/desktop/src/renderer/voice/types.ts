@@ -93,7 +93,7 @@ export type VoiceControllerOptions = {
 	/** PR symbols and paths supplied by composition; snapshotted when capture begins. */
 	getKeywords?(): string[];
 	/** Product copy is injected; the renderer never routes user phrases or chooses tools. */
-	acknowledgementText: string;
+	acknowledgementText?: string;
 	/** Generic product copy for a completed turn with no answer text, never an invented outcome. */
 	completionText?: string;
 	onTranscript?(update: TranscriptUpdate): void;
