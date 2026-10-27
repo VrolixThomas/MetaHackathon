@@ -81,7 +81,8 @@ app.on("web-contents-created", (_event, contents) => {
 		if (command && input.shift && input.code === "Space") {
 			event.preventDefault();
 			mainWindow.webContents.send("voice:shortcut", { phase: "toggle" });
-		} else if (input.key === "Escape") {
+		} else if (input.key === "Escape" && contents !== mainWindow.webContents) {
+			// The app renderer handles Escape after dialogs have a chance to consume it.
 			mainWindow.webContents.send("voice:shortcut", { phase: "cancel" });
 		}
 	});

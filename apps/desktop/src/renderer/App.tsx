@@ -20,7 +20,8 @@ export function App() {
 		const disconnectVoice = connectConversationVoice(runtime.api, runtime.controller);
 		const disconnectShortcuts = connectShortcuts(
 			window.electron?.voiceShortcut,
-			runtime.controller
+			runtime.controller,
+			window
 		);
 		void runtime.controller.configure();
 		runtime.reviews.start();
