@@ -93,9 +93,9 @@ function Configuration({
 				Voice starts automatically when Meta, ElevenLabs and a voice ID are configured. After
 				editing the file, choose Reload.
 			</p>
-			{state.error && (
+			{(state.config?.error || state.error) && (
 				<p className="inline-error" role="alert">
-					{state.error}
+					{state.config?.error || state.error}
 				</p>
 			)}
 		</dialog>
@@ -128,13 +128,15 @@ export function ConversationApp({ controller }: { controller: ConversationContro
 				cancelled: "",
 				error: "",
 			}[state.phase]
-		: state.configBusy
-			? "Checking configuration…"
-			: state.voice?.phase === "preparing"
-				? "Preparing voice…"
-				: voiceReady
-					? "Voice ready"
-					: "Voice needs configuration";
+		: state.config?.error
+			? "Configuration needs attention"
+			: state.configBusy
+				? "Checking configuration…"
+				: state.voice?.phase === "preparing"
+					? "Preparing voice…"
+					: voiceReady
+						? "Voice ready"
+						: "Voice needs configuration";
 	return (
 		<div className="conversation-app">
 			<header className="app-header">
@@ -240,6 +242,7 @@ export function ConversationApp({ controller }: { controller: ConversationContro
 					data-session-id={controller.sessionId}
 					data-turn-id={state.active?.turnId ?? last?.turnId}
 					data-generation={state.active?.generation ?? last?.generation}
+					data-request-id={last?.requestId}
 					data-conversation-state={state.phase}
 				>
 					{state.selected && (

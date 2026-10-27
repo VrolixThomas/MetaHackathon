@@ -21,6 +21,7 @@ export type Phase =
 	| "cancelled"
 	| "error";
 export type Exchange = TurnIdentity & {
+	requestId?: string;
 	source: "typed" | "voice";
 	question: string;
 	answer: string;
@@ -174,6 +175,7 @@ export function createConversationController(
 			text: question,
 			...(prId ? { prId } : {}),
 		};
+		updateExchange(turn, { requestId: input.requestId });
 		try {
 			const starting = api.start(input);
 			void starting
@@ -290,9 +292,11 @@ export function createConversationController(
 			store.setState({
 				config,
 				envPath: config.envPath,
+				error: config.error ?? "",
 				...(!config.configured.github ? { account: null, prs: [], selected: null } : {}),
 			});
 			loaded = true;
+			if (config.error) return;
 			const status = await api.voiceStatus();
 			if (disposed || epoch !== configEpoch) return;
 			store.setState({
@@ -418,6 +422,8 @@ export function createConversationController(
 		attachVoice: (handle: VoiceHandle) => {
 			voice = handle;
 		},
+		requestStarted: (input: ConversationTurnInput) =>
+			updateExchange(input, { requestId: input.requestId }),
 		beginVoice: (turn: TurnIdentity) => begin(turn, "voice", ""),
 		transcript: (turn: TurnIdentity, text: string) => updateExchange(turn, { question: text }),
 		answer: (turn: TurnIdentity, text: string) => updateExchange(turn, { answer: text }),

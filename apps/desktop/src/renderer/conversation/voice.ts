@@ -30,7 +30,9 @@ export function connectConversationVoice(
 		agent: {
 			start: (input, signal) => {
 				signal.throwIfAborted();
-				return api.start(ConversationTurnInputSchema.parse(input));
+				const turn = ConversationTurnInputSchema.parse(input);
+				ui.requestStarted(turn);
+				return api.start(turn);
 			},
 			poll: (input, signal) => {
 				signal.throwIfAborted();

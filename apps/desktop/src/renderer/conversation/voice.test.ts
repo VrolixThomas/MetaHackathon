@@ -112,6 +112,7 @@ it("speaks without a PR, starts once per final utterance and shares identity wit
 		ui.release();
 		await until(() => ui.store.getState().exchanges[0]?.phase === "complete");
 		assert.equal(starts.length, 1);
+		assert.equal(ui.store.getState().exchanges[0]?.requestId, starts[0]?.requestId);
 		assert.equal(starts[0]?.prId, undefined);
 		assert.equal("screenContext" in (starts[0] ?? {}), false);
 		assert.equal(ui.store.getState().exchanges[0]?.question, "Hello from speech");

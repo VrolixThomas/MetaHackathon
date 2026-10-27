@@ -266,3 +266,22 @@ it("keeps the known env path and Open configuration available after malformed re
 		h.controller.dispose();
 	}
 });
+
+it("shows authoritative configuration repair errors without attempting voice setup", async () => {
+	const repair = {
+		...config,
+		configured: { meta: false, elevenlabs: false, github: false },
+		voiceId: null,
+		error: "Repair the local configuration file, then reload.",
+	};
+	const h = harness({ config: async () => repair });
+	try {
+		await h.controller.configure();
+		assert.equal(h.controller.store.getState().error, repair.error);
+		assert.equal(h.controller.store.getState().config?.envPath, repair.envPath);
+		assert.equal(h.controller.store.getState().configBusy, false);
+		assert.equal(h.prepares(), 0);
+	} finally {
+		h.controller.dispose();
+	}
+});
