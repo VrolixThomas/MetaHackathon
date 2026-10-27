@@ -190,6 +190,15 @@ async function native() {
 			)
 		);
 		report.optionalTranscript = true;
+		const audioState = await js(`(async () => {
+			const audio = new AudioContext();
+			try {
+				await Promise.race([audio.resume(), new Promise((_, reject) => setTimeout(() => reject(Error('Voice audio stayed suspended')), 2000))]);
+				return audio.state;
+			} finally { await audio.close(); }
+		})()`);
+		assert.equal(audioState, "running");
+		report.audioWithoutRendererGesture = true;
 		assert.ok(
 			!/Load local demo|Noor|stackable|shop-web|finance-service|#1284|#412/i.test(initial.text)
 		);

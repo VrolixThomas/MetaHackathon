@@ -45,6 +45,8 @@ function createWindow(): void {
 		backgroundColor: "#0e0e0e",
 		webPreferences: {
 			preload: join(mainDirectory, "../preload/index.cjs"),
+			// Voice can start via the native shortcut while focus is in the guest browser.
+			autoplayPolicy: "no-user-gesture-required",
 			contextIsolation: true,
 			nodeIntegration: false,
 			sandbox: true,
