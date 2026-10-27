@@ -1263,3 +1263,9 @@ h2 {
 	color: var(--muted);
 	font-size: 9px;
 }
+
+/* Tokens add foreground syntax only; diff backgrounds and selected line geometry stay on rows. */
+.real-source .syntax-token {
+	white-space: inherit;
+	font-family: inherit;
+}

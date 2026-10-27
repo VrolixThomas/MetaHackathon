@@ -2,6 +2,49 @@ import { useEffect, useRef, useState } from "react";
 import { useStore } from "zustand";
 import type { PreparedController } from "./controller";
 import { patchLines, sourceLines } from "./diff";
+import {
+	type HighlightedReview,
+	type SyntaxToken,
+	highlightReviewFile,
+	patchLineTokens,
+	sourceLineTokens,
+} from "./highlighting";
+
+/** React escapes source text; token colors/styles come only from the bundled theme. */
+export function SyntaxText({ text, tokens }: { text: string; tokens?: SyntaxToken[] }) {
+	if (
+		!tokens ||
+		tokens.map((token) => token.content).join("") !== text ||
+		!tokens.some((token) => token.color)
+	)
+		return <>{text}</>;
+	let offset = 0;
+	return (
+		<>
+			{tokens
+				.filter((token) => token.content.length > 0)
+				.map((token) => {
+					const start = offset;
+					offset += token.content.length;
+					const flags = Math.max(0, token.fontStyle ?? 0);
+					return (
+						<span
+							className="syntax-token"
+							key={start}
+							style={{
+								color: token.color,
+								fontStyle: flags & 1 ? "italic" : undefined,
+								fontWeight: flags & 2 ? 600 : undefined,
+								textDecorationLine: flags & 4 ? "underline" : undefined,
+							}}
+						>
+							{token.content}
+						</span>
+					);
+				})}
+		</>
+	);
+}
 
 export function ReviewWorkspace({
 	controller,
@@ -12,6 +55,20 @@ export function ReviewWorkspace({
 	const content = useRef<HTMLDivElement>(null);
 	const plan = state.detail?.prepared;
 	const file = state.file;
+	const [highlighted, setHighlighted] = useState<HighlightedReview | null>(null);
+	const syntax = highlighted?.file === file ? highlighted : null;
+	useEffect(() => {
+		let current = true;
+		if (file)
+			void highlightReviewFile(file)
+				.then((result) => {
+					if (current) setHighlighted(result);
+				})
+				.catch(() => {});
+		return () => {
+			current = false;
+		};
+	}, [file]);
 	const index = plan?.files.findIndex((entry) => entry.path === file?.path) ?? -1;
 	const note = plan?.files[index];
 	useEffect(() => {
@@ -44,6 +101,7 @@ export function ReviewWorkspace({
 			data-review-progress-path={state.detail?.progress?.path ?? ""}
 			data-base-sha={plan?.pr.baseSha}
 			data-head-sha={plan?.pr.headSha}
+			data-syntax-state={file ? (syntax ? "ready" : "loading") : undefined}
 		>
 			<header className="prepared-heading">
 				<div>
@@ -162,7 +220,12 @@ export function ReviewWorkspace({
 											>
 												<span className="line-number">{line.base}</span>
 												<span className="line-number">{line.head}</span>
-												<code>{line.text}</code>
+												<code>
+													<SyntaxText
+														text={line.text}
+														tokens={file ? patchLineTokens(syntax, file, line) : undefined}
+													/>
+												</code>
 											</div>
 										))}
 									</div>
@@ -188,7 +251,14 @@ export function ReviewWorkspace({
 									return (
 										<div className={`source-row ${selected ? "source-selected" : ""}`} key={line}>
 											<span className="line-number">{line}</span>
-											<code>{text}</code>
+											<code>
+												<SyntaxText
+													text={text}
+													tokens={
+														file ? sourceLineTokens(syntax, file, view, line, text) : undefined
+													}
+												/>
+											</code>
 										</div>
 									);
 								})}
