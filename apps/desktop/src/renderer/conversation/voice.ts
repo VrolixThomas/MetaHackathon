@@ -64,6 +64,9 @@ export function connectConversationVoice(
 		onTurnStart: (turn) => {
 			if (!ui.beginVoice(turn)) throw new Error("Stale conversation identity");
 		},
+		onConversationAction: async (action, signal) => {
+			await ui.applyConversationAction(action, signal);
+		},
 		onTranscript: (update) => ui.transcript(update, update.text),
 		onAnswer: (text, turn) => ui.answer(turn, text),
 		onTurnEnd: (turn, result) =>

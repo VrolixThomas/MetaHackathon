@@ -18,10 +18,16 @@ import type { ConversationApi } from "../conversation/api";
 
 export function createPreparedApi(call: ConversationApi["call"]) {
 	return {
-		connect: async (repository: string) =>
+		chooseRepository: async () =>
+			z
+				.strictObject({ repository: GitHubRepositorySchema, localPath: z.string().min(1) })
+				.nullable()
+				.parse(await call("mutation", "reviews.chooseRepository")),
+		connect: async (repository: string, localPath?: string) =>
 			ReviewInboxSchema.parse(
 				await call("mutation", "reviews.connect", {
 					repository: GitHubRepositorySchema.parse(repository.trim()),
+					...(localPath ? { localPath } : {}),
 				})
 			),
 		inbox: async () => ReviewInboxSchema.parse(await call("query", "reviews.inbox")),
@@ -52,10 +58,12 @@ export function createPreparedApi(call: ConversationApi["call"]) {
 				)
 			),
 		screen: async (sessionId: string, screen: ReviewScreen) => {
-			await call("mutation", "reviews.screen", {
-				sessionId: IdSchema.parse(sessionId),
-				screen: ReviewScreenSchema.parse(screen),
-			});
+			ReviewScreenSchema.parse(
+				await call("mutation", "reviews.screen", {
+					sessionId: IdSchema.parse(sessionId),
+					screen: ReviewScreenSchema.parse(screen),
+				})
+			);
 		},
 		actionApplied: async (input: ConversationActionReceipt) =>
 			AgentActionReceiptResultSchema.parse(

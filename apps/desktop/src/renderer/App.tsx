@@ -12,6 +12,7 @@ export function App() {
 		const api = createConversationApi((input) => window.electron.trpc.request(input));
 		const controller = createConversationController(api);
 		const reviews = createPreparedController(createPreparedApi(api.call), controller.sessionId);
+		controller.attachReview(reviews);
 		return { api, controller, reviews };
 	});
 	useEffect(() => {

@@ -23,6 +23,14 @@ export function ReviewInbox({
 					×
 				</button>
 			</header>
+			<button
+				type="button"
+				className="choose-repository"
+				disabled={state.busy}
+				onClick={() => void controller.chooseRepository()}
+			>
+				Choose local repository
+			</button>
 			<form
 				className="repository-connect"
 				onSubmit={(event) => {
@@ -63,6 +71,11 @@ export function ReviewInbox({
 						{state.inbox.refreshing ? "Refreshing…" : "Refresh"}
 					</button>
 				</div>
+			)}
+			{state.inbox?.localPath && (
+				<p className="local-path" title={state.inbox.localPath}>
+					{state.inbox.localPath}
+				</p>
 			)}
 			{state.inbox?.error && (
 				<p className="inline-error" role="alert">

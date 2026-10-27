@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { useStore } from "zustand";
 import { ReviewInbox } from "../prepared/Inbox";
+import { ReviewWorkspace } from "../prepared/ReviewWorkspace";
 import type { PreparedController } from "../prepared/controller";
 import type { ConversationController } from "./controller";
 
@@ -109,6 +110,8 @@ export function ConversationApp({
 	reviews,
 }: { controller: ConversationController; reviews: PreparedController }) {
 	const state = useStore(controller.store);
+	const prepared = useStore(reviews.store);
+	const reviewOpen = prepared.screen.mode === "review";
 	const [sidebar, setSidebar] = useState(false);
 	const [configuration, setConfiguration] = useState(false);
 	const [draft, setDraft] = useState("");
@@ -173,16 +176,20 @@ export function ConversationApp({
 					</button>
 				</nav>
 			</header>
-			<div className="conversation-layout">
+			<div className={`conversation-layout ${reviewOpen ? "reviewing" : ""}`}>
 				{sidebar && (
 					<ReviewInbox
 						controller={reviews}
-						onSelect={(detail) => void controller.selectPR(detail.pr)}
+						onSelect={(detail) => {
+							setSidebar(false);
+							void reviews.open(detail.pr.id);
+						}}
 						onClose={() => setSidebar(false)}
 					/>
 				)}
+				{reviewOpen && <ReviewWorkspace controller={reviews} onPause={() => controller.stop()} />}
 				<main
-					className="conversation-main"
+					className={`conversation-main ${reviewOpen ? "compact-conversation" : ""}`}
 					data-session-id={controller.sessionId}
 					data-turn-id={state.active?.turnId ?? last?.turnId}
 					data-generation={state.active?.generation ?? last?.generation}
@@ -209,7 +216,7 @@ export function ConversationApp({
 						{!state.exchanges.length && (
 							<div className="conversation-empty">
 								<span className="eyebrow">A place to think out loud</span>
-								<h1>Start a conversation.</h1>
+								<h1>{reviewOpen ? "Talk through the change." : "Start a conversation."}</h1>
 								<p>Talk or type. Add a pull request when you need it.</p>
 							</div>
 						)}

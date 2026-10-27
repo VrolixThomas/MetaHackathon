@@ -1,11 +1,15 @@
 import assert from "node:assert/strict";
 import { it } from "node:test";
 import type {
+	AgentAction,
 	AppConfiguration,
+	ConversationActionReceipt,
 	ConversationTurnInput,
 	PollTurnResult,
 	PullRequest,
 } from "../../shared/contracts";
+import { createPreparedApi } from "../prepared/api";
+import { createPreparedController } from "../prepared/controller";
 import type { ConversationApi } from "./api";
 import { createConversationController } from "./controller";
 
@@ -283,5 +287,131 @@ it("shows authoritative configuration repair errors without attempting voice set
 		assert.equal(h.prepares(), 0);
 	} finally {
 		h.controller.dispose();
+	}
+});
+
+it("typed guided review waits for real source/progress/receipt and ignores retired turn navigation", async () => {
+	const receipts: ConversationActionReceipt[] = [];
+	const reviewId = "prepared-review";
+	const plan = {
+		id: reviewId,
+		version: 1,
+		pr,
+		createdAt: "2026-10-27T22:00:00Z",
+		summary: "Prepared summary",
+		orderRationale: "Entry point then helper",
+		files: ["entry.ts", "helper.ts"].map((path) => ({
+			path,
+			reason: "Prepared reason",
+			summary: "Inferred summary",
+			suggestedComments: [],
+		})),
+		coverage: "complete",
+		evidence: "inferred-from-github",
+	};
+	let effect: AgentAction | undefined;
+	const h = harness({
+		poll: async (input) => {
+			const identity = {
+				sessionId: input.sessionId,
+				turnId: input.turnId,
+				generation: input.generation,
+			};
+			if (input.afterSequence === 0) {
+				effect = {
+					...identity,
+					requestId: "next-file",
+					screenSequence: h.starts[0]?.screen?.sequence ?? 0,
+					kind: "review-navigation",
+					navigation: {
+						prId: pr.id,
+						reviewId,
+						baseSha: pr.baseSha,
+						headSha: pr.headSha,
+						path: "helper.ts",
+						paused: false,
+					},
+				};
+				return {
+					...identity,
+					status: "running",
+					sequence: 1,
+					text: "",
+					actions: [effect],
+					events: [{ ...identity, kind: "action", sequence: 1, action: effect }],
+				};
+			}
+			assert.equal(receipts[0]?.status, "applied");
+			assert.equal(receipts[0]?.screen.path, "helper.ts");
+			return {
+				...identity,
+				status: "completed",
+				sequence: 3,
+				text: "Here is the helper.",
+				actions: effect ? [effect] : [],
+				events: [
+					{ ...identity, sequence: 2, kind: "text-delta", delta: "Here is the helper." },
+					{ ...identity, sequence: 3, kind: "completed" },
+				],
+			};
+		},
+	});
+	const reviews = createPreparedController(
+		createPreparedApi(async (_type, path, raw) => {
+			const input = raw as Record<string, unknown>;
+			if (path === "reviews.get") return { pr, status: "ready", prepared: plan, progress: null };
+			if (path === "reviews.screen") return input["screen"];
+			if (path === "reviews.file")
+				return {
+					prId: pr.id,
+					path: input["path"],
+					status: "modified",
+					patch: null,
+					base: {
+						path: input["path"],
+						commitSha: pr.baseSha,
+						status: "available",
+						content: "before",
+					},
+					head: {
+						path: input["path"],
+						commitSha: pr.headSha,
+						status: "available",
+						content: "after",
+					},
+				};
+			if (path === "reviews.progress")
+				return {
+					...input,
+					baseSha: pr.baseSha,
+					headSha: pr.headSha,
+					visited: [input["path"]],
+					updatedAt: "2026-10-27T22:00:01Z",
+				};
+			if (path === "conversation.actionApplied") {
+				receipts.push(raw as ConversationActionReceipt);
+				return { status: "accepted" };
+			}
+			throw new Error("Unexpected route");
+		}),
+		h.controller.sessionId
+	);
+	h.controller.attachReview(reviews);
+	try {
+		await reviews.open(pr.id);
+		await h.controller.submit("Next file, please");
+		assert.equal(h.starts[0]?.screen?.reviewId, reviewId);
+		assert.equal(reviews.store.getState().file?.path, "helper.ts");
+		assert.equal(h.controller.store.getState().exchanges[0]?.answer, "Here is the helper.");
+		assert.ok(effect);
+		const before = reviews.store.getState().screen;
+		assert.equal(
+			await h.controller.applyConversationAction({ ...effect, requestId: "late-effect" }),
+			"ignored"
+		);
+		assert.equal(reviews.store.getState().screen, before);
+	} finally {
+		h.controller.dispose();
+		reviews.dispose();
 	}
 });

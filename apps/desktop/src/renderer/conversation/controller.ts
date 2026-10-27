@@ -1,5 +1,6 @@
 import { createStore } from "zustand/vanilla";
 import type {
+	AgentAction,
 	AppConfiguration,
 	CancelTurnInput,
 	ConversationPRContext,
@@ -8,6 +9,7 @@ import type {
 	TurnIdentity,
 	VoiceSetupStatus,
 } from "../../shared/contracts";
+import type { PreparedController } from "../prepared/controller";
 import { bounded, delay } from "../voice/async";
 import type { ConversationApi } from "./api";
 import { conversationErrorMessage } from "./errors";
@@ -33,7 +35,11 @@ export type VoiceHandle = {
 	interrupt(reason?: CancelTurnInput["reason"]): void;
 	dispose(): void;
 };
-type Active = TurnIdentity & { abort: AbortController; source: Exchange["source"] };
+type Active = TurnIdentity & {
+	abort: AbortController;
+	source: Exchange["source"];
+	context: Pick<ConversationTurnInput, "prId" | "screen">;
+};
 export type ConversationState = {
 	exchanges: Exchange[];
 	active: TurnIdentity | null;
@@ -67,6 +73,7 @@ export function createConversationController(
 	let lastStartedGeneration = -1;
 	let active: Active | null = null;
 	let voice: VoiceHandle | null = null;
+	let review: Pick<PreparedController, "getContext" | "applyAction"> | null = null;
 	let disposed = false;
 	let configEpoch = 0;
 	let githubEpoch = 0;
@@ -134,7 +141,7 @@ export function createConversationController(
 			active.abort.abort();
 			if (active.source === "typed") cancelRemote(active, "push-to-talk");
 		}
-		active = { ...turn, source, abort: new AbortController() };
+		active = { ...turn, source, abort: new AbortController(), context: getConversationContext() };
 		store.setState((state) => ({
 			active: identity(turn),
 			phase: source === "voice" ? "connecting" : "thinking",
@@ -168,12 +175,13 @@ export function createConversationController(
 		begin(turn, "typed", question);
 		const current = active;
 		if (!current) return;
-		const prId = store.getState().selected?.pr.id;
+		const context = getConversationContext();
+		current.context = context;
 		const input: ConversationTurnInput = {
 			...turn,
 			requestId: id(),
 			text: question,
-			...(prId ? { prId } : {}),
+			...context,
 		};
 		updateExchange(turn, { requestId: input.requestId });
 		try {
@@ -187,6 +195,12 @@ export function createConversationController(
 			if (!same(started, turn)) throw new Error("Unexpected turn identity");
 			let cursor = 0;
 			let answer = "";
+			const applied = new Set<string>();
+			const action = async (value: AgentAction) => {
+				if (applied.has(value.requestId)) return;
+				await applyConversationAction(value, current.abort.signal);
+				applied.add(value.requestId);
+			};
 			while (live(turn)) {
 				const result = await bounded(
 					api.poll({ ...turn, afterSequence: cursor, limit: 100 }),
@@ -202,10 +216,12 @@ export function createConversationController(
 					(!events.length && result.sequence > cursor)
 				) {
 					answer = result.text;
+					for (const value of result.actions) await action(value);
 					cursor = result.sequence;
 				} else {
 					for (const event of events) {
 						if (event.kind === "text-delta") answer += event.delta;
+						if (event.kind === "action") await action(event.action);
 						cursor = event.sequence;
 					}
 					if (cursor === result.sequence) answer = result.text;
@@ -405,6 +421,31 @@ export function createConversationController(
 			if (!disposed && epoch === selectionEpoch) store.setState({ githubBusy: false });
 		}
 	}
+	function getConversationContext(): Pick<ConversationTurnInput, "prId" | "screen"> {
+		if (review) return review.getContext();
+		const prId = store.getState().selected?.pr.id;
+		return prId ? { prId } : {};
+	}
+	function applyConversationAction(action: AgentAction, signal?: AbortSignal) {
+		const turn = active;
+		return (
+			review?.applyAction(
+				action,
+				() => {
+					if (!turn || !live(turn) || !same(turn, action) || signal?.aborted) return false;
+					if (action.kind !== "review-navigation") return true;
+					const context = turn.context;
+					return (
+						context.prId === action.navigation.prId &&
+						(!context.screen?.reviewId || context.screen.reviewId === action.navigation.reviewId) &&
+						(!context.screen?.headSha || context.screen.headSha === action.navigation.headSha) &&
+						(!context.screen?.baseSha || context.screen.baseSha === action.navigation.baseSha)
+					);
+				},
+				signal
+			) ?? Promise.resolve("ignored" as const)
+		);
+	}
 	return {
 		store,
 		sessionId,
@@ -415,15 +456,18 @@ export function createConversationController(
 		requestMicrophone,
 		refreshGitHub,
 		selectPR,
-		getConversationContext: () => {
-			const prId = store.getState().selected?.pr.id;
-			return prId ? { prId } : {};
+		getConversationContext,
+		applyConversationAction,
+		attachReview: (port: Pick<PreparedController, "getContext" | "applyAction">) => {
+			review = port;
 		},
 		attachVoice: (handle: VoiceHandle) => {
 			voice = handle;
 		},
-		requestStarted: (input: ConversationTurnInput) =>
-			updateExchange(input, { requestId: input.requestId }),
+		requestStarted: (input: ConversationTurnInput) => {
+			if (active && live(input)) active.context = { prId: input.prId, screen: input.screen };
+			updateExchange(input, { requestId: input.requestId });
+		},
 		beginVoice: (turn: TurnIdentity) => begin(turn, "voice", ""),
 		transcript: (turn: TurnIdentity, text: string) => updateExchange(turn, { question: text }),
 		answer: (turn: TurnIdentity, text: string) => updateExchange(turn, { answer: text }),
