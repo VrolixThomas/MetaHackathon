@@ -6,7 +6,7 @@ export const CredentialProviderSchema = z.enum(["github", "meta", "elevenlabs"])
 export const CredentialStatusSchema = z.strictObject({
 	provider: CredentialProviderSchema,
 	configured: z.boolean(),
-	storage: z.literal("os-encrypted"),
+	storage: z.enum(["os-encrypted", "env-file"]),
 });
 export const CredentialStatusListSchema = z
 	.array(CredentialStatusSchema)
