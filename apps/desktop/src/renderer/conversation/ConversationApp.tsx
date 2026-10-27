@@ -1,5 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { useStore } from "zustand";
+import { ReviewInbox } from "../prepared/Inbox";
+import type { PreparedController } from "../prepared/controller";
 import type { ConversationController } from "./controller";
 
 function Configuration({
@@ -102,7 +104,10 @@ function Configuration({
 	);
 }
 
-export function ConversationApp({ controller }: { controller: ConversationController }) {
+export function ConversationApp({
+	controller,
+	reviews,
+}: { controller: ConversationController; reviews: PreparedController }) {
 	const state = useStore(controller.store);
 	const [sidebar, setSidebar] = useState(false);
 	const [configuration, setConfiguration] = useState(false);
@@ -152,11 +157,10 @@ export function ConversationApp({ controller }: { controller: ConversationContro
 						aria-expanded={sidebar}
 						onClick={() => {
 							setSidebar(!sidebar);
-							if (!sidebar && (state.config?.configured.github || state.account))
-								void controller.refreshGitHub();
+							if (!sidebar) void reviews.poll();
 						}}
 					>
-						GitHub
+						Repository
 					</button>
 					<button
 						type="button"
@@ -171,71 +175,11 @@ export function ConversationApp({ controller }: { controller: ConversationContro
 			</header>
 			<div className="conversation-layout">
 				{sidebar && (
-					<aside className="github-sidebar" aria-label="GitHub pull requests">
-						<header>
-							<h2>Your pull requests</h2>
-							<button
-								type="button"
-								className="quiet"
-								aria-label="Close GitHub sidebar"
-								onClick={() => setSidebar(false)}
-							>
-								×
-							</button>
-						</header>
-						<p className="small">Optional context for the conversation.</p>
-						<div className="github-actions">
-							<button
-								type="button"
-								disabled={state.githubBusy}
-								onClick={() => void controller.refreshGitHub(true)}
-							>
-								{state.account ? `@${state.account.login}` : "Connect GitHub"}
-							</button>
-							<button
-								type="button"
-								disabled={state.githubBusy}
-								onClick={() => void controller.refreshGitHub()}
-							>
-								Refresh
-							</button>
-						</div>
-						{state.githubBusy && <output>Loading GitHub…</output>}
-						{state.githubError && (
-							<p className="inline-error" role="alert">
-								{state.githubError}
-							</p>
-						)}
-						{state.selected && (
-							<button
-								type="button"
-								className="clear-context"
-								onClick={() => void controller.selectPR(null)}
-							>
-								Remove PR context
-							</button>
-						)}
-						<div className="pr-list">
-							{state.prs.map((pr) => (
-								<button
-									type="button"
-									className="pr-item"
-									key={pr.id}
-									aria-pressed={state.selected?.pr.id === pr.id}
-									disabled={state.githubBusy}
-									onClick={() => void controller.selectPR(pr)}
-								>
-									<span>
-										{pr.repository} · #{pr.number}
-									</span>
-									<strong>{pr.title}</strong>
-								</button>
-							))}
-						</div>
-						{state.account && !state.githubBusy && !state.prs.length && !state.githubError && (
-							<p className="small">No open authored or requested reviews.</p>
-						)}
-					</aside>
+					<ReviewInbox
+						controller={reviews}
+						onSelect={(detail) => void controller.selectPR(detail.pr)}
+						onClose={() => setSidebar(false)}
+					/>
 				)}
 				<main
 					className="conversation-main"

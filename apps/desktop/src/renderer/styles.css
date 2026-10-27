@@ -430,3 +430,98 @@ h2 {
 		box-shadow: 20px 0 40px #0006;
 	}
 }
+
+.repository-inbox {
+	flex: 0 0 260px;
+	width: 260px;
+	min-height: 0;
+	overflow: auto;
+	padding: 18px;
+	border-right: 1px solid var(--line);
+	background: #16191f;
+}
+.repository-inbox header,
+.connected-repository {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	gap: 8px;
+}
+.repository-inbox h2 {
+	font-size: 14px;
+}
+.repository-connect {
+	display: grid;
+	gap: 8px;
+	margin: 18px 0;
+}
+.repository-connect label {
+	font-size: 11px;
+	color: var(--muted);
+}
+.repository-connect input {
+	width: 100%;
+	padding: 9px;
+	background: #11151c;
+	color: inherit;
+	border: 1px solid #3b4455;
+	border-radius: 6px;
+}
+.repository-connect button {
+	font-size: 12px;
+}
+.connected-repository {
+	font-size: 11px;
+	margin: 16px 0 12px;
+	overflow-wrap: anywhere;
+}
+.review-inbox-list {
+	display: grid;
+	gap: 10px;
+}
+.review-inbox-item {
+	border: 1px solid var(--line);
+	border-radius: 8px;
+	overflow: hidden;
+}
+.review-inbox-item > p,
+.review-inbox-item > button.quiet {
+	margin: 8px 10px;
+}
+.review-inbox-select {
+	display: grid;
+	gap: 5px;
+	width: 100%;
+	text-align: left;
+	border: 0;
+	background: transparent;
+	padding: 12px;
+}
+.review-inbox-select:disabled {
+	opacity: 1;
+	cursor: default;
+}
+.review-inbox-select span {
+	font-size: 10px;
+	color: var(--muted);
+}
+.review-inbox-select strong {
+	font-size: 12px;
+	font-weight: 500;
+}
+.review-inbox-select .preparation-status.ready {
+	color: #a9d7b9;
+}
+.review-inbox-select .preparation-status.error {
+	color: #e8b395;
+}
+@media (max-width: 800px) {
+	.repository-inbox {
+		position: absolute;
+		z-index: 3;
+		top: 74px;
+		bottom: 0;
+		left: 0;
+		box-shadow: 20px 0 40px #0006;
+	}
+}
