@@ -544,6 +544,25 @@ async function native() {
 			console.log(`PREPARED_REVIEW_STEP_PASS: ${step[1]} -> ${step[3]}`);
 		}
 		assert.equal(report.preparationCalls, 1);
+		if (process.env.PREPARED_REVIEW_REQUIRE_SYNTAX === "1") {
+			report.syntax = [];
+			for (const label of ["Changes", "Before", "After"]) {
+				await js(
+					`([...document.querySelectorAll('.source-tabs button')].find(e => e.textContent === ${JSON.stringify(label)})).click()`
+				);
+				const colors = await wait(`syntax colors in ${label}`, () =>
+					js(`(() => {
+					const code = [...document.querySelectorAll('.real-source code')];
+					const tokens = code.flatMap(e => [...e.querySelectorAll('span')]);
+					const colors = [...new Set(tokens.map(e => getComputedStyle(e).color))];
+					return colors.length >= 2 ? colors : null;
+				})()`)
+				);
+				const state = await readUI();
+				assertVisible(state, steps.at(-1), fixture);
+				report.syntax.push({ view: label, distinctTokenColors: colors.length, exactText: true });
+			}
+		}
 		assert.equal(
 			report.contentHTTPReads,
 			0,
