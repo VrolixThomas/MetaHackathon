@@ -1,0 +1,111 @@
+{
+	"testedSourceCommit": "030b2e5b2232367655f83313f9617fe4fa0f23f9",
+	"date": "2026-10-27",
+	"status": "passed",
+	"mode": "actual-built-electron-renderer-browser-flow",
+	"simulatedProvider": true,
+	"liveSpeech": false,
+	"localVoiceReady": true,
+	"checks": {
+		"typescriptBehaviorTests": 314,
+		"pythonVoiceTests": 13,
+		"providerHarnessTests": 12,
+		"packagingTests": 2,
+		"typeCheck": "passed",
+		"lint": "passed",
+		"build": "passed",
+		"nativeBrowserFlow": "passed",
+		"nativeRuntimeIPC": "passed"
+	},
+	"requests": [
+		{
+			"request": "Walk me through this PR.",
+			"verified": true
+		},
+		{
+			"request": "Show me the checkout.",
+			"verified": true
+		},
+		{
+			"request": "Apply the promo code.",
+			"verified": true
+		},
+		{
+			"request": "Show it on a phone.",
+			"verified": true
+		},
+		{
+			"request": "Scroll to the payment button.",
+			"verified": true
+		},
+		{
+			"request": "Show me the code responsible.",
+			"verified": true
+		},
+		{
+			"request": "Compare what happens before this PR.",
+			"verified": true
+		}
+	],
+	"scriptedPromoChoice": "SPRING15",
+	"checkoutTotals": {
+		"initialHeadVIP30": 72,
+		"headSPRING15": 78,
+		"baseSPRING15": 102
+	},
+	"scenarioC": {
+		"base": {
+			"sent": [
+				{
+					"cartId": "abandoned-1",
+					"total": 108
+				},
+				{
+					"cartId": "abandoned-2",
+					"total": 72
+				}
+			],
+			"batchStopped": false
+		},
+		"head": {
+			"error": "PromoExpiredError",
+			"message": "Promo code SPRING15 has expired",
+			"sent": [],
+			"batchStopped": true
+		}
+	},
+	"pr": {
+		"id": "demo/shop-web#1284",
+		"repository": "demo/shop-web",
+		"number": 1284,
+		"url": "https://example.invalid/demo/shop-web/pull/1284",
+		"title": "Stackable promo codes at checkout",
+		"author": "Noor",
+		"baseSha": "5f4a97d76ee962bf9d509da65fd76c3b34d69ac2",
+		"headSha": "342bd471885238111051c70de766ab9681bc89f8"
+	},
+	"staleObservationRejected": true,
+	"confirmation": {
+		"unconfirmedRejected": true,
+		"changedBodyRejected": true,
+		"githubWrites": 0
+	},
+	"cancellation": {
+		"lateOutputSuppressed": true,
+		"lateActionsSuppressed": true,
+		"status": "cancelled"
+	},
+	"shutdown": {
+		"portsClosed": true,
+		"seedsRemoved": true,
+		"tempUserDataRemoved": true
+	},
+	"dummyCredentialRemoved": true,
+	"screenshot": "screenshots/phone-before-pr.png",
+	"limitations": [
+		"Model responses in native acceptance are scripted; no live speech/model/STT/TTS call was made.",
+		"Native voice startup used dummy keys and no microphone/offer/speak.",
+		"No real GitHub review comment was posted.",
+		"Developer ID signing, notarization and signed-update acceptance remain pending."
+	]
+}

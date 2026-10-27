@@ -170,6 +170,8 @@ guards, and verifies shutdown. Reports live in `apps/desktop/out/browser-flow-sm
 It also prepares the actual local voice sidecar when installed, without sending audio or calling
 speech providers. `BROWSER_FLOW_HOLD=1` keeps the successful final workspace open for inspection;
 close its window to finish the cleanup check. No test uses the user's saved credentials.
+See [the integrated acceptance report](docs/integration/acceptance.md) for verified behavior,
+the native browser screenshot, and the remaining live-provider and release checks.
 
 ## Local packaging
 
