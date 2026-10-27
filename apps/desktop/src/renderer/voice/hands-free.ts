@@ -25,6 +25,8 @@ type Session = {
 	preroll: SpeechFrame[];
 	prerollMs: number;
 	capture: Capture | null;
+	failure?: string;
+	errorReported?: boolean;
 	timer?: ReturnType<typeof setInterval>;
 };
 type Capture = { media?: BufferedVoiceMedia; identity?: TurnIdentity };
@@ -48,6 +50,7 @@ export function createHandsFreeVoiceController(
 	let starting: Promise<void> | null = null;
 	let disposed = false;
 	let turnObserver: Parameters<MediaFactory>[0] | undefined;
+	let turnSession: Session | null = null;
 	let snapshot: HandsFreeSnapshot = Object.freeze({ phase: "stopped", active: false });
 	const listeners = new Set<() => void>();
 	function notify() {
@@ -84,6 +87,7 @@ export function createHandsFreeVoiceController(
 		current.preroll.length = 0;
 		current.capture = null;
 		current.detector.reset();
+		if (failure) current.failure ??= failure.message;
 		voice.interrupt(reason);
 		publish(failure ? "error" : "stopped", failure);
 	}
@@ -136,7 +140,19 @@ export function createHandsFreeVoiceController(
 			options.onTurnEnd?.(identity, result);
 		},
 		onError: (error) => {
-			if (session) closeSession(error);
+			// A stopped hardware session may still have cancellation RPCs settling.
+			// Before the new session's first utterance the inner turn identity is unchanged.
+			const owner = turnSession;
+			if (
+				!owner ||
+				owner.errorReported ||
+				(session && owner !== session) ||
+				(!session && !owner.failure)
+			)
+				return;
+			if (owner.failure && owner.failure !== error.message) return;
+			if (session === owner) closeSession(error);
+			owner.errorReported = true;
 			report(error);
 		},
 	});
@@ -144,6 +160,7 @@ export function createHandsFreeVoiceController(
 	function beginUtterance(current: Session) {
 		voice.interrupt("push-to-talk"); // Synchronous output disconnect and explicit dual cancellation.
 		if (session !== current) return;
+		turnSession = current;
 		const capture: Capture = {};
 		current.capture = capture;
 		voice.beginCapture();

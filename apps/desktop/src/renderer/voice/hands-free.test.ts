@@ -62,6 +62,7 @@ function harness(extra: Partial<HandsFreeOptions> = {}) {
 	const errors: Error[] = [];
 	const events = new Map<string, VoiceEvent[]>();
 	let open = async () => {};
+	let cancellation = async () => {};
 	let delayConnect = false;
 	let autoDrain = true;
 	let finishSpeech = true;
@@ -153,6 +154,7 @@ function harness(extra: Partial<HandsFreeOptions> = {}) {
 			},
 			cancel: async (input) => {
 				cancels.voice.push(input);
+				await cancellation();
 			},
 		},
 		agent: {
@@ -190,6 +192,9 @@ function harness(extra: Partial<HandsFreeOptions> = {}) {
 		errors,
 		setOpen: (fn: typeof open) => {
 			open = fn;
+		},
+		setCancellation: (fn: typeof cancellation) => {
+			cancellation = fn;
 		},
 		setConnectDelay: () => {
 			delayConnect = true;
@@ -332,4 +337,48 @@ test("continuous noise, idle silence and stalled capture terminate the session",
 	stalled.setTime(500);
 	await until(() => stalled.voice.getSessionSnapshot().phase === "error");
 	assert.equal(stalled.sessions[0]?.closed, true);
+});
+
+test("quiet reading has no default automatic session cutoff", async () => {
+	const h = harness();
+	await h.voice.startListening();
+	h.setTime(45 * 60_000);
+	h.feed();
+	await pause(120);
+	assert.equal(h.voice.getSessionSnapshot().phase, "listening");
+	assert.equal(h.sessions[0]?.closed, false);
+	assert.equal(h.starts.length, 0);
+});
+
+test("reentrant stop while starting cannot start hardware or rearm", async () => {
+	const h = harness();
+	h.voice.subscribe(() => {
+		if (h.voice.getSessionSnapshot().phase === "starting") h.voice.stopListening();
+	});
+	await assert.rejects(h.voice.startListening(), { name: "AbortError" });
+	assert.equal(h.sessions[0]?.closed, true);
+	assert.equal(h.sessions[0]?.opens, 0);
+	assert.equal(h.voice.getSessionSnapshot().phase, "stopped");
+});
+
+test("late retired-turn cancellation failure cannot close a new hardware session before its first turn", async () => {
+	const h = harness();
+	const cancelled = deferred<void>();
+	h.setCancellation(() => cancelled.promise);
+	await h.voice.startListening();
+	h.feed(tone(), undefined, 15);
+	h.feed(undefined, undefined, 35);
+	await until(
+		() => h.cancels.voice.length === 1 && h.voice.getSessionSnapshot().phase === "listening"
+	);
+	h.voice.stopListening();
+	await h.voice.startListening();
+	assert.equal(h.sessions[0]?.closed, true);
+	assert.equal(h.sessions[1]?.closed, false);
+	assert.equal(h.voice.getIdentity(), null);
+	cancelled.reject(new Error("Late old cancellation failure"));
+	await pause(25);
+	assert.equal(h.sessions[1]?.closed, false);
+	assert.equal(h.voice.getSessionSnapshot().phase, "listening");
+	assert.deepEqual(h.errors, []);
 });
