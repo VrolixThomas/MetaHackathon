@@ -85,3 +85,50 @@ it("serializes late bounds before hide so a stale present cannot cover another s
 	await Promise.all([showing, hiding]);
 	assert.deepEqual(calls, [bounds, null]);
 });
+
+it("accepts equal content sequences with newer observation times without regressing freshness", () => {
+	const browser = browserSnapshot();
+	assert.equal(acceptBrowserState(browser), true);
+	const refreshed = { ...browser, observedAt: "2026-10-27T19:00:00.500Z" };
+	assert.equal(acceptBrowserState(refreshed), true);
+	assert.deepEqual(useReview.getState().browser, refreshed);
+	assert.equal(useReview.getState().sequence, 0);
+	// A delayed action can still present the same content, but cannot roll its timestamp back.
+	const current = useReview.getState().browser;
+	assert.equal(acceptBrowserState(browser), true);
+	assert.equal(useReview.getState().browser, current);
+	assert.equal(acceptBrowserState(refreshed), true);
+	assert.equal(useReview.getState().browser, current);
+});
+
+it("rejects conflicting page content at the same sequence even with a newer observation time", () => {
+	const browser = browserSnapshot();
+	assert.equal(acceptBrowserState(browser), true);
+	const current = useReview.getState().browser;
+	const conflicts: Partial<BrowserState>[] = [
+		{ text: "Different page content" },
+		{ scroll: { x: 0, y: 100 } },
+		{ viewport: { width: 390, height: 844 } },
+		{
+			elements: [
+				{
+					id: "new-button",
+					role: "button",
+					name: "Pay",
+					tag: "button",
+					bounds: { x: 0, y: 0, width: 100, height: 40 },
+					visible: true,
+					enabled: true,
+				},
+			],
+		},
+	];
+	for (const conflict of conflicts) {
+		assert.equal(
+			acceptBrowserState({ ...browser, ...conflict, observedAt: "2026-10-27T19:00:01Z" }),
+			false
+		);
+		assert.equal(useReview.getState().browser, current);
+		assert.equal(useReview.getState().sequence, 0);
+	}
+});

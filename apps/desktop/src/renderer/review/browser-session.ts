@@ -29,8 +29,15 @@ export function acceptBrowserState(input: BrowserState, replace = false) {
 		if (
 			state.browser.browserId === browser.browserId &&
 			state.browser.sequence === browser.sequence
-		)
-			return JSON.stringify(state.browser) === JSON.stringify(browser);
+		) {
+			// Sequence identifies page content; runtime refreshes observedAt on every capture.
+			const { observedAt: previousObservedAt, ...previousContent } = state.browser;
+			const { observedAt, ...content } = browser;
+			if (JSON.stringify(previousContent) !== JSON.stringify(content)) return false;
+			if (Date.parse(observedAt) > Date.parse(previousObservedAt)) useReview.setState({ browser });
+			// A delayed equivalent action may present the page without replacing its fresher timestamp.
+			return true;
+		}
 	}
 	useReview.setState({ browser });
 	return true;

@@ -1,9 +1,15 @@
 import assert from "node:assert/strict";
 import { afterEach, beforeEach, it } from "node:test";
-import type { AgentAction, AgentTurnInput } from "../../shared/contracts";
+import type { AgentAction, AgentTurnInput, BrowserState } from "../../shared/contracts";
 import { getReviewFixture } from "../../shared/fixtures/review";
+import { refreshReviewBrowser } from "./browser-session";
 import { useReview } from "./controller";
-import { cancelActiveQuestion, runAgentQuestion, useConversation } from "./conversation";
+import {
+	cancelActiveQuestion,
+	reviewSessionId,
+	runAgentQuestion,
+	useConversation,
+} from "./conversation";
 import { type AgentAdapter, configureReviewServices } from "./services";
 import { initialFiles } from "./workspace-data";
 
@@ -22,7 +28,7 @@ beforeEach(() =>
 );
 afterEach(async () => {
 	await cancelActiveQuestion();
-	configureReviewServices({ agent: null, sources: null });
+	configureReviewServices({ agent: null, sources: null, browser: null });
 });
 
 function harness() {
@@ -385,3 +391,71 @@ it("cancelling while a source read is pending prevents its eventual code effect"
 	h.finish();
 	await running;
 });
+
+for (const [timing, actionObservedAt] of [
+	["older", "2026-10-27T19:00:01Z"],
+	["newer", "2026-10-27T19:00:03Z"],
+] as const) {
+	it(`a passive browser poll in code view preserves a show-browser action whose observation time is ${timing}`, async () => {
+		const browser: BrowserState = {
+			browserId: "browser-checkout",
+			sessionId: reviewSessionId,
+			prId: fixture.preparation.pr.id,
+			repository: fixture.preparation.pr.repository,
+			revision: "head",
+			commitSha: fixture.preparation.pr.headSha,
+			url: "http://127.0.0.1:1234/checkout",
+			title: "Checkout",
+			viewport: { width: 1024, height: 768 },
+			sequence: 1,
+			observedAt: "2026-10-27T19:00:00Z",
+			text: "Apply promo",
+			elements: [],
+			scroll: { x: 0, y: 0 },
+			provenance: "live-browser",
+		};
+		useReview.setState({ panel: "code", browser });
+		const polled = {
+			...browser,
+			sequence: 2,
+			text: "Promo applied",
+			observedAt: "2026-10-27T19:00:02Z",
+		};
+		configureReviewServices({
+			browser: {
+				observe: async () => polled,
+				execute: async () => polled,
+				present: async () => {},
+			},
+		});
+		const h = harness();
+		const running = runAgentQuestion("Show the checkout again");
+		await Promise.resolve();
+		await Promise.resolve();
+		try {
+			const input = h.input();
+			await refreshReviewBrowser();
+			assert.equal(useReview.getState().panel, "code");
+			assert.equal(useReview.getState().sequence, input.screenContext.sequence);
+			assert.deepEqual(useReview.getState().browser, polled);
+			await h.observer().action({
+				sessionId: input.sessionId,
+				turnId: input.turnId,
+				generation: input.generation,
+				requestId: `restore-browser-${timing}`,
+				screenSequence: input.screenContext.sequence,
+				kind: "show-browser",
+				browser: { ...polled, observedAt: actionObservedAt },
+			});
+			assert.equal(useReview.getState().panel, "browser");
+			assert.equal(useReview.getState().sequence, input.screenContext.sequence + 1);
+			assert.deepEqual(useReview.getState().browser, {
+				...polled,
+				observedAt: timing === "older" ? polled.observedAt : actionObservedAt,
+			});
+		} finally {
+			h.finish();
+			await running;
+		}
+	});
+}
