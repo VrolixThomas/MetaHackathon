@@ -35,6 +35,11 @@ export type VoiceHandle = {
 	interrupt(reason?: CancelTurnInput["reason"]): void;
 	dispose(): void;
 };
+export type HandsFreeHandle = {
+	start(): Promise<void>;
+	stop(): void;
+	interrupt(): void;
+};
 type Active = TurnIdentity & {
 	abort: AbortController;
 	source: Exchange["source"];
@@ -48,6 +53,8 @@ export type ConversationState = {
 	envPath: string | null;
 	configBusy: boolean;
 	voice: VoiceSetupStatus | null;
+	handsFree: boolean;
+	handsFreeStarting: boolean;
 	error: string;
 	githubError: string;
 	githubBusy: boolean;
@@ -73,6 +80,8 @@ export function createConversationController(
 	let lastStartedGeneration = -1;
 	let active: Active | null = null;
 	let voice: VoiceHandle | null = null;
+	let handsFree: HandsFreeHandle | null = null;
+	let handsFreeEpoch = 0;
 	let review: Pick<PreparedController, "getContext" | "applyAction"> | null = null;
 	let disposed = false;
 	let configEpoch = 0;
@@ -89,6 +98,8 @@ export function createConversationController(
 		envPath: null,
 		configBusy: false,
 		voice: null,
+		handsFree: false,
+		handsFreeStarting: false,
 		error: "",
 		githubError: "",
 		githubBusy: false,
@@ -109,7 +120,7 @@ export function createConversationController(
 	const cancelRemote = (turn: TurnIdentity, reason: CancelTurnInput["reason"]) => {
 		void api.cancel({ ...identity(turn), requestId: id(), reason }).catch(() => {});
 	};
-	function stop(reason: CancelTurnInput["reason"] = "user") {
+	function cancelActive(reason: CancelTurnInput["reason"] = "user", keepListening = false) {
 		captureMode = null;
 		captureEpoch++;
 		const old = active;
@@ -125,7 +136,44 @@ export function createConversationController(
 			}));
 			if (old.source === "typed") cancelRemote(old, reason);
 		} else store.setState({ phase: "idle" });
-		voice?.interrupt(reason);
+		if (keepListening && handsFree) handsFree.interrupt();
+		else voice?.interrupt(reason);
+	}
+	function stop(reason: CancelTurnInput["reason"] = "user") {
+		handsFreeEpoch++;
+		store.setState({ handsFree: false, handsFreeStarting: false });
+		cancelActive(reason);
+		handsFree?.stop();
+	}
+	async function startConversation() {
+		if (disposed || store.getState().handsFree || store.getState().handsFreeStarting) return;
+		if (!handsFree || store.getState().voice?.phase !== "ready") {
+			store.setState({ error: "Voice is not ready yet. Open Settings to check voice setup." });
+			return;
+		}
+		cancelActive();
+		const epoch = ++handsFreeEpoch;
+		const handle = handsFree;
+		store.setState({ handsFreeStarting: true, error: "" });
+		try {
+			const microphone =
+				store.getState().config?.microphone === "granted" ? "granted" : await requestMicrophone();
+			if (disposed || epoch !== handsFreeEpoch) return;
+			if (microphone !== "granted")
+				throw new Error("Microphone access is unavailable. Check Settings.");
+			await bounded(handle.start(), AbortSignal.timeout(90_000), 90_000);
+			if (disposed || epoch !== handsFreeEpoch) return;
+			store.setState({ handsFree: true, handsFreeStarting: false });
+		} catch (error) {
+			if (disposed || epoch !== handsFreeEpoch) return;
+			stop();
+			store.setState({
+				error: conversationErrorMessage(error, store.getState().config?.microphone),
+			});
+		}
+	}
+	function interruptReply() {
+		cancelActive("user", store.getState().handsFree);
 	}
 	const allocateIdentity = (): TurnIdentity => ({
 		sessionId,
@@ -166,6 +214,11 @@ export function createConversationController(
 		active = null;
 		captureMode = null;
 		store.setState({ active: null, phase: "idle", error });
+		if (phase === "error") {
+			handsFreeEpoch++;
+			store.setState({ handsFree: false, handsFreeStarting: false });
+			handsFree?.stop();
+		}
 	}
 	async function submit(text: string) {
 		const question = text.trim();
@@ -452,6 +505,13 @@ export function createConversationController(
 		allocateIdentity,
 		submit,
 		stop,
+		startConversation,
+		endConversation: () => stop(),
+		toggleConversation: () => {
+			if (store.getState().handsFree || store.getState().handsFreeStarting) stop();
+			else void startConversation();
+		},
+		interruptReply,
 		configure,
 		requestMicrophone,
 		refreshGitHub,
@@ -463,6 +523,20 @@ export function createConversationController(
 		},
 		attachVoice: (handle: VoiceHandle) => {
 			voice = handle;
+		},
+		attachHandsFree: (handle: HandsFreeHandle | null) => {
+			if (handsFree && handsFree !== handle) stop();
+			handsFree = handle;
+		},
+		handsFreeStopped: (error?: unknown) => {
+			if (disposed) return;
+			handsFreeEpoch++;
+			store.setState({ handsFree: false, handsFreeStarting: false });
+			cancelActive();
+			if (error)
+				store.setState({
+					error: conversationErrorMessage(error, store.getState().config?.microphone),
+				});
 		},
 		requestStarted: (input: ConversationTurnInput) => {
 			if (active && live(input)) active.context = { prId: input.prId, screen: input.screen };
@@ -486,9 +560,8 @@ export function createConversationController(
 		},
 		release: releaseCapture,
 		toggle: () => {
-			if (captureMode) releaseCapture();
-			else if (active) stop();
-			else void startCapture("toggle");
+			if (store.getState().handsFree || store.getState().handsFreeStarting) stop();
+			else void startConversation();
 		},
 		retryVoice: () => {
 			stop();

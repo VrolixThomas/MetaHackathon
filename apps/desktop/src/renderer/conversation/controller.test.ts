@@ -415,3 +415,115 @@ it("typed guided review waits for real source/progress/receipt and ignores retir
 		reviews.dispose();
 	}
 });
+
+it("starts a hands-free session once, keeps it between replies and ends it explicitly", async () => {
+	const h = harness();
+	let starts = 0;
+	let stops = 0;
+	let interruptions = 0;
+	h.controller.attachHandsFree({
+		start: async () => {
+			starts++;
+		},
+		stop: () => {
+			stops++;
+		},
+		interrupt: () => {
+			interruptions++;
+		},
+	});
+	try {
+		await h.controller.configure();
+		await h.controller.startConversation();
+		await h.controller.startConversation();
+		assert.equal(starts, 1);
+		assert.equal(h.controller.store.getState().handsFree, true);
+		const turn = h.controller.allocateIdentity();
+		h.controller.beginVoice(turn);
+		h.controller.finishVoice(turn, "complete");
+		assert.equal(h.controller.store.getState().handsFree, true);
+		assert.equal(h.controller.store.getState().phase, "idle");
+		const interrupted = h.controller.allocateIdentity();
+		h.controller.beginVoice(interrupted);
+		h.controller.interruptReply();
+		assert.equal(interruptions, 1);
+		assert.equal(h.controller.store.getState().handsFree, true);
+		h.controller.answer(interrupted, "late reply");
+		assert.equal(h.controller.store.getState().exchanges.at(-1)?.answer, "");
+		h.controller.endConversation();
+		assert.equal(h.controller.store.getState().handsFree, false);
+		assert.ok(stops > 0);
+	} finally {
+		h.controller.dispose();
+	}
+});
+
+it("ending while permission or microphone startup is pending cannot rearm hands-free", async () => {
+	let grant: (value: "granted") => void = () => {};
+	let started: () => void = () => {};
+	let starts = 0;
+	const h = harness({
+		config: async () => ({ ...config, microphone: "not-determined" }),
+		requestMicrophone: () =>
+			new Promise((resolve) => {
+				grant = resolve;
+			}),
+	});
+	h.controller.attachHandsFree({
+		start: () => {
+			starts++;
+			return new Promise<void>((resolve) => {
+				started = resolve;
+			});
+		},
+		stop() {},
+		interrupt() {},
+	});
+	try {
+		await h.controller.configure();
+		const permission = h.controller.startConversation();
+		assert.equal(h.controller.store.getState().handsFreeStarting, true);
+		h.controller.endConversation();
+		grant("granted");
+		await permission;
+		assert.equal(starts, 0);
+		const pending = h.controller.startConversation();
+		assert.equal(starts, 1);
+		h.controller.endConversation();
+		started();
+		await pending;
+		assert.equal(h.controller.store.getState().handsFree, false);
+		assert.equal(h.controller.store.getState().handsFreeStarting, false);
+	} finally {
+		h.controller.dispose();
+	}
+});
+
+it("hands-free errors release the session and never auto-start another turn", async () => {
+	const h = harness();
+	let stops = 0;
+	let starts = 0;
+	h.controller.attachHandsFree({
+		start: async () => {
+			starts++;
+		},
+		stop: () => {
+			stops++;
+			h.controller.handsFreeStopped();
+		},
+		interrupt() {},
+	});
+	try {
+		await h.controller.configure();
+		await h.controller.startConversation();
+		const turn = h.controller.allocateIdentity();
+		h.controller.beginVoice(turn);
+		h.controller.finishVoice(turn, "error", "Disconnected");
+		assert.equal(h.controller.store.getState().handsFree, false);
+		assert.equal(starts, 1);
+		assert.ok(stops > 0);
+		assert.equal(h.controller.store.getState().error, "Disconnected");
+	} finally {
+		h.controller.dispose();
+	}
+});
