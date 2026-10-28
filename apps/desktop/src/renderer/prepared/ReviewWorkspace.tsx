@@ -156,7 +156,7 @@ export function ReviewWorkspace({
 					onInteraction={onInteraction}
 					onClick={controller.close}
 				>
-					Back to chat
+					Close review
 				</ReviewActionButton>
 			</header>
 			{state.reviewError && (
