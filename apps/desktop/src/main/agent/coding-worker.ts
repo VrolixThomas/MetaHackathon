@@ -137,6 +137,8 @@ export const CodingWorkerCheckpointSchema = z.strictObject({
 	taskKey: digest,
 	contextKey: digest,
 	history: z.array(jsonItem).max(2000),
+	/** Evidence before new coordinator context cannot satisfy this pass's completion gate. */
+	contextStartIndex: z.int().nonnegative().default(0),
 	rounds: z.int().nonnegative(),
 	pendingTool: z
 		.strictObject({
@@ -302,6 +304,7 @@ export async function runCodingTask(
 	}
 	if (state.result && state.contextKey === contextKey) return safe(state.result);
 	if (state.contextKey !== contextKey) {
+		state.contextStartIndex = state.history.length;
 		state.history.push({
 			role: "user",
 			content: JSON.stringify(
@@ -394,12 +397,12 @@ export async function runCodingTask(
 			continue;
 		}
 		if (call.name === "finish_work") {
-			const evidence = codingEvidence(state.history);
-			if (!evidence.read || !evidence.commands.length) {
+			const evidence = codingEvidence(state.history.slice(state.contextStartIndex));
+			if (!evidence.read || !evidence.validatedAfterLastWrite) {
 				state.history.push(
 					output(call.call_id, {
 						error:
-							"Completion requires actual source inspection and a recorded validation command. If validation cannot run, request a convention-deviation decision explaining the limitation.",
+							"Completion requires actual source inspection in this pass and a recorded validation command after the latest write. Recheck after coordinator feedback. If validation cannot run, request a convention-deviation decision explaining the limitation.",
 					})
 				);
 				await save();
@@ -466,6 +469,7 @@ function codingEvidence(history: MetaItem[]): {
 	read: boolean;
 	files: string[];
 	commands: string[];
+	validatedAfterLastWrite: boolean;
 } {
 	const names = new Map(
 		history
@@ -475,7 +479,9 @@ function codingEvidence(history: MetaItem[]): {
 	const files = new Set<string>();
 	const commands: string[] = [];
 	let read = false;
-	for (const item of history) {
+	let lastWrite = -1;
+	let lastCheck = -1;
+	for (const [index, item] of history.entries()) {
 		if (item["type"] !== "function_call_output" || typeof item["output"] !== "string") continue;
 		let value: unknown;
 		try {
@@ -487,17 +493,27 @@ function codingEvidence(history: MetaItem[]): {
 		if (name === "read_file" && fileReadSchema.safeParse(value).success) read = true;
 		if (name === "write_file" || name === "edit_file") {
 			const parsed = fileWriteSchema.safeParse(value);
-			if (parsed.success) files.add(parsed.data.path);
+			if (parsed.success) {
+				files.add(parsed.data.path);
+				lastWrite = index;
+			}
 		}
 		if (name === "run_command") {
 			const parsed = commandResultSchema.safeParse(value);
-			if (parsed.success)
+			if (parsed.success) {
+				lastCheck = index;
 				commands.push(
 					`${JSON.stringify([parsed.data.command, ...parsed.data.args])}: exit ${parsed.data.exitCode ?? "unknown"}${parsed.data.interrupted ? " (interrupted)" : ""}${parsed.data.truncated ? " (output truncated)" : ""}`
 				);
+			}
 		}
 	}
-	return { read, files: [...files], commands };
+	return {
+		read,
+		files: [...files],
+		commands,
+		validatedAfterLastWrite: lastCheck >= 0 && lastCheck > lastWrite,
+	};
 }
 
 async function requestModel(

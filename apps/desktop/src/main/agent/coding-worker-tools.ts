@@ -377,19 +377,20 @@ async function runValidation(
 		let stdout = "";
 		let stderr = "";
 		let truncated = false;
+		const overflow = { stdout: false, stderr: false };
 		let interrupted = false;
 		let killTimer: ReturnType<typeof setTimeout> | undefined;
+		const kill = (kind: NodeJS.Signals) => {
+			if (!child.pid) return;
+			try {
+				if (process.platform !== "win32") process.kill(-child.pid, kind);
+				else child.kill(kind);
+			} catch {
+				/* already exited */
+			}
+		};
 		const stop = () => {
 			interrupted = true;
-			const kill = (kind: NodeJS.Signals) => {
-				if (!child.pid) return;
-				try {
-					if (process.platform !== "win32") process.kill(-child.pid, kind);
-					else child.kill(kind);
-				} catch {
-					/* already exited */
-				}
-			};
 			kill("SIGTERM");
 			killTimer ??= setTimeout(() => kill("SIGKILL"), 1000);
 			killTimer.unref();
@@ -403,11 +404,17 @@ async function runValidation(
 		signal.addEventListener("abort", stop, { once: true });
 		if (signal.aborted) stop();
 		const append = (target: "stdout" | "stderr", chunk: Buffer) => {
+			if (overflow[target]) return;
 			const previous = target === "stdout" ? stdout : stderr;
 			const value = previous + chunk.toString("utf8");
-			if (value.length > MAX_COMMAND_OUTPUT * 2) truncated = true;
-			if (target === "stdout") stdout = value.slice(0, MAX_COMMAND_OUTPUT * 2);
-			else stderr = value.slice(0, MAX_COMMAND_OUTPUT * 2);
+			if (value.length > MAX_COMMAND_OUTPUT * 2) {
+				truncated = true;
+				overflow[target] = true;
+			}
+			// Discard an overflowing stream entirely: a clipped token at the capture
+			// boundary cannot then escape the complete-value redaction filter.
+			if (target === "stdout") stdout = overflow[target] ? "" : value;
+			else stderr = overflow[target] ? "" : value;
 		};
 		child.stdout.on("data", (chunk: Buffer) => append("stdout", chunk));
 		child.stderr.on("data", (chunk: Buffer) => append("stderr", chunk));
@@ -416,13 +423,14 @@ async function runValidation(
 			reject(new CodingToolError("spawn", "Validation process could not start"));
 		});
 		child.once("close", (exitCode, exitSignal) => {
+			if (interrupted) kill("SIGKILL");
 			clean();
 			if (signal.aborted) {
 				reject(new DOMException("Operation cancelled", "AbortError"));
 				return;
 			}
-			const cleanOut = redact(stdout);
-			const cleanErr = redact(stderr);
+			const cleanOut = overflow.stdout ? "[Output exceeded bounded capture limit]" : redact(stdout);
+			const cleanErr = overflow.stderr ? "[Output exceeded bounded capture limit]" : redact(stderr);
 			resolveResult({
 				command: input.command,
 				args: input.args,
