@@ -92,9 +92,24 @@ export function ReviewActionButton({
 export function ReviewWorkspace({
 	controller,
 	onInteraction,
-}: { controller: PreparedController; onInteraction(): void }) {
+	view: controlledView,
+	onViewChange,
+	onNavigate,
+	onClose,
+}: {
+	controller: PreparedController;
+	onInteraction(): void;
+	view?: "diff" | "base" | "head";
+	onViewChange?(view: "diff" | "base" | "head"): void;
+	onNavigate?(command: {
+		direction?: "next" | "previous" | "pause" | "resume";
+		path?: string;
+	}): void;
+	onClose?(): void;
+}) {
 	const state = useStore(controller.store);
-	const [view, setView] = useState<"diff" | "base" | "head">("diff");
+	const [localView, setLocalView] = useState<"diff" | "base" | "head">("diff");
+	const view = controlledView ?? localView;
 	const content = useRef<HTMLDivElement>(null);
 	const plan = state.detail?.prepared;
 	const file = state.file;
@@ -115,8 +130,8 @@ export function ReviewWorkspace({
 	const index = plan?.files.findIndex((entry) => entry.path === file?.path) ?? -1;
 	const note = plan?.files[index];
 	useEffect(() => {
-		if (state.highlight) setView(state.highlight.revision);
-	}, [state.highlight]);
+		if (state.highlight && controlledView === undefined) setLocalView(state.highlight.revision);
+	}, [state.highlight, controlledView]);
 	useEffect(() => {
 		if (!file) return;
 		if (state.highlight && view === state.highlight.revision)
@@ -145,6 +160,7 @@ export function ReviewWorkspace({
 			data-base-sha={plan?.pr.baseSha}
 			data-head-sha={plan?.pr.headSha}
 			data-syntax-state={file ? (syntax ? "ready" : "loading") : undefined}
+			data-code-view={view}
 		>
 			<header className="prepared-heading">
 				<div>
@@ -154,7 +170,7 @@ export function ReviewWorkspace({
 					type="button"
 					className="quiet"
 					onInteraction={onInteraction}
-					onClick={controller.close}
+					onClick={onClose ?? controller.close}
 				>
 					Close review
 				</ReviewActionButton>
@@ -169,7 +185,9 @@ export function ReviewWorkspace({
 					type="button"
 					onInteraction={onInteraction}
 					disabled={state.fileBusy || state.stale || index <= 0}
-					onClick={() => void controller.move(-1)}
+					onClick={() =>
+						onNavigate ? onNavigate({ direction: "previous" }) : void controller.move(-1)
+					}
 				>
 					Back
 				</ReviewActionButton>
@@ -182,7 +200,7 @@ export function ReviewWorkspace({
 					disabled={
 						state.fileBusy || state.stale || index < 0 || index >= (plan?.files.length ?? 0) - 1
 					}
-					onClick={() => void controller.move(1)}
+					onClick={() => (onNavigate ? onNavigate({ direction: "next" }) : void controller.move(1))}
 				>
 					Next
 				</ReviewActionButton>
@@ -192,7 +210,8 @@ export function ReviewWorkspace({
 					className="pause-review"
 					disabled={state.fileBusy || state.stale || !file}
 					onClick={() => {
-						void controller.pause(!state.paused);
+						if (onNavigate) onNavigate({ direction: state.paused ? "resume" : "pause" });
+						else void controller.pause(!state.paused);
 					}}
 				>
 					{state.paused ? "Resume review" : "Pause review"}
@@ -215,7 +234,7 @@ export function ReviewWorkspace({
 								onInteraction={view === tab ? undefined : onInteraction}
 								key={tab}
 								aria-pressed={view === tab}
-								onClick={() => setView(tab)}
+								onClick={() => (onViewChange ? onViewChange(tab) : setLocalView(tab))}
 							>
 								{{ diff: "Changes", base: "Before", head: "After" }[tab]}
 							</ReviewActionButton>
@@ -340,7 +359,10 @@ export function ReviewWorkspace({
 											aria-current={entry.path === file?.path ? "step" : undefined}
 											disabled={state.fileBusy || state.stale}
 											onClick={() => {
-												if (entry.path !== file?.path) void controller.showPath(entry.path);
+												if (entry.path !== file?.path) {
+													if (onNavigate) onNavigate({ path: entry.path });
+													else void controller.showPath(entry.path);
+												}
 											}}
 										>
 											{entry.path}

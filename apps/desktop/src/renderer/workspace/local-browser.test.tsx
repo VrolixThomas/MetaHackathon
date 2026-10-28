@@ -13,7 +13,40 @@ const page: LocalBrowserState = {
 	canGoForward: false,
 	provenance: "local-preview-unverified-revision",
 };
-it("opens only explicit local addresses and never creates a placeholder browser", async () => {
+it("adopts main's HTTPS page without opening another browser and labels its real provenance", async () => {
+	const paths: string[] = [];
+	const controller = createLocalBrowserController(async (_type, path) => {
+		paths.push(path);
+		return null;
+	});
+	try {
+		const website = {
+			...page,
+			url: "https://example.com/actual",
+			title: "Website title",
+			provenance: "website-unverified-revision" as const,
+		};
+		controller.adopt(website);
+		assert.deepEqual(controller.store.getState().page, website);
+		assert.deepEqual(paths, []);
+		const html = renderToStaticMarkup(
+			<WorkSplit
+				obscured={false}
+				browser={{
+					...controller,
+					store: { ...controller.store, getInitialState: controller.store.getState },
+				}}
+			>
+				<div>Code</div>
+			</WorkSplit>
+		);
+		assert.match(html, /Website · revision unverified/);
+		assert.doesNotMatch(html, /Local preview ·|<iframe|<webview/);
+	} finally {
+		controller.dispose();
+	}
+});
+it("opens only explicit allowed addresses and never creates a placeholder browser", async () => {
 	const paths: string[] = [];
 	const controller = createLocalBrowserController(async (_type, path) => {
 		paths.push(path);
@@ -22,7 +55,7 @@ it("opens only explicit local addresses and never creates a placeholder browser"
 	try {
 		assert.equal(controller.store.getState().page, null);
 		assert.deepEqual(paths, []);
-		await controller.open("https://example.com");
+		await controller.open("http://example.com");
 		await controller.open("http://name:secret@localhost:3000");
 		assert.deepEqual(paths, []);
 		await controller.open(page.url);
@@ -198,11 +231,11 @@ it("reports malformed navigation addresses without calling IPC or losing the cur
 		for (const url of [
 			"not an address",
 			"http://",
-			"https://example.com",
+			"http://example.com",
 			"http://user:secret@localhost",
 		]) {
 			await controller.command({ kind: "navigate", url });
-			assert.match(controller.store.getState().error, /localhost HTTP address/);
+			assert.match(controller.store.getState().error, /HTTPS or local HTTP address/);
 			assert.deepEqual(controller.store.getState().page, page);
 		}
 		assert.deepEqual(calls, []);

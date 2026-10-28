@@ -10,6 +10,8 @@ import {
 	type ReviewFile,
 	ReviewFileSchema,
 	type ReviewInbox,
+	type ReviewNavigation,
+	ReviewNavigationSchema,
 	ReviewProgressSchema,
 	type ReviewScreen,
 	ReviewScreenSchema,
@@ -289,6 +291,65 @@ export function createPreparedController(api: PreparedApi, sessionId: string, po
 				store.setState({ reviewError: "Your position could not be saved. Try again." });
 		}
 	}
+	/** Workspace effects use their own receipt gate; source identity and persistence stay here. */
+	async function navigate(input: ReviewNavigation, live: () => boolean, signal?: AbortSignal) {
+		const navigation = ReviewNavigationSchema.parse(input);
+		const operation = ++navigationEpoch;
+		const current = () => !disposed && !signal?.aborted && live() && operation === navigationEpoch;
+		if (!current()) return "ignored" as const;
+		const interrupted = () => {
+			if (operation === navigationEpoch) {
+				navigationEpoch++;
+				store.setState({ fileBusy: false });
+			}
+		};
+		signal?.addEventListener("abort", interrupted, { once: true });
+		store.setState({ fileBusy: true, reviewError: "" });
+		try {
+			const existing = store.getState().detail;
+			const detail =
+				existing?.prepared?.id === navigation.reviewId && !store.getState().stale
+					? validateDetail(existing, navigation.prId)
+					: validateDetail(await api.get(navigation.prId), navigation.prId);
+			const plan = detail.prepared;
+			if (
+				!current() ||
+				!plan ||
+				plan.id !== navigation.reviewId ||
+				plan.pr.baseSha !== navigation.baseSha ||
+				plan.pr.headSha !== navigation.headSha ||
+				!plan.files.some((file) => file.path === navigation.path)
+			)
+				return "ignored" as const;
+			const file = validateFile(
+				await api.file({
+					prId: navigation.prId,
+					reviewId: navigation.reviewId,
+					path: navigation.path,
+				}),
+				plan,
+				navigation.path,
+				navigation.highlight
+			);
+			if (!current()) return "ignored" as const;
+			store.setState({ detail, stale: false });
+			installFile(plan, file, navigation.paused, navigation.highlight);
+			const sequence = store.getState().screen.sequence;
+			await persist(plan, file.path, navigation.paused);
+			return current() && samePlan(plan) && sequence === store.getState().screen.sequence
+				? ("applied" as const)
+				: ("ignored" as const);
+		} catch {
+			if (current())
+				store.setState({
+					reviewError: "The pinned source could not be opened or saved. Try reopening the review.",
+				});
+			return "ignored" as const;
+		} finally {
+			signal?.removeEventListener("abort", interrupted);
+			if (operation === navigationEpoch) store.setState({ fileBusy: false });
+		}
+	}
 	function applyAction(
 		input: AgentAction,
 		live: () => boolean,
@@ -464,6 +525,7 @@ export function createPreparedController(api: PreparedApi, sessionId: string, po
 		close,
 		showPath,
 		pause,
+		navigate,
 		applyAction,
 		getContext: () => {
 			const value = store.getState().screen;

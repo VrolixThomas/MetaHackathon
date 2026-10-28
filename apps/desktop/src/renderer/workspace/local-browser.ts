@@ -100,13 +100,20 @@ export function createLocalBrowserController(call: ConversationApi["call"]) {
 	return {
 		store,
 		present,
+		/** Adopt main's existing browser; workspace effects never create another native page. */
+		adopt: (input: LocalBrowserState | null) => {
+			const page = LocalBrowserStateSchema.nullable().parse(input);
+			epoch++;
+			store.setState({ page, busy: false, error: "" });
+			schedule();
+		},
 		start: () => {
 			void poll();
 		},
 		open: (url: string) => {
 			const parsed = LocalBrowserUrlSchema.safeParse(url.trim());
 			if (!parsed.success) {
-				store.setState({ error: "Enter a running localhost HTTP address without credentials." });
+				store.setState({ error: "Enter an HTTPS or local HTTP address without credentials." });
 				return Promise.resolve();
 			}
 			return change(async () =>
@@ -130,7 +137,7 @@ export function createLocalBrowserController(call: ConversationApi["call"]) {
 				input.kind === "navigate" ? { ...input, url: input.url.trim() } : input
 			);
 			if (!parsed.success) {
-				store.setState({ error: "Enter a running localhost HTTP address without credentials." });
+				store.setState({ error: "Enter an HTTPS or local HTTP address without credentials." });
 				return Promise.resolve();
 			}
 			if (!store.getState().page || store.getState().busy) return Promise.resolve();

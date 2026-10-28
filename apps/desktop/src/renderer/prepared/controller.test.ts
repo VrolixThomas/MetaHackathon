@@ -161,6 +161,60 @@ function reviewHarness(
 	});
 	return { ui, calls, action };
 }
+it("workspace navigation loads exact source and saves it without using the legacy effect gate", async () => {
+	const h = reviewHarness();
+	try {
+		const nav = h.action().navigation;
+		const highlight = {
+			repository: pr.repository,
+			path: "b.ts",
+			revision: "head" as const,
+			commitSha: pr.headSha,
+			startLine: 1,
+			endLine: 1,
+		};
+		assert.equal(await h.ui.navigate({ ...nav, paused: true, highlight }, () => true), "applied");
+		assert.equal(h.ui.store.getState().file?.path, "b.ts");
+		assert.deepEqual(h.ui.store.getState().highlight, highlight);
+		assert.equal(h.ui.getContext().screen?.paused, true);
+		assert.equal(h.ui.store.getState().detail?.progress?.path, "b.ts");
+		assert.ok(
+			h.calls.every(
+				(call) => call.path !== "conversation.actionApplied" && call.path !== "reviews.screen"
+			)
+		);
+		const before = h.ui.getContext();
+		assert.equal(await h.ui.navigate({ ...nav, headSha: "c".repeat(40) }, () => true), "ignored");
+		assert.deepEqual(h.ui.getContext(), before);
+	} finally {
+		h.ui.dispose();
+	}
+});
+
+it("cancelled workspace source loading cannot install or persist a late file", async () => {
+	let finish: (value: unknown) => void = () => {};
+	const h = reviewHarness((path) =>
+		path === "reviews.file"
+			? new Promise((resolve) => {
+					finish = resolve;
+				})
+			: undefined
+	);
+	try {
+		const abort = new AbortController();
+		const pending = h.ui.navigate(h.action().navigation, () => true, abort.signal);
+		for (let i = 0; i < 10 && !h.calls.some((call) => call.path === "reviews.file"); i++)
+			await Promise.resolve();
+		abort.abort();
+		assert.equal(h.ui.store.getState().fileBusy, false);
+		finish(source("b.ts"));
+		assert.equal(await pending, "ignored");
+		assert.equal(h.ui.store.getState().file, null);
+		assert.ok(h.calls.every((call) => call.path !== "reviews.progress"));
+	} finally {
+		h.ui.dispose();
+	}
+});
 it("shows fetched pinned source before persisting position and keeps pause visible", async () => {
 	const h = reviewHarness();
 	try {

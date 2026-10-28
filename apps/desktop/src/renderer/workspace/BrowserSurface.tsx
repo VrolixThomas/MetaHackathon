@@ -1,12 +1,26 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { useStore } from "zustand";
+import type { BrowserBounds, LocalBrowserCommand } from "../../shared/contracts";
 import { contentBounds } from "./layout";
 import type { LocalBrowserController } from "./local-browser";
 
 export function BrowserSurface({
 	controller,
 	visible,
-}: { controller: LocalBrowserController; visible: boolean }) {
+	onPresented,
+	onPresentationError,
+	onCommand,
+	onViewport,
+	onClose,
+}: {
+	controller: LocalBrowserController;
+	visible: boolean;
+	onPresented?(bounds: BrowserBounds | null): void;
+	onPresentationError?(): void;
+	onCommand?(command: LocalBrowserCommand): void;
+	onViewport?(mode: "desktop" | "phone"): void;
+	onClose?(): void;
+}) {
 	const state = useStore(controller.store);
 	const host = useRef<HTMLDivElement>(null);
 	const [address, setAddress] = useState(state.page?.url ?? "");
@@ -14,17 +28,26 @@ export function BrowserSurface({
 	useEffect(() => {
 		setAddress(state.page?.url ?? "");
 	}, [state.page?.url]);
-	useEffect(() => {
+	useLayoutEffect(() => {
 		let disposed = false;
+		let reportSequence = 0;
 		const report = () => {
+			const current = ++reportSequence;
 			const box = host.current?.getBoundingClientRect();
+			const bounds = box ? contentBounds(box, visible) : null;
 			void controller
-				.present(box ? contentBounds(box, visible) : null)
+				.present(bounds)
 				.then(() => {
-					if (!disposed) setError("");
+					if (!disposed && current === reportSequence) {
+						setError("");
+						onPresented?.(bounds);
+					}
 				})
 				.catch(() => {
-					if (!disposed) setError("The browser surface is unavailable.");
+					if (!disposed && current === reportSequence) {
+						setError("The browser surface is unavailable.");
+						onPresentationError?.();
+					}
 				});
 		};
 		const resize = new ResizeObserver(report);
@@ -39,16 +62,20 @@ export function BrowserSurface({
 			window.removeEventListener("scroll", report, true);
 			void controller.present(null).catch(() => {});
 		};
-	}, [controller, visible]);
+	}, [controller, visible, onPresented, onPresentationError]);
+	const command = (input: LocalBrowserCommand) => {
+		if (onCommand) onCommand(input);
+		else void controller.command(input);
+	};
 	return (
-		<section className="native-browser-pane" aria-label="Local browser">
+		<section className="native-browser-pane" aria-label="Live browser">
 			<header className="browser-chrome">
 				<div className="browser-navigation">
 					<button
 						type="button"
 						aria-label="Back in browser"
 						disabled={state.busy || !state.page?.canGoBack}
-						onClick={() => void controller.command({ kind: "back" })}
+						onClick={() => command({ kind: "back" })}
 					>
 						←
 					</button>
@@ -56,7 +83,7 @@ export function BrowserSurface({
 						type="button"
 						aria-label="Forward in browser"
 						disabled={state.busy || !state.page?.canGoForward}
-						onClick={() => void controller.command({ kind: "forward" })}
+						onClick={() => command({ kind: "forward" })}
 					>
 						→
 					</button>
@@ -64,7 +91,7 @@ export function BrowserSurface({
 						type="button"
 						aria-label="Reload browser"
 						disabled={state.busy}
-						onClick={() => void controller.command({ kind: "reload" })}
+						onClick={() => command({ kind: "reload" })}
 					>
 						↻
 					</button>
@@ -72,11 +99,11 @@ export function BrowserSurface({
 				<form
 					onSubmit={(event) => {
 						event.preventDefault();
-						void controller.command({ kind: "navigate", url: address });
+						command({ kind: "navigate", url: address });
 					}}
 				>
 					<input
-						aria-label="Local browser address"
+						aria-label="Browser address"
 						name="browser-address"
 						value={address}
 						onChange={(event) => setAddress(event.currentTarget.value)}
@@ -85,8 +112,8 @@ export function BrowserSurface({
 				</form>
 				<button
 					type="button"
-					aria-label="Close local browser"
-					onClick={() => void controller.close()}
+					aria-label="Close browser canvas"
+					onClick={() => (onClose ? onClose() : void controller.close())}
 				>
 					×
 				</button>
@@ -103,6 +130,10 @@ export function BrowserSurface({
 								: state.page?.viewport.width === 1024 && state.page.viewport.height === 768
 						}
 						onClick={() => {
+							if (onViewport) {
+								onViewport(mode);
+								return;
+							}
 							const box = host.current?.getBoundingClientRect();
 							void controller.setViewport(mode, box ? contentBounds(box, visible) : null);
 						}}
@@ -117,9 +148,10 @@ export function BrowserSurface({
 				)}
 			</fieldset>
 			<div className="browser-page-label">
-				<strong>{state.page?.title || "Local preview"}</strong>
+				<strong>{state.page?.title || "Website"}</strong>
 				<span title="This running page has not been verified against the pull request revision.">
-					Local preview · revision unverified
+					{state.page?.provenance === "website-unverified-revision" ? "Website" : "Local preview"} ·
+					revision unverified
 				</span>
 			</div>
 			{(state.error || error) && (
