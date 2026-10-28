@@ -1279,3 +1279,117 @@ test("cancel or changed screen before incomplete recovery prevents a new provide
 		}
 	}
 });
+
+test("explicit logical section selects one to eight exact next prepared files and waits for each narration", async () => {
+	for (const length of [1, 2, 8]) {
+		const paths = Array.from({ length }, (_, i) =>
+			i === 0 ? "service.ts" : i === 1 ? "test.ts" : `part-${i}.ts`
+		);
+		const h = harness([
+			[call("start_walkthrough", { sectionPaths: paths })],
+			...paths.map(() => []),
+		]);
+		const first = h.prepared.files[0];
+		assert(first);
+		h.prepared.files = paths.map((path) => ({ ...first, path }));
+		h.ports.getFile = async (_pr, _review, path) => fileSource(h.prepared, path);
+		try {
+			h.service.start(h.input);
+			for (let step = 0; step < length; step++) {
+				const action = await nextEffect(h, step * 2 + 1);
+				assert(action.kind === "review-navigation");
+				assert.equal(action.navigation.path, paths[step]);
+				await h.service.actionApplied(h.receipt(action));
+				const checkpoint = await nextEffect(h, step * 2 + 2);
+				assert(checkpoint.kind === "narration-checkpoint");
+				assert.equal(h.navigations.length, step + 1);
+				h.service.narrationApplied(narrationReceipt(checkpoint));
+			}
+			await finish(h);
+			assert.equal(h.navigations.length, length);
+			assert.equal(h.requests.length, length + 1);
+			assert(h.requests.at(-1)?.instructions.includes("wait for the reviewer"));
+		} finally {
+			await h.service.dispose();
+		}
+	}
+});
+
+test("walkthrough rejects skipped, reordered, repeated, foreign and oversized sections before navigation", async () => {
+	for (const sectionPaths of [
+		["test.ts"],
+		["service.ts", "third.ts"],
+		["service.ts", "service.ts"],
+		["invented.ts"],
+		[],
+		Array.from({ length: 9 }, () => "service.ts"),
+	]) {
+		const h = harness([[call("start_walkthrough", { sectionPaths })]]);
+		try {
+			h.service.start(h.input);
+			await finish(h, "error");
+			assert.equal(h.navigations.length, 0);
+			assert.equal(h.poll().actions.length, 0);
+		} finally {
+			await h.service.dispose();
+		}
+	}
+});
+
+test("selected continuation section begins after the durable narration checkpoint in the same real session", async () => {
+	const h = harness([
+		[call("start_walkthrough", { sectionPaths: ["service.ts"] })],
+		[],
+		[call("continue_walkthrough", { sectionPaths: ["test.ts", "third.ts"] })],
+		[],
+		[],
+	]);
+	const first = h.prepared.files[0];
+	assert(first);
+	h.prepared.files.push({ ...first, path: "third.ts" }, { ...first, path: "fourth.ts" });
+	try {
+		h.service.start(h.input);
+		const opening = await nextEffect(h, 1);
+		assert(opening.kind === "review-navigation");
+		await h.service.actionApplied(h.receipt(opening));
+		const firstCheckpoint = await nextEffect(h, 2);
+		assert(firstCheckpoint.kind === "narration-checkpoint");
+		h.service.narrationApplied(narrationReceipt(firstCheckpoint));
+		await finish(h);
+		const continued = {
+			...h.input,
+			requestId: "section-continue",
+			turnId: "section-continue",
+			generation: 2,
+			text: "Continue the next section",
+		};
+		h.service.start(continued);
+		const poll = () =>
+			h.service.poll({
+				sessionId: continued.sessionId,
+				turnId: continued.turnId,
+				generation: continued.generation,
+			});
+		for (let step = 0; step < 2; step++) {
+			await eventually(() => poll().actions.length === step * 2 + 1);
+			const action = poll().actions[step * 2];
+			assert(action?.kind === "review-navigation");
+			assert.equal(action.navigation.path, step === 0 ? "test.ts" : "third.ts");
+			await h.service.actionApplied({
+				...h.receipt(action),
+				turnId: continued.turnId,
+				generation: continued.generation,
+			});
+			await eventually(() => poll().actions.length === step * 2 + 2);
+			const checkpoint = poll().actions[step * 2 + 1];
+			assert(checkpoint?.kind === "narration-checkpoint");
+			h.service.narrationApplied(narrationReceipt(checkpoint));
+		}
+		await eventually(() => poll().status !== "running");
+		assert.equal(poll().status, "completed");
+		assert.equal(h.navigations.length, 3);
+		assert.equal(h.navigations.at(-1)?.path, "third.ts");
+	} finally {
+		await h.service.dispose();
+	}
+});
