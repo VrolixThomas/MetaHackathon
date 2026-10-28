@@ -289,7 +289,7 @@ test("512-token incomplete terminals retain actual usage and expose only safe re
 			fetch: async (_url, init) => {
 				const body = JSON.parse(String(init?.body));
 				assert.equal(body.max_output_tokens, 512);
-				assert.equal(body.tool_choice, "none");
+				assert.equal(body.tool_choice, "auto");
 				return sseResponse([
 					{ type: "response.output_text.delta", delta: "Unfinished answer" },
 					{
@@ -326,12 +326,13 @@ test("512-token incomplete terminals retain actual usage and expose only safe re
 	}
 });
 
-test("truncated stream has a distinct recovery code and tool-free requests disable tool choice", async () => {
+test("truncated stream has a distinct recovery code and tool-free requests use Meta-compatible empty tools", async () => {
 	const client = new MetaClient({
 		getApiKey: async () => "test-key",
 		recordUsage: () => {},
 		fetch: async (_url, init) => {
-			assert.equal(JSON.parse(String(init?.body)).tool_choice, "none");
+			assert.equal(JSON.parse(String(init?.body)).tool_choice, "auto");
+			assert.deepEqual(JSON.parse(String(init?.body)).tools, []);
 			return sseResponse([{ type: "response.output_text.delta", delta: "Partial" }]);
 		},
 	});

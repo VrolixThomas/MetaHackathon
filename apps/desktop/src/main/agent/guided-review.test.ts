@@ -899,7 +899,8 @@ test("output-limit recovery discards partial tools/prose and retries original in
 		assert.equal((await finish(h)).text, "The timeout changed.");
 		assert.equal(h.requests.length, 3);
 		assert.equal(bodies[0]?.["tool_choice"], "auto");
-		assert.equal(bodies[2]?.["tool_choice"], "none");
+		assert.equal(bodies[2]?.["tool_choice"], "auto");
+		assert.deepEqual(bodies[2]?.["tools"], []);
 		assert(!JSON.stringify(h.requests).includes("partial-call"));
 		assert(!JSON.stringify(h.requests).includes("PARTIAL MUST NOT SPEAK"));
 		await eventually(() => usage.length === 3);

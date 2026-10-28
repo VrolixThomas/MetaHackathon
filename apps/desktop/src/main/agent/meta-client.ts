@@ -128,7 +128,9 @@ export class MetaClient implements AgentModelClient {
 					instructions: request.instructions,
 					tools: request.tools ?? [],
 					parallel_tool_calls: false,
-					tool_choice: request.tools?.length ? "auto" : "none",
+					// Meta rejects "none" with HTTP 400. An empty tools list plus the
+					// caller's unsolicited-call guard keeps answer-only phases bounded.
+					tool_choice: "auto",
 					stream: true,
 					store: false,
 					include: ["reasoning.encrypted_content"],
