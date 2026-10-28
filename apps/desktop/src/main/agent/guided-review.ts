@@ -29,7 +29,11 @@ import {
 } from "./meta-client";
 import { type CurrentReviewSource, reviewModelInput } from "./review-source";
 import { WORKSPACE_INSTRUCTIONS } from "./workspace-conversation";
-import { type ConversationWorkspaceTools, workspaceModelContext } from "./workspace-tools";
+import {
+	type ConversationWorkspaceTools,
+	WorkspaceArgumentError,
+	workspaceModelContext,
+} from "./workspace-tools";
 
 export interface ReviewNavigationRequest {
 	direction?: "start" | "next" | "previous" | "resume" | "pause";
@@ -272,6 +276,7 @@ export async function runGuidedReview(
 	let acknowledgedScreen: ReviewScreen | undefined;
 	const recovery = workflow?.recovery ?? { used: false };
 	let emitted = false;
+	let repairedArguments = false;
 	for (let round = 0; round < 6; round++) {
 		throwIfAborted(signal);
 		const snapshot = await getSnapshot(ports, input, signal);
@@ -369,7 +374,20 @@ export async function runGuidedReview(
 		seen.add(call.call_id);
 		if (workspace?.has(call.name)) {
 			history.push(...response.completion.output.filter((item) => item["type"] !== "message"));
-			const result = await workspace.execute(call.name, call.arguments);
+			let result: Awaited<ReturnType<ConversationWorkspaceTools["execute"]>>;
+			try {
+				result = await workspace.execute(call.name, call.arguments);
+			} catch (error) {
+				throwIfAborted(signal);
+				if (!(error instanceof WorkspaceArgumentError) || repairedArguments) throw error;
+				repairedArguments = true;
+				history.push({
+					type: "function_call_output",
+					call_id: call.call_id,
+					output: JSON.stringify({ status: "rejected-before-execution", message: error.message }),
+				});
+				continue;
+			}
 			history.push({
 				type: "function_call_output",
 				call_id: call.call_id,

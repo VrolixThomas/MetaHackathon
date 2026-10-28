@@ -29,7 +29,11 @@ import {
 import { type AgentModelClient, MetaApiError, type MetaItem } from "./meta-client";
 import { NarrationReceiptGate, type NarrationReceiptOptions } from "./narration";
 import { runWorkspaceConversation } from "./workspace-conversation";
-import { type ConversationWorkspacePorts, ConversationWorkspaceTools } from "./workspace-tools";
+import {
+	type ConversationWorkspacePorts,
+	ConversationWorkspaceTools,
+	WorkspaceArgumentError,
+} from "./workspace-tools";
 
 export interface ConversationOptions {
 	getContext?: (prId: string, signal: AbortSignal) => Promise<ConversationPRContext>;
@@ -466,7 +470,8 @@ function boundedContext(context: ConversationPRContext): ConversationPRContext {
 	return result;
 }
 function safeError(error: unknown): string {
-	if (error instanceof GuidedReviewError) return error.message;
+	if (error instanceof GuidedReviewError || error instanceof WorkspaceArgumentError)
+		return error.message;
 	if (error instanceof ContextError)
 		return "Could not load the selected pull request. Check GitHub access or continue without a PR.";
 	if (error instanceof MetaApiError) {

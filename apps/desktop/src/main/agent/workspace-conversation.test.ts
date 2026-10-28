@@ -94,6 +94,7 @@ function harness(
 	if (selected) observation.workspace.review = screen("service.ts");
 	const requests: MetaRequest[] = [];
 	const commands: WorkspaceCommand[] = [];
+	const operationIds = new Set<string>();
 	const pending: { result: WorkspaceObservation; settle: () => void }[] = [];
 	let cancelled = 0;
 	let corrupt: ((action: AgentAction) => AgentAction) | undefined;
@@ -103,6 +104,12 @@ function harness(
 			cancelled++;
 		},
 		execute: async (command, identity, signal, onAction) => {
+			assert.equal(
+				operationIds.has(identity.requestId),
+				false,
+				"Each workspace effect needs a distinct idempotency key, even in one turn"
+			);
+			operationIds.add(identity.requestId);
 			commands.push(structuredClone(command));
 			const next = structuredClone(observation);
 			const workspace = next.workspace;
@@ -447,11 +454,52 @@ test("selected review tools share browser/source context and route ordinary navi
 	}
 });
 
+test("repairs a fabricated new-canvas id before execution without replaying an effect", async () => {
+	const h = harness([
+		[
+			call(
+				"write_markdown_explanation",
+				{ id: "invented", title: "Notes", markdown: "Text" },
+				"bad"
+			),
+		],
+		[call("write_markdown_explanation", { title: "Notes", markdown: "Text" }, "fixed")],
+		answer("The notes are displayed."),
+	]);
+	try {
+		h.service.start(h.input);
+		await effect(h, 0);
+		await finish(h);
+		assert.equal(h.commands.length, 1);
+		assert.equal(h.poll().actions.length, 1);
+		assert.ok(JSON.stringify(h.requests[1]?.input).includes("rejected-before-execution"));
+	} finally {
+		await h.service.dispose();
+	}
+});
+
+test("argument repair stops after one rejected correction and never emits invalid effects", async () => {
+	const bad = { id: "invented", title: "Notes", markdown: "Text" };
+	const h = harness([
+		[call("write_markdown_explanation", bad, "first")],
+		[call("write_markdown_explanation", bad, "second")],
+	]);
+	try {
+		h.service.start(h.input);
+		await finish(h, "error");
+		assert.equal(h.requests.length, 2);
+		assert.equal(h.commands.length, 0);
+		assert.equal(h.poll().actions.length, 0);
+	} finally {
+		await h.service.dispose();
+	}
+});
+
 test("canvas focus, layout and close use existing IDs and settle before the final answer", async () => {
 	const h = harness([
-		[call("write_markdown_explanation", { id: "notes", title: "Notes", markdown: "Text" })],
-		[call("set_canvas_layout", { primaryId: "review", secondaryId: "notes" }, "split")],
-		[call("focus_canvas", { id: "notes" }, "focus")],
+		[call("write_markdown_explanation", { title: "Notes", markdown: "Text" })],
+		[call("set_canvas_layout", { primaryId: "review", secondaryId: "doc-1" }, "split")],
+		[call("focus_canvas", { id: "doc-1" }, "focus")],
 		[call("close_canvas", { id: "review" }, "close")],
 		answer("The notes canvas is focused."),
 	]);
@@ -461,9 +509,9 @@ test("canvas focus, layout and close use existing IDs and settle before the fina
 		await finish(h);
 		assert.deepEqual(
 			h.observation.workspace.canvases.map((canvas) => canvas.id),
-			["notes"]
+			["doc-1"]
 		);
-		assert.equal(h.observation.workspace.primaryId, "notes");
+		assert.equal(h.observation.workspace.primaryId, "doc-1");
 		assert.equal(h.observation.workspace.secondaryId, null);
 	} finally {
 		await h.service.dispose();

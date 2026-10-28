@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import { z } from "zod";
 import {
 	type AgentAction,
@@ -14,6 +15,9 @@ import {
 import { abortable, throwIfAborted } from "./cancellation";
 import { GuidedReviewError } from "./guided-review";
 import type { FunctionTool } from "./meta-client";
+
+/** Only argument rejection before execution may be repaired without replaying an effect. */
+export class WorkspaceArgumentError extends Error {}
 
 export interface ConversationWorkspacePorts {
 	observe(sessionId: string, signal: AbortSignal): Promise<WorkspaceObservation>;
@@ -41,11 +45,11 @@ const names: Partial<Record<WorkspaceCommand["kind"], [string, string]>> = {
 	"code-view": ["set_code_view", "Display the current pinned code as diff, base or head."],
 	"write-document": [
 		"write_markdown_explanation",
-		"Create or update an inferred Markdown explanation canvas, with optional inspected source references. This is an agent draft, not authored intent or execution evidence.",
+		"Create or update an inferred Markdown explanation canvas, with optional inspected source references. Omit id when creating; an id may only identify an existing observed document. This is an agent draft, not authored intent or execution evidence.",
 	],
 	"create-visual": [
 		"create_visual_mock",
-		"Create or update an illustrative visual mock canvas using a typed scene of rectangle, text and line shapes. No SVG/HTML/script strings. It is an agent draft, not an actual browser screenshot or execution.",
+		"Create or update an illustrative visual mock canvas using a typed scene of rectangle, text and line shapes. Omit id when creating; an id may only identify an existing observed visual. No SVG/HTML/script strings. It is an agent draft, not an actual browser screenshot or execution.",
 	],
 	"focus-canvas": [
 		"focus_canvas",
@@ -75,6 +79,7 @@ export class ConversationWorkspaceTools {
 	private latest?: WorkspaceObservation;
 	private readonly sourceRanges = new Map<string, number>();
 	private readonly actionIds = new Set<string>();
+	private operationSequence = 0;
 	private lastEffect?: Extract<AgentAction, { kind: "workspace-canvas" }>;
 	get navigation() {
 		return structuredClone(this.lastEffect?.effect.navigation);
@@ -154,7 +159,25 @@ export class ConversationWorkspaceTools {
 		}
 		const entry = commands.find((entry) => entry.name === name);
 		if (!entry) throw new GuidedReviewError("That workspace operation is unavailable.");
-		const args = entry.schema.parse(JSON.parse(rawArguments));
+		let args: Record<string, unknown>;
+		try {
+			args = entry.schema.parse(JSON.parse(rawArguments));
+		} catch {
+			throw new WorkspaceArgumentError(
+				"Tool arguments were rejected before execution. Follow the tool schema exactly; no operation was performed."
+			);
+		}
+		if ((entry.kind === "write-document" || entry.kind === "create-visual") && args["id"]) {
+			const current = this.latest ?? (await this.observe());
+			const kind = entry.kind === "write-document" ? "document" : "visual";
+			const existing = [...current.workspace.canvases, ...(current.savedCanvases ?? [])].find(
+				(canvas) => canvas.id === args["id"] && canvas.kind === kind
+			);
+			if (!existing)
+				throw new WorkspaceArgumentError(
+					"To create a new canvas omit id. To update one, use an existing observed canvas id of the same kind. No operation was performed."
+				);
+		}
 		return this.command(WorkspaceCommandSchema.parse({ ...args, kind: entry.kind }));
 	}
 	async command(raw: WorkspaceCommand): Promise<WorkspaceObservation> {
@@ -213,7 +236,9 @@ export class ConversationWorkspaceTools {
 						sessionId: this.turn.sessionId,
 						turnId: this.turn.turnId,
 						generation: this.turn.generation,
-						requestId: this.turn.requestId,
+						requestId: `workspace-op-${createHash("sha256")
+							.update(JSON.stringify([this.turn.requestId, ++this.operationSequence]))
+							.digest("hex")}`,
 					},
 					this.signal,
 					(rawAction) => {
