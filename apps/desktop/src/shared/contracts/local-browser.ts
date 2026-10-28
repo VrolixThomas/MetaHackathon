@@ -1,29 +1,17 @@
 import { z } from "zod";
 import { BrowserBoundsSchema, BrowserViewportSchema } from "./browser";
 
-export const LocalBrowserUrlSchema = z
-	.url()
-	.max(4096)
-	.refine((value) => {
-		try {
-			const url = new URL(value);
-			return (
-				url.protocol === "http:" &&
-				["localhost", "127.0.0.1", "[::1]"].includes(url.hostname) &&
-				!url.username &&
-				!url.password
-			);
-		} catch {
-			return false;
-		}
-	}, "Use a local HTTP address without credentials");
+import { WorkspaceUrlSchema } from "./web-url";
+
+/** Legacy transport name; workspace canvases also support public HTTPS pages. */
+export const LocalBrowserUrlSchema = WorkspaceUrlSchema;
 export const LocalBrowserStateSchema = z.strictObject({
 	url: LocalBrowserUrlSchema,
 	title: z.string().max(500),
 	viewport: BrowserViewportSchema,
 	canGoBack: z.boolean(),
 	canGoForward: z.boolean(),
-	provenance: z.literal("local-preview-unverified-revision"),
+	provenance: z.enum(["local-preview-unverified-revision", "website-unverified-revision"]),
 });
 export const LocalBrowserPresentSchema = z.strictObject({
 	bounds: BrowserBoundsSchema.nullable(),

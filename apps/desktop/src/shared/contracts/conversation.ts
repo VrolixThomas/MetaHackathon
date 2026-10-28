@@ -3,6 +3,7 @@ import { IdSchema } from "./common";
 import { TurnIdentitySchema } from "./interaction";
 import { ReviewScreenSchema } from "./prepared-review";
 import { PullRequestSchema } from "./review";
+import { WorkspaceSnapshotSchema } from "./workspace";
 
 /** V1 conversation needs no review. Review AgentTurnInput remains screen-bound. */
 export const ConversationTurnInputSchema = z.strictObject({
@@ -11,6 +12,7 @@ export const ConversationTurnInputSchema = z.strictObject({
 	text: z.string().trim().min(1).max(32_000),
 	prId: IdSchema.optional(),
 	screen: ReviewScreenSchema.optional(),
+	workspace: WorkspaceSnapshotSchema.optional(),
 });
 export const ConversationPRContextSchema = z.strictObject({
 	pr: PullRequestSchema,

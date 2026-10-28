@@ -4,6 +4,7 @@ import { BrowserStateSchema } from "./browser";
 import { CodeLocationSchema, IdSchema } from "./common";
 import { ReviewNavigationSchema, ReviewScreenSchema } from "./prepared-review";
 import { DraftedCommentSchema } from "./review";
+import { WorkspaceEffectSchema, WorkspaceSnapshotSchema } from "./workspace";
 
 export const ScreenContextSchema = z.strictObject({
 	prId: IdSchema,
@@ -48,6 +49,17 @@ export const ConversationActionReceiptSchema = z.strictObject({
 	status: z.enum(["applied", "ignored"]),
 	screen: ReviewScreenSchema,
 });
+export const WorkspaceActionReceiptSchema = z.strictObject({
+	...TurnIdentitySchema.shape,
+	requestId: IdSchema,
+	status: z.enum(["applied", "ignored"]),
+	workspace: WorkspaceSnapshotSchema,
+});
+export const NarrationReceiptSchema = z.strictObject({
+	...TurnIdentitySchema.shape,
+	requestId: IdSchema,
+	status: z.enum(["spoken", "displayed", "ignored"]),
+});
 export const AgentTurnInputSchema = z.strictObject({
 	...TurnIdentitySchema.shape,
 	requestId: IdSchema,
@@ -61,6 +73,16 @@ const actionFields = {
 	screenSequence: z.int().nonnegative(),
 };
 export const AgentActionSchema = z.discriminatedUnion("kind", [
+	z.strictObject({
+		...actionFields,
+		kind: z.literal("workspace-canvas"),
+		effect: WorkspaceEffectSchema,
+	}),
+	z.strictObject({
+		...actionFields,
+		kind: z.literal("narration-checkpoint"),
+		throughTextLength: z.int().nonnegative().max(32000),
+	}),
 	z.strictObject({
 		...actionFields,
 		kind: z.literal("review-navigation"),
@@ -129,6 +151,8 @@ export type ScreenContextUpdate = z.infer<typeof ScreenContextUpdateSchema>;
 export type AgentActionReceipt = z.infer<typeof AgentActionReceiptSchema>;
 export type AgentActionReceiptResult = z.infer<typeof AgentActionReceiptResultSchema>;
 export type ConversationActionReceipt = z.infer<typeof ConversationActionReceiptSchema>;
+export type WorkspaceActionReceipt = z.infer<typeof WorkspaceActionReceiptSchema>;
+export type NarrationReceipt = z.infer<typeof NarrationReceiptSchema>;
 export type TurnIdentity = z.infer<typeof TurnIdentitySchema>;
 export type AgentTurnInput = z.infer<typeof AgentTurnInputSchema>;
 export type AgentAction = z.infer<typeof AgentActionSchema>;

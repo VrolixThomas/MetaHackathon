@@ -4,6 +4,7 @@ export * from "./browser";
 export * from "./common";
 export * from "./conversation";
 export * from "./conversation-diagnostics";
+export * from "./workspace";
 export * from "./interaction";
 export * from "./local-browser";
 export * from "./prepared-review";
