@@ -545,6 +545,35 @@ async function native() {
 				`!!document.querySelector('[data-pr-id="${prId}"][data-review-status="ready"] button.review-inbox-select:not(:disabled)')`
 			)
 		);
+		if (process.env.PREPARED_REVIEW_MISSING_GITHUB === "1") {
+			await rpc("mutation", "runtime.deleteCredential", { provider: "github" });
+			await js(
+				`document.querySelector('[data-pr-id="${prId}"][data-review-status="ready"] button.review-inbox-select').click()`
+			);
+			await wait("actionable GitHub connection error", () =>
+				js(
+					`document.querySelector('.canvas-error')?.textContent.includes('Connect GitHub in Settings')`
+				)
+			);
+			assert.ok(
+				!(await readUI()).reviewId,
+				"A cached ready plan must not bypass live GitHub validation"
+			);
+			await js(`document.querySelector('.canvas-error button').click()`);
+			await wait("connection recovery settings", () =>
+				js(`document.querySelector('#configuration')?.open === true`)
+			);
+			await rpc("mutation", "runtime.setCredential", {
+				provider: "github",
+				secret: "prepared-smoke-github-only",
+			});
+			await js(`document.querySelector('#configuration .workspace-dialog-heading button').click()`);
+			await js(`document.querySelector('[data-testid="repository-selector"]').click()`);
+			await wait("repository chooser after credential recovery", () =>
+				js(`document.querySelector('#repository-selector')?.open === true`)
+			);
+			report.githubConfigurationRecovery = true;
+		}
 		await js(
 			`document.querySelector('[data-pr-id="${prId}"][data-review-status="ready"] button.review-inbox-select').click()`
 		);

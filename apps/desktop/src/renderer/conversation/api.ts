@@ -17,6 +17,7 @@ import {
 	PullRequestSchema,
 	TurnIdentitySchema,
 	VoiceSetupStatusSchema,
+	WORKSPACE_GITHUB_REQUIRED,
 } from "../../shared/contracts";
 import type { TrpcRequest, TrpcResponse } from "../../shared/types";
 import { conversationErrorMessage } from "./errors";
@@ -32,7 +33,12 @@ export function createConversationApi(request: Request) {
 		input?: unknown
 	): Promise<unknown> => {
 		const response = await request({ type, path, input: superjson.serialize(input) });
-		if ("error" in response) throw new Error(conversationErrorMessage(response.error.message));
+		if ("error" in response)
+			throw new Error(
+				path.startsWith("workspace.") && response.error.message === WORKSPACE_GITHUB_REQUIRED
+					? WORKSPACE_GITHUB_REQUIRED
+					: conversationErrorMessage(response.error.message)
+			);
 		return superjson.deserialize(response.result.data);
 	};
 	return {

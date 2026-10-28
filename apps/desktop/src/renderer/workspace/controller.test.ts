@@ -5,6 +5,7 @@ import type {
 	WorkspaceActionReceipt,
 	WorkspaceSnapshot,
 } from "../../shared/contracts";
+import { WORKSPACE_GITHUB_REQUIRED } from "../../shared/contracts";
 import { createPreparedApi } from "../prepared/api";
 import { createPreparedController } from "../prepared/controller";
 import { createWorkspaceController } from "./controller";
@@ -58,7 +59,7 @@ async function until(predicate: () => boolean) {
 function harness(
 	options: {
 		timeout?: number;
-		prepare?: () => Promise<AgentAction>;
+		prepare?: (input: unknown) => Promise<AgentAction>;
 		present?: (input: unknown) => Promise<unknown>;
 		observe?: (workspace: WorkspaceSnapshot, count: number) => Promise<WorkspaceSnapshot>;
 	} = {}
@@ -81,7 +82,7 @@ function harness(
 				capabilities: ["documents", "visuals", "browser", "review"],
 			};
 		}
-		if (path === "workspace.prepare") return options.prepare ? options.prepare() : action();
+		if (path === "workspace.prepare") return options.prepare ? options.prepare(input) : action();
 		if (path === "workspace.applied") {
 			receipts.push(input as WorkspaceActionReceipt);
 			if ((input as WorkspaceActionReceipt).status === "applied")
@@ -282,6 +283,7 @@ it("a late manual prepare cannot replace a newer intent", async () => {
 	try {
 		await h.controller.start();
 		const old = h.controller.command({ kind: "focus-canvas", id: "old" });
+		await until(() => calls === 1);
 		const next = h.controller.command({ kind: "focus-canvas", id: "doc-1" });
 		await until(() => h.controller.getContext()?.sequence === 1);
 		h.controller.rendered(1);
@@ -347,6 +349,55 @@ it("a delayed authoritative refresh cannot roll back a newer rendered candidate"
 		h.controller.presented(2, null);
 		assert.equal(await next, "applied");
 		assert.equal(h.controller.getContext()?.primaryId, "review");
+	} finally {
+		h.dispose();
+	}
+});
+
+it("manual selection prepares from fresh main state after the picker outlives its original snapshot", async () => {
+	let expectedSequence = -1;
+	const h = harness({
+		observe: async (workspace, count) => (count === 2 ? { ...initial, sequence: 4 } : workspace),
+		prepare: async (input) => {
+			expectedSequence = (input as { expectedSequence: number }).expectedSequence;
+			return action({ ...document, sequence: 5 });
+		},
+	});
+	try {
+		await h.controller.start();
+		const selecting = h.controller.command({ kind: "focus-canvas", id: "doc-1" });
+		await until(() => h.controller.getContext()?.sequence === 5);
+		h.controller.rendered(5);
+		h.controller.presented(5, null);
+		assert.equal(await selecting, "applied");
+		assert.equal(expectedSequence, 4);
+	} finally {
+		h.dispose();
+	}
+});
+it("missing GitHub is actionable and a later selection can recover without restarting", async () => {
+	let configured = false;
+	const h = harness({
+		prepare: async () => {
+			if (!configured) throw new Error(WORKSPACE_GITHUB_REQUIRED);
+			return action();
+		},
+	});
+	try {
+		await h.controller.start();
+		assert.equal(
+			await h.controller.command({ kind: "show-review", prId: "owner/repo#1" }),
+			"ignored"
+		);
+		assert.equal(h.controller.store.getState().error, WORKSPACE_GITHUB_REQUIRED);
+		assert.equal(h.receipts.length, 0);
+		configured = true;
+		const selecting = h.controller.command({ kind: "show-review", prId: "owner/repo#1" });
+		await until(() => h.controller.getContext()?.sequence === 1);
+		h.controller.rendered(1);
+		h.controller.presented(1, null);
+		assert.equal(await selecting, "applied");
+		assert.equal(h.controller.store.getState().error, "");
 	} finally {
 		h.dispose();
 	}

@@ -3,6 +3,7 @@ import { useStore } from "zustand";
 import {
 	type BrowserBounds,
 	type Canvas,
+	WORKSPACE_GITHUB_REQUIRED,
 	type WorkspaceCommand,
 	WorkspaceUrlSchema,
 } from "../../shared/contracts";
@@ -25,12 +26,14 @@ export function CanvasWorkspace({
 	browser,
 	obscured,
 	onOpenRepository,
+	onOpenSettings,
 }: {
 	controller: WorkspaceController;
 	reviews: PreparedController;
 	browser: LocalBrowserController;
 	obscured: boolean;
 	onOpenRepository(): void;
+	onOpenSettings?(): void;
 }) {
 	const state = useStore(controller.store);
 	const page = useStore(browser.store).page;
@@ -196,9 +199,14 @@ export function CanvasWorkspace({
 			data-secondary-canvas={workspace?.secondaryId ?? ""}
 		>
 			{state.error && (
-				<p className="canvas-error" role="alert">
+				<div className="canvas-error" role="alert">
 					{state.error}
-				</p>
+					{state.error === WORKSPACE_GITHUB_REQUIRED && onOpenSettings && (
+						<button type="button" onClick={onOpenSettings}>
+							Connect GitHub
+						</button>
+					)}
+				</div>
 			)}
 			{workspace ? (
 				<>

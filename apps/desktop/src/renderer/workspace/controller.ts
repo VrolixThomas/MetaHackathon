@@ -4,6 +4,7 @@ import {
 	AgentActionReceiptResultSchema,
 	AgentActionSchema,
 	type BrowserBounds,
+	WORKSPACE_GITHUB_REQUIRED,
 	type WorkspaceActionReceipt,
 	WorkspaceActionReceiptSchema,
 	type WorkspaceCommand,
@@ -51,7 +52,6 @@ export function createWorkspaceController(
 		error: string;
 	}>(() => ({ workspace: null, observation: null, busy: false, error: "" }));
 	let disposed = false;
-	let synchronized = false;
 	let obscured = false;
 	let epoch = 0;
 	let manualEpoch = 0;
@@ -112,7 +112,6 @@ export function createWorkspaceController(
 		if (disposed || current !== epoch) return;
 		validateWorkspace(observation.workspace);
 		browser.adopt(observation.workspace.browser);
-		synchronized = true;
 		store.setState({ workspace: observation.workspace, observation });
 	}
 	async function acknowledge(action: CanvasAction, status: Status) {
@@ -141,7 +140,6 @@ export function createWorkspaceController(
 				await reconcile(receiptEpoch);
 			} catch {
 				if (!disposed && receiptEpoch === epoch) {
-					synchronized = false;
 					store.setState({
 						error:
 							"The canvas changed, but workspace status is unavailable. Try again to reconnect.",
@@ -267,7 +265,9 @@ export function createWorkspaceController(
 		const current = epoch;
 		store.setState({ busy: true, error: "" });
 		try {
-			if (!synchronized) await reconcile(current);
+			// Main can reconcile review/source changes while a picker or another turn is open.
+			// Every manual intent must prepare against that current canonical snapshot.
+			await reconcile(current);
 			const before = getContext();
 			if (!before || disposed || current !== epoch) return "ignored" as const;
 			const action = AgentActionSchema.parse(
@@ -280,9 +280,14 @@ export function createWorkspaceController(
 			);
 			const currentIntent = current === epoch;
 			return await applyAction(action, () => !disposed && currentIntent && request === manualEpoch);
-		} catch {
+		} catch (error) {
 			if (!disposed && current === epoch)
-				store.setState({ error: "The workspace change is unavailable. Try again." });
+				store.setState({
+					error:
+						error instanceof Error && error.message === WORKSPACE_GITHUB_REQUIRED
+							? WORKSPACE_GITHUB_REQUIRED
+							: "The workspace change is unavailable. Try again.",
+				});
 			return "ignored" as const;
 		} finally {
 			if (!disposed && request === manualEpoch) store.setState({ busy: false });
@@ -297,7 +302,6 @@ export function createWorkspaceController(
 			if (disposed || current !== epoch) return;
 			validateWorkspace(observation.workspace);
 			browser.adopt(observation.workspace.browser);
-			synchronized = true;
 			store.setState({ workspace: observation.workspace, observation, error: "" });
 		} catch {
 			if (!disposed && current === epoch)

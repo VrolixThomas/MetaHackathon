@@ -1,3 +1,4 @@
+import { TRPCError } from "@trpc/server";
 import { z } from "zod";
 import { mergeRouters, publicProcedure, router } from "..";
 import {
@@ -5,6 +6,7 @@ import {
 	AgentActionSchema,
 	GitHubRepositorySchema,
 	IdSchema,
+	WORKSPACE_GITHUB_REQUIRED,
 	WorkspaceActionReceiptSchema,
 	WorkspaceCommandSchema,
 	WorkspaceObservationSchema,
@@ -23,6 +25,7 @@ import {
 	agentComposition,
 	conversationService,
 	getBrowser,
+	getConfiguration,
 	getConfigurationPorts,
 	getDiagnostics,
 	getLocalBrowser,
@@ -52,7 +55,11 @@ export const appRouter = router({
 				})
 			)
 			.output(AgentActionSchema)
-			.mutation(({ input }) => getWorkspace().prepare(input)),
+			.mutation(async ({ input }) => {
+				if (input.command.kind === "show-review" && !(await getConfiguration().get("github")))
+					throw new TRPCError({ code: "UNAUTHORIZED", message: WORKSPACE_GITHUB_REQUIRED });
+				return getWorkspace().prepare(input);
+			}),
 		applied: publicProcedure
 			.input(WorkspaceActionReceiptSchema)
 			.output(AgentActionReceiptResultSchema)

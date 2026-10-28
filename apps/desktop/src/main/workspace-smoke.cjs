@@ -701,6 +701,14 @@ async function native() {
 		);
 		await app.whenReady();
 		win = await wait("main window", () => BrowserWindow.getAllWindows()[0]);
+		// Keep the native surface visible, but prevent unrelated user clicks/typing from
+		// interrupting the controlled walkthrough while the real app is used alongside it.
+		if (process.env.WORKSPACE_SMOKE_INTERACTIVE !== "1") {
+			win.setTitle("Muse automated workspace check");
+			win.setIgnoreMouseEvents(true);
+			win.setFocusable(false);
+			report.nonInteractiveTestWindow = true;
+		}
 		await wait("built renderer", () => !win.webContents.isLoadingMainFrame());
 		const js = async (code) => {
 			try {

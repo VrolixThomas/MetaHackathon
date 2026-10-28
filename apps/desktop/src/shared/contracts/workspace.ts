@@ -8,6 +8,10 @@ import { PullRequestSchema } from "./review";
 import { WorkspaceUrlSchema } from "./web-url";
 export { WorkspaceUrlSchema } from "./web-url";
 
+/** Fixed, safe IPC diagnostic. Never reflect provider text or credential values. */
+export const WORKSPACE_GITHUB_REQUIRED =
+	"Connect GitHub in Settings, then reopen this pull request.";
+
 const color = z.string().regex(/^#[0-9a-fA-F]{6}$/);
 const point = z.number().finite().min(-4000).max(8000);
 export const VisualSpecSchema = z.strictObject({

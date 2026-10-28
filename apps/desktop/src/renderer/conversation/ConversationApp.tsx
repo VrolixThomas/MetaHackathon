@@ -381,6 +381,7 @@ export function ConversationApp({
 									browser={browser}
 									obscured={overlay !== null}
 									onOpenRepository={openRepository}
+									onOpenSettings={() => setOverlay("configuration")}
 								/>
 							) : reviewOpen ? (
 								<ReviewWorkspace controller={reviews} onInteraction={controller.interruptReply} />

@@ -21,6 +21,9 @@ On another checkout, install Node 22.12+ and Bun 1.3.9+, then run
 
 The development app reads repository-root `.env`. Copy `.env.example` if needed:
 
+Each worktree has its own `.env`. When switching checkout folders, reuse your configured file
+or select it explicitly with `METAHACKATHON_ENV_FILE`; Git does not transfer local credentials.
+
 ```dotenv
 MODEL_API_KEY=
 ELEVENLABS_API_KEY=
@@ -68,6 +71,8 @@ Open **More → Settings**, then **Connect GitHub**. The app imports your existi
 into the configured `.env`; if necessary, first run `gh auth login --hostname github.com`.
 You can also set `GITHUB_TOKEN` directly. Then connect your repository as described below.
 There is no sample PR fallback. Ordinary conversation works without GitHub or a selected PR.
+Cached ready reviews still require GitHub access to verify their current revisions before opening.
+If GitHub is unconfigured, the workspace offers **Connect GitHub** directly.
 
 ## Prepared reviews
 
