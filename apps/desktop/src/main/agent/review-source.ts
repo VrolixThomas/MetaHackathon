@@ -5,6 +5,7 @@ import type {
 	ReviewScreen,
 } from "../../shared/contracts";
 import type { MetaItem } from "./meta-client";
+import type { workspaceModelContext } from "./workspace-tools";
 
 const MAX_INPUT_BYTES = 96_000;
 type Snapshot = {
@@ -26,7 +27,9 @@ export function reviewModelInput(
 	history: MetaItem[],
 	questionIndex: number,
 	snapshot: Snapshot,
-	source: CurrentReviewSource
+	source: CurrentReviewSource,
+	actualWorkspace?: ReturnType<typeof workspaceModelContext>,
+	onInspected?: (baseEndLine: number, headEndLine: number) => void
 ): MetaItem[] {
 	const retained = [...history];
 	let dropped = 0;
@@ -107,6 +110,19 @@ export function reviewModelInput(
 				path: snapshot.screen.path ?? null,
 			};
 	const packet = {
+		...(actualWorkspace === undefined ? {} : { actualWorkspace }),
+		currentFilePresentation:
+			snapshot.screen.mode !== "review"
+				? "not-shown"
+				: !actualWorkspace ||
+						actualWorkspace.workspace.canvases.some(
+							(canvas) =>
+								canvas.kind === "review" &&
+								(canvas.id === actualWorkspace.workspace.primaryId ||
+									canvas.id === actualWorkspace.workspace.secondaryId)
+						)
+					? "displayed"
+					: "cached-hidden",
 		reviewAvailability: snapshot.review ? "ready" : "unavailable",
 		preparedReview,
 		currentFile,
@@ -162,6 +178,10 @@ export function reviewModelInput(
 	const result = input();
 	if (encodedSize(result) > MAX_INPUT_BYTES)
 		throw new Error("Review input exceeds the source context budget");
+	onInspected?.(
+		currentFileSource.base?.excerpt?.endLine ?? 0,
+		currentFileSource.head?.excerpt?.endLine ?? 0
+	);
 	return result;
 }
 function encodedSize(value: unknown): number {

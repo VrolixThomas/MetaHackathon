@@ -28,12 +28,16 @@ import {
 } from "./guided-review";
 import { type AgentModelClient, MetaApiError, type MetaItem } from "./meta-client";
 import { NarrationReceiptGate, type NarrationReceiptOptions } from "./narration";
+import { runWorkspaceConversation } from "./workspace-conversation";
+import { type ConversationWorkspacePorts, ConversationWorkspaceTools } from "./workspace-tools";
 
 export interface ConversationOptions {
 	getContext?: (prId: string, signal: AbortSignal) => Promise<ConversationPRContext>;
 	review?: ConversationReviewPorts;
 	actionReceipts?: ConversationReceiptOptions;
 	narrationReceipts?: NarrationReceiptOptions;
+	narrationCheckpoints?: boolean;
+	workspace?: ConversationWorkspacePorts;
 }
 const INSTRUCTIONS = `You are a conversational assistant. Respond naturally to greetings, ordinary questions and follow-ups; no pull request is required. Keep spoken answers clear and reasonably brief unless the user asks for detail.
 Use the actual conversation history to understand follow-ups. Do not invent earlier messages or facts. Older exchanges may have been omitted to bound context.
@@ -73,7 +77,7 @@ type EventPayload =
 class ContextError extends Error {}
 class ReplyError extends Error {}
 
-/** Text conversation only. Root supplies credentials/client and registers the separate router. */
+/** One conversation/history/generation for text, workspace tools and narrated review. */
 export class ConversationService {
 	private readonly sessions = new Map<string, Session>();
 	private readonly requests = new Map<string, RequestRecord>();
@@ -254,6 +258,15 @@ export class ConversationService {
 		if (turn.record.status !== "running") return;
 		turn.record.status = "cancelled";
 		turn.controller.abort();
+		try {
+			this.options.workspace?.cancel?.({
+				sessionId: turn.input.sessionId,
+				turnId: turn.input.turnId,
+				generation: turn.input.generation,
+			});
+		} catch {
+			/* Cancellation still closes this generation if a port fails cleanup. */
+		}
 		this.emit(turn, { kind: "cancelled" });
 	}
 	private append(turn: Turn, delta: string) {
@@ -268,30 +281,29 @@ export class ConversationService {
 				{ role: "user", content: pair.user },
 				{ role: "assistant", content: pair.assistant },
 			]);
-			if (turn.input.prId !== undefined && this.options.review) {
+			if ((turn.input.prId !== undefined && this.options.review) || this.options.workspace) {
 				history.push({ role: "user", content: turn.input.text });
-				const gate = this.reviewReceipts;
-				await runGuidedReview(
-					this.client,
-					this.options.review,
-					turn.input,
-					history,
-					signal,
-					(action) => {
-						if (!gate)
-							throw new GuidedReviewError("Review workspace acknowledgements are not connected.");
-						return gate.publish(action, signal, () => {
-							if (!this.active(session, turn)) throw new Error("Turn is no longer active");
-							turn.actions.push(action);
-							this.emit(turn, { kind: "action", action });
-						});
-					},
-					(delta) => {
-						if (this.active(session, turn)) this.append(turn, delta);
-					},
-					{
-						state: session.walkthrough,
-						onNarration: (throughTextLength, screenSequence) => {
+				const emitAction = (rawAction: AgentAction) => {
+					if (!this.active(session, turn)) throw new Error("Turn is no longer active");
+					const action = AgentActionSchema.parse(rawAction);
+					if (
+						action.sessionId !== turn.input.sessionId ||
+						action.turnId !== turn.input.turnId ||
+						action.generation !== turn.input.generation
+					)
+						throw new Error("Action identity does not match this conversation turn");
+					turn.actions.push(action);
+					this.emit(turn, { kind: "action", action });
+				};
+				const onText = (delta: string) => {
+					if (!this.active(session, turn)) throw new Error("Turn is no longer active");
+					this.append(turn, delta);
+				};
+				const workspace = this.options.workspace
+					? new ConversationWorkspaceTools(this.options.workspace, turn.input, signal, emitAction)
+					: undefined;
+				const onNarration = this.options.narrationCheckpoints
+					? (throughTextLength: number, screenSequence: number) => {
 							if (!this.active(session, turn) || throughTextLength !== turn.text.length)
 								throw new Error("Narration checkpoint is stale");
 							const action = AgentActionSchema.parse({
@@ -306,14 +318,46 @@ export class ConversationService {
 								throughTextLength,
 							});
 							if (action.kind !== "narration-checkpoint") throw new Error("Invalid checkpoint");
-							return this.narrationReceipts.publish(action, signal, () => {
-								if (!this.active(session, turn)) throw new Error("Turn is no longer active");
-								turn.actions.push(action);
-								this.emit(turn, { kind: "action", action });
-							});
+							return this.narrationReceipts.publish(action, signal, () => emitAction(action));
+						}
+					: undefined;
+				const recovery = { used: false };
+				const reviewPorts = this.options.review;
+				const runReview = async (prId: string, reviewHistory: MetaItem[]) => {
+					if (!reviewPorts) throw new GuidedReviewError("Review source is not connected.");
+					return runGuidedReview(
+						this.client,
+						reviewPorts,
+						{ ...turn.input, prId },
+						reviewHistory,
+						signal,
+						(action) => {
+							if (!this.reviewReceipts)
+								throw new GuidedReviewError("Review workspace acknowledgements are not connected.");
+							return this.reviewReceipts.publish(action, signal, () => emitAction(action));
 						},
-					}
-				);
+						onText,
+						{ state: session.walkthrough, onNarration, workspace, recovery }
+					);
+				};
+				const observed = await workspace?.observe();
+				const effectivePrId = observed
+					? observed.workspace.review.mode === "review"
+						? observed.workspace.review.prId
+						: undefined
+					: turn.input.prId;
+				if (effectivePrId && reviewPorts) await runReview(effectivePrId, history);
+				else if (workspace)
+					await runWorkspaceConversation(
+						this.client,
+						workspace,
+						turn.input,
+						history,
+						signal,
+						onText,
+						reviewPorts ? runReview : undefined,
+						recovery
+					);
 				if (!this.active(session, turn)) return;
 			} else {
 				if (turn.input.prId !== undefined) {

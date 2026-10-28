@@ -160,6 +160,7 @@ function harness(
 		review: ports,
 		actionReceipts: { timeoutMs, updateScreen: commit },
 		narrationReceipts: { timeoutMs },
+		narrationCheckpoints: true,
 	};
 	const service = new ConversationService(client, options);
 	const identity = {
