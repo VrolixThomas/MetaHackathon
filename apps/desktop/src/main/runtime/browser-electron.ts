@@ -4,19 +4,28 @@ import { type BrowserWindow, WebContentsView, session } from "electron";
 import type { BrowserBounds, BrowserViewport } from "../../shared/contracts";
 import type { BrowserPage, BrowserSnapshot } from "./browser";
 import { browserActionScript, browserSnapshotScript } from "./browser-dom";
-import { allowedBrowserURL } from "./browser-policy";
+import { allowedBrowserURL, allowedWorkspaceBrowserURL } from "./browser-policy";
+
+export interface ElectronBrowserPageOptions {
+	navigationPolicy?: "preview" | "workspace";
+}
 
 /** Main supplies its window; this is the only page both the reviewer and agent operate. */
 export function createElectronBrowserPage(
 	origin: string,
-	getWindow: () => BrowserWindow
+	getWindow: () => BrowserWindow,
+	options: ElectronBrowserPageOptions = {}
 ): BrowserPage {
+	const allowedURL =
+		options.navigationPolicy === "workspace"
+			? allowedWorkspaceBrowserURL
+			: (url: string) => allowedBrowserURL(url, origin);
 	const isolated = session.fromPartition(`review-browser-${randomUUID()}`);
 	isolated.setPermissionRequestHandler((_contents, _permission, callback) => callback(false));
 	isolated.setPermissionCheckHandler(() => false);
 	isolated.setDevicePermissionHandler(() => false);
 	isolated.webRequest.onBeforeRequest((details, callback) =>
-		callback({ cancel: !allowedBrowserURL(details.url, origin) })
+		callback({ cancel: !allowedURL(details.url) })
 	);
 	isolated.on("will-download", (event) => event.preventDefault());
 	const view = new WebContentsView({
@@ -35,13 +44,13 @@ export function createElectronBrowserPage(
 	contents.setWebRTCIPHandlingPolicy("disable_non_proxied_udp");
 	contents.setWindowOpenHandler(() => ({ action: "deny" }));
 	contents.on("will-navigate", (event, url) => {
-		if (!allowedBrowserURL(url, origin)) event.preventDefault();
+		if (!allowedURL(url)) event.preventDefault();
 	});
 	contents.on("will-redirect", (event, url) => {
-		if (!allowedBrowserURL(url, origin)) event.preventDefault();
+		if (!allowedURL(url)) event.preventDefault();
 	});
 	contents.on("will-frame-navigate", (event) => {
-		if (!allowedBrowserURL(event.url, origin)) event.preventDefault();
+		if (!allowedURL(event.url)) event.preventDefault();
 	});
 	contents.on("will-attach-webview", (event) => event.preventDefault());
 	let owner: BrowserWindow | undefined;
@@ -133,8 +142,12 @@ export function createElectronBrowserPage(
 	return {
 		async loadURL(url) {
 			check();
-			if (!allowedBrowserURL(url, origin))
-				throw new Error("Navigation outside the active preview is blocked");
+			if (!allowedURL(url))
+				throw new Error(
+					options.navigationPolicy === "workspace"
+						? "Navigation outside workspace web addresses is blocked"
+						: "Navigation outside the active preview is blocked"
+				);
 			await contents.loadURL(url);
 		},
 		history() {
@@ -180,13 +193,19 @@ export function createElectronBrowserPage(
 		},
 		present(value) {
 			check();
-			bounds = value;
+			bounds = value ? { ...value } : null;
 			if (value && !owner) {
 				owner = getWindow();
 				if (owner.isDestroyed()) throw new Error("Browser host window closed");
 				owner.contentView.addChildView(view);
 			}
 			layout();
+		},
+		presentation() {
+			const visible = Boolean(
+				!closed && !contents.isDestroyed() && owner && !owner.isDestroyed() && view.getVisible()
+			);
+			return { visible, bounds: visible ? { ...view.getBounds() } : null };
 		},
 		close() {
 			if (closed) return;

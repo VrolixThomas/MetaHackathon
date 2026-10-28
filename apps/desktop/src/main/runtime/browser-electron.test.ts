@@ -8,12 +8,12 @@ import { runInNewContext } from "node:vm";
 import type { BrowserWindow } from "electron";
 import { ModuleKind, transpileModule } from "typescript";
 import * as browserDOM from "./browser-dom";
-import type { createElectronBrowserPage } from "./browser-electron";
+import type { ElectronBrowserPageOptions, createElectronBrowserPage } from "./browser-electron";
 import * as browserPolicy from "./browser-policy";
 
 // Exercise the actual adapter with an isolated Electron mock, without starting Electron
 // or replacing the module globally for other tests. Native acceptance belongs to integration.
-function adapterFixture() {
+function adapterFixture(options?: ElectronBrowserPageOptions) {
 	let renderExists = false;
 	let destroyed = false;
 	let loading = false;
@@ -21,13 +21,26 @@ function adapterFixture() {
 	let afterAction: (() => void) | undefined;
 	let created = 0;
 	let visible = false;
+	let nativeBounds = { x: 0, y: 0, width: 0, height: 0 };
+	let preferences: Record<string, unknown> = {};
+	let requestPermission = (
+		_contents: unknown,
+		_permission: string,
+		_done: (v: boolean) => void
+	) => {};
+	let checkPermission = () => true;
+	let checkDevice = () => true;
+	let request = (_details: { url: string }, _done: (v: { cancel: boolean }) => void) => {};
+	let popup = () => ({ action: "allow" });
 	const entries: string[] = [];
 	let activeIndex = -1;
 	const calls: string[] = [];
 	const emulations: Array<{ viewSize: { width: number; height: number }; scale: number }> = [];
 	const contents = Object.assign(new EventEmitter(), {
 		setWebRTCIPHandlingPolicy() {},
-		setWindowOpenHandler() {},
+		setWindowOpenHandler(handler: typeof popup) {
+			popup = handler;
+		},
 		isDestroyed: () => destroyed,
 		isLoadingMainFrame: () => loading,
 		getURL: () => entries[activeIndex] ?? "about:blank",
@@ -89,7 +102,7 @@ function adapterFixture() {
 				afterAction?.();
 			}
 			return {
-				url: "http://127.0.0.1:43210/",
+				url: contents.getURL(),
 				title: "Mock page",
 				text: "",
 				elements: [],
@@ -102,10 +115,20 @@ function adapterFixture() {
 		},
 	});
 	const isolated = Object.assign(new EventEmitter(), {
-		setPermissionRequestHandler() {},
-		setPermissionCheckHandler() {},
-		setDevicePermissionHandler() {},
-		webRequest: { onBeforeRequest() {} },
+		setPermissionRequestHandler(handler: typeof requestPermission) {
+			requestPermission = handler;
+		},
+		setPermissionCheckHandler(handler: typeof checkPermission) {
+			checkPermission = handler;
+		},
+		setDevicePermissionHandler(handler: typeof checkDevice) {
+			checkDevice = handler;
+		},
+		webRequest: {
+			onBeforeRequest(handler: typeof request) {
+				request = handler;
+			},
+		},
 		async clearStorageData() {},
 	});
 	const children: unknown[] = [];
@@ -125,14 +148,22 @@ function adapterFixture() {
 		session: { fromPartition: () => isolated },
 		WebContentsView: class {
 			webContents = contents;
-			constructor() {
+			constructor(options: { webPreferences: Record<string, unknown> }) {
 				created++;
+				preferences = options.webPreferences;
 			}
 			setVisible(value: boolean) {
 				visible = value;
 				calls.push(value ? "show" : "hide");
 			}
-			setBounds() {
+			getVisible() {
+				return visible;
+			}
+			getBounds() {
+				return nativeBounds;
+			}
+			setBounds(value: typeof nativeBounds) {
+				nativeBounds = value;
 				calls.push("bounds");
 			}
 		},
@@ -155,7 +186,7 @@ function adapterFixture() {
 	});
 	const create = exports["createElectronBrowserPage"] as typeof createElectronBrowserPage;
 	return {
-		page: create("http://127.0.0.1:43210", () => window as unknown as BrowserWindow),
+		page: create("http://127.0.0.1:43210", () => window as unknown as BrowserWindow, options),
 		contents,
 		calls,
 		emulations,
@@ -166,12 +197,174 @@ function adapterFixture() {
 		},
 		created: () => created,
 		visible: () => visible,
+		nativeBounds: () => nativeBounds,
+		preferences: () => preferences,
+		requestAllowed(url: string) {
+			let allowed: boolean | undefined;
+			request({ url }, ({ cancel }) => {
+				allowed = !cancel;
+			});
+			return allowed;
+		},
+		navigationAllowed(eventName: string, url: string) {
+			let allowed = true;
+			contents.emit(
+				eventName,
+				{
+					url,
+					preventDefault: () => {
+						allowed = false;
+					},
+				},
+				url
+			);
+			return allowed;
+		},
+		permissionsDenied() {
+			const responses: boolean[] = [];
+			for (const permission of ["media", "microphone", "camera", "geolocation", "notifications"])
+				requestPermission(contents, permission, (allowed) => responses.push(allowed));
+			return responses.every((allowed) => !allowed) && !checkPermission() && !checkDevice();
+		},
+		popup: () => popup(),
+		downloadAllowed() {
+			let allowed = true;
+			isolated.emit("will-download", {
+				preventDefault: () => {
+					allowed = false;
+				},
+			});
+			return allowed;
+		},
 		loseRenderer() {
 			renderExists = false;
 			contents.emit("render-process-gone");
 		},
 	};
 }
+
+for (const navigationPolicy of [undefined, "preview", "workspace"] as const)
+	test(`native policy gates requests, navigation, redirects and frames: ${navigationPolicy ?? "default"}`, async () => {
+		const f = adapterFixture(navigationPolicy ? { navigationPolicy } : undefined);
+		const permitted = ["http://127.0.0.1:43210/page"];
+		const workspaceOnly = [
+			"https://example.com/page",
+			"https://cdn.example.net/assets/font.woff2",
+			"https://other.example.org/app.js",
+			"http://localhost:3000/",
+			"http://127.0.0.1:4567/",
+			"http://[::1]:8080/",
+		];
+		const denied = [
+			"http://example.com/",
+			"http://192.168.1.5/",
+			"http://localhost.attacker.example/",
+			"http://user:pass@127.0.0.1:43210/",
+			"https://user:pass@example.com/",
+			"file:///etc/passwd",
+			"javascript:alert(1)",
+			"data:text/html,hello",
+			"blob:https://example.com/fake",
+			"about:blank",
+			"chrome://settings",
+			"devtools://devtools/",
+			"electron://app/",
+			"metahackathon://app/",
+			"ftp://example.com/",
+			"not a url",
+		];
+		try {
+			for (const url of [...permitted, ...workspaceOnly, ...denied]) {
+				const allowed =
+					permitted.includes(url) ||
+					(navigationPolicy === "workspace" && workspaceOnly.includes(url));
+				assert.equal(f.requestAllowed(url), allowed, `resource: ${url}`);
+				for (const event of ["will-navigate", "will-redirect", "will-frame-navigate"])
+					assert.equal(f.navigationAllowed(event, url), allowed, `${event}: ${url}`);
+				if (!allowed) await assert.rejects(f.page.loadURL(url), /blocked/);
+			}
+			const prefs = f.preferences();
+			assert.equal(prefs["sandbox"], true);
+			assert.equal(prefs["contextIsolation"], true);
+			assert.equal(prefs["nodeIntegration"], false);
+			assert.equal(prefs["webSecurity"], true);
+			assert.equal(prefs["allowRunningInsecureContent"], false);
+			assert.equal("preload" in prefs, false);
+			assert.equal(f.permissionsDenied(), true);
+			assert.equal(f.downloadAllowed(), false);
+			assert.equal(f.popup().action, "deny");
+			assert.equal(f.navigationAllowed("will-attach-webview", permitted[0] ?? ""), false);
+			assert.equal(f.created(), 1);
+		} finally {
+			f.page.close();
+		}
+	});
+
+test("workspace cross-origin history, actions and observations use one attached native page", async () => {
+	const f = adapterFixture({ navigationPolicy: "workspace" });
+	f.page.present({ x: 10, y: 20, width: 1000, height: 800 });
+	try {
+		for (const url of [
+			"https://first.example/page",
+			"https://second.example/page",
+			"http://localhost:3000/local",
+		]) {
+			const loading = f.page.loadURL(url);
+			f.finishLoad();
+			await loading;
+			assert.equal((await f.page.snapshot()).url, url);
+		}
+		assert.equal(f.page.history?.().canGoBack, true);
+		const back = f.page.back?.();
+		f.finishLoad();
+		await back;
+		assert.equal((await f.page.snapshot()).url, "https://second.example/page");
+		assert.equal(f.page.history?.().canGoForward, true);
+		const forward = f.page.forward?.();
+		f.finishLoad();
+		await forward;
+		assert.equal((await f.page.snapshot()).url, "http://localhost:3000/local");
+		await f.page.act(
+			{ kind: "scroll", sessionId: "s", requestId: "r", browserId: "b", y: 10 },
+			await f.page.snapshot()
+		);
+		assert.equal(f.calls.filter((call) => call === "act").length, 1);
+		assert.equal(f.created(), 1);
+		assert.equal(f.children.length, 1);
+	} finally {
+		f.page.close();
+	}
+});
+
+test("presentation reports clamped native bounds and hides without replacing the page", async () => {
+	const f = adapterFixture({ navigationPolicy: "workspace" });
+	assert.ok(f.page.presentation);
+	assert.equal(f.page.presentation().visible, false);
+	assert.equal(f.page.presentation().bounds, null);
+	const bounds = { x: 1100, y: 800, width: 400, height: 300 };
+	f.page.present(bounds);
+	const shown = f.page.presentation();
+	assert.equal(shown.visible, true);
+	assert.equal(JSON.stringify(shown.bounds), JSON.stringify(f.nativeBounds()));
+	assert.ok(shown.bounds);
+	assert.ok(shown.bounds.x + shown.bounds.width <= 1200);
+	assert.ok(shown.bounds.y + shown.bounds.height <= 900);
+	shown.bounds.x = -1;
+	bounds.x = -2;
+	assert.equal(f.page.presentation().bounds?.x, 1100, "reported bounds are not mutable aliases");
+	f.page.present(null);
+	assert.equal(f.page.presentation().visible, false);
+	assert.equal(f.page.presentation().bounds, null);
+	await f.page.viewport({ width: 390, height: 844 });
+	assert.equal(f.page.presentation().visible, false);
+	f.page.present({ x: 0, y: 0, width: 0, height: 0 });
+	assert.equal(f.page.presentation().visible, false);
+	assert.equal(f.page.presentation().bounds, null);
+	assert.equal(f.created(), 1);
+	f.page.close();
+	assert.equal(f.page.presentation().visible, false);
+	assert.equal(f.page.presentation().bounds, null);
+});
 
 test("native adapter defers emulation until load and applies the latest viewport before observing", async () => {
 	const f = adapterFixture();

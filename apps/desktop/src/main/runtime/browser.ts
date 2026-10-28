@@ -12,13 +12,22 @@ import {
 } from "../../shared/contracts";
 import { allowedBrowserURL, browserURL, previewOrigin } from "./browser-policy";
 
-export type BrowserSnapshot = Pick<BrowserState, "url" | "title" | "text" | "elements" | "scroll">;
+export type BrowserSnapshot = Pick<
+	BrowserState,
+	"url" | "title" | "text" | "elements" | "scroll"
+> & {
+	/** Identity of the actual isolated DOM document, including across same-URL reloads. */
+	documentId?: string;
+	/** The document contains more observable text or elements than the snapshot limits. */
+	truncated?: boolean;
+};
 export interface BrowserPage {
 	loadURL(url: string): Promise<void>;
 	snapshot(): Promise<BrowserSnapshot>;
 	act(command: BrowserCommand, expected: BrowserSnapshot): Promise<void>;
 	viewport(viewport: BrowserViewport): Promise<void>;
 	present(bounds: BrowserBounds | null): void;
+	presentation?(): { visible: boolean; bounds: BrowserBounds | null };
 	history?(): { canGoBack: boolean; canGoForward: boolean };
 	back?(): Promise<void>;
 	forward?(): Promise<void>;
@@ -226,7 +235,9 @@ export class BrowserService {
 	}
 
 	private async capture(sessionId: string, active: ActiveBrowser): Promise<BrowserState> {
-		const snapshot = await active.page.snapshot();
+		// BrowserState is the legacy strict PR contract; workspace metadata stays page-local.
+		const { url, title, text, elements, scroll } = await active.page.snapshot();
+		const snapshot = { url, title, text, elements, scroll };
 		if (active.closed || this.sessions.get(sessionId) !== active)
 			throw new Error("Browser session closed");
 		if (!allowedBrowserURL(snapshot.url, previewOrigin(active.lease.url))) {

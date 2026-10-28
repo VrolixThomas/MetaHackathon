@@ -26,6 +26,22 @@ export function allowedBrowserURL(url: string, origin: string): boolean {
 	}
 }
 
+/** Workspace websites are untrusted web content, never app pages or pinned PR evidence. */
+export function allowedWorkspaceBrowserURL(url: string): boolean {
+	try {
+		const target = new URL(url);
+		return (
+			!target.username &&
+			!target.password &&
+			(target.protocol === "https:" ||
+				(target.protocol === "http:" &&
+					["localhost", "127.0.0.1", "[::1]"].includes(target.hostname)))
+		);
+	} catch {
+		return false;
+	}
+}
+
 export function browserURL(url: string, base: string): string {
 	const resolved = new URL(url, base);
 	if (!allowedBrowserURL(resolved.href, previewOrigin(base)))

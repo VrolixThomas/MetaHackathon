@@ -136,6 +136,24 @@ test("browser persists one page, advances sequence only on change and returns ac
 	assert.equal(f.stopped(), 1);
 });
 
+test("strict BrowserState projects out optional workspace snapshot metadata", async () => {
+	const f = fixture();
+	try {
+		const initial = await f.service.execute(open);
+		const page = f.pages[0];
+		assert.ok(page);
+		page.data.documentId = "isolated-document";
+		page.data.truncated = true;
+		const state = await f.service.observe(open.sessionId);
+		assert.ok(state);
+		assert.equal(state.sequence, initial.sequence);
+		assert.equal("documentId" in state, false);
+		assert.equal("truncated" in state, false);
+	} finally {
+		await f.service.dispose();
+	}
+});
+
 test("manual page changes invalidate refs; base switch owns a new page and exact SHA", async () => {
 	const f = fixture();
 	try {
