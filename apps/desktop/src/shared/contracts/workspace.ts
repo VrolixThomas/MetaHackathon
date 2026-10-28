@@ -5,6 +5,12 @@ import { LocalBrowserStateSchema } from "./local-browser";
 import { ReviewNavigationSchema, ReviewScreenSchema } from "./prepared-review";
 import { PullRequestSchema } from "./review";
 
+import {
+	CenterSectionSchema,
+	CodeFlowSchema,
+	HubSnapshotSchema,
+	PinnedSourceSchema,
+} from "./command-center";
 import { WorkspaceUrlSchema } from "./web-url";
 export { WorkspaceUrlSchema } from "./web-url";
 
@@ -59,6 +65,14 @@ const canvasFields = {
 	revision: z.int().positive(),
 };
 export const CanvasSchema = z.discriminatedUnion("kind", [
+	z.strictObject({
+		...canvasFields,
+		kind: z.literal("center"),
+		section: CenterSectionSchema,
+		selectedId: IdSchema.optional(),
+	}),
+	z.strictObject({ ...canvasFields, kind: z.literal("source"), source: PinnedSourceSchema }),
+	z.strictObject({ ...canvasFields, kind: z.literal("flow"), flow: CodeFlowSchema }),
 	z.strictObject({ ...canvasFields, kind: z.literal("review") }),
 	z.strictObject({ ...canvasFields, kind: z.literal("browser") }),
 	z.strictObject({
@@ -85,6 +99,7 @@ export const WorkspaceSnapshotSchema = z
 		review: ReviewScreenSchema,
 		codeView: z.enum(["diff", "base", "head"]).default("diff"),
 		browser: LocalBrowserStateSchema.nullable(),
+		centerSection: CenterSectionSchema.optional(),
 	})
 	.superRefine((value, ctx) => {
 		const ids = value.canvases.map((c) => c.id);
@@ -135,6 +150,28 @@ export const WorkspaceBrowserCommandSchema = z.discriminatedUnion("kind", [
 ]);
 const target = z.enum(["primary", "secondary"]).optional();
 export const WorkspaceCommandSchema = z.discriminatedUnion("kind", [
+	z.strictObject({
+		kind: z.literal("open-center"),
+		section: CenterSectionSchema,
+		selectedId: IdSchema.optional(),
+	}),
+	z.strictObject({ kind: z.literal("open-source"), location: CodeLocationSchema, target }),
+	z.strictObject({
+		kind: z.literal("create-flow"),
+		title: z.string().min(1).max(200),
+		summary: z.string().max(6000),
+		steps: z
+			.array(
+				z.strictObject({
+					title: z.string().max(200),
+					explanation: z.string().max(4000),
+					location: CodeLocationSchema,
+				})
+			)
+			.min(1)
+			.max(20),
+		target,
+	}),
 	z.strictObject({ kind: z.literal("open-browser"), url: WorkspaceUrlSchema, target }),
 	z.strictObject({ kind: z.literal("browser-action"), action: WorkspaceBrowserCommandSchema }),
 	z.strictObject({ kind: z.literal("show-review"), prId: IdSchema, target }),
@@ -192,7 +229,10 @@ export const WorkspaceObservationSchema = z.strictObject({
 			})
 		)
 		.max(200),
-	capabilities: z.array(z.enum(["documents", "visuals", "browser", "review"])).max(4),
+	capabilities: z
+		.array(z.enum(["documents", "visuals", "browser", "review", "center", "source", "flow"]))
+		.max(7),
+	hub: HubSnapshotSchema.optional(),
 	savedCanvases: z
 		.array(z.strictObject({ ...canvasFields, kind: z.enum(["document", "visual"]) }))
 		.max(50)
