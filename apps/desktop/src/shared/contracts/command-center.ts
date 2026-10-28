@@ -113,6 +113,8 @@ export const WorkJobSchema = z.strictObject({
 		"failed",
 		"cancelled",
 	]),
+	pauseReason: z.enum(["user", "shutdown"]).nullable().optional(),
+	reviewedAt: z.iso.datetime().nullable().optional(),
 	branch: z.string().min(1).max(250),
 	worktreePath: z.string().max(4096).nullable(),
 	baseSha: CommitShaSchema.nullable(),
@@ -214,6 +216,12 @@ export const HubOperationSchema = z.discriminatedUnion("kind", [
 	z.strictObject({ kind: z.literal("pause-work"), jobId: IdSchema }),
 	z.strictObject({ kind: z.literal("cancel-work"), jobId: IdSchema }),
 	z.strictObject({ kind: z.literal("publish-work"), jobId: IdSchema }),
+	z.strictObject({
+		kind: z.literal("approve-work"),
+		jobId: IdSchema,
+		headSha: CommitShaSchema,
+		confirmed: z.literal(true),
+	}),
 	z.strictObject({ kind: z.literal("seen-notice"), noticeId: IdSchema }),
 	z.strictObject({ kind: z.literal("announced-notices"), noticeIds: z.array(IdSchema).max(20) }),
 ]);
