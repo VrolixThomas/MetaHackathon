@@ -3,8 +3,10 @@ import { useStore } from "zustand";
 import { ReviewInbox } from "../prepared/Inbox";
 import { ReviewWorkspace } from "../prepared/ReviewWorkspace";
 import type { PreparedController } from "../prepared/controller";
+import { CanvasWorkspace } from "../workspace/CanvasWorkspace";
 import { WorkSplit } from "../workspace/WorkSplit";
 import { WorkspaceDialog } from "../workspace/WorkspaceDialog";
+import type { WorkspaceController } from "../workspace/controller";
 import type { LocalBrowserController } from "../workspace/local-browser";
 import { VoiceBar } from "./VoiceBar";
 import type { ConversationController } from "./controller";
@@ -145,10 +147,12 @@ export function ConversationApp({
 	controller,
 	reviews,
 	browser,
+	workspace,
 }: {
 	controller: ConversationController;
 	reviews: PreparedController;
 	browser: LocalBrowserController;
+	workspace?: WorkspaceController;
 }) {
 	const state = useStore(controller.store);
 	const prepared = useStore(reviews.store);
@@ -245,17 +249,28 @@ export function ConversationApp({
 				</div>
 			)}
 			<div className="workspace-body">
-				<WorkSplit browser={local.page ? browser : undefined} obscured={overlay !== null}>
+				<WorkSplit
+					browser={!workspace && local.page ? browser : undefined}
+					obscured={overlay !== null}
+				>
 					<main
-						className={`conversation-main work-area ${reviewOpen ? "review-open" : ""}`}
+						className={`conversation-main work-area ${workspace ? "canvas-conversation" : reviewOpen ? "review-open" : ""}`}
 						data-session-id={controller.sessionId}
 						data-turn-id={state.active?.turnId ?? last?.turnId}
 						data-generation={state.active?.generation ?? last?.generation}
 						data-request-id={last?.requestId}
 						data-conversation-state={state.phase}
 					>
-						<div className="primary-work" hidden={!reviewOpen && conversationOpen}>
-							{reviewOpen ? (
+						<div className="primary-work" hidden={!workspace && !reviewOpen && conversationOpen}>
+							{workspace ? (
+								<CanvasWorkspace
+									controller={workspace}
+									reviews={reviews}
+									browser={browser}
+									obscured={overlay !== null}
+									onOpenRepository={openRepository}
+								/>
+							) : reviewOpen ? (
 								<ReviewWorkspace controller={reviews} onInteraction={controller.interruptReply} />
 							) : (
 								<div className="review-empty">
@@ -408,8 +423,13 @@ export function ConversationApp({
 						controller={reviews}
 						onSelect={(detail) => {
 							closeOverlay();
-							controller.interruptReply();
-							void reviews.open(detail.pr.id);
+							if (workspace) {
+								workspace.setObscured(false);
+								void workspace.command({ kind: "show-review", prId: detail.pr.id });
+							} else {
+								controller.interruptReply();
+								void reviews.open(detail.pr.id);
+							}
 						}}
 					/>
 				</WorkspaceDialog>
@@ -442,7 +462,7 @@ export function ConversationApp({
 						aria-haspopup="dialog"
 						onClick={() => setOverlay("preview")}
 					>
-						Open local preview
+						{workspace ? "Open website" : "Open local preview"}
 					</button>
 					<button
 						type="button"
@@ -457,7 +477,7 @@ export function ConversationApp({
 			{overlay === "preview" && (
 				<WorkspaceDialog
 					id="local-preview-prompt"
-					title="Local preview"
+					title={workspace ? "Open website" : "Local preview"}
 					onClose={closeOverlay}
 					beforeOpen={hideNativePage}
 					onOpenError={overlayFailed}
@@ -469,18 +489,28 @@ export function ConversationApp({
 						noValidate
 						onSubmit={(event) => {
 							event.preventDefault();
+							if (workspace) {
+								closeOverlay();
+								workspace.setObscured(false);
+								void workspace.command({ kind: "open-browser", url: url.trim() });
+								return;
+							}
 							void browser.open(url).then(() => {
 								if (browser.store.getState().page && !browser.store.getState().error)
 									setOverlay((current) => (current === "preview" ? null : current));
 							});
 						}}
 					>
-						<label htmlFor="local-preview-url">Running local address</label>
+						<label htmlFor="local-preview-url">
+							{workspace ? "Website address" : "Running local address"}
+						</label>
 						<input
 							id="local-preview-url"
 							name="local-preview-url"
 							type="url"
-							placeholder="http://localhost:3000"
+							placeholder={
+								workspace ? "https://example.com or http://localhost:3000" : "http://localhost:3000"
+							}
 							value={url}
 							onChange={(event) => setUrl(event.currentTarget.value)}
 							spellCheck={false}

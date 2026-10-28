@@ -178,10 +178,11 @@ it("workspace navigation loads exact source and saves it without using the legac
 		assert.deepEqual(h.ui.store.getState().highlight, highlight);
 		assert.equal(h.ui.getContext().screen?.paused, true);
 		assert.equal(h.ui.store.getState().detail?.progress?.path, "b.ts");
-		assert.ok(
-			h.calls.every(
-				(call) => call.path !== "conversation.actionApplied" && call.path !== "reviews.screen"
-			)
+		assert.ok(h.calls.every((call) => call.path !== "conversation.actionApplied"));
+		assert.equal(
+			(h.calls.find((call) => call.path === "reviews.screen")?.input["screen"] as ReviewScreen)
+				.path,
+			"b.ts"
 		);
 		const before = h.ui.getContext();
 		assert.equal(await h.ui.navigate({ ...nav, headSha: "c".repeat(40) }, () => true), "ignored");

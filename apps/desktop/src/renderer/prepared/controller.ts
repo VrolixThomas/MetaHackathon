@@ -335,6 +335,8 @@ export function createPreparedController(api: PreparedApi, sessionId: string, po
 			store.setState({ detail, stale: false });
 			installFile(plan, file, navigation.paused, navigation.highlight);
 			const sequence = store.getState().screen.sequence;
+			await publishScreen();
+			if (!current()) return "ignored" as const;
 			await persist(plan, file.path, navigation.paused);
 			return current() && samePlan(plan) && sequence === store.getState().screen.sequence
 				? ("applied" as const)
