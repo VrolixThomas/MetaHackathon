@@ -1,13 +1,19 @@
 import assert from "node:assert/strict";
 import { afterEach, test } from "node:test";
 import type { SpeakInput, VoiceEvent } from "../../main/voice/protocol";
-import type { ConversationTurnInput, TurnIdentity } from "../../shared/contracts";
+import type {
+	AgentAction,
+	ConversationTurnInput,
+	PollTurnResult,
+	TurnIdentity,
+} from "../../shared/contracts";
 import { createHandsFreeVoiceController } from "./hands-free";
 import type {
 	HandsFreeAudioFactory,
 	HandsFreeOptions,
 	HandsFreeVoiceController,
 } from "./hands-free-types";
+import type { MediaFactory, VoiceTurnEnd } from "./types";
 
 function deferred<T>() {
 	let resolve!: (value: T) => void;
@@ -39,6 +45,22 @@ function tone(frequency = 440, amplitude = 0.1) {
 		(_, i) => amplitude * Math.sin((i * 2 * Math.PI * frequency) / 48000)
 	);
 }
+function navigation(turn: TurnIdentity): AgentAction {
+	return {
+		...identity(turn),
+		kind: "review-navigation",
+		requestId: "failed-action",
+		screenSequence: 1,
+		navigation: {
+			prId: "pr-1",
+			reviewId: "review-1",
+			path: "src/main.ts",
+			baseSha: "a".repeat(40),
+			headSha: "b".repeat(40),
+			paused: false,
+		},
+	};
+}
 function harness(extra: Partial<HandsFreeOptions> = {}) {
 	let now = 0;
 	let ids = 0;
@@ -48,6 +70,7 @@ function harness(extra: Partial<HandsFreeOptions> = {}) {
 		opens: number;
 	}[] = [];
 	const turns: {
+		observer: Parameters<MediaFactory>[0];
 		samples: Float32Array[];
 		closed: boolean;
 		ended: boolean;
@@ -60,12 +83,14 @@ function harness(extra: Partial<HandsFreeOptions> = {}) {
 	const cancels = { voice: [] as TurnIdentity[], agent: [] as TurnIdentity[] };
 	const speaks: SpeakInput[] = [];
 	const errors: Error[] = [];
+	const ends: Array<{ identity: TurnIdentity; result: VoiceTurnEnd }> = [];
 	const events = new Map<string, VoiceEvent[]>();
 	let open = async () => {};
 	let cancellation = async () => {};
 	let delayConnect = false;
 	let autoDrain = true;
 	let finishSpeech = true;
+	let transcript = "Hello";
 	function emit(
 		turn: TurnIdentity,
 		event:
@@ -87,8 +112,9 @@ function harness(extra: Partial<HandsFreeOptions> = {}) {
 			close: () => {
 				session.closed = true;
 			},
-			createTurn: () => {
+			createTurn: (observer) => {
 				const turn = {
+					observer,
 					samples: [] as Float32Array[],
 					closed: false,
 					ended: false,
@@ -127,7 +153,7 @@ function harness(extra: Partial<HandsFreeOptions> = {}) {
 			},
 		};
 	};
-	const voice = createHandsFreeVoiceController({
+	const options: HandsFreeOptions = {
 		sessionId: "shared-conversation",
 		id: () => `id-${++ids}`,
 		now: () => now,
@@ -137,11 +163,12 @@ function harness(extra: Partial<HandsFreeOptions> = {}) {
 		onError: (error) => {
 			errors.push(error);
 		},
+		onTurnEnd: (identity, result) => ends.push({ identity, result }),
 		voice: {
 			offer: async () => ({ type: "answer", sdp: "synthetic" }),
 			release: async (input) => {
 				releases.push(input);
-				emit(input, { kind: "transcript", text: "Hello", final: true });
+				emit(input, { kind: "transcript", text: transcript, final: true });
 			},
 			poll: async (input) => ({
 				events: (events.get(input.turnId) ?? []).filter(
@@ -179,10 +206,12 @@ function harness(extra: Partial<HandsFreeOptions> = {}) {
 			},
 		},
 		...extra,
-	});
+	};
+	const voice = createHandsFreeVoiceController(options);
 	owned.push(voice);
 	return {
 		voice,
+		options,
 		sessions,
 		turns,
 		starts,
@@ -190,6 +219,11 @@ function harness(extra: Partial<HandsFreeOptions> = {}) {
 		speaks,
 		cancels,
 		errors,
+		ends,
+		emit,
+		setTranscript: (text: string) => {
+			transcript = text;
+		},
 		setOpen: (fn: typeof open) => {
 			open = fn;
 		},
@@ -412,4 +446,366 @@ test("near-pitch barge-in retains its first independent PCM frame in the next tu
 		firstRetained?.every((sample, i) => sample === firstWord[i]),
 		"First independent PCM frame retained intact"
 	);
+});
+
+for (const failure of ["start", "poll", "model", "action"] as const) {
+	test(`agent ${failure} failure preserves capture for a distinct utterance without retry`, async () => {
+		const failureError = new Error("Same message for every failure origin");
+		const h = harness({
+			onConversationAction: () => {
+				throw failureError;
+			},
+		});
+		const start = h.options.agent.start;
+		const poll = h.options.agent.poll;
+		let starts = 0;
+		let polls = 0;
+		h.options.agent.start = async (input, signal) => {
+			starts++;
+			if (failure === "start") throw failureError;
+			return start(input, signal);
+		};
+		h.options.agent.poll = async (input) => {
+			polls++;
+			if (failure === "poll") throw failureError;
+			const action = navigation(input);
+			return {
+				...identity(input),
+				status: failure === "model" ? "error" : "running",
+				text: "",
+				sequence: 1,
+				actions: [],
+				events:
+					failure === "model"
+						? [{ ...identity(input), kind: "error", sequence: 1, message: failureError.message }]
+						: [{ ...identity(input), kind: "action", sequence: 1, action }],
+			};
+		};
+		await h.voice.startListening();
+		h.feed(tone(), undefined, 15);
+		h.feed(undefined, undefined, 35);
+		await until(() => h.ends.length === 1 && h.errors.length === 1);
+		const failed = h.ends[0];
+		assert.ok(failed);
+		assert.deepEqual(failed.result, {
+			status: "failed",
+			error: failureError.message,
+			origin: "agent",
+			recoverable: true,
+		});
+		if (failure !== "model") assert.equal(h.errors[0], failureError);
+		assert.equal(h.voice.getSessionSnapshot().phase, "listening");
+		assert.equal(h.voice.getSessionSnapshot().active, true);
+		assert.equal(h.sessions[0]?.closed, false);
+		assert.equal(h.turns[0]?.closed, true);
+		assert.ok(h.cancels.voice.some((value) => value.turnId === failed.identity.turnId));
+		assert.ok(h.cancels.agent.some((value) => value.turnId === failed.identity.turnId));
+		h.feed(undefined, undefined, 40);
+		await pause(35);
+		assert.equal(starts, 1, "No automatic request retry");
+		assert.equal(polls, failure === "start" ? 0 : 1);
+		assert.equal(h.turns.length, 1, "Silence cannot allocate another turn");
+		h.options.agent.start = start;
+		h.options.agent.poll = poll;
+		h.setTranscript("A different user question");
+		h.feed(tone(330), undefined, 15);
+		h.feed(undefined, undefined, 35);
+		await until(() => h.ends.length === 2);
+		assert.deepEqual(h.ends[1]?.result, { status: "completed" });
+		assert.equal(h.starts.at(-1)?.text, "A different user question");
+		assert.notEqual(h.ends[1]?.identity.turnId, failed.identity.turnId);
+		assert.ok((h.ends[1]?.identity.generation ?? 0) > failed.identity.generation);
+		assert.equal(h.sessions.length, 1);
+		assert.equal(h.sessions[0]?.opens, 1);
+		assert.equal(h.sessions[0]?.closed, false);
+		assert.equal(h.errors.length, 1);
+		assert.deepEqual(
+			h.speaks.map((speech) => speech.text),
+			["Hello back."]
+		);
+	});
+}
+
+test("a failed agent stream stops output and queue without completing partial speech or accepting late events", async () => {
+	const h = harness({ completionText: "Completed successfully." });
+	const failed = deferred<PollTurnResult>();
+	const lateVoice = deferred<{ events: VoiceEvent[] }>();
+	const cancel = deferred<void>();
+	const speech = deferred<void>();
+	let speechSignal: AbortSignal | undefined;
+	const normalVoicePoll = h.options.voice.poll;
+	const normalSpeak = h.options.voice.speak;
+	let polls = 0;
+	let voiceHeld = false;
+	h.keepSpeaking();
+	h.options.voice.speak = async (input, signal) => {
+		speechSignal = signal;
+		await normalSpeak(input, signal);
+		await speech.promise;
+	};
+	h.setCancellation(() => cancel.promise);
+	h.options.agent.poll = async (input) => {
+		if (++polls > 1) return failed.promise;
+		voiceHeld = true;
+		return {
+			...identity(input),
+			status: "running",
+			sequence: 1,
+			actions: [],
+			text: "First sentence. Queued sentence. unfinished",
+			events: [
+				{
+					...identity(input),
+					kind: "text-delta",
+					sequence: 1,
+					delta: "First sentence. Queued sentence. unfinished",
+				},
+			],
+		};
+	};
+	h.options.voice.poll = (input, signal) =>
+		voiceHeld ? lateVoice.promise : normalVoicePoll(input, signal);
+	await h.voice.startListening();
+	h.feed(tone(), undefined, 15);
+	h.feed(undefined, undefined, 35);
+	await until(() => h.speaks.length === 1 && polls === 2);
+	const old = h.voice.getIdentity();
+	assert.ok(old);
+	failed.reject(new Error("Model response incomplete; please ask again."));
+	await until(() => h.ends.length === 1);
+	assert.equal(h.turns[0]?.closed, true);
+	assert.equal(h.sessions[0]?.closed, false);
+	assert.equal(h.voice.getSessionSnapshot().phase, "listening");
+	assert.equal(h.cancels.voice.length, 1);
+	assert.equal(h.cancels.agent.length, 1);
+	assert.equal(speechSignal?.aborted, true);
+	speech.resolve();
+	lateVoice.resolve({
+		events: [
+			{ ...old, kind: "speech-ended", sequence: 2, speechId: h.speaks[0]?.speechId ?? "missing" },
+			{ ...old, kind: "transcript", sequence: 3, text: "late transcript", final: true },
+		],
+	});
+	h.turns[0]?.observer.disconnected(new Error("late RTC error"));
+	cancel.reject(new Error("late cancellation error"));
+	await pause(35);
+	assert.equal(h.speaks.length, 1, "No queued sentence, partial tail or completion speech");
+	assert.equal(polls, 2);
+	assert.equal(h.ends.length, 1);
+	assert.equal(h.errors.length, 1);
+	assert.equal(h.sessions[0]?.closed, false);
+});
+
+test("an error snapshot never speaks its partial answer or applies its actions", async () => {
+	let actions = 0;
+	const h = harness({
+		completionText: "Done.",
+		onConversationAction: () => {
+			actions++;
+		},
+	});
+	h.options.agent.poll = async (input) => ({
+		...identity(input),
+		status: "error",
+		sequence: 1,
+		text: "This should never be spoken.",
+		actions: [navigation(input)],
+		events: [
+			{
+				...identity(input),
+				kind: "text-delta",
+				sequence: 1,
+				delta: "This should never be spoken.",
+			},
+		],
+	});
+	await h.voice.startListening();
+	h.feed(tone(), undefined, 15);
+	h.feed(undefined, undefined, 35);
+	await until(() => h.ends.length === 1);
+	assert.deepEqual(h.speaks, []);
+	assert.equal(actions, 0);
+	assert.equal(h.voice.getSessionSnapshot().phase, "listening");
+});
+
+for (const source of ["media", "offer", "release", "poll", "stt", "tts", "controller"] as const) {
+	test(`${source} failure is fatal regardless of its message and never rearms`, async () => {
+		const failure = new Error("Same message for every failure origin");
+		const h = harness({
+			...(source === "controller"
+				? {
+						getConversationContext: () => {
+							throw failure;
+						},
+					}
+				: {}),
+		});
+		if (source === "offer")
+			h.options.voice.offer = async () => {
+				throw failure;
+			};
+		if (source === "release")
+			h.options.voice.release = async () => {
+				throw failure;
+			};
+		if (source === "poll")
+			h.options.voice.poll = async () => {
+				throw failure;
+			};
+		if (source === "stt")
+			h.options.voice.poll = async (input) => ({
+				events: [{ ...identity(input), kind: "error", sequence: 1, message: failure.message }],
+			});
+		if (source === "tts")
+			h.options.voice.speak = async () => {
+				throw failure;
+			};
+		await h.voice.startListening();
+		h.feed(tone(), undefined, 15);
+		if (source === "media") h.sessions[0]?.observer.failed(failure);
+		else h.feed(undefined, undefined, 35);
+		await until(() => h.ends.length === 1 && h.errors.length === 1);
+		assert.deepEqual(h.ends[0]?.result, {
+			status: "failed",
+			error: failure.message,
+			origin: source === "media" ? "media" : source === "controller" ? "controller" : "voice",
+			recoverable: false,
+		});
+		assert.equal(h.sessions[0]?.closed, true);
+		assert.equal(h.voice.getSessionSnapshot().phase, "error");
+		assert.equal(h.turns[0]?.closed, true);
+		assert.ok(
+			h.cancels.voice.length >= 1,
+			"Late media allocation may require a compensating cancel"
+		);
+		assert.ok(h.cancels.agent.length >= 1);
+		h.feed(tone(), undefined, 40);
+		await pause(25);
+		assert.equal(h.sessions.length, 1);
+		assert.equal(h.turns.length, 1);
+		assert.equal(h.ends.length, 1);
+		assert.equal(h.errors.length, 1);
+	});
+}
+
+test("recoverable reports do not suppress a later fatal device error on the same session", async () => {
+	const h = harness();
+	const normalPoll = h.options.agent.poll;
+	h.options.agent.poll = async () => {
+		throw new Error("agent failure");
+	};
+	await h.voice.startListening();
+	h.feed(tone(), undefined, 15);
+	h.feed(undefined, undefined, 35);
+	await until(() => h.errors.length === 1);
+	h.options.agent.poll = normalPoll;
+	h.feed(tone(330), undefined, 15);
+	assert.ok(h.voice.getIdentity(), "Later fatal failure runs through the per-turn reporting fence");
+	h.sessions[0]?.observer.failed(new Error("device lost"));
+	assert.equal(h.sessions[0]?.closed, true);
+	assert.equal(h.voice.getSessionSnapshot().phase, "error");
+	assert.deepEqual(
+		h.errors.map((error) => error.message),
+		["agent failure", "device lost"]
+	);
+});
+
+test("recoverable end can stop and restart explicitly without its report or old callbacks affecting new hardware", async () => {
+	let restart: Promise<void> | undefined;
+	const h = harness({
+		onTurnEnd: (_identity, result) => {
+			if (result.status === "failed" && result.recoverable) {
+				h.voice.stopListening();
+				restart = h.voice.startListening();
+			}
+		},
+	});
+	h.options.agent.poll = async () => {
+		throw new Error("retired agent failure");
+	};
+	await h.voice.startListening();
+	h.feed(tone(), undefined, 15);
+	h.feed(undefined, undefined, 35);
+	await until(() => restart !== undefined);
+	await restart;
+	h.turns[0]?.observer.disconnected(new Error("old RTC failure"));
+	h.sessions[0]?.observer.failed(new Error("old hardware failure"));
+	await pause(25);
+	assert.equal(h.sessions[0]?.closed, true);
+	assert.equal(h.sessions[1]?.closed, false);
+	assert.equal(h.voice.getSessionSnapshot().phase, "listening");
+	assert.deepEqual(h.errors, []);
+});
+
+test("unknown answer callback errors inside the agent loop remain fatal", async () => {
+	const h = harness({
+		onAnswer: () => {
+			throw new Error("Model response incomplete; please ask again.");
+		},
+	});
+	await h.voice.startListening();
+	h.feed(tone(), undefined, 15);
+	h.feed(undefined, undefined, 35);
+	await until(() => h.ends.length === 1 && h.errors.length === 1);
+	assert.deepEqual(h.ends[0]?.result, {
+		status: "failed",
+		error: "Model response incomplete; please ask again.",
+		origin: "controller",
+		recoverable: false,
+	});
+	assert.equal(h.sessions[0]?.closed, true);
+	assert.equal(h.voice.getSessionSnapshot().phase, "error");
+	assert.deepEqual(h.speaks, []);
+});
+
+test("a turn-end hook error remains fatal even while reporting a recoverable agent failure", async () => {
+	const h = harness({
+		onTurnEnd: () => {
+			throw new Error("controller failed");
+		},
+	});
+	h.options.agent.poll = async () => {
+		throw new Error("agent failed");
+	};
+	await h.voice.startListening();
+	h.feed(tone(), undefined, 15);
+	h.feed(undefined, undefined, 35);
+	await until(() => h.errors.length === 1);
+	assert.equal(h.errors[0]?.message, "controller failed");
+	assert.equal(h.sessions[0]?.closed, true);
+	assert.equal(h.voice.getSessionSnapshot().phase, "error");
+});
+
+test("late failed-turn callbacks and cancellation cannot stop the next utterance in the same hardware session", async () => {
+	const h = harness();
+	const normalPoll = h.options.agent.poll;
+	const cancellation = deferred<void>();
+	h.setCancellation(() => cancellation.promise);
+	h.options.agent.poll = async () => {
+		throw new Error("first agent failure");
+	};
+	await h.voice.startListening();
+	h.feed(tone(), undefined, 15);
+	h.feed(undefined, undefined, 35);
+	await until(() => h.errors.length === 1);
+	const old = h.ends[0]?.identity;
+	assert.ok(old);
+	h.options.agent.poll = normalPoll;
+	h.keepSpeaking();
+	h.feed(tone(330), undefined, 15);
+	h.feed(undefined, undefined, 35);
+	await until(() => h.voice.getPhase() === "speaking");
+	const current = h.voice.getIdentity();
+	assert.ok(current);
+	cancellation.reject(new Error("old cancellation failed"));
+	h.turns[0]?.observer.disconnected(new Error("old RTC failed"));
+	h.emit(old, { kind: "transcript", text: "late failed-turn transcript", final: true });
+	await pause(30);
+	assert.deepEqual(h.voice.getIdentity(), current);
+	assert.equal(h.sessions.length, 1);
+	assert.equal(h.sessions[0]?.closed, false);
+	assert.equal(h.turns[1]?.closed, false);
+	assert.equal(h.errors.length, 1);
+	assert.equal(h.ends.length, 1);
+	assert.equal(h.starts.length, 2);
 });

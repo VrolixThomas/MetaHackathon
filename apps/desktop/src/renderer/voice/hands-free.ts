@@ -3,6 +3,7 @@ import type { CancelTurnInput, TurnIdentity } from "../../shared/contracts";
 import { type SpeechFrame, VoiceActivityDetector } from "./activity";
 import { aborted, asError, bounded } from "./async";
 import { createVoiceController, sameTurn } from "./controller";
+import { getTurnFailureReport } from "./failure";
 import { createBrowserHandsFreeAudioFactory } from "./hands-free-audio";
 import type {
 	BufferedVoiceMedia,
@@ -130,16 +131,18 @@ export function createHandsFreeVoiceController(
 			return media;
 		},
 		onTurnEnd: (identity, result) => {
-			if (session) {
+			if (session && session === turnSession) {
 				if (session.capture?.identity && sameTurn(identity, session.capture.identity))
 					session.capture = null;
 				session.lastActivity = now();
-				if (result.status === "failed") closeSession(new Error(result.error));
+				if (result.status === "failed" && !result.recoverable)
+					closeSession(new Error(result.error));
 				else refresh();
 			}
 			options.onTurnEnd?.(identity, result);
 		},
 		onError: (error) => {
+			const failure = getTurnFailureReport(error);
 			// A stopped hardware session may still have cancellation RPCs settling.
 			// Before the new session's first utterance the inner turn identity is unchanged.
 			const owner = turnSession;
@@ -150,6 +153,20 @@ export function createHandsFreeVoiceController(
 				(!session && !owner.failure)
 			)
 				return;
+			const latest = voice.getSnapshot();
+			if (
+				failure &&
+				(failure.sessionId !== latest.sessionId ||
+					failure.turnId !== latest.turnId ||
+					failure.generation !== latest.generation)
+			)
+				return;
+			// The original report follows onTurnEnd. It must not undo recovery or poison
+			// this hardware session's fatal-error fence for a later utterance.
+			if (failure?.recoverable) {
+				if (session === owner) report(error);
+				return;
+			}
 			if (owner.failure && owner.failure !== error.message) return;
 			if (session === owner) closeSession(error);
 			owner.errorReported = true;

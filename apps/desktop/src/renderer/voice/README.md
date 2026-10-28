@@ -37,9 +37,24 @@ immutable `{phase, active, error?}`; phases are `stopped`, `starting`, `listenin
 `responding`, `error`. Use it for microphone/session labels. `getSnapshot`, `getPhase` and
 `getIdentity` retain the existing **utterance** semantics; after an explicit restart they can
 still describe the prior cancelled/error turn until new speech begins. `onTurnEnd` completes
-one utterance, not the microphone session. Stop, error and disposal never auto-rearm. A late
+one utterance, not the microphone session. Stop, fatal error and disposal never auto-rearm. A late
 permission result is stopped, and old turn cancellation failures cannot close a new hardware
 session before its first utterance. An explicit new Start may create a new hardware session.
+
+Failed `VoiceTurnEnd` results are `{status: "failed", error: string, origin: "agent" | "voice" |
+"media" | "controller", recoverable: boolean}`. Only `origin: "agent"` is recoverable. Agent
+start/poll/model/action failures close that utterance's media/output, clear queued speech and send
+both cancellation RPCs, then leave healthy hands-free hardware active/listening. The next distinct
+user utterance gets a new identity; the voice controller never retries the failed request. It does
+not flush an unfinished answer or emit completion copy on failure, and terminal error pages do not
+speak their text or apply actions. Speech already played before a later failure cannot be recalled.
+
+Voice RPC/STT/TTS failures, device/worklet/RTC failures and unknown/controller errors remain fatal.
+Origins are assigned at operation boundaries, never inferred from error messages. `onTurnEnd` is
+followed by `onError` with the original Error; the hands-free wrapper reports a recoverable failure
+without closing hardware or consuming its later fatal-error fence. Internal report identity also
+fences reentrant/retired callbacks. The application binding must pass `result.recoverable` through
+its finish hook and preserve the session for recoverable results; integration owns that binding.
 
 One `getUserMedia` capture with echo cancellation/noise suppression and one resumed AudioContext
 belong to each explicit session. No new hardware capture or permission prompt occurs per turn.
