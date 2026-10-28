@@ -97,7 +97,7 @@ function plain(content: string): SyntaxToken[] {
 	return content ? [{ content }] : [];
 }
 const textOf = (tokens: SyntaxToken[]) => tokens.map((token) => token.content).join("");
-async function highlightSource(source: ReviewFile["base"]): Promise<HighlightedSource> {
+export async function highlightSource(source: ReviewFile["base"]): Promise<HighlightedSource> {
 	const rawLines = source.content === null ? [] : sourceLines(source.content);
 	const language = sourceLanguage(source.path);
 	const result = {
