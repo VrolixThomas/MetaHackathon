@@ -102,7 +102,7 @@ it("malformed hub responses reject instead of inventing jobs or accepting unknow
 	hub.dispose();
 });
 
-it("detail routes validate identity/cursors and local WorkReview files need no pull request ID", async () => {
+it("detail routes validate identity and cursors before IPC", async () => {
 	const calls: unknown[] = [];
 	const hub = createHubController(async (type, path, input) => {
 		calls.push([type, path, input]);
@@ -113,5 +113,32 @@ it("detail routes validate identity/cursors and local WorkReview files need no p
 	assert.deepEqual(calls, [["query", "hub.jobLog", { jobId: "job", cursor: 0, limit: 100 }]]);
 	await assert.rejects(() => hub.jobLog("job", -1));
 	assert.equal(calls.length, 1);
+	hub.dispose();
+});
+
+it("rejects cross-job log pages and cross-PR feedback rather than mislabelling real content", async () => {
+	const hub = createHubController(async (_type, path) =>
+		path === "hub.jobLog"
+			? { jobId: "other-job", cursor: 1, lines: ["foreign output"], truncated: false }
+			: [
+					{
+						id: "feedback",
+						prId: "other-pr",
+						author: "author",
+						body: "foreign feedback",
+						url: "https://github.com/test/repo/pull/2",
+						createdAt: "2026-10-28T12:00:00.000Z",
+						updatedAt: "2026-10-28T12:00:00.000Z",
+						kind: "inline",
+						state: null,
+						path: null,
+						line: null,
+						commitSha: null,
+						suggestion: null,
+					},
+				]
+	);
+	await assert.rejects(() => hub.jobLog("job"), /identity mismatch/);
+	await assert.rejects(() => hub.feedback("pr"), /identity mismatch/);
 	hub.dispose();
 });

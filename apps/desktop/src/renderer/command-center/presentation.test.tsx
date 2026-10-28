@@ -1,0 +1,326 @@
+import assert from "node:assert/strict";
+import { it } from "node:test";
+import { renderToStaticMarkup } from "react-dom/server";
+import {
+	type HubSnapshot,
+	HubSnapshotSchema,
+	type PinnedSource,
+	WorkReviewSchema,
+	WorkspaceSnapshotSchema,
+} from "../../shared/contracts";
+import { createPreparedApi } from "../prepared/api";
+import { createPreparedController } from "../prepared/controller";
+import { highlightSource } from "../prepared/highlighting";
+import { createWorkspaceController } from "../workspace/controller";
+import { createLocalBrowserController } from "../workspace/local-browser";
+import { CenterCanvas } from "./CenterCanvas";
+import { CommandSidebar } from "./Sidebar";
+import { FlowCanvas, SourceBlock, exactSourceRows } from "./SourceCanvas";
+import { WorkDiff } from "./WorkViews";
+import { createHubController } from "./controller";
+import { jobReference, jobTitle, priorityItems } from "./model";
+
+const stamp = "2026-10-28T12:00:00.000Z";
+const sha = "a".repeat(40);
+const makeSnapshot = () =>
+	HubSnapshotSchema.parse({
+		sequence: 3,
+		refreshedAt: stamp,
+		refreshing: false,
+		viewer: { githubLogin: "test-user", linearName: "Test User" },
+		connections: { github: true, linear: true, model: true },
+		repositories: [
+			{
+				id: "repo",
+				repository: "test/project",
+				localPath: "/test/project",
+				defaultBranch: "main",
+				addedAt: stamp,
+			},
+		],
+		reviews: ["incoming", "own"].map((kind, index) => ({
+			pr: {
+				id: `pr-${index}`,
+				number: index + 1,
+				repository: "test/project",
+				title: kind === "incoming" ? "Requested change" : "Owned change",
+				author: kind === "own" ? "test-user" : "colleague",
+				url: `https://github.com/test/project/pull/${index + 1}`,
+				baseSha: sha,
+				headSha: "b".repeat(40),
+			},
+			repositoryId: "repo",
+			kind,
+			baseBranch: "main",
+			headBranch: `change-${index}`,
+			updatedAt: stamp,
+			draft: false,
+			reviewState: "requested",
+			feedbackCount: kind === "own" ? 2 : 0,
+			lastFeedbackAt: null,
+		})),
+		tickets: [
+			{
+				id: "ticket",
+				identifier: "TEST-1",
+				title: "Assigned change",
+				url: "https://linear.app/test/issue/TEST-1",
+				updatedAt: stamp,
+				state: { id: "state", name: "Todo", type: "unstarted" },
+				priority: 1,
+				teamId: "team",
+				teamName: "Test team",
+				projectId: null,
+				projectName: null,
+				assigneeId: "user",
+				assigneeName: "Test User",
+			},
+		],
+		jobs: [],
+		notices: [],
+		preferences: { linearTeamIds: ["team"], linearProjectIds: [], maxWorkers: 2 },
+		errors: [],
+	});
+function summary(state: "ready" | "needs-input", id: string) {
+	return {
+		id,
+		repositoryId: "repo",
+		repository: "test/project",
+		ticket: null,
+		state,
+		branch: `work/${id}`,
+		worktreePath: null,
+		baseSha: sha,
+		headSha: sha,
+		summary: "",
+		createdAt: stamp,
+		updatedAt: stamp,
+		pullRequest: null,
+		error: null,
+		pendingDecisions: state === "needs-input" ? 1 : 0,
+		changedFileCount: 2,
+	};
+}
+function suppliedHub(snapshot: HubSnapshot) {
+	const hub = createHubController(async () => {
+		throw new Error("No external calls in presentation test");
+	});
+	hub.store.setState({ snapshot });
+	return { ...hub, store: { ...hub.store, getInitialState: hub.store.getState } };
+}
+function suppliedWorkspace(section: "reviews" | "feedback") {
+	const call = async () => null;
+	const reviews = createPreparedController(createPreparedApi(call), "test-session");
+	const browser = createLocalBrowserController(call);
+	const workspace = createWorkspaceController(call, reviews, browser, "test-session");
+	workspace.store.setState({
+		workspace: WorkspaceSnapshotSchema.parse({
+			sequence: 2,
+			primaryId: "center",
+			secondaryId: null,
+			review: { sequence: 0, mode: "conversation", prId: null },
+			browser: null,
+			canvases: [
+				{
+					id: "center",
+					kind: "center",
+					section,
+					selectedId: section === "feedback" ? "pr-1" : "pr-0",
+					title: "Work",
+					revision: 1,
+				},
+			],
+		}),
+	});
+	return { ...workspace, store: { ...workspace.store, getInitialState: workspace.store.getState } };
+}
+
+it("keeps incoming reviews separate from feedback on own PRs and exposes current selection", () => {
+	const hub = suppliedHub(makeSnapshot());
+	const incoming = renderToStaticMarkup(
+		<CommandSidebar
+			hub={hub}
+			workspace={suppliedWorkspace("reviews")}
+			conversationOpen={false}
+			onConversation={() => {}}
+			onSettings={() => {}}
+		/>
+	);
+	assert.match(incoming, /Requested change/);
+	assert.doesNotMatch(incoming, /Owned change/);
+	assert.match(incoming, /aria-current="true"/);
+	assert.match(incoming, /<summary>.*project.*1<\/span>/);
+	const own = renderToStaticMarkup(
+		<CommandSidebar
+			hub={hub}
+			workspace={suppliedWorkspace("feedback")}
+			conversationOpen={false}
+			onConversation={() => {}}
+			onSettings={() => {}}
+		/>
+	);
+	assert.match(own, /Owned change/);
+	assert.match(own, /2 feedback/);
+	assert.doesNotMatch(own, /Requested change/);
+	assert.match(own, /aria-expanded="false"/);
+	hub.dispose();
+});
+
+it("builds a priority brief from actual pending decisions, ready jobs, own feedback, reviews and tickets", () => {
+	const snapshot = makeSnapshot();
+	snapshot.jobs = [summary("ready", "ready"), summary("needs-input", "question")];
+	const items = priorityItems(snapshot);
+	assert.deepEqual(
+		items.map((item) => item.id),
+		["decision:question", "ready:ready", "feedback:pr-1", "review:pr-0", "ticket:ticket"]
+	);
+	assert.equal(jobTitle(snapshot.jobs[0] as NonNullable<(typeof snapshot.jobs)[0]>), "work/ready");
+	assert.equal(
+		jobReference(snapshot.jobs[0] as NonNullable<(typeof snapshot.jobs)[0]>),
+		"work/ready"
+	);
+	const hub = suppliedHub(snapshot);
+	const html = renderToStaticMarkup(
+		<CenterCanvas
+			canvas={{ id: "home", kind: "center", section: "home", title: "Home", revision: 1 }}
+			hub={hub}
+			command={() => {}}
+		/>
+	);
+	assert.match(html, /Needs your input/);
+	assert.match(html, /Ready to inspect/);
+	assert.match(html, /Feedback on your PR/);
+	assert.match(html, /Assigned change/);
+	assert.doesNotMatch(html, /No assigned tickets|No saved outcomes/);
+	hub.dispose();
+});
+
+it("empty startup and failed reads show honest connection states without synthetic product items", () => {
+	const hub = createHubController(async () => null);
+	const html = renderToStaticMarkup(
+		<CenterCanvas
+			canvas={{ id: "home", kind: "center", section: "home", title: "Home", revision: 1 }}
+			hub={hub}
+			command={() => {}}
+		/>
+	);
+	assert.match(html, /Loading your work/);
+	assert.doesNotMatch(html, /Requested change|Owned change|Assigned change|hub-priority quiet/);
+	const empty = makeSnapshot();
+	empty.reviews = [];
+	empty.tickets = [];
+	empty.repositories = [];
+	const loaded = suppliedHub(empty);
+	const state = renderToStaticMarkup(
+		<CenterCanvas
+			canvas={{ id: "home", kind: "center", section: "home", title: "Home", revision: 1 }}
+			hub={loaded}
+			command={() => {}}
+		/>
+	);
+	assert.match(state, /Bring your work into view/);
+	assert.doesNotMatch(state, /Requested change|Owned change|Assigned change/);
+	hub.dispose();
+	loaded.dispose();
+});
+
+const source: PinnedSource = {
+	location: {
+		repository: "test/project",
+		revision: "head",
+		commitSha: sha,
+		path: "src/first.ts",
+		startLine: 7,
+		endLine: 9,
+	},
+	text: '\tconst html = "<script>";\r\n\nreturn html;\n',
+	language: "typescript",
+	truncated: false,
+};
+it("source and continuous flow retain exact bytes, pinned identity, ordered snippets, and line actions", async () => {
+	assert.equal(exactSourceRows(source.text).join(""), source.text);
+	for (const text of ["", "\n", "a\r\n\r\n", "é\t<>&", "a\n\n"])
+		assert.equal(exactSourceRows(text).join(""), text);
+	const html = renderToStaticMarkup(<SourceBlock source={source} onReference={() => {}} />);
+	assert.match(html, /data-source-line="7"/);
+	assert.match(html, /data-source-line="9"/);
+	assert.match(html, /data-source-sha="aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"/);
+	assert.match(html, /&lt;script&gt;/);
+	assert.doesNotMatch(html, /<script>/);
+	const colored = await highlightSource({
+		path: source.location.path,
+		commitSha: sha,
+		status: "available",
+		content: source.text,
+	});
+	assert.equal(
+		colored.lines[0]?.map((token) => token.content).join(""),
+		'\tconst html = "<script>";\r'
+	);
+	assert.ok(colored.lines[0]?.some((token) => token.color));
+	const flow = renderToStaticMarkup(
+		<FlowCanvas
+			flow={{
+				title: "Observed source flow",
+				summary: "A bounded explanation",
+				provenance: "source-with-inferred-order",
+				steps: [
+					{ id: "first", title: "Entry", explanation: "Inferred entry", source },
+					{
+						id: "second",
+						title: "Consumer",
+						explanation: "Inferred consumer",
+						source: { ...source, location: { ...source.location, path: "src/consumer.ts" } },
+					},
+				],
+			}}
+			onReference={() => {}}
+		/>
+	);
+	assert.match(flow, /<ol class="hub-flow-steps">/);
+	assert.ok(flow.indexOf("src/first.ts") < flow.indexOf("src/consumer.ts"));
+	assert.match(flow, /inferred reading order/);
+	assert.equal((flow.match(/class="hub-source"/g) ?? []).length, 2);
+});
+
+it("local work diff uses real base/head source and never requires an invented PR identity", () => {
+	const snapshot = makeSnapshot();
+	const ticket = snapshot.tickets[0];
+	assert.ok(ticket);
+	const {
+		pendingDecisions: _decisions,
+		changedFileCount: _count,
+		...localJob
+	} = summary("ready", "local");
+	const review = WorkReviewSchema.parse({
+		job: {
+			...localJob,
+			ticket: { ...ticket, description: "Supplied ticket" },
+			brief: "Supplied brief",
+			checks: [],
+			changedFiles: ["src/first.ts"],
+			decisions: [],
+		},
+		files: [
+			{
+				path: "src/first.ts",
+				status: "modified",
+				patch: "@@ -1 +1 @@\n-old()\n+new()",
+				base: { path: "src/first.ts", commitSha: sha, status: "available", content: "old()\n" },
+				head: {
+					path: "src/first.ts",
+					commitSha: "b".repeat(40),
+					status: "available",
+					content: "new()\n",
+				},
+			},
+		],
+	});
+	assert.equal("prId" in (review.files[0] ?? {}), false);
+	const html = renderToStaticMarkup(<WorkDiff review={review} command={() => {}} />);
+	assert.match(html, /old\(\)/);
+	assert.match(html, /new\(\)/);
+	assert.match(html, /Open base src\/first.ts line 1/);
+	assert.match(html, /Open head src\/first.ts line 1/);
+	assert.doesNotMatch(html, /Open PR|pull\/0|prId/);
+});

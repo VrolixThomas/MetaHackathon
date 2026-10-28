@@ -99,26 +99,50 @@ export function createHubController(call: ConversationApi["call"]) {
 		start,
 		refresh: observe,
 		operate,
-		ticket: async (id: string) =>
-			LinearTicketSchema.parse(await call("query", "hub.ticket", { id: IdSchema.parse(id) })),
-		job: async (id: string) =>
-			WorkJobSchema.parse(await call("query", "hub.job", { id: IdSchema.parse(id) })),
-		jobLog: async (jobId: string, cursor = 0, limit = 100) =>
-			WorkLogPageSchema.parse(
+		ticket: async (id: string) => {
+			const ticket = LinearTicketSchema.parse(
+				await call("query", "hub.ticket", { id: IdSchema.parse(id) })
+			);
+			if (ticket.id !== id) throw new Error("Ticket identity mismatch");
+			return ticket;
+		},
+		job: async (id: string) => {
+			const job = WorkJobSchema.parse(await call("query", "hub.job", { id: IdSchema.parse(id) }));
+			if (job.id !== id) throw new Error("Job identity mismatch");
+			return job;
+		},
+		jobLog: async (jobId: string, cursor = 0, limit = 100) => {
+			const page = WorkLogPageSchema.parse(
 				await call("query", "hub.jobLog", {
 					jobId: IdSchema.parse(jobId),
 					cursor: z.int().nonnegative().parse(cursor),
 					limit: z.int().min(1).max(200).parse(limit),
 				})
-			),
-		reviewWork: async (jobId: string) =>
-			WorkReviewSchema.parse(
+			);
+			if (page.jobId !== jobId || page.cursor < cursor) throw new Error("Log identity mismatch");
+			return page;
+		},
+		reviewWork: async (jobId: string) => {
+			const review = WorkReviewSchema.parse(
 				await call("query", "hub.reviewWork", { jobId: IdSchema.parse(jobId) })
-			),
-		feedback: async (prId: string) =>
-			PullRequestFeedbackSchema.array()
+			);
+			if (
+				review.job.id !== jobId ||
+				review.files.some(
+					(file) =>
+						file.base.commitSha !== review.job.baseSha || file.head.commitSha !== review.job.headSha
+				)
+			)
+				throw new Error("Local review revision mismatch");
+			return review;
+		},
+		feedback: async (prId: string) => {
+			const items = PullRequestFeedbackSchema.array()
 				.max(1000)
-				.parse(await call("query", "hub.feedback", { prId: IdSchema.parse(prId) })),
+				.parse(await call("query", "hub.feedback", { prId: IdSchema.parse(prId) }));
+			if (items.some((item) => item.prId !== prId)) throw new Error("Feedback identity mismatch");
+			return items;
+		},
 		repositories: async () =>
 			RepositoryChoiceSchema.array()
 				.max(1000)
