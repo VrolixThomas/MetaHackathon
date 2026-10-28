@@ -41,11 +41,13 @@ function expectedBounds(bounds, viewport, host) {
 	const width = Math.min(bounds.width, Math.max(0, host.width - x));
 	const height = Math.min(bounds.height, Math.max(0, host.height - y));
 	const scale = Math.min(1, width / viewport.width, height / viewport.height);
+	const drawnWidth = Math.max(1, Math.floor(viewport.width * scale));
+	const drawnHeight = Math.max(1, Math.floor(viewport.height * scale));
 	return {
-		x: Math.round(x),
-		y: Math.round(y),
-		width: Math.max(1, Math.floor(viewport.width * scale)),
-		height: Math.max(1, Math.floor(viewport.height * scale)),
+		x: Math.round(x + (width - drawnWidth) / 2),
+		y: Math.round(y + (height - drawnHeight) / 2),
+		width: drawnWidth,
+		height: drawnHeight,
 	};
 }
 const pause = (ms) => new Promise((done) => setTimeout(done, ms));
@@ -275,23 +277,33 @@ async function native() {
 		const inspect = async (label, viewport = desktop, visible = true) => {
 			const observed = await state();
 			const dom = await guest.executeJavaScript(domScript);
+			const box = visible ? await hostBounds() : null;
+			const expectedViewport =
+				viewport === desktop
+					? box
+						? {
+								width: Math.max(320, Math.floor(box.width)),
+								height: Math.max(240, Math.floor(box.height)),
+							}
+						: observed.viewport
+					: viewport;
 			assert.equal(guestAtOrigin().length, 1);
 			assert.equal(guestAtOrigin()[0].id, guestId);
 			assert.equal(observed.provenance, "local-preview-unverified-revision");
 			assert.equal(observed.url, dom.url);
 			assert.equal(observed.title, dom.title);
-			assert.deepEqual(observed.viewport, viewport);
-			assert.deepEqual(dom.viewport, viewport);
+			assert.deepEqual(observed.viewport, expectedViewport);
+			assert.deepEqual(dom.viewport, expectedViewport);
 			assert.equal(dom.sentinel, owner);
-			assert.equal(dom.layout, viewport.width < 600 ? "phone" : "desktop");
-			assert.equal(dom.columns, viewport.width < 600 ? 1 : 2);
+			assert.equal(dom.layout, expectedViewport.width < 600 ? "phone" : "desktop");
+			assert.equal(dom.columns, expectedViewport.width < 600 ? 1 : 2);
 			assert.equal(observed.canGoBack, guest.navigationHistory.canGoBack());
 			assert.equal(observed.canGoForward, guest.navigationHistory.canGoForward());
 			assert.equal(view.getVisible(), visible);
 			if (visible)
 				assert.deepEqual(
 					view.getBounds(),
-					expectedBounds(await hostBounds(), viewport, win.getContentBounds())
+					expectedBounds(await hostBounds(), expectedViewport, win.getContentBounds())
 				);
 			const result = {
 				label,
@@ -342,11 +354,11 @@ async function native() {
 		assert.ok(reloaded.dom.serial > submitted.dom.serial, "Reload must fetch new server bytes");
 		assert.equal(reloaded.dom.echo, "native & safe");
 		await js(
-			`([...document.querySelectorAll('.browser-viewport-controls button')].find(e => e.textContent === 'Phone')).click()`
+			`(()=>{const e=document.querySelector('select[aria-label="Browser viewport"]');e.value='phone';e.dispatchEvent(new Event('change',{bubbles:true}));})()`
 		);
 		await wait("phone control applied", async () => (await state()).viewport.width === phone.width);
 		await wait("phone chrome settled", () =>
-			js(`document.querySelector('[data-testid="browser-viewport"]')?.textContent === "390 × 844"`)
+			js(`document.querySelector('select[aria-label="Browser viewport"]')?.value === "phone"`)
 		);
 		await wait("phone canvas receipt committed", async () => {
 			const current = await js(
@@ -383,17 +395,14 @@ async function native() {
 		await wait("restored split layout", () => js(`!!document.querySelector('.workspace-divider')`));
 		await wait("restored split committed", settledCanvas);
 		await wait("desktop control ready", () =>
-			js(`!!document.querySelector('.browser-viewport-controls button:not(:disabled)')`)
+			js(`!!document.querySelector('select[aria-label="Browser viewport"]:not(:disabled)')`)
 		);
 		await js(
-			`([...document.querySelectorAll('.browser-viewport-controls button')].find(e => e.textContent === 'Desktop')).click()`
+			`(()=>{const e=document.querySelector('select[aria-label="Browser viewport"]');e.value='desktop';e.dispatchEvent(new Event('change',{bubbles:true}));})()`
 		);
-		await wait(
-			"desktop control applied",
-			async () => (await state()).viewport.width === desktop.width
-		);
+		await wait("desktop control applied", async () => (await state()).viewportMode === "desktop");
 		await wait("desktop chrome settled", () =>
-			js(`document.querySelector('[data-testid="browser-viewport"]')?.textContent === "1024 × 768"`)
+			js(`document.querySelector('select[aria-label="Browser viewport"]')?.value === "desktop"`)
 		);
 		await inspect("desktop restored");
 		await openOption("configuration-toggle");
@@ -439,12 +448,10 @@ async function native() {
 		if (holdMs) {
 			if (process.env.LOCAL_BROWSER_SMOKE_HOLD_VIEWPORT === "phone") {
 				await js(
-					`([...document.querySelectorAll('.browser-viewport-controls button')].find(e => e.textContent === 'Phone')).click()`
+					`(()=>{const e=document.querySelector('select[aria-label="Browser viewport"]');e.value='phone';e.dispatchEvent(new Event('change',{bubbles:true}));})()`
 				);
 				await wait("QA phone chrome", () =>
-					js(
-						`document.querySelector('[data-testid="browser-viewport"]')?.textContent === "390 × 844"`
-					)
+					js(`document.querySelector('select[aria-label="Browser viewport"]')?.value === "phone"`)
 				);
 				await inspect("phone visual QA", phone);
 			}

@@ -104,7 +104,9 @@ Documents and visual drafts are saved privately in app storage; **Recent** reope
 
 The browser is an actual persistent native page. Give an explicit HTTPS address or a running
 local HTTP URL. Muse observes the page you see and can click, type, scroll, navigate, and change
-desktop/phone viewport. You can interact normally too. Drag the divider or use its arrow keys
+desktop/phone viewport. Desktop follows the available pane size; Phone keeps a centered fixed
+viewport. Tabs use actual page titles, with navigation/address/viewport in one compact row.
+Optional conversation opens on the left of the canvases. You can interact normally too. Drag the divider or use its arrow keys
 to resize a split. **More → Open website** opens an address manually. Voice stays available;
 **More → Conversation and typing** reveals text only when needed.
 
@@ -162,3 +164,5 @@ Latest validation and screenshots: [review workspace acceptance](docs/integratio
 Current hands-free behavior and validation: [conversation polish acceptance](docs/integration/conversation-polish-acceptance.md).
 
 Current canvas and proactive review validation: [multi-canvas acceptance](docs/integration/multi-canvas-acceptance.md).
+
+Browser layout and sizing follow-up: [browser pane acceptance](docs/integration/browser-pane-acceptance.md).

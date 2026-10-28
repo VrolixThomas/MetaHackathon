@@ -796,6 +796,132 @@ async function native() {
 		await hold("visual");
 		await submit(`Open website ${origin}/one`);
 		await submit(questions.operate);
+		if (process.env.WORKSPACE_SMOKE_LAYOUT_CHECKS === "1") {
+			const settled = async () => {
+				const ui = await readUI();
+				return (await observe()).workspace.sequence === ui.sequence;
+			};
+			const geometry = () =>
+				js(`(()=>{
+				const rect=e=>{if(!e)return null;const r=e.getBoundingClientRect();return {x:Math.round(r.x),y:Math.round(r.y),width:Math.floor(r.width),height:Math.floor(r.height)}};
+				const pane=document.querySelector('.native-browser-pane');
+				return {conversation:rect(document.querySelector('#conversation-panel')),page:rect(document.querySelector('[data-native-browser-content]')),pane:rect(pane),chrome:rect(pane?.querySelector('.browser-chrome')),mode:pane?.querySelector('select[aria-label="Browser viewport"]')?.value};
+			})()`);
+			const nativeView = () =>
+				win.contentView.children.find((child) => child.webContents?.id === guest?.id);
+			const fits = async (label, mode = "desktop") =>
+				wait(label, async () => {
+					const box = await geometry();
+					const observed = await observe();
+					const bounds = nativeView()?.getBounds();
+					report.layoutChecking = { label, box, bounds, browser: observed.browser };
+					if (!box.page || !bounds || !observed.browser?.presented || box.mode !== mode)
+						return null;
+					if (mode === "desktop") {
+						if (!Object.keys(box.page).every((key) => Math.abs(box.page[key] - bounds[key]) <= 1))
+							return null;
+						if (
+							observed.browser.viewport.width !== box.page.width ||
+							observed.browser.viewport.height !== box.page.height
+						)
+							return null;
+					} else {
+						if (observed.browser.viewport.width !== 390 || observed.browser.viewport.height !== 844)
+							return null;
+						if (Math.abs(bounds.x + bounds.width / 2 - (box.page.x + box.page.width / 2)) > 1)
+							return null;
+						if (Math.abs(bounds.y + bounds.height / 2 - (box.page.y + box.page.height / 2)) > 1)
+							return null;
+					}
+					return {
+						label,
+						box,
+						bounds,
+						viewport: observed.browser.viewport,
+						browserId: observed.browser.browserId,
+					};
+				});
+			await js(
+				`[...document.querySelectorAll('.canvas-layout-button')].find(e=>e.textContent==='Single pane').click()`
+			);
+			await wait("single pane rendered", () => js(`!document.querySelector('.workspace-divider')`));
+			await wait("single pane receipt", settled);
+			const first = await fits("desktop fills browser pane beside left conversation");
+			assert.ok(first.box.conversation.x + first.box.conversation.width <= first.box.page.x);
+			assert.ok(first.box.conversation.width >= 300 && first.box.conversation.width <= 440);
+			assert.ok(first.box.chrome.height <= 52);
+			assert.ok(first.box.page.y - (first.box.pane.y + first.box.chrome.height) <= 1);
+			const select = (mode) =>
+				js(
+					`(()=>{const e=document.querySelector('select[aria-label="Browser viewport"]');e.value=${JSON.stringify(mode)};e.dispatchEvent(new Event('change',{bubbles:true}));})()`
+				);
+			await select("phone");
+			const phoneLayout = await fits("phone stays fixed and centered", "phone");
+			await wait("phone receipt", settled);
+			await select("desktop");
+			await fits("desktop fills pane after phone toggle");
+			await wait("desktop receipt", settled);
+			win.setSize(1280, 820);
+			const resized = await fits("desktop follows window resize");
+			assert.equal(resized.browserId, first.browserId);
+			assert.ok(resized.viewport.width < first.viewport.width);
+			await js(`document.querySelector('[aria-label="Hide conversation"]').click()`);
+			const hidden = await fits("desktop expands when conversation closes");
+			assert.ok(hidden.viewport.width > resized.viewport.width);
+			await js(`document.querySelector('[data-testid="workspace-more"]').click()`);
+			await wait("More for conversation reopen", () =>
+				js(`document.querySelector('#workspace-more')?.open===true`)
+			);
+			await js(`document.querySelector('[data-testid="conversation-toggle"]').click()`);
+			const restored = await fits("desktop refits beside reopened conversation");
+			assert.equal(restored.browserId, first.browserId);
+			assert.equal(
+				await guest.executeJavaScript(`document.querySelector('#echo').textContent`),
+				"workspace acceptance"
+			);
+			report.layouts = [first, phoneLayout, resized, hidden, restored];
+			if (process.env.WORKSPACE_SMOKE_CAPTURE_DIR) {
+				const directory = resolve(process.env.WORKSPACE_SMOKE_CAPTURE_DIR);
+				fs.mkdirSync(directory, { recursive: true });
+				const { desktopCapturer, systemPreferences } = require("electron");
+				let capture;
+				let method = "electron-window-capture";
+				if (systemPreferences.getMediaAccessStatus("screen") === "granted") {
+					const sources = await desktopCapturer.getSources({
+						types: ["window"],
+						thumbnailSize: { width: 1280, height: 820 },
+						fetchWindowIcons: false,
+					});
+					const source = sources.find((item) => item.id === win.getMediaSourceId());
+					if (source && !source.thumbnail.isEmpty()) {
+						capture = source.thumbnail;
+						method = "owned-native-window";
+					}
+				}
+				const path = join(directory, "browser-workspace-after.png");
+				fs.rmSync(path, { force: true });
+				if (capture) {
+					fs.writeFileSync(path, capture.toPNG());
+					report.screenshot = { path, method, controlledSite: true };
+				} else {
+					// Capture only this owned native window; renderer capture omits its native page.
+					try {
+						execFileSync(
+							"/usr/sbin/screencapture",
+							["-x", "-l", win.getMediaSourceId().split(":")[1], path],
+							{ timeout: 5000, stdio: "pipe" }
+						);
+						report.screenshot = {
+							path,
+							method: "owned-native-window-screencapture",
+							controlledSite: true,
+						};
+					} catch {
+						report.screenshot = { unavailable: true, reason: "native-window-capture-unavailable" };
+					}
+				}
+			}
+		}
 		await hold("browser");
 		// Connecting test setup is separate from agent effects: the agent discovers the real ready inbox.
 		await rpc("mutation", "reviews.connect", { repository, localPath: fixture.localPath });

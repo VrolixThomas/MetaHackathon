@@ -101,6 +101,11 @@ validates an actual locally served page and native lifecycle. Integration alone 
 - Browser observations include actual DOM text, document/element identity, values, viewport, scroll and
   presentation; tools operate that same page and return refreshed observations. Explicit HTTPS and
   local HTTP are supported; privileged URLs and remote plaintext HTTP remain blocked.
+- `LocalBrowserState.viewportMode` is additive optional metadata: desktop fits the presented pane;
+  phone/custom viewports remain fixed and centered. Existing viewport commands use 1024×768 to select
+  adaptive desktop and 390×844 for phone; other dimensions select fixed. Observations always carry
+  actual dimensions. Applied receipts may settle a desktop size only if main verifies it against
+  the native page. Keep one compact browser control row; optional conversation sits left of canvases.
 - Explicit semantic `start_walkthrough`/`continue_walkthrough` tools narrate up to three prepared files
   per group. A `narration-checkpoint` waits for actual TTS playback/PCM drain (voice) or published text
   (typing) before advancing. Follow-up questions and ordinary next/previous stay conversational;
