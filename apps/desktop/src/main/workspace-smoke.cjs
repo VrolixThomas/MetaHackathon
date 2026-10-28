@@ -289,6 +289,23 @@ function choose(body, origin) {
 	const last = results.at(-1) && JSON.parse(results.at(-1).output);
 	if (last?.workspaceSequence !== undefined)
 		assert.equal(last.workspaceSequence, observation.workspace.sequence);
+	if (last?.primaryId !== undefined) assert.equal(last.primaryId, observation.workspace.primaryId);
+	if (last?.review !== undefined) assert.deepEqual(last.review, observation.workspace.review);
+	if (last && Object.hasOwn(last, "browser")) {
+		const browser = observation.browser;
+		assert.deepEqual(
+			last.browser,
+			browser
+				? {
+						browserId: browser.browserId,
+						sequence: browser.sequence,
+						documentId: browser.documentId,
+						url: browser.url,
+						presented: browser.presented,
+					}
+				: null
+		);
+	}
 	const call = (tool, args) => {
 		assert.ok(tools.includes(tool), `Actual tool is unavailable: ${tool}`);
 		return { tool, args, packet: context, question };
@@ -651,6 +668,7 @@ async function native() {
 						tool: selected.tool ?? null,
 						args: selected.args,
 						packet: selected.packet,
+						toolResult: body.input.findLast((item) => item.type === "function_call_output"),
 						at: new Date().toISOString(),
 					});
 					return sse(body, selected, report.model.length);
