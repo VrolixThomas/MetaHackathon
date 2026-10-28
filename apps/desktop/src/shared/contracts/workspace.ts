@@ -189,6 +189,10 @@ export const WorkspaceObservationSchema = z.strictObject({
 		)
 		.max(200),
 	capabilities: z.array(z.enum(["documents", "visuals", "browser", "review"])).max(4),
+	savedCanvases: z
+		.array(z.strictObject({ ...canvasFields, kind: z.enum(["document", "visual"]) }))
+		.max(50)
+		.optional(),
 });
 export type Canvas = z.infer<typeof CanvasSchema>;
 export type VisualSpec = z.infer<typeof VisualSpecSchema>;
