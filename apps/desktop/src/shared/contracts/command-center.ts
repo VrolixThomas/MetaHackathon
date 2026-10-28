@@ -225,7 +225,7 @@ export const WorkLogPageSchema = z.strictObject({
 });
 export const WorkReviewSchema = z.strictObject({
 	job: WorkJobSchema,
-	files: z.array(ReviewFileSchema).max(300),
+	files: z.array(ReviewFileSchema.omit({ prId: true })).max(300),
 });
 export const SourceRangeRequestSchema = z.strictObject({
 	repository: GitHubRepositorySchema,
@@ -277,3 +277,5 @@ export type HubOperation = z.infer<typeof HubOperationSchema>;
 export type HubOperationResult = z.infer<typeof HubOperationResultSchema>;
 export type PinnedSource = z.infer<typeof PinnedSourceSchema>;
 export type CodeFlow = z.infer<typeof CodeFlowSchema>;
+export type WorkReview = z.infer<typeof WorkReviewSchema>;
+export type WorkChangedFile = WorkReview["files"][number];
