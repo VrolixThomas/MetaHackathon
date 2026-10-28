@@ -159,6 +159,7 @@ function harness(
 	const options: ConversationOptions = {
 		review: ports,
 		actionReceipts: { timeoutMs, updateScreen: commit },
+		narrationReceipts: { timeoutMs },
 	};
 	const service = new ConversationService(client, options);
 	const identity = {
@@ -245,6 +246,182 @@ test("no selected PR preserves ordinary conversation despite configured review p
 		assert.deepEqual(h.requests[0]?.input, [{ role: "user", content: "Hello" }]);
 	} finally {
 		await h.service.dispose();
+	}
+});
+
+async function nextEffect(h: ReturnType<typeof harness>, count: number) {
+	await eventually(() => h.poll().actions.length >= count);
+	const action = h.poll().actions[count - 1];
+	assert(action);
+	return action;
+}
+function narrationReceipt(
+	action: AgentAction,
+	status: "spoken" | "displayed" | "ignored" = "spoken"
+) {
+	assert(action.kind === "narration-checkpoint");
+	return {
+		sessionId: action.sessionId,
+		turnId: action.turnId,
+		generation: action.generation,
+		requestId: action.requestId,
+		status,
+	};
+}
+
+test("explicit walkthrough advances only after each displayed and narrated file, defaults to three, and continues in the same session", async () => {
+	const h = harness([[call("start_walkthrough")], [], [], [], [call("continue_walkthrough")], []]);
+	const first = h.prepared.files[0];
+	assert(first);
+	for (const path of ["third.ts", "fourth.ts"]) h.prepared.files.push({ ...first, path });
+	h.ports.getFile = async (_pr, _review, path) => fileSource(h.prepared, path);
+	try {
+		h.service.start(h.input);
+		for (let step = 0; step < 3; step++) {
+			const navigation = await nextEffect(h, step * 2 + 1);
+			assert(navigation.kind === "review-navigation");
+			assert.equal(navigation.navigation.path, h.prepared.files[step]?.path);
+			assert.equal(h.requests.length, step + 1, "No explanation before displayed receipt");
+			await h.service.actionApplied(h.receipt(navigation));
+			const checkpoint = await nextEffect(h, step * 2 + 2);
+			assert(checkpoint.kind === "narration-checkpoint");
+			assert.equal(checkpoint.throughTextLength, h.poll().text.length);
+			assert.equal(h.navigations.length, step + 1, "No next file before actual narration receipt");
+			assert.equal(h.poll().status, "running");
+			assert.equal(
+				h.service.narrationApplied({ ...narrationReceipt(checkpoint), generation: 99 }).status,
+				"stale"
+			);
+			assert.equal(
+				h.service.narrationApplied(
+					narrationReceipt(checkpoint, step === 0 ? "displayed" : "spoken")
+				).status,
+				"accepted"
+			);
+			assert.equal(h.service.narrationApplied(narrationReceipt(checkpoint)).status, "stale");
+		}
+		await finish(h);
+		assert.equal(h.navigations.length, 3);
+		assert.deepEqual(
+			h.requests.slice(1, 4).map((request) => contextPacket(request).currentFile.path),
+			["service.ts", "test.ts", "third.ts"]
+		);
+		assert(h.requests.slice(1, 4).every((request) => request.tools?.length === 0));
+		assert(
+			h.requests
+				.slice(1)
+				.every(
+					(request) =>
+						request.input.filter(
+							(item) => item["role"] === "user" && typeof item["content"] === "string"
+						).length === 1
+				),
+			"No synthetic next user turns"
+		);
+		const continued = {
+			...h.input,
+			requestId: "continue-request",
+			turnId: "continue-turn",
+			generation: 2,
+			text: "Continue the walkthrough",
+		};
+		h.service.start(continued);
+		const poll = () =>
+			h.service.poll({
+				sessionId: continued.sessionId,
+				turnId: continued.turnId,
+				generation: continued.generation,
+			});
+		await eventually(() => poll().actions.length === 1);
+		const navigation = poll().actions[0];
+		assert(navigation?.kind === "review-navigation");
+		assert.equal(navigation.navigation.path, "fourth.ts");
+		await h.service.actionApplied({
+			...h.receipt(navigation),
+			turnId: continued.turnId,
+			generation: continued.generation,
+		});
+		await eventually(() => poll().actions.length === 2);
+		const checkpoint = poll().actions[1];
+		assert(checkpoint);
+		h.service.narrationApplied(narrationReceipt(checkpoint));
+		await eventually(() => poll().status === "completed");
+		assert.equal(h.navigations.length, 4);
+	} finally {
+		await h.service.dispose();
+	}
+});
+
+test("cancelled, ignored or timed-out narration never advances and rejects late checkpoint delivery", async () => {
+	for (const mode of ["cancel", "ignored", "timeout"] as const) {
+		const h = harness([[call("start_walkthrough")], []], mode === "timeout" ? 20 : 1000);
+		try {
+			h.service.start(h.input);
+			await h.service.actionApplied(h.receipt(await nextEffect(h, 1)));
+			const checkpoint = await nextEffect(h, 2);
+			if (mode === "cancel")
+				h.service.cancel({ ...h.identity, requestId: "cancel", reason: "user" });
+			else if (mode === "ignored")
+				h.service.narrationApplied(narrationReceipt(checkpoint, "ignored"));
+			await finish(h, mode === "cancel" ? "cancelled" : "error");
+			assert.equal(h.service.narrationApplied(narrationReceipt(checkpoint)).status, "stale");
+			assert.equal(h.navigations.length, 1);
+			assert.equal(h.requests.length, 2);
+		} finally {
+			await h.service.dispose();
+		}
+	}
+});
+
+test("interrupted walkthrough keeps the unspoken current file and rejects changed-head continuation", async () => {
+	for (const changedHead of [false, true]) {
+		const h = harness([[call("start_walkthrough")], [], [call("continue_walkthrough")], []]);
+		try {
+			h.service.start(h.input);
+			await h.service.actionApplied(h.receipt(await nextEffect(h, 1)));
+			const checkpoint = await nextEffect(h, 2);
+			h.service.cancel({ ...h.identity, requestId: "cancel", reason: "user" });
+			if (changedHead) {
+				h.prepared.pr.headSha = "c".repeat(40);
+				h.setScreen({
+					sequence: 8,
+					mode: "review",
+					prId: h.prepared.pr.id,
+					reviewId: h.prepared.id,
+					baseSha: h.prepared.pr.baseSha,
+					headSha: h.prepared.pr.headSha,
+					path: "service.ts",
+					paused: false,
+				});
+				h.ports.getProgress = async () => null;
+			}
+			const input = {
+				...h.input,
+				requestId: "continued",
+				turnId: "continued",
+				generation: 2,
+				text: "Continue",
+			};
+			h.service.start(input);
+			const poll = () =>
+				h.service.poll({
+					sessionId: input.sessionId,
+					turnId: input.turnId,
+					generation: input.generation,
+				});
+			assert.equal(h.service.narrationApplied(narrationReceipt(checkpoint)).status, "stale");
+			if (changedHead) {
+				await eventually(() => poll().status === "error");
+				assert.equal(h.navigations.length, 1);
+			} else {
+				await eventually(() => poll().actions.length > 0);
+				const navigation = poll().actions[0];
+				assert(navigation?.kind === "review-navigation");
+				assert.equal(navigation.navigation.path, "service.ts");
+			}
+		} finally {
+			await h.service.dispose();
+		}
 	}
 });
 

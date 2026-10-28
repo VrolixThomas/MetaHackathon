@@ -6,6 +6,7 @@ import {
 	ConversationActionReceiptSchema,
 	ConversationTurnInputSchema,
 	IdSchema,
+	NarrationReceiptSchema,
 	PollTurnResultSchema,
 	PollTurnSchema,
 } from "../../shared/contracts";
@@ -16,6 +17,10 @@ import { StartTurnResultSchema } from "./events";
 /** Root registers this separate from the legacy screen-bound review agent. */
 export function createConversationRouter(service: ConversationService) {
 	return router({
+		narrationApplied: publicProcedure
+			.input(NarrationReceiptSchema)
+			.output(AgentActionReceiptResultSchema)
+			.mutation(({ input }) => service.narrationApplied(input)),
 		actionApplied: publicProcedure
 			.input(ConversationActionReceiptSchema)
 			.output(AgentActionReceiptResultSchema)

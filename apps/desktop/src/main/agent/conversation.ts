@@ -1,6 +1,7 @@
 import { createHash } from "node:crypto";
 import {
 	type AgentAction,
+	AgentActionSchema,
 	type AgentEvent,
 	AgentEventSchema,
 	type AgentTurnStatus,
@@ -22,14 +23,17 @@ import {
 	type ConversationReceiptOptions,
 	type ConversationReviewPorts,
 	GuidedReviewError,
+	type WalkthroughState,
 	runGuidedReview,
 } from "./guided-review";
 import { type AgentModelClient, MetaApiError, type MetaItem } from "./meta-client";
+import { NarrationReceiptGate, type NarrationReceiptOptions } from "./narration";
 
 export interface ConversationOptions {
 	getContext?: (prId: string, signal: AbortSignal) => Promise<ConversationPRContext>;
 	review?: ConversationReviewPorts;
 	actionReceipts?: ConversationReceiptOptions;
+	narrationReceipts?: NarrationReceiptOptions;
 }
 const INSTRUCTIONS = `You are a conversational assistant. Respond naturally to greetings, ordinary questions and follow-ups; no pull request is required. Keep spoken answers clear and reasonably brief unless the user asks for detail.
 Use the actual conversation history to understand follow-ups. Do not invent earlier messages or facts. Older exchanges may have been omitted to bound context.
@@ -54,7 +58,12 @@ type Turn = {
 	text: string;
 	actions: AgentAction[];
 };
-type Session = { current?: Turn; history: Exchange[]; requests: Set<string> };
+type Session = {
+	current?: Turn;
+	history: Exchange[];
+	requests: Set<string>;
+	walkthrough: WalkthroughState;
+};
 type EventPayload =
 	| { kind: "action"; action: AgentAction }
 	| { kind: "acknowledgement"; text: string }
@@ -71,12 +80,17 @@ export class ConversationService {
 	private readonly jobs = new Set<Promise<void>>();
 	private disposed = false;
 	private readonly reviewReceipts?: ConversationReceiptGate;
+	private readonly narrationReceipts: NarrationReceiptGate;
 	constructor(
 		private readonly client: AgentModelClient,
 		private readonly options: ConversationOptions = {}
 	) {
+		this.narrationReceipts = new NarrationReceiptGate(options.narrationReceipts);
 		if (options.actionReceipts)
 			this.reviewReceipts = new ConversationReceiptGate(options.actionReceipts);
+	}
+	narrationApplied(raw: unknown) {
+		return this.narrationReceipts.accept(raw);
 	}
 
 	actionApplied(raw: unknown) {
@@ -104,7 +118,7 @@ export class ConversationService {
 		if (!session) {
 			if (this.sessions.size >= 100)
 				throw new Error("Release an inactive conversation before starting another");
-			session = { history: [], requests: new Set() };
+			session = { history: [], requests: new Set(), walkthrough: {} };
 			this.sessions.set(input.sessionId, session);
 		}
 		if (previous) this.cancelTurn(previous);
@@ -274,6 +288,30 @@ export class ConversationService {
 					},
 					(delta) => {
 						if (this.active(session, turn)) this.append(turn, delta);
+					},
+					{
+						state: session.walkthrough,
+						onNarration: (throughTextLength, screenSequence) => {
+							if (!this.active(session, turn) || throughTextLength !== turn.text.length)
+								throw new Error("Narration checkpoint is stale");
+							const action = AgentActionSchema.parse({
+								sessionId: turn.input.sessionId,
+								turnId: turn.input.turnId,
+								generation: turn.input.generation,
+								requestId: `narration-${createHash("sha256")
+									.update(JSON.stringify([turn.input.requestId, throughTextLength]))
+									.digest("hex")}`,
+								screenSequence,
+								kind: "narration-checkpoint",
+								throughTextLength,
+							});
+							if (action.kind !== "narration-checkpoint") throw new Error("Invalid checkpoint");
+							return this.narrationReceipts.publish(action, signal, () => {
+								if (!this.active(session, turn)) throw new Error("Turn is no longer active");
+								turn.actions.push(action);
+								this.emit(turn, { kind: "action", action });
+							});
+						},
 					}
 				);
 				if (!this.active(session, turn)) return;
