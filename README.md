@@ -76,7 +76,10 @@ open PRs and prepares a reading order, explanations and suggested comments in th
 Preparation is inferred from the PR description and available patches; it is not execution
 proof or a claim about the author's intent. Partial source coverage is labeled.
 
-Select a ready PR and say **“Walk me through this review”**, **“Next file”**, **“Show me
+Select a ready PR and say **“Walk me through this review”**. Muse takes the initiative through
+up to three files in the prepared reading order, then pauses naturally for a question or **“Continue”**.
+Each file stays on screen until its spoken explanation finishes. Speaking interrupts the walkthrough
+while keeping the microphone available. You can also say **“Next file”**, **“Show me
 `path/to/file`”**, **“Pause the review”**, or **“Resume”**. Muse opens the pinned source before
 narrating. Changes, Before and After views use the PR's actual base/head commits. When those
 commits exist in the selected local clone, reads use Git objects without changing your branch,
@@ -91,17 +94,25 @@ fallback is used. Suggested comments remain unposted; the current review flow do
 The storage interface is separated from orchestration for a later Supabase adapter. Team accounts,
 GitHub App/webhook ingestion and preparation while the desktop is closed are future work.
 
-## Browser beside the review
+## Canvases and browser
 
-Use **More → Open local preview** to open a local website that you already have running. Enter its full
-`http://localhost:port` or `http://127.0.0.1:port` address. The right pane is an actual persistent
-native browser, with normal page interaction, back/forward/reload and desktop/phone viewports.
-Drag the divider or use its arrow keys to resize the split. Voice controls stay available;
+Ask Muse to **“Create an explanation document”**, **“Make a checkout mockup beside it”**,
+**“Show me the code”**, or **“Open https://example.com”**. It manages code, document, visual and
+browser canvases in the same conversation, chooses the primary/secondary panes, and waits for
+each change to display before describing it. Tabs and **Split panes** remain available manually.
+Documents and visual drafts are saved privately in app storage; **Recent** reopens closed drafts.
+
+The browser is an actual persistent native page. Give an explicit HTTPS address or a running
+local HTTP URL. Muse observes the page you see and can click, type, scroll, navigate, and change
+desktop/phone viewport. You can interact normally too. Drag the divider or use its arrow keys
+to resize a split. **More → Open website** opens an address manually. Voice stays available;
 **More → Conversation and typing** reveals text only when needed.
 
-The pane labels this as a local preview: it does not start a development server or prove which
-PR revision is running. Current guided-review tools operate source navigation; automatic
-agent operation of this manually opened page remains separate integration work.
+Generated documents and SVG mockups are labeled drafts. Visual generation currently uses typed
+rectangle/text/line scenes; a raster image generation provider is not connected. Browser pages
+carry unverified revision provenance. Opening a URL does not start a development server or prove
+which PR revision is running. GitHub comments still require explicit confirmation before posting;
+the prepared-review suggested comments remain unposted.
 
 ## Distribution configuration
 
@@ -121,6 +132,7 @@ bun run test:integration
 bun run test:hands-free
 bun run test:prepared-reviews
 bun run test:local-browser
+bun run test:workspace
 bun test apps/desktop/src/shared apps/desktop/src/main apps/desktop/src/renderer
 services/voice/.venv/bin/python -m unittest discover -s services/voice/tests
 ```
@@ -148,3 +160,5 @@ Agent control and observation: [navigation investigation](docs/integration/agent
 Latest validation and screenshots: [review workspace acceptance](docs/integration/review-workspace-acceptance.md).
 
 Current hands-free behavior and validation: [conversation polish acceptance](docs/integration/conversation-polish-acceptance.md).
+
+Current canvas and proactive review validation: [multi-canvas acceptance](docs/integration/multi-canvas-acceptance.md).

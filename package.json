@@ -17,7 +17,8 @@
 		"dist": "bun run --filter @metahackathon/desktop dist",
 		"test:prepared-reviews": "bun run --filter @metahackathon/desktop test:prepared-reviews",
 		"test:local-browser": "bun run --filter @metahackathon/desktop test:local-browser",
-		"test:hands-free": "bun run --filter @metahackathon/desktop test:hands-free"
+		"test:hands-free": "bun run --filter @metahackathon/desktop test:hands-free",
+		"test:workspace": "bun run --filter @metahackathon/desktop test:workspace"
 	},
 	"devDependencies": {
 		"@biomejs/biome": "1.9.4",

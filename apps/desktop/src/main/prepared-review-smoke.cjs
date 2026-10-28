@@ -564,6 +564,15 @@ async function native() {
 			await js(`document.querySelector('textarea[name="question"]').form.requestSubmit()`);
 			const ui = await wait("settled tour reply", async () => {
 				const state = await readUI();
+				if (state.phase === "error") {
+					report.failedTurn = await rpc("query", "conversation.poll", {
+						sessionId: state.sessionId,
+						turnId: state.turnId,
+						generation: state.generation,
+						afterSequence: 0,
+						limit: 100,
+					});
+				}
 				assert.notEqual(state.phase, "error");
 				return state.turnId !== prior.turnId && state.phase === "complete" ? state : null;
 			});
@@ -575,7 +584,10 @@ async function native() {
 			});
 			assert.equal(result.status, "completed");
 			assert.equal(ui.answer, result.text);
-			const action = result.actions.find((action) => action.kind === "review-navigation");
+			const effect = result.actions.find(
+				(action) => action.kind === "workspace-canvas" && action.effect.navigation
+			);
+			const action = effect && { ...effect, navigation: effect.effect.navigation };
 			assert.ok(action);
 			assert.equal(action.navigation.path, step[3]);
 			assert.equal(action.navigation.paused, step[4]);

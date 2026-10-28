@@ -29,14 +29,41 @@ function expectedHistory(index) {
 }
 function validateRequest(body, index) {
 	assert.ok(index < 3, "Unexpected additional model request");
-	assert.deepEqual(body.tools ?? [], []);
+	const workspaceTools = new Set([
+		"inspect_workspace",
+		"probe_browser",
+		"open_browser",
+		"browser_action",
+		"open_ready_review",
+		"set_code_view",
+		"write_markdown_explanation",
+		"create_visual_mock",
+		"focus_canvas",
+		"close_canvas",
+		"set_canvas_layout",
+	]);
+	for (const tool of body.tools ?? [])
+		assert.ok(workspaceTools.has(tool.name), "Unexpected workspace tool");
+	const history = [...body.input];
+	if (Array.isArray(history.at(-1)?.content)) {
+		const context = JSON.parse(history.pop().content[0].text);
+		assert.deepEqual(context.actualWorkspace.workspace.review, {
+			sequence: 0,
+			mode: "conversation",
+			prId: null,
+		});
+		assert.equal(context.actualWorkspace.workspace.canvases.length, 1);
+		assert.equal(context.actualWorkspace.workspace.canvases[0].kind, "review");
+		assert.deepEqual(context.actualWorkspace.reviews, []);
+		assert.equal(context.actualWorkspace.browser, null);
+	}
 	assert.ok(
 		!/prId|screenContext|fixture|Noor|stackable|shop-web|selectedPullRequest/i.test(
-			JSON.stringify(body.input)
+			JSON.stringify(history)
 		)
 	);
 	assert.deepEqual(
-		body.input,
+		history,
 		expectedHistory(index),
 		"Follow-up must include actual prior user AND assistant messages"
 	);

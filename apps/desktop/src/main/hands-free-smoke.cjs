@@ -333,7 +333,10 @@ async function native() {
 			const body = JSON.parse(options.body);
 			const index = report.model.length;
 			assert.ok(index < 2);
-			assert.deepEqual(body.tools ?? [], []);
+			assert.ok(body.tools.some((tool) => tool.name === "inspect_workspace"));
+			const context = JSON.parse(body.input.at(-1).content[0].text).actualWorkspace;
+			assert.equal(context.workspace.review.prId, null);
+			assert.deepEqual(context.reviews, []);
 			assert.equal(
 				body.input.findLast((item) => item.role === "user" && typeof item.content === "string")
 					?.content,
@@ -370,7 +373,7 @@ async function native() {
 							model: body.model,
 							status: "incomplete",
 							output: [],
-							incomplete_details: { reason: "max_output_tokens" },
+							incomplete_details: { reason: "controlled-provider-failure" },
 							usage: { input_tokens: 4410, output_tokens: body.max_output_tokens },
 						},
 					})}\n\n`,
@@ -383,6 +386,9 @@ async function native() {
 						controller.enqueue(
 							encode({ type: "response.output_text.delta", delta: answers[index] })
 						);
+						// Tool-capable prose is buffered until completion; then barge in during PCM playback.
+						controller.enqueue(encode(complete(answers[index])));
+						controller.close();
 						if (!index)
 							lateModel = () => {
 								entry.lateAttempted = true;
@@ -390,16 +396,10 @@ async function native() {
 									controller.enqueue(
 										encode({ type: "response.output_text.delta", delta: lateText })
 									);
-									controller.enqueue(encode(complete(answers[index])));
-									controller.close();
 								} catch {
 									/* Actual reader already cancelled. */
 								}
 							};
-						else {
-							controller.enqueue(encode(complete(answers[index])));
-							controller.close();
-						}
 					},
 					cancel() {
 						entry.cancelled = true;
@@ -692,10 +692,9 @@ async function native() {
 		await js("window.__handsSmoke.drive([[700,600]])");
 		if (!failingAgent) {
 			await wait(
-				"barge cancels old provider and closes old product peer",
+				"barge cancels speech and closes old product peer",
 				async () =>
-					report.model[0].signalAborted &&
-					report.model[0].cancelled &&
+					report.cancels.some((item) => key(item) === key(report.offers[0])) &&
 					(await media()).peers[0].state === "closed"
 			);
 			lateModel();

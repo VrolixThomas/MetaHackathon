@@ -466,6 +466,14 @@ async function native() {
 	const { app, BrowserWindow, ipcMain, webContents, session } = require("electron");
 	const holdMs = Number(process.env.WORKSPACE_SMOKE_HOLD_MS ?? 0);
 	assert.ok(Number.isInteger(holdMs) && holdMs >= 0 && holdMs <= 60_000);
+	const holdStage = process.env.WORKSPACE_SMOKE_HOLD_STAGE ?? "review";
+	assert.ok(["review", "visual", "browser"].includes(holdStage));
+	const hold = async (stage) => {
+		if (holdMs && holdStage === stage) {
+			console.log(`WORKSPACE_VISUAL_READY: ${stage}`);
+			await sleep(holdMs);
+		}
+	};
 	const owned = fs.realpathSync(fs.mkdtempSync(join(tmpdir(), "met-workspace-smoke-")));
 	const owner = randomUUID();
 	fs.writeFileSync(join(owned, ".owner"), owner, { mode: 0o600 });
@@ -694,7 +702,14 @@ async function native() {
 		await app.whenReady();
 		win = await wait("main window", () => BrowserWindow.getAllWindows()[0]);
 		await wait("built renderer", () => !win.webContents.isLoadingMainFrame());
-		const js = (code) => win.webContents.executeJavaScript(code);
+		const js = async (code) => {
+			try {
+				return await win.webContents.executeJavaScript(code);
+			} catch (error) {
+				report.failedScript = code;
+				throw error;
+			}
+		};
 		readUI = () => js(uiScript);
 		const rpc = async (type, path, input) => {
 			const result = await js(
@@ -738,7 +753,21 @@ async function native() {
 				"settled typed turn",
 				async () => {
 					const state = await readUI();
-					assert.notEqual(state.phase, "error");
+					if (state.phase === "error") {
+						report.failedUI = state;
+						const failed = await rpc("query", "conversation.poll", {
+							...identity(state),
+							afterSequence: 0,
+							limit: 100,
+						});
+						report.failedTurn = failed;
+						throw new Error(
+							`Conversation failed: ${failed.events
+								.filter((event) => event.kind === "error")
+								.map((event) => event.message)
+								.join("; ")}`
+						);
+					}
 					return state.turnId !== prior.turnId && state.phase === "complete" ? state : null;
 				},
 				35_000
@@ -764,8 +793,10 @@ async function native() {
 			mock.ui.panes.map((pane) => pane.kind),
 			["visual", "document"]
 		);
+		await hold("visual");
 		await submit(`Open website ${origin}/one`);
 		await submit(questions.operate);
+		await hold("browser");
 		// Connecting test setup is separate from agent effects: the agent discovers the real ready inbox.
 		await rpc("mutation", "reviews.connect", { repository, localPath: fixture.localPath });
 		const ready = await wait("durable prepared review", async () => {
@@ -847,6 +878,48 @@ async function native() {
 		} finally {
 			db.close();
 		}
+		const storedPath = join(userData, "workspace", "canvases.json");
+		const savedDrafts = JSON.parse(fs.readFileSync(storedPath, "utf8"));
+		assert.deepEqual(savedDrafts.canvases.map(({ canvas }) => canvas.kind).sort(), [
+			"document",
+			"visual",
+		]);
+		assert.equal(fs.statSync(storedPath).mode & 0o777, 0o600);
+		await js(`document.querySelector('button[aria-label="Close Checkout explanation"]').click()`);
+		await wait("closed document archived", async () => {
+			const observed = await observe();
+			return (
+				observed.savedCanvases.some((canvas) => canvas.title === "Checkout explanation") &&
+				!observed.workspace.canvases.some((canvas) => canvas.kind === "document")
+			);
+		});
+		await wait("Recent control", () =>
+			js(
+				`!![...document.querySelectorAll('.canvas-layout-button')].find(e => e.textContent === 'Recent')`
+			)
+		);
+		await js(
+			`[...document.querySelectorAll('.canvas-layout-button')].find(e => e.textContent === 'Recent').click()`
+		);
+		await wait("Recent dialog", () => js(`!!document.querySelector('#canvas-history[open]')`));
+		await js(
+			`[...document.querySelectorAll('#canvas-history button')].find(e => e.textContent.includes('Checkout explanation')).click()`
+		);
+		await wait("saved document reopened", async () => {
+			const observed = await observe();
+			const ui = await readUI();
+			return (
+				observed.workspace.primaryId === ui.primaryId &&
+				ui.panes.some(
+					(pane) => pane.kind === "document" && pane.text.includes("CONTROLLED_WORKSPACE_DOCUMENT")
+				)
+			);
+		});
+		report.durableCanvases = {
+			count: savedDrafts.canvases.length,
+			privateFile: true,
+			reopenedThroughUI: true,
+		};
 		assert.equal(
 			report.contentHTTPReads,
 			0,
@@ -862,10 +935,7 @@ async function native() {
 		report.staleNarrationReceiptRejected = true;
 		report.status = "passed";
 		save();
-		if (holdMs) {
-			console.log("WORKSPACE_VISUAL_READY: final pinned file after three-file typed tour");
-			await sleep(holdMs);
-		}
+		await hold("review");
 		await stop();
 	} catch (error) {
 		await stop(error);

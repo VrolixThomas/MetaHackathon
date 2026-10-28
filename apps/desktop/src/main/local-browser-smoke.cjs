@@ -10,7 +10,7 @@ const { dirname, join, resolve } = require("node:path");
 const { pathToFileURL } = require("node:url");
 const desktop = { width: 1024, height: 768 };
 const phone = { width: 390, height: 844 };
-const external = "https://blocked.invalid/local-browser-smoke";
+const external = "http://blocked.invalid/local-browser-smoke";
 const escapeHTML = (value) =>
 	String(value).replace(
 		/[&<>"']/g,
@@ -189,7 +189,14 @@ async function native() {
 		});
 		const win = await wait("main window", () => BrowserWindow.getAllWindows()[0]);
 		await wait("built renderer", () => !win.webContents.isLoadingMainFrame());
-		const js = (code) => win.webContents.executeJavaScript(code);
+		const js = async (code) => {
+			try {
+				return await win.webContents.executeJavaScript(code);
+			} catch (error) {
+				report.failedScript = code;
+				throw error;
+			}
+		};
 		const openOption = async (testId) => {
 			await js(`document.querySelector('[data-testid="workspace-more"]').click()`);
 			await wait("visible workspace menu", () =>
@@ -207,6 +214,15 @@ async function native() {
 			return result.result.data.json;
 		};
 		const state = () => rpc("query", "localBrowser.state");
+		const settledCanvas = async () => {
+			const current = await js(
+				`({sessionId:document.querySelector('main[data-session-id]').dataset.sessionId,sequence:Number(document.querySelector('.canvas-workspace').dataset.workspaceSequence)})`
+			);
+			return (
+				(await rpc("query", "workspace.observe", { sessionId: current.sessionId })).workspace
+					.sequence === current.sequence
+			);
+		};
 		const command = (input) => rpc("mutation", "localBrowser.command", input);
 		const hostBounds = () =>
 			js(
@@ -236,6 +252,17 @@ async function native() {
 		);
 		await js(`document.querySelector('input[name="local-preview-url"]').form.requestSubmit()`);
 		await wait("opened real page", async () => (await state())?.url === `${origin}/one`);
+		await wait("opened canvas committed", settledCanvas);
+		await wait("split canvas control", () =>
+			js(
+				`!![...document.querySelectorAll('.canvas-layout-button')].find(e => e.textContent === 'Split panes')`
+			)
+		);
+		await js(
+			`[...document.querySelectorAll('.canvas-layout-button')].find(e => e.textContent === 'Split panes').click()`
+		);
+		await wait("split canvas layout", () => js(`!!document.querySelector('.workspace-divider')`));
+		await wait("split canvas committed", settledCanvas);
 		const bounds = await wait("renderer native surface reservation", hostBounds);
 		await rpc("mutation", "localBrowser.present", { bounds, viewport: desktop });
 		assert.equal(guestAtOrigin().length, 1);
@@ -321,17 +348,40 @@ async function native() {
 		await wait("phone chrome settled", () =>
 			js(`document.querySelector('[data-testid="browser-viewport"]')?.textContent === "390 × 844"`)
 		);
+		await wait("phone canvas receipt committed", async () => {
+			const current = await js(
+				`({sessionId:document.querySelector('main[data-session-id]').dataset.sessionId,sequence:Number(document.querySelector('.canvas-workspace').dataset.workspaceSequence)})`
+			);
+			return (
+				(await rpc("query", "workspace.observe", { sessionId: current.sessionId })).workspace
+					.sequence === current.sequence
+			);
+		});
 		await inspect("phone", phone);
 		await guest.executeJavaScript(
 			"document.querySelector('#message').value='preserved unsubmitted draft'"
 		);
-		await rpc("mutation", "localBrowser.present", { bounds: null });
+		await js(
+			`[...document.querySelectorAll('.canvas-layout-button')].find(e => e.textContent === 'Single pane').click()`
+		);
+		await wait("single canvas layout", () => js(`!document.querySelector('.workspace-divider')`));
+		await wait("single canvas committed", settledCanvas);
+		await js(`document.querySelector('#canvas-tab-review').click()`);
+		await wait("code tab hides page", () => !view.getVisible());
+		await wait("code canvas committed", settledCanvas);
 		const hidden = await inspect("hidden", phone, false);
 		assert.equal(hidden.dom.value, "preserved unsubmitted draft");
-		await rpc("mutation", "localBrowser.present", { bounds: await hostBounds() });
+		await js(`document.querySelector('#canvas-tab-browser').click()`);
+		await wait("browser tab restores page", () => view.getVisible());
+		await wait("browser canvas committed", settledCanvas);
 		const shown = await inspect("shown", phone);
 		assert.equal(shown.dom.value, hidden.dom.value);
 		assert.equal(shown.dom.serial, hidden.dom.serial);
+		await js(
+			`[...document.querySelectorAll('.canvas-layout-button')].find(e => e.textContent === 'Split panes').click()`
+		);
+		await wait("restored split layout", () => js(`!!document.querySelector('.workspace-divider')`));
+		await wait("restored split committed", settledCanvas);
 		await wait("desktop control ready", () =>
 			js(`!!document.querySelector('.browser-viewport-controls button:not(:disabled)')`)
 		);
@@ -355,13 +405,13 @@ async function native() {
 		await js(
 			`document.querySelector('.workspace-divider').dispatchEvent(new KeyboardEvent('keydown',{key:'ArrowLeft',bubbles:true}))`
 		);
-		await wait("divider resizes native pane", () => view.getBounds().x < priorBounds.x);
+		await wait("divider resizes native pane", () => view.getBounds().width < priorBounds.width);
 		await inspect("resized split");
 		const rejected = await raw("mutation", "localBrowser.command", {
 			kind: "navigate",
 			url: external,
 		});
-		assert.ok(rejected.error, "RPC must reject a nonlocal URL");
+		assert.ok(rejected.error, "RPC must reject nonlocal plaintext HTTP");
 		let navigation;
 		const onNavigate = (event, url) => {
 			navigation = { url, prevented: event.defaultPrevented };

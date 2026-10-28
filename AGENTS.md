@@ -89,6 +89,27 @@ validates an actual locally served page and native lifecycle. Integration alone 
 
 ## Shared interfaces (v1)
 
+- `WorkspaceSnapshot` is the acknowledged canvas/layout/review state. `WorkspaceCommand` is shared
+  by manual and agent actions. Main `WorkspaceCoordinator` publishes `workspace-canvas` effects;
+  renderer acknowledges only after source, two committed frames, and native presentation settle.
+  Only the durable accepted snapshot may be narrated as displayed. Each tool operation has its own
+  request ID. A cancelled generation cannot publish later effects.
+- Code, one persistent native browser, inferred Markdown documents and typed SVG visual drafts share
+  primary/secondary panes and tabs. Generated drafts persist privately under user-data
+  `workspace/canvases.json`; Recent restores closed drafts. New drafts omit ID; updates use observed IDs.
+  Visual scenes are rectangle/text/line mocks, not image-provider raster output or screenshots.
+- Browser observations include actual DOM text, document/element identity, values, viewport, scroll and
+  presentation; tools operate that same page and return refreshed observations. Explicit HTTPS and
+  local HTTP are supported; privileged URLs and remote plaintext HTTP remain blocked.
+- Explicit semantic `start_walkthrough`/`continue_walkthrough` tools narrate up to three prepared files
+  per group. A `narration-checkpoint` waits for actual TTS playback/PCM drain (voice) or published text
+  (typing) before advancing. Follow-up questions and ordinary next/previous stay conversational;
+  there are no fabricated user turns. Barge-in cancels narration/navigation and retains listening.
+
+`bun run test:workspace` exercises actual native canvas rendering, same-page browser operations,
+three-file review receipts, pinned local source, SQLite and draft persistence with controlled
+model/GitHub responses. It does not establish live speech. Integration alone launches it.
+
 - `PreparedReview` is immutable inferred analysis keyed by PR base/head and analysis content.
   `ReviewCache` stores repository/local path, prepared plans and progress through a SQLite adapter.
   `ReviewScreen` describes the file actually shown; `ConversationActionReceipt` gates narration
