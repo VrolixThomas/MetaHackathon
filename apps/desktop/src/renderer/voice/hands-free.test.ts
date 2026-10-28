@@ -282,7 +282,7 @@ test("correlated playback is not retransmitted; user barge-in closes old audio a
 	h.feed(
 		Float32Array.from(playback, (sample) => sample * 0.3),
 		playback,
-		40
+		5
 	);
 	assert.equal(h.turns.length, 1);
 	h.feed(tone(440, 0.15), playback, 16);
@@ -295,6 +295,12 @@ test("correlated playback is not retransmitted; user barge-in closes old audio a
 	assert.ok(
 		h.turns[1]?.samples[0]?.every((sample) => sample === 0),
 		"Echo-only preroll is zeroed"
+	);
+	const firstUser = h.turns[1]?.samples.find((samples) => samples.some((sample) => sample !== 0));
+	const userSignal = tone(440, 0.15);
+	assert.ok(
+		firstUser?.every((sample, i) => sample === userSignal[i]),
+		"No earlier playback echo is replayed"
 	);
 	assert.ok((h.voice.getIdentity()?.generation ?? 0) > old.generation);
 });
@@ -381,4 +387,29 @@ test("late retired-turn cancellation failure cannot close a new hardware session
 	assert.equal(h.sessions[1]?.closed, false);
 	assert.equal(h.voice.getSessionSnapshot().phase, "listening");
 	assert.deepEqual(h.errors, []);
+});
+
+test("near-pitch barge-in retains its first independent PCM frame in the next turn", async () => {
+	const h = harness();
+	h.keepSpeaking();
+	await h.voice.startListening();
+	h.feed(tone(), undefined, 15);
+	h.feed(undefined, undefined, 35);
+	await until(() => h.voice.getPhase() === "speaking");
+	const chirp = (index: number, base: number, amplitude: number) =>
+		Float32Array.from({ length: 960 }, (_, i) => {
+			const time = (index * 960 + i) / 48000;
+			return amplitude * Math.sin(2 * Math.PI * (base * time + 3 * time * time));
+		});
+	for (let i = 0; i < 6; i++) h.feed(undefined, chirp(i, 180, 0.2));
+	const firstWord = chirp(6, 188, 0.12);
+	for (let i = 6; i < 24; i++) h.feed(chirp(i, 188, 0.12), chirp(i, 180, 0.2));
+	assert.equal(h.turns.length, 2);
+	const firstRetained = h.turns[1]?.samples.find((samples) =>
+		samples.some((sample) => sample !== 0)
+	);
+	assert.ok(
+		firstRetained?.every((sample, i) => sample === firstWord[i]),
+		"First independent PCM frame retained intact"
+	);
 });

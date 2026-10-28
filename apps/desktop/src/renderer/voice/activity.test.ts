@@ -58,3 +58,41 @@ test("short false onset and continuous sound are explicitly bounded", () => {
 	assert.equal(result, "limit");
 	assert.throws(() => detector.process(frame(new Float32Array(960).fill(Number.NaN)), false));
 });
+
+test("longer echo window does not suppress independent near-pitch speech or its first frames", () => {
+	const detector = new VoiceActivityDetector();
+	let firstOnset = -1;
+	for (let index = 0; index < 30; index++) {
+		const chirp = (base: number, amplitude: number) =>
+			Float32Array.from({ length: 960 }, (_, i) => {
+				const time = (index * 960 + i) / 48000;
+				return amplitude * Math.sin(2 * Math.PI * (base * time + 3 * time * time));
+			});
+		const result = detector.process(frame(chirp(188, 0.12), chirp(180, 0.2)), true);
+		if (result === "start" && firstOnset < 0) firstOnset = index;
+		assert.equal(detector.isPlaybackEcho, false, "Independent first-word PCM must stay in preroll");
+	}
+	assert.equal(firstOnset, 11, "240ms of independent voiced input should trigger barge-in");
+});
+
+test("brief phoneme gaps retain onset intent while delayed scaled playback remains rejected", () => {
+	const speech = new VoiceActivityDetector();
+	for (let i = 0; i < 6; i++) assert.equal(speech.process(frame(tone()), true), "none");
+	for (let i = 0; i < 2; i++) assert.equal(speech.process(frame(), true), "none");
+	for (let i = 0; i < 5; i++) assert.equal(speech.process(frame(tone()), true), "none");
+	assert.equal(speech.process(frame(tone()), true), "start");
+	const echo = new VoiceActivityDetector();
+	const past: Float32Array[] = [];
+	for (let index = 0; index < 60; index++) {
+		const reference = Float32Array.from({ length: 960 }, (_, i) => {
+			const time = (index * 960 + i) / 48000;
+			return 0.2 * Math.sin(2 * Math.PI * (180 * time + 3 * time * time));
+		});
+		past.push(reference);
+		const mic =
+			index < 5
+				? new Float32Array(960)
+				: Float32Array.from(past[index - 5] ?? [], (sample) => sample * 0.3);
+		assert.equal(echo.process(frame(mic, reference), true), "none");
+	}
+});

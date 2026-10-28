@@ -199,6 +199,17 @@ export function createHandsFreeVoiceController(
 			? { ...input, samples: new Float32Array(input.samples.length) }
 			: input;
 		current.preroll.push(buffered);
+		if (current.detector.isPlaybackEcho && !current.capture) {
+			// Once a full echo trajectory is confirmed, scrub its earlier preroll
+			// frames too; never retroactively erase PCM already accepted as user speech.
+			let span = 0;
+			for (let i = current.preroll.length - 1; i >= 0 && span < 80; i--) {
+				const old = current.preroll[i];
+				if (!old) break;
+				span += (old.samples.length / old.sampleRate) * 1000;
+				current.preroll[i] = { ...old, samples: new Float32Array(old.samples.length) };
+			}
+		}
 		current.prerollMs += ms;
 		while (current.prerollMs > 700 && current.preroll.length > 1) {
 			const old = current.preroll.shift();

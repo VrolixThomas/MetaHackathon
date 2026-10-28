@@ -53,16 +53,20 @@ their sealed FIFO. Barge-in synchronously disconnects old playback, closes its p
 voice/agent cancellation RPCs before creating the new turn with the shared allocator.
 
 Signal detection is local energy/zero-crossing gating with an adaptive noise floor, not a semantic
-speech model. Playback gets a longer onset guard plus a delayed correlation check against the
-actual remote output reference. Highly correlated echo-only input is zeroed in preroll; assistant
-reference PCM is never enqueued as microphone audio. Tests demonstrate these mechanics with
+speech model. Playback gets a longer onset guard plus an 80ms delayed correlation check against the
+actual remote output reference. Correlation at least 0.85 rejects echo onset; at least 0.92 zeroes
+high-confidence echo input in preroll. Matching requires at least three active 20ms subwindows;
+mostly-silent windows cannot collapse back to a misleading one-frame match. Confirmed echo also
+clears its earlier preroll frames, before any user turn has accepted them. The longer window avoids
+treating unrelated near-pitch vowels as echo. Up to 60ms phoneme gaps are allowed within a bounded
+600ms onset candidate. Assistant reference PCM is never enqueued as microphone audio. Tests demonstrate these mechanics with
 generated waveforms, not acoustic immunity in arbitrary rooms. Integration must assess speakers,
 headsets, quiet voices, room echo and device processing in the actual app. No raw microphone PCM,
 reference PCM or transcript is written to storage/logs by this layer; idle PCM remains local.
 
 | Limit | Default / behavior |
 | --- | --- |
-| Onset | 120ms sustained input; 240ms during playback/tail (configurable `activity`) |
+| Onset | 120ms qualifying input; 240ms during playback/tail, allowing brief phoneme gaps (configurable `activity`) |
 | Silence endpoint | 700ms; configurable 400–1500ms |
 | Preroll | Most recent 700ms, with onset-through-setup retained for the new turn |
 | Continuous utterance | 30s; configurable 1–45s, then error stops the session |
@@ -92,7 +96,9 @@ Omit `getScreenContext`; no PR, fixture, screen update, browser or artifact surf
 `ConversationTurnInputSchema` and calls `conversation.start`, with polling and cancellation sent
 to that same conversation namespace. The existing identity allocator, lifecycle/transcript/answer
 hooks, serial speech and explicit dual cancellation are retained. The conversation getter takes
-precedence when both context getters are supplied. V1 does not dispatch review action/receipt hooks.
+precedence when both context getters are supplied. Guided conversation can additionally supply a
+real optional `screen` and `onConversationAction(action, signal)`; UI owns applying/ignoring the
+navigation and awaiting its receipt. Voice does not fabricate a screen or dispatch legacy hooks.
 
 Without the conversation getter, the legacy path still requires `getScreenContext` and sends an
 `AgentTurnInput`. Legacy adapters should parse that schema before reading `input.screenContext`.
@@ -210,6 +216,9 @@ true during permission/signaling. `beginCapture()` intentionally returns **synch
 the UI's serial capture gate can call `endCapture()` while permission is pending.
 
 ## Readiness and interruption
+
+This section describes the legacy push-to-talk controller. Hands-free sessions use the buffered
+input and endpoint/drain lifecycle above, including when an utterance ends during setup.
 
 Integration supplies `voice.status`, `voice.configure({voiceId})`, and `voice.prepare` backed by
 the shared `VoiceSetupStatusSchema`. UI setup controls use the existing encrypted credential
