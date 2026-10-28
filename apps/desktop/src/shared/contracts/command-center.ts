@@ -15,7 +15,7 @@ export const WatchedRepositorySchema = z.strictObject({
 	id: IdSchema,
 	repository: GitHubRepositorySchema,
 	localPath: z.string().max(4096).nullable(),
-	defaultBranch: z.string().min(1).max(200),
+	defaultBranch: z.string().min(1).max(200).nullable(),
 	addedAt: z.iso.datetime(),
 	linearTeamIds: z.array(IdSchema).max(50).default([]),
 	linearProjectIds: z.array(IdSchema).max(100).default([]),
