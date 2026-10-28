@@ -1,5 +1,8 @@
 import { type RefObject, useCallback, useEffect, useRef, useState } from "react";
 import { useStore } from "zustand";
+import { HubConnections } from "../command-center/Connections";
+import { CommandSidebar } from "../command-center/Sidebar";
+import type { HubController } from "../command-center/controller";
 import { ReviewInbox } from "../prepared/Inbox";
 import { ReviewWorkspace } from "../prepared/ReviewWorkspace";
 import type { PreparedController } from "../prepared/controller";
@@ -17,12 +20,14 @@ export function Configuration({
 	beforeOpen,
 	onOpenError,
 	returnFocus,
+	hub,
 }: {
 	controller: ConversationController;
 	onClose(): void;
 	beforeOpen?: () => Promise<void>;
 	onOpenError?(): void;
 	returnFocus?: RefObject<HTMLButtonElement | null>;
+	hub?: HubController;
 }) {
 	const state = useStore(controller.store);
 	const microphone = state.config?.microphone;
@@ -49,6 +54,7 @@ export function Configuration({
 			returnFocus={returnFocus}
 		>
 			<p>Credentials stay in your local configuration file.</p>
+			{hub && <HubConnections hub={hub} />}
 			<code className="env-path" data-testid="env-path">
 				{state.config?.envPath ??
 					state.envPath ??
@@ -148,11 +154,13 @@ export function ConversationApp({
 	reviews,
 	browser,
 	workspace,
+	hub,
 }: {
 	controller: ConversationController;
 	reviews: PreparedController;
 	browser: LocalBrowserController;
 	workspace?: WorkspaceController;
+	hub?: HubController;
 }) {
 	const state = useStore(controller.store);
 	const prepared = useStore(reviews.store);
@@ -196,7 +204,7 @@ export function ConversationApp({
 		moreToggle.current?.focus();
 	};
 	return (
-		<div className="conversation-app review-first">
+		<div className={`conversation-app review-first ${hub && workspace ? "executive-app" : ""}`}>
 			<header className="app-header">
 				<button
 					type="button"
@@ -249,6 +257,15 @@ export function ConversationApp({
 				</div>
 			)}
 			<div className="workspace-body">
+				{hub && workspace && (
+					<CommandSidebar
+						hub={hub}
+						workspace={workspace}
+						conversationOpen={conversationOpen}
+						onConversation={() => setConversationOpen((current) => !current)}
+						onSettings={() => setOverlay("configuration")}
+					/>
+				)}
 				<WorkSplit
 					browser={!workspace && local.page ? browser : undefined}
 					obscured={overlay !== null}
@@ -376,6 +393,7 @@ export function ConversationApp({
 						<div className="primary-work" hidden={!workspace && !reviewOpen && conversationOpen}>
 							{workspace ? (
 								<CanvasWorkspace
+									hub={hub}
 									controller={workspace}
 									reviews={reviews}
 									browser={browser}
@@ -525,6 +543,7 @@ export function ConversationApp({
 			)}
 			{overlay === "configuration" && (
 				<Configuration
+					hub={hub}
 					controller={controller}
 					onClose={closeOverlay}
 					beforeOpen={hideNativePage}

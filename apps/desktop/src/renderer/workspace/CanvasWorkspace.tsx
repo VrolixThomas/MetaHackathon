@@ -7,6 +7,9 @@ import {
 	type WorkspaceCommand,
 	WorkspaceUrlSchema,
 } from "../../shared/contracts";
+import { CenterCanvas } from "../command-center/CenterCanvas";
+import { FlowCanvas, SourceCanvas } from "../command-center/SourceCanvas";
+import type { HubController } from "../command-center/controller";
 import { ReviewWorkspace } from "../prepared/ReviewWorkspace";
 import type { PreparedController } from "../prepared/controller";
 import { ArtifactCanvas } from "./ArtifactCanvas";
@@ -17,8 +20,24 @@ import type { WorkspaceController } from "./controller";
 import type { LocalBrowserController } from "./local-browser";
 import "./canvases.css";
 
-const kindLabel = { review: "Code", browser: "Browser", document: "Document", visual: "Visual" };
-const kindIcon = { review: "‹›", browser: "◎", document: "▤", visual: "◇" };
+const kindLabel = {
+	center: "Workspace",
+	source: "Source",
+	flow: "Source flow",
+	review: "Code",
+	browser: "Browser",
+	document: "Document",
+	visual: "Visual",
+};
+const kindIcon = {
+	center: "⌂",
+	source: "‹›",
+	flow: "↳",
+	review: "‹›",
+	browser: "◎",
+	document: "▤",
+	visual: "◇",
+};
 
 export function CanvasWorkspace({
 	controller,
@@ -27,6 +46,7 @@ export function CanvasWorkspace({
 	obscured,
 	onOpenRepository,
 	onOpenSettings,
+	hub,
 }: {
 	controller: WorkspaceController;
 	reviews: PreparedController;
@@ -34,6 +54,7 @@ export function CanvasWorkspace({
 	obscured: boolean;
 	onOpenRepository(): void;
 	onOpenSettings?(): void;
+	hub?: HubController;
 }) {
 	const state = useStore(controller.store);
 	const page = useStore(browser.store).page;
@@ -102,6 +123,24 @@ export function CanvasWorkspace({
 	};
 	const renderCanvas = (canvas: Canvas, visible: boolean) => {
 		if (!workspace) return null;
+		if (canvas.kind === "center")
+			return (
+				<CenterCanvas canvas={canvas} hub={hub} command={command} onSettings={onOpenSettings} />
+			);
+		if (canvas.kind === "source")
+			return (
+				<SourceCanvas
+					source={canvas.source}
+					onReference={(location) => command({ kind: "open-source", location })}
+				/>
+			);
+		if (canvas.kind === "flow")
+			return (
+				<FlowCanvas
+					flow={canvas.flow}
+					onReference={(location) => command({ kind: "open-source", location })}
+				/>
+			);
 		if (canvas.kind === "browser")
 			return (
 				<BrowserSurface
@@ -168,24 +207,7 @@ export function CanvasWorkspace({
 					command({ kind: "open-browser", url });
 				}}
 				onReference={(reference) => {
-					const selected = reviews.store.getState().detail?.pr;
-					if (
-						!selected ||
-						selected.repository !== reference.repository ||
-						reference.commitSha !==
-							(reference.revision === "base" ? selected.baseSha : selected.headSha)
-					) {
-						controller.store.setState({
-							error: "Open the matching PR revision to follow this source reference.",
-						});
-						return;
-					}
-					command({
-						kind: "navigate-review",
-						path: reference.path,
-						side: reference.revision,
-						line: reference.startLine,
-					});
+					command({ kind: "open-source", location: reference });
 				}}
 			/>
 		);
