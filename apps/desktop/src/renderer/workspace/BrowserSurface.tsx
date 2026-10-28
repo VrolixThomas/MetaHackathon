@@ -1,4 +1,4 @@
-import { useEffect, useLayoutEffect, useRef, useState } from "react";
+import { useEffect, useId, useLayoutEffect, useRef, useState } from "react";
 import { useStore } from "zustand";
 import type { BrowserBounds, LocalBrowserCommand } from "../../shared/contracts";
 import { contentBounds } from "./layout";
@@ -25,6 +25,17 @@ export function BrowserSurface({
 	const host = useRef<HTMLDivElement>(null);
 	const [address, setAddress] = useState(state.page?.url ?? "");
 	const [error, setError] = useState("");
+	const detailsId = useId();
+	const viewportMode =
+		state.page?.viewportMode ??
+		(state.page?.viewport.width === 390 && state.page.viewport.height === 844
+			? "phone"
+			: "desktop");
+	const provenance =
+		state.page?.provenance === "website-unverified-revision" ? "Website" : "Local preview";
+	const pageDetails = state.page
+		? `${state.page.viewport.width} × ${state.page.viewport.height}. ${provenance} · revision unverified. This running page has not been verified against the pull request revision.`
+		: "No page open";
 	useEffect(() => {
 		setAddress(state.page?.url ?? "");
 	}, [state.page?.url]);
@@ -104,12 +115,36 @@ export function BrowserSurface({
 				>
 					<input
 						aria-label="Browser address"
+						aria-describedby={detailsId}
+						title={`${state.page?.title || "Website"}\n${pageDetails}`}
 						name="browser-address"
 						value={address}
 						onChange={(event) => setAddress(event.currentTarget.value)}
 						spellCheck={false}
 					/>
 				</form>
+				<select
+					className="browser-viewport-select"
+					aria-label="Browser viewport"
+					aria-describedby={detailsId}
+					title={`${viewportMode === "fixed" ? "Fixed viewport" : viewportMode === "phone" ? "Phone" : "Desktop · fits pane"}: ${pageDetails}`}
+					value={viewportMode}
+					disabled={state.busy || !state.page}
+					onChange={(event) => {
+						const mode = event.currentTarget.value;
+						if (mode !== "desktop" && mode !== "phone") return;
+						if (onViewport) {
+							onViewport(mode);
+							return;
+						}
+						const box = host.current?.getBoundingClientRect();
+						void controller.setViewport(mode, box ? contentBounds(box, visible) : null);
+					}}
+				>
+					<option value="desktop">Desktop</option>
+					<option value="phone">Phone</option>
+					{viewportMode === "fixed" && <option value="fixed">Fixed</option>}
+				</select>
 				<button
 					type="button"
 					aria-label="Close browser canvas"
@@ -117,43 +152,10 @@ export function BrowserSurface({
 				>
 					×
 				</button>
-			</header>
-			<fieldset className="browser-viewport-controls" aria-label="Browser viewport">
-				{(["desktop", "phone"] as const).map((mode) => (
-					<button
-						type="button"
-						key={mode}
-						disabled={state.busy || !state.page}
-						aria-pressed={
-							mode === "phone"
-								? state.page?.viewport.width === 390 && state.page.viewport.height === 844
-								: state.page?.viewport.width === 1024 && state.page.viewport.height === 768
-						}
-						onClick={() => {
-							if (onViewport) {
-								onViewport(mode);
-								return;
-							}
-							const box = host.current?.getBoundingClientRect();
-							void controller.setViewport(mode, box ? contentBounds(box, visible) : null);
-						}}
-					>
-						{mode === "phone" ? "Phone" : "Desktop"}
-					</button>
-				))}
-				{state.page && (
-					<span data-testid="browser-viewport">
-						{state.page.viewport.width} × {state.page.viewport.height}
-					</span>
-				)}
-			</fieldset>
-			<div className="browser-page-label">
-				<strong>{state.page?.title || "Website"}</strong>
-				<span title="This running page has not been verified against the pull request revision.">
-					{state.page?.provenance === "website-unverified-revision" ? "Website" : "Local preview"} ·
-					revision unverified
+				<span id={detailsId} className="browser-page-details" data-testid="browser-viewport">
+					{pageDetails}
 				</span>
-			</div>
+			</header>
 			{(state.error || error) && (
 				<p className="browser-surface-error" role="alert">
 					{state.error || error}

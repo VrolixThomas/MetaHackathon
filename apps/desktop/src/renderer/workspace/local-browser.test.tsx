@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { it } from "node:test";
 import { renderToStaticMarkup } from "react-dom/server";
 import type { LocalBrowserState } from "../../shared/contracts";
+import { BrowserSurface } from "./BrowserSurface";
 import { WorkSplit } from "./WorkSplit";
 import { createLocalBrowserController } from "./local-browser";
 
@@ -13,6 +14,61 @@ const page: LocalBrowserState = {
 	canGoForward: false,
 	provenance: "local-preview-unverified-revision",
 };
+
+it("keeps main's viewport selection across adaptive sizes and custom fixed dimensions", () => {
+	const controller = createLocalBrowserController(async () => undefined);
+	try {
+		for (const [viewportMode, viewport] of [
+			["desktop", { width: 1386, height: 902 }],
+			["desktop", { width: 390, height: 844 }],
+			["phone", { width: 390, height: 844 }],
+			["fixed", { width: 390, height: 844 }],
+			["fixed", { width: 800, height: 600 }],
+		] as const) {
+			controller.adopt({ ...page, viewportMode, viewport });
+			const html = renderToStaticMarkup(
+				<BrowserSurface
+					controller={{
+						...controller,
+						store: { ...controller.store, getInitialState: controller.store.getState },
+					}}
+					visible={true}
+				/>
+			);
+			assert.match(html, new RegExp(`<option value="${viewportMode}" selected=""`));
+			assert.match(html, new RegExp(`${viewport.width} × ${viewport.height}`));
+			assert.match(html, /aria-label="Browser viewport" aria-describedby="[^"]+"/);
+		}
+	} finally {
+		controller.dispose();
+	}
+});
+
+it("treats only legacy 390 by 844 as phone when main does not report a viewport mode", () => {
+	const controller = createLocalBrowserController(async () => undefined);
+	try {
+		for (const [viewport, selected] of [
+			[{ width: 390, height: 844 }, "phone"],
+			[{ width: 390, height: 843 }, "desktop"],
+			[{ width: 1368, height: 902 }, "desktop"],
+		] as const) {
+			controller.adopt({ ...page, viewport });
+			const html = renderToStaticMarkup(
+				<BrowserSurface
+					controller={{
+						...controller,
+						store: { ...controller.store, getInitialState: controller.store.getState },
+					}}
+					visible={true}
+				/>
+			);
+			assert.match(html, new RegExp(`<option value="${selected}" selected=""`));
+		}
+	} finally {
+		controller.dispose();
+	}
+});
+
 it("adopts main's HTTPS page without opening another browser and labels its real provenance", async () => {
 	const paths: string[] = [];
 	const controller = createLocalBrowserController(async (_type, path) => {

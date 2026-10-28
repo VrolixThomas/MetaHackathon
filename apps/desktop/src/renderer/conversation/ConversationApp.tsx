@@ -261,38 +261,6 @@ export function ConversationApp({
 						data-request-id={last?.requestId}
 						data-conversation-state={state.phase}
 					>
-						<div className="primary-work" hidden={!workspace && !reviewOpen && conversationOpen}>
-							{workspace ? (
-								<CanvasWorkspace
-									controller={workspace}
-									reviews={reviews}
-									browser={browser}
-									obscured={overlay !== null}
-									onOpenRepository={openRepository}
-								/>
-							) : reviewOpen ? (
-								<ReviewWorkspace controller={reviews} onInteraction={controller.interruptReply} />
-							) : (
-								<div className="review-empty">
-									<span className="eyebrow">Review workspace</span>
-									<h1>Choose a pull request.</h1>
-									<p>Open a repository to inspect its files and prepared reading order.</p>
-									<div>
-										<button type="button" onClick={openRepository}>
-											Open repository
-										</button>
-										<button
-											type="button"
-											className="quiet"
-											onClick={() => setConversationOpen(true)}
-										>
-											Type a question
-										</button>
-									</div>
-									<p className="small">You can talk at any time.</p>
-								</div>
-							)}
-						</div>
 						<section
 							id="conversation-panel"
 							className="conversation-panel"
@@ -405,6 +373,38 @@ export function ConversationApp({
 								</button>
 							</form>
 						</section>
+						<div className="primary-work" hidden={!workspace && !reviewOpen && conversationOpen}>
+							{workspace ? (
+								<CanvasWorkspace
+									controller={workspace}
+									reviews={reviews}
+									browser={browser}
+									obscured={overlay !== null}
+									onOpenRepository={openRepository}
+								/>
+							) : reviewOpen ? (
+								<ReviewWorkspace controller={reviews} onInteraction={controller.interruptReply} />
+							) : (
+								<div className="review-empty">
+									<span className="eyebrow">Review workspace</span>
+									<h1>Choose a pull request.</h1>
+									<p>Open a repository to inspect its files and prepared reading order.</p>
+									<div>
+										<button type="button" onClick={openRepository}>
+											Open repository
+										</button>
+										<button
+											type="button"
+											className="quiet"
+											onClick={() => setConversationOpen(true)}
+										>
+											Type a question
+										</button>
+									</div>
+									<p className="small">You can talk at any time.</p>
+								</div>
+							)}
+						</div>
 					</main>
 				</WorkSplit>
 			</div>

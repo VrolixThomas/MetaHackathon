@@ -17,6 +17,7 @@ import type { LocalBrowserController } from "./local-browser";
 import "./canvases.css";
 
 const kindLabel = { review: "Code", browser: "Browser", document: "Document", visual: "Visual" };
+const kindIcon = { review: "‹›", browser: "◎", document: "▤", visual: "◇" };
 
 export function CanvasWorkspace({
 	controller,
@@ -32,6 +33,7 @@ export function CanvasWorkspace({
 	onOpenRepository(): void;
 }) {
 	const state = useStore(controller.store);
+	const page = useStore(browser.store).page;
 	const workspace = state.workspace;
 	const [historyOpen, setHistoryOpen] = useState(false);
 	const historyToggle = useRef<HTMLButtonElement>(null);
@@ -212,6 +214,8 @@ export function CanvasWorkspace({
 							{workspace.canvases.map((canvas) => {
 								const selected =
 									canvas.id === workspace.primaryId || canvas.id === workspace.secondaryId;
+								const title =
+									canvas.kind === "browser" ? page?.title || canvas.title : canvas.title;
 								return (
 									<div key={canvas.id} className="canvas-tab" data-selected={selected}>
 										<button
@@ -222,19 +226,25 @@ export function CanvasWorkspace({
 											aria-selected={selected}
 											aria-controls={selected ? `canvas-panel-${canvas.id}` : undefined}
 											tabIndex={canvas.id === workspace.primaryId ? 0 : -1}
-											title={canvas.title}
+											title={title}
 											onClick={() => {
 												if (canvas.id !== workspace.primaryId)
 													command({ kind: "focus-canvas", id: canvas.id });
 											}}
 										>
-											<span className="canvas-tab-kind">{kindLabel[canvas.kind]}</span>
-											{canvas.title}
+											<span
+												className="canvas-tab-kind"
+												title={kindLabel[canvas.kind]}
+												aria-hidden="true"
+											>
+												{kindIcon[canvas.kind]}
+											</span>
+											<span className="canvas-tab-title">{title}</span>
 										</button>
 										<button
 											type="button"
 											className="quiet canvas-close"
-											aria-label={`Close ${canvas.title}`}
+											aria-label={`Close ${title}`}
 											onClick={() => command({ kind: "close-canvas", id: canvas.id })}
 										>
 											×
@@ -243,7 +253,7 @@ export function CanvasWorkspace({
 											<button
 												type="button"
 												className="quiet"
-												aria-label={`Show ${canvas.title} beside current canvas`}
+												aria-label={`Show ${title} beside current canvas`}
 												onClick={() =>
 													command({ kind: "focus-canvas", id: canvas.id, target: "secondary" })
 												}
@@ -312,12 +322,6 @@ export function CanvasWorkspace({
 									data-canvas-id={canvas.id}
 									data-canvas-revision={canvas.revision}
 								>
-									{workspace.secondaryId && (
-										<div className="canvas-pane-heading">
-											<strong>{canvas.title}</strong>
-											<span>{pane === "primary" ? "Primary" : "Secondary"}</span>
-										</div>
-									)}
 									{renderCanvas(canvas, visible)}
 								</div>
 							);
