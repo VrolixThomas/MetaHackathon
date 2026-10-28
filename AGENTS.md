@@ -26,6 +26,8 @@ checkout alone launches and assesses the combined app; lanes feed reviewed imple
 - Start lane branches from the published MET-8 bootstrap on `hack/integration`.
 - Preserve uncommitted work. Stage explicit paths; never sweep unrelated files into commits.
 - Use one checkout per active worker. Bounded SuperiorSwarm workers get separate worktrees.
+- Dispatch SuperiorSwarm workers explicitly with `cli_preset: "codex"`. The user requires
+  Codex only; never rely on a service/provider default. Keep one active writer per checkout.
 - Hand off small commits with ticket IDs, branch/SHAs, changed files, validation results and
   unresolved dependencies in Linear. Integration reviews and integrates them, then publishes
   any composition/dependency commits all lanes need. Do not merge another lane directly.

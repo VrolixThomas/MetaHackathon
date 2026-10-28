@@ -361,6 +361,22 @@ async function native() {
 				},
 			});
 			const encode = (value) => new TextEncoder().encode(`data: ${JSON.stringify(value)}\n\n`);
+			if (!index && process.env.HANDS_FREE_AGENT_FAILURE === "1") {
+				return new Response(
+					`data: ${JSON.stringify({
+						type: "response.incomplete",
+						response: {
+							id: "controlled-agent-failure",
+							model: body.model,
+							status: "incomplete",
+							output: [],
+							incomplete_details: { reason: "max_output_tokens" },
+							usage: { input_tokens: 4410, output_tokens: body.max_output_tokens },
+						},
+					})}\n\n`,
+					{ headers: { "content-type": "text/event-stream" } }
+				);
+			}
 			return new Response(
 				new ReadableStream({
 					start(controller) {
@@ -536,6 +552,39 @@ async function native() {
 				})
 				.finally(() => {
 					try {
+						const diagnosticPath = join(owned, "diagnostics/conversation.jsonl");
+						const diagnosticText = fs.readFileSync(diagnosticPath, "utf8");
+						for (const privateText of [
+							...transcripts,
+							...answers,
+							"hands-free-smoke-meta",
+							"hands-free-smoke-eleven",
+						])
+							assert.ok(
+								!diagnosticText.includes(privateText),
+								"Diagnostic log must not contain speech or credentials"
+							);
+						const diagnosticRows = diagnosticText
+							.trim()
+							.split("\n")
+							.map((row) => JSON.parse(row));
+						assert.ok(diagnosticRows.some((row) => row.stage === "first-audio"));
+						assert.ok(diagnosticRows.some((row) => row.stage === "shutdown-complete"));
+						if (report.agentFailureRecovered)
+							assert.ok(
+								diagnosticRows.some(
+									(row) => row.stage === "turn-failed" && row.failureSource === "agent"
+								)
+							);
+						report.diagnosticStages = diagnosticRows.map(
+							({ stage, elapsedMs, releaseToAudioMs, failureSource }) => ({
+								stage,
+								elapsedMs,
+								releaseToAudioMs,
+								failureSource,
+							})
+						);
+						report.privateDiagnosticsVerified = true;
 						assert.equal(fs.readFileSync(join(owned, ".owner"), "utf8"), owner);
 						fs.rmSync(owned, { recursive: true, maxRetries: 5, retryDelay: 100 });
 						report.ownedTempRemoved = true;
@@ -600,18 +649,32 @@ async function native() {
 			(await media()).worklets.some((item) => item.name === "voice-hands-free" && item.frames > 4)
 		);
 		report.firstWaveform = await js("window.__handsSmoke.drive([[500,260],[900,460]])");
-		await wait(
-			"silence auto-submits and output PCM is decoded",
-			async () =>
-				report.releases.length === 1 &&
-				(await media()).outputs.some((item) => item.peer === 0 && item.nonSilent > 3),
-			15_000
-		);
+		const failingAgent = process.env.HANDS_FREE_AGENT_FAILURE === "1";
+		if (failingAgent) {
+			await wait(
+				"agent failure returns to a live listening session",
+				async () => {
+					const state = await ui();
+					return state.armed === "true" && state.messages.some((item) => item.phase === "error");
+				},
+				15000
+			);
+			assert.equal(report.model.length, 1, "Failed requests must not retry automatically");
+			assert.equal((await media()).microphones[0].state, "live");
+			report.agentFailureRecovered = true;
+		} else
+			await wait(
+				"silence auto-submits and output PCM is decoded",
+				async () =>
+					report.releases.length === 1 &&
+					(await media()).outputs.some((item) => item.peer === 0 && item.nonSilent > 3),
+				15_000
+			);
 		const first = (await media()).remotes[0];
 		assert.ok(first.answerReturnedAt > report.firstWaveform.prefixEndedAt);
 		assert.equal(first.channel, "pipecat");
 		report.prefixSurvivedDelayedOffer = true;
-		if (process.env.HANDS_FREE_MODAL_CHECKS === "1") {
+		if (process.env.HANDS_FREE_MODAL_CHECKS === "1" && !failingAgent) {
 			await js(`document.querySelector('[data-testid="workspace-more"]').click()`);
 			await wait("More dialog", () => js(`!!document.querySelector('#workspace-more[open]')`));
 			await js(`document.querySelector('[data-testid="configuration-toggle"]').click()`);
@@ -627,16 +690,18 @@ async function native() {
 			report.modalEscapePreservedSession = true;
 		}
 		await js("window.__handsSmoke.drive([[700,600]])");
-		await wait(
-			"barge cancels old provider and closes old product peer",
-			async () =>
-				report.model[0].signalAborted &&
-				report.model[0].cancelled &&
-				(await media()).peers[0].state === "closed"
-		);
-		lateModel();
-		assert.ok(report.cancels.some((item) => key(item) === key(report.offers[0])));
-		report.bargeCancelled = true;
+		if (!failingAgent) {
+			await wait(
+				"barge cancels old provider and closes old product peer",
+				async () =>
+					report.model[0].signalAborted &&
+					report.model[0].cancelled &&
+					(await media()).peers[0].state === "closed"
+			);
+			lateModel();
+			assert.ok(report.cancels.some((item) => key(item) === key(report.offers[0])));
+			report.bargeCancelled = true;
+		}
 		await wait(
 			"second automatic turn completes",
 			async () =>
