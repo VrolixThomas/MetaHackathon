@@ -71,6 +71,20 @@ No demo content enters startup. Team hosting, webhooks and Supabase remain futur
 file actions in native Electron with controlled GitHub/model responses. `bun run test:local-browser`
 validates an actual locally served page and native lifecycle. Integration alone launches these.
 
+## Conversation polish (2026-10-28)
+
+- One explicit Start/End controls the hands-free microphone session. Each detected utterance still
+  has its own cancellable turn/generation. Speech onset buffers locally while media connects;
+  release waits for buffered PCM to drain. No filler acknowledgement speech.
+- Manual source/PR changes interrupt the current reply and retain the listening session. Opening
+  workspace menus/settings does not end voice. A handled dialog Escape never cancels voice;
+  unhandled app Escape and native guest Escape end the session.
+- Native browser hiding must bypass renderer and main page-operation queues. Older show/resize
+  completions cannot cover an open modal. Keep the page state when hidden.
+- Show a compact explanation of what changes and why this file comes next; full cached overview,
+  reading order and evidence stay available in bounded disclosures. Preserve exact source text,
+  syntax, identity and action receipts. Generated explanation provenance remains inference.
+
 ## Shared interfaces (v1)
 
 - `PreparedReview` is immutable inferred analysis keyed by PR base/head and analysis content.

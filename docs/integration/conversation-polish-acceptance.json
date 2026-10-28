@@ -1,0 +1,138 @@
+{
+	"date": "2026-10-28",
+	"applicationCommit": "c8f2062535fd79aa7a1a5823fb03a766fd76197e",
+	"typescriptTests": 542,
+	"pythonVoiceTests": 18,
+	"typeCheck": "passed",
+	"lint": "passed",
+	"build": "passed",
+	"controlledNativeHandsFree": {
+		"status": "passed",
+		"simulatedSTT": true,
+		"simulatedModel": true,
+		"simulatedTTS": true,
+		"simulatedReadiness": false,
+		"actualChromiumMedia": true,
+		"acousticVerification": false,
+		"physicalSpeakerMutedForTest": true,
+		"prefixSurvivedDelayedOffer": true,
+		"modalEscapePreservedSession": true,
+		"bargeCancelled": true,
+		"continuedListening": true,
+		"noLateRearm": true,
+		"stopMode": "escape",
+		"sidecarStopped": true,
+		"ownedTempRemoved": true,
+		"inputAcquisitions": 1,
+		"allInputTracksStopped": true,
+		"endButtonAlsoVerified": true
+	},
+	"liveProvidersWithGeneratedAudio": {
+		"status": "passed",
+		"syntheticMicrophone": true,
+		"ambientAudioRecorded": false,
+		"liveProviders": true,
+		"physicalSpeakerMutedForTest": true,
+		"interruptionObservedMs": 572,
+		"microphoneAcquisitions": 1,
+		"decodedAudioObservations": 651,
+		"stoppedTracks": true,
+		"cleanup": true,
+		"turns": [
+			{
+				"phase": "complete",
+				"questionCharacters": 54,
+				"replyCharacters": 75
+			},
+			{
+				"phase": "cancelled",
+				"questionCharacters": 54,
+				"replyCharacters": 59
+			},
+			{
+				"phase": "complete",
+				"questionCharacters": 54,
+				"replyCharacters": 61
+			}
+		]
+	},
+	"independentVoiceBaseline": {
+		"verifiedBeforeEchoRefinement": true,
+		"status": "passed",
+		"syntheticMicrophone": true,
+		"interruptionObservedMs": 320,
+		"microphoneAcquisitions": 1,
+		"stoppedTracks": true
+	},
+	"nativePreparedReview": {
+		"status": "passed",
+		"actions": 6,
+		"sourceGroundedPackets": 12,
+		"syntax": [
+			{
+				"view": "Changes",
+				"distinctTokenColors": 8,
+				"exactText": true
+			},
+			{
+				"view": "Before",
+				"distinctTokenColors": 8,
+				"exactText": true
+			},
+			{
+				"view": "After",
+				"distinctTokenColors": 8,
+				"exactText": true
+			}
+		],
+		"dirtyWorkPreserved": true,
+		"cleanup": {
+			"ownedTempRemoved": true
+		}
+	},
+	"nativeNoPRConversation": {
+		"status": "passed",
+		"historyVerified": true,
+		"cancelledLateSuppressed": true,
+		"optionalTranscript": true,
+		"audioWithoutRendererGesture": true,
+		"cleanup": {
+			"appQuit": true,
+			"ownedTempRemoved": true
+		}
+	},
+	"nativeBrowser": {
+		"status": "passed",
+		"steps": [
+			"open desktop",
+			"real link",
+			"back",
+			"forward",
+			"navigate IPC",
+			"real form submit",
+			"reload",
+			"phone",
+			"hidden",
+			"shown",
+			"desktop restored",
+			"modal dismissed",
+			"resized split"
+		],
+		"cleanup": {
+			"guestDisposed": true,
+			"ownedServerClosed": true,
+			"ownedTempRemoved": true
+		}
+	},
+	"livePreparation": {
+		"provider": "Meta",
+		"syntheticContext": true,
+		"validated": true,
+		"result": "Short behavior-first summary and distinct per-file reason without repeated inference prefixes."
+	},
+	"limits": [
+		"No ambient microphone recorded; physical room acoustics remain unverified.",
+		"Signal-based turn detection; 700ms silence and 30-second continuous utterance bound.",
+		"Broader agent navigation, GitHub App auth, team hosting and signed distribution are separate work."
+	]
+}

@@ -2,7 +2,7 @@
 
 Talk with Muse, connect a real GitHub repository, and review its pull requests in a prepared
 reading order. Voice is available without a PR. Text conversation is optional, behind
-**Conversation**. The app starts without demo PRs, fixture explanations or scripted answers.
+**More → Conversation and typing**. The app starts without demo PRs, fixture explanations or scripted answers.
 
 ## Run
 
@@ -47,10 +47,16 @@ Voice prepares automatically once Meta, ElevenLabs and a voice ID are configured
 
 ## Talk
 
-Wait for **Voice ready**. Hold the microphone button, wait for **Listening**, speak, then
-release. **Command–Shift–Space** toggles capture from anywhere in the app, including a text
-field. **Stop** or **Escape** interrupts speech and cancels the current turn. Plain Space
-continues to type normally in the composer. No review or PR selection is required.
+Wait for **Voice ready**, then click **Start conversation** once. Speak normally; a short pause
+ends your utterance, Muse replies, and the microphone stays ready for your next question. Speaking
+over a reply interrupts it. **Stop response** stops the current answer while keeping listening on.
+**End conversation** or **Command–Shift–Space** turns the microphone off; the shortcut also starts
+it when off. **Escape** dismisses an open workspace dialog first, otherwise ends the conversation.
+No PR selection or button-holding is required.
+
+The session uses one microphone stream. Speech detection and a bounded pre-roll buffer run locally;
+utterances are sent through the existing speech/model providers. Source navigation can interrupt a
+reply without ending the microphone session. Stop, error and app shutdown release capture.
 
 Configuration reports microphone permission from the running app's process. Use **Request
 microphone access** if needed. macOS permission can be attributed to the development launcher;
@@ -58,14 +64,14 @@ check the app's status before changing unrelated system settings.
 
 ## Real GitHub context
 
-Open **Configuration**, then **Connect GitHub**. The app imports your existing `gh` login
+Open **More → Settings**, then **Connect GitHub**. The app imports your existing `gh` login
 into the configured `.env`; if necessary, first run `gh auth login --hostname github.com`.
 You can also set `GITHUB_TOKEN` directly. Then connect your repository as described below.
 There is no sample PR fallback. Ordinary conversation works without GitHub or a selected PR.
 
 ## Prepared reviews
 
-Open **Repository** and choose a local GitHub clone, or enter `owner/repository`. Muse fetches
+Use the repository/PR selector at the top left to choose a local GitHub clone, or enter `owner/repository`. Muse fetches
 open PRs and prepares a reading order, explanations and suggested comments in the background.
 Preparation is inferred from the PR description and available patches; it is not execution
 proof or a claim about the author's intent. Partial source coverage is labeled.
@@ -87,11 +93,11 @@ GitHub App/webhook ingestion and preparation while the desktop is closed are fut
 
 ## Browser beside the review
 
-Use **Local preview** to open a local website that you already have running. Enter its full
+Use **More → Open local preview** to open a local website that you already have running. Enter its full
 `http://localhost:port` or `http://127.0.0.1:port` address. The right pane is an actual persistent
 native browser, with normal page interaction, back/forward/reload and desktop/phone viewports.
 Drag the divider or use its arrow keys to resize the split. Voice controls stay available;
-**Conversation** reveals text input and replies only when needed.
+**More → Conversation and typing** reveals text only when needed.
 
 The pane labels this as a local preview: it does not start a development server or prove which
 PR revision is running. Current guided-review tools operate source navigation; automatic
@@ -112,6 +118,7 @@ bun run type-check
 bun run lint
 bun run test:contracts
 bun run test:integration
+bun run test:hands-free
 bun run test:prepared-reviews
 bun run test:local-browser
 bun test apps/desktop/src/shared apps/desktop/src/main apps/desktop/src/renderer
@@ -139,3 +146,5 @@ Implementation sequence: [product plan](docs/integration/product-plan.md).
 Agent control and observation: [navigation investigation](docs/integration/agent-navigation-plan.md).
 
 Latest validation and screenshots: [review workspace acceptance](docs/integration/review-workspace-acceptance.md).
+
+Current hands-free behavior and validation: [conversation polish acceptance](docs/integration/conversation-polish-acceptance.md).
