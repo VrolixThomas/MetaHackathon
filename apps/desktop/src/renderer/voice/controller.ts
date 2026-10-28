@@ -64,6 +64,7 @@ type Turn = {
 	measured: Set<Speech["kind"]>;
 	agentDone: boolean;
 	speaking: boolean;
+	pump: Promise<void> | null;
 	hasAnswer: boolean;
 	failure: Error | null;
 };
@@ -341,7 +342,7 @@ export function createVoiceController(options: VoiceControllerOptions): VoiceCon
 		SpeakSchema.shape.text.parse(text);
 		turn.queue.push({ id: id(), text, kind });
 		if (kind === "answer") turn.hasAnswer = true;
-		void speakQueue(turn);
+		if (!turn.speaking) turn.pump = speakQueue(turn);
 	}
 	function answer(turn: Turn, delta: string, final = false) {
 		if (turn.text.length + delta.length > MAX_TEXT)
@@ -351,11 +352,30 @@ export function createVoiceController(options: VoiceControllerOptions): VoiceCon
 		if (!live(turn)) return;
 		for (const sentence of turn.sentences.push(delta, final)) queue(turn, sentence, "answer");
 	}
-	async function action(turn: Turn, value: AgentAction) {
+	async function action(turn: Turn, value: AgentAction, sourceText: string) {
 		if (!live(turn) || !sameTurn(value, turn.identity) || turn.actions.has(value.requestId)) return;
 		if (turn.actions.size >= MAX_ACTIONS)
 			throw new VoiceFailure("agent", new Error("Agent action limit exceeded"));
 		turn.actions.add(value.requestId);
+		if (value.kind === "narration-checkpoint") {
+			if (turn.text.length !== value.throughTextLength || !sourceText.startsWith(turn.text))
+				throw new VoiceFailure("agent", new Error("Narration checkpoint text prefix mismatch"));
+			const checkpoint = options.onNarrationCheckpoint;
+			if (!checkpoint)
+				throw new VoiceFailure("agent", new Error("Narration checkpoint handler unavailable"));
+			for (const sentence of turn.sentences.flush()) queue(turn, sentence, "answer");
+			// The pump includes speak RPC, speech-ended and media.drain for every queued segment.
+			// Its per-speech bounds and the whole-turn deadline also bound this checkpoint wait.
+			while (live(turn) && (turn.speaking || turn.queue.length)) {
+				if (!turn.pump) throw new Error("Speech pump unavailable");
+				await bounded(turn.pump, turn.abort.signal, turnTimeout);
+			}
+			if (!live(turn)) return;
+			await fromOrigin("agent", () =>
+				rpc(turn, Promise.resolve(checkpoint(value, turn.abort.signal)))
+			);
+			return;
+		}
 		if (options.getConversationContext) {
 			if (options.onConversationAction)
 				await fromOrigin("agent", async () =>
@@ -377,7 +397,31 @@ export function createVoiceController(options: VoiceControllerOptions): VoiceCon
 				rpc(turn, Promise.resolve(options.onAction?.(value, current, turn.abort.signal)))
 			);
 	}
-	async function agentEvent(turn: Turn, event: AgentEvent) {
+	async function recoverSnapshot(turn: Turn, text: string, actions: AgentAction[]) {
+		if (!text.startsWith(turn.text))
+			throw new VoiceFailure("agent", new Error("Agent snapshot changed already spoken text"));
+		const recoverText = (through = text.length) => {
+			if (through < turn.text.length || through > text.length || through > MAX_TEXT)
+				throw new VoiceFailure("agent", new Error("Narration checkpoint text prefix mismatch"));
+			answer(turn, text.slice(turn.text.length, through));
+		};
+		if (
+			actions.some(
+				(value) => value.kind === "narration-checkpoint" && !turn.actions.has(value.requestId)
+			)
+		) {
+			// Compaction can omit checkpoint events. Replay effects in snapshot order and admit
+			// only each checkpoint's prefix, never synthesize the following file's text early.
+			for (const value of actions) {
+				if (!live(turn)) return;
+				if (turn.actions.has(value.requestId)) continue;
+				if (value.kind === "narration-checkpoint") recoverText(value.throughTextLength);
+				await action(turn, value, text);
+			}
+		}
+		if (live(turn)) recoverText();
+	}
+	async function agentEvent(turn: Turn, event: AgentEvent, sourceText: string) {
 		if (!live(turn) || event.sequence <= turn.agentSequence) return;
 		turn.agentSequence = event.sequence;
 		options.onEvent?.(event);
@@ -389,7 +433,7 @@ export function createVoiceController(options: VoiceControllerOptions): VoiceCon
 				answer(turn, event.delta);
 				break;
 			case "action":
-				await action(turn, event.action);
+				await action(turn, event.action, sourceText);
 				break;
 			case "error":
 				throw new VoiceFailure("agent", new Error(event.message));
@@ -410,6 +454,7 @@ export function createVoiceController(options: VoiceControllerOptions): VoiceCon
 					...base,
 					...(context.prId === undefined ? {} : { prId: context.prId }),
 					...(context.screen === undefined ? {} : { screen: context.screen }),
+					...(context.workspace === undefined ? {} : { workspace: context.workspace }),
 				});
 			} else {
 				const screenContext = ScreenContextSchema.parse(options.getScreenContext?.());
@@ -459,29 +504,19 @@ export function createVoiceController(options: VoiceControllerOptions): VoiceCon
 				const firstNew = result.events.find((event) => event.sequence > turn.agentSequence);
 				if (firstNew && firstNew.sequence > turn.agentSequence + 1) {
 					// A compacted event window has lost a prefix. Recover the full snapshot once.
-					if (!result.text.startsWith(turn.text))
-						throw new VoiceFailure(
-							"agent",
-							new Error("Agent snapshot changed already spoken text")
-						);
-					answer(turn, result.text.slice(turn.text.length));
+					await recoverSnapshot(turn, result.text, result.actions);
 					turn.agentSequence = result.sequence;
 				} else {
-					for (const event of result.events) await agentEvent(turn, event);
+					for (const event of result.events) await agentEvent(turn, event, result.text);
 				}
 				if (!live(turn)) return;
 				// Empty pages can represent compaction. Recover only unsaid suffixes; never replay speech.
 				if (result.events.length === 0 && result.sequence > turn.agentSequence) {
-					if (!result.text.startsWith(turn.text))
-						throw new VoiceFailure(
-							"agent",
-							new Error("Agent snapshot changed already spoken text")
-						);
-					answer(turn, result.text.slice(turn.text.length));
+					await recoverSnapshot(turn, result.text, result.actions);
 					turn.agentSequence = result.sequence;
 				}
 				if (turn.agentSequence >= result.sequence) {
-					for (const value of result.actions) await action(turn, value);
+					for (const value of result.actions) await action(turn, value, result.text);
 					if (!live(turn)) return;
 					if (result.status === "cancelled") return stop("user");
 					if (result.status === "completed") {
@@ -635,6 +670,7 @@ export function createVoiceController(options: VoiceControllerOptions): VoiceCon
 				measured: new Set(),
 				agentDone: false,
 				speaking: false,
+				pump: null,
 				hasAnswer: false,
 				failure: null,
 			};

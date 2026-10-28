@@ -31,3 +31,14 @@ test("whitespace permits streaming before final and long speech chunks stay boun
 	assert.ok(output.every((chunk) => chunk.length <= 1000));
 	assert.equal(output.join("").replaceAll(" ", ""), `Next${"x".repeat(4500)}.`);
 });
+
+test("checkpoint flushes can repeat and admit later segments without replay or completion text", () => {
+	const sentences = new Sentences();
+	assert.deepEqual(sentences.push("First sentence. Pending first segment"), ["First sentence."]);
+	assert.deepEqual(sentences.flush(), ["Pending first segment"]);
+	assert.deepEqual(sentences.flush(), []);
+	assert.deepEqual(sentences.push(" Next segment, 40."), []);
+	assert.deepEqual(sentences.push("5%. Tail"), ["Next segment, 40.5%."]);
+	assert.deepEqual(sentences.flush(), ["Tail"]);
+	assert.deepEqual(sentences.push("", true), []);
+});

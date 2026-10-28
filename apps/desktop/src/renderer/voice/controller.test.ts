@@ -194,9 +194,20 @@ function identity(value: TurnIdentity): TurnIdentity {
 }
 
 test("V1 conversation speaks one reply without a PR or screen, optionally attaches a real PR", async () => {
-	const contexts: Pick<ConversationTurnInput, "prId" | "screen">[] = [
+	const contexts: Pick<ConversationTurnInput, "prId" | "screen" | "workspace">[] = [
 		{},
 		{ prId: "selected-pr" },
+		{
+			workspace: {
+				sequence: 3,
+				canvases: [{ id: "review", kind: "review", title: "Review", revision: 1 }],
+				primaryId: "review",
+				secondaryId: null,
+				review: { sequence: 0, mode: "conversation", prId: null },
+				codeView: "diff",
+				browser: null,
+			},
+		},
 		{
 			prId: "selected-pr",
 			screen: {
@@ -244,6 +255,8 @@ test("V1 conversation speaks one reply without a PR or screen, optionally attach
 		assert.equal(starts[0].prId, context.prId);
 		assert.equal("screen" in starts[0], "screen" in context);
 		assert.deepEqual(starts[0].screen, context.screen);
+		assert.equal("workspace" in starts[0], "workspace" in context);
+		assert.deepEqual(starts[0].workspace, context.workspace);
 		h.emit({ kind: "speech-ended", speechId: h.speaks[0]?.speechId ?? "missing" });
 		await until(() => h.controller.getPhase() === "idle");
 		assert.deepEqual(
@@ -270,6 +283,476 @@ function reviewNavigation(turn: TurnIdentity, requestId: string): AgentAction {
 			paused: false,
 		},
 	};
+}
+
+function narrationCheckpoint(
+	turn: TurnIdentity,
+	requestId: string,
+	throughTextLength: number
+): Extract<AgentAction, { kind: "narration-checkpoint" }> {
+	return {
+		...identity(turn),
+		requestId,
+		screenSequence: 7,
+		kind: "narration-checkpoint",
+		throughTextLength,
+	};
+}
+
+test("narration waits for held speech RPC, every speech-ended and PCM drain before its receipt", async () => {
+	const speech = deferred<void>();
+	const drains = [deferred<void>(), deferred<void>()];
+	let draining = 0;
+	let closed = false;
+	const spoken: AgentAction[] = [];
+	const ui: AgentAction[] = [];
+	const ends: VoiceTurnEnd[] = [];
+	const text = "First sentence. Pending segment";
+	const h = harness({
+		getConversationContext: () => ({}),
+		acknowledgementText: undefined,
+		completionText: "Extra completion must not play.",
+		onNarrationCheckpoint: (action, signal) => {
+			assert.equal(signal.aborted, false);
+			assert.equal(closed, false);
+			assert.equal(draining, 2);
+			spoken.push(action);
+		},
+		onConversationAction: (action) => {
+			ui.push(action);
+		},
+		onTurnEnd: (_identity, result) => {
+			ends.push(result);
+		},
+		media: () => ({
+			connect: async (offer) => {
+				await offer({ type: "offer", sdp: "offer" });
+			},
+			stopCapture: () => {},
+			drain: () => drains[draining++]?.promise ?? Promise.reject(new Error("Unexpected drain")),
+			close: () => {
+				closed = true;
+			},
+		}),
+	});
+	h.options.agent.start = async (input) => ({ ...identity(input), status: "running" });
+	const speak = h.options.voice.speak;
+	h.options.voice.speak = async (input, signal) => {
+		await speak(input, signal);
+		if (h.speaks.length === 1) await speech.promise;
+	};
+	h.setPoll(async (input) => {
+		const checkpoint = narrationCheckpoint(input, "spoken-prefix", text.length);
+		const next = reviewNavigation(input, "next-file");
+		return {
+			...identity(input),
+			status: "completed",
+			sequence: 4,
+			text,
+			events: [
+				{ ...identity(input), sequence: 1, kind: "text-delta", delta: text },
+				{ ...identity(input), sequence: 2, kind: "action", action: checkpoint },
+				{ ...identity(input), sequence: 3, kind: "action", action: next },
+				{ ...identity(input), sequence: 4, kind: "completed" },
+			],
+			actions: [checkpoint, next],
+		};
+	});
+	await h.capture();
+	h.emit({ kind: "transcript", text: "Walk me through it", final: true });
+	await until(() => h.speaks.length === 1);
+	h.emit({ kind: "speech-ended", speechId: h.speaks[0]?.speechId ?? "missing" });
+	await wait();
+	assert.equal(draining, 0, "speech-ended cannot outrun an unfinished speak RPC");
+	assert.equal(spoken.length, 0);
+	speech.resolve();
+	await until(() => draining === 1);
+	assert.equal(ui.length, 0);
+	assert.equal(spoken.length, 0);
+	drains[0]?.resolve();
+	await until(() => h.speaks.length === 2);
+	assert.deepEqual(ends, []);
+	assert.equal(closed, false);
+	assert.equal(spoken.length, 0);
+	h.emit({ kind: "speech-ended", speechId: h.speaks[1]?.speechId ?? "missing" });
+	await until(() => draining === 2);
+	assert.equal(spoken.length, 0);
+	assert.equal(ui.length, 0);
+	drains[1]?.resolve();
+	await until(() => h.controller.getPhase() === "idle");
+	assert.deepEqual(
+		spoken.map((action) => action.requestId),
+		["spoken-prefix"]
+	);
+	assert.deepEqual(
+		ui.map((action) => action.requestId),
+		["next-file"]
+	);
+	assert.deepEqual(
+		h.speaks.map((speech) => speech.text),
+		["First sentence.", "Pending segment"]
+	);
+	assert.deepEqual(ends, [{ status: "completed" }]);
+	assert.deepEqual(h.errors, []);
+});
+
+test("repeated polls and event/snapshot checkpoints deduplicate while the next segment stays in the same turn", async () => {
+	const checkpoints: AgentAction[] = [];
+	const receipt = deferred<void>();
+	const prefix = "First segment without punctuation";
+	const suffix = " Second segment.";
+	let polls = 0;
+	let proceed = false;
+	const h = harness({
+		getConversationContext: () => ({}),
+		acknowledgementText: undefined,
+		completionText: "Extra completion must not play.",
+		onNarrationCheckpoint: (action) => {
+			checkpoints.push(action);
+			return receipt.promise;
+		},
+		onConversationAction: () => {
+			throw new Error("Checkpoint cannot reach UI action hook");
+		},
+	});
+	h.options.agent.start = async (input) => ({ ...identity(input), status: "running" });
+	h.setPoll(async (input) => {
+		polls++;
+		const first = narrationCheckpoint(input, "first-segment", prefix.length);
+		const second = narrationCheckpoint(input, "second-segment", prefix.length + suffix.length);
+		const events: AgentEvent[] = [
+			{ ...identity(input), sequence: 1, kind: "text-delta", delta: prefix },
+			{ ...identity(input), sequence: 2, kind: "action", action: first },
+		];
+		if (proceed)
+			events.push(
+				{ ...identity(input), sequence: 3, kind: "text-delta", delta: suffix },
+				{ ...identity(input), sequence: 4, kind: "action", action: second },
+				{ ...identity(input), sequence: 5, kind: "completed" }
+			);
+		return {
+			...identity(input),
+			status: proceed ? "completed" : "running",
+			sequence: proceed ? 5 : 2,
+			text: prefix + (proceed ? suffix : ""),
+			events,
+			actions: proceed ? [first, second] : [first],
+		};
+	});
+	await h.capture();
+	h.emit({ kind: "transcript", text: "Walk through the related files", final: true });
+	await until(() => h.speaks.length === 1);
+	const turn = h.current();
+	h.emit({ kind: "speech-ended", speechId: h.speaks[0]?.speechId ?? "missing" });
+	await until(() => checkpoints.length === 1);
+	await wait();
+	assert.equal(polls, 1, "Receipt acknowledgement remains ordered before later polls");
+	assert.equal(h.media[0]?.closed, false);
+	receipt.resolve();
+	await until(() => polls >= 3);
+	assert.equal(checkpoints.length, 1);
+	assert.equal(h.speaks.length, 1);
+	assert.deepEqual(h.controller.getIdentity(), turn);
+	proceed = true;
+	await until(() => h.speaks.length === 2);
+	assert.equal(checkpoints.length, 1);
+	h.emit({ kind: "speech-ended", speechId: h.speaks[1]?.speechId ?? "missing" });
+	await until(() => h.controller.getPhase() === "idle");
+	assert.deepEqual(
+		checkpoints.map((action) => action.requestId),
+		["first-segment", "second-segment"]
+	);
+	assert.deepEqual(
+		h.speaks.map((speech) => speech.text),
+		[prefix, suffix.trim()]
+	);
+	assert.ok(
+		h.speaks.every(
+			(speech) => speech.turnId === turn.turnId && speech.generation === turn.generation
+		)
+	);
+	assert.deepEqual(h.errors, []);
+});
+
+for (const recovery of ["gap", "empty"] as const) {
+	test(`compacted ${recovery} snapshot respects checkpoint prefixes before applying later navigation`, async () => {
+		const checkpoints: AgentAction[] = [];
+		const ui: AgentAction[] = [];
+		const prefix = "Recovered first file";
+		const suffix = " Recovered second file";
+		const h = harness({
+			getConversationContext: () => ({}),
+			acknowledgementText: undefined,
+			onNarrationCheckpoint: (action) => {
+				checkpoints.push(action);
+			},
+			onConversationAction: (action) => {
+				ui.push(action);
+			},
+		});
+		h.options.agent.start = async (input) => ({ ...identity(input), status: "running" });
+		h.setPoll(async (input) => ({
+			...identity(input),
+			status: "completed",
+			sequence: 50,
+			text: prefix + suffix,
+			events: recovery === "gap" ? [{ ...identity(input), sequence: 50, kind: "completed" }] : [],
+			actions: [
+				reviewNavigation(input, "first-file"),
+				narrationCheckpoint(input, "first-prefix", prefix.length),
+				reviewNavigation(input, "second-file"),
+				narrationCheckpoint(input, "second-prefix", prefix.length + suffix.length),
+			],
+		}));
+		await h.capture();
+		h.emit({ kind: "transcript", text: "Continue", final: true });
+		await until(() => h.speaks.length === 1);
+		assert.deepEqual(h.answers, [prefix]);
+		assert.deepEqual(
+			ui.map((action) => action.requestId),
+			["first-file"]
+		);
+		assert.equal(checkpoints.length, 0);
+		h.emit({ kind: "speech-ended", speechId: h.speaks[0]?.speechId ?? "missing" });
+		await until(() => h.speaks.length === 2);
+		assert.deepEqual(
+			ui.map((action) => action.requestId),
+			["first-file", "second-file"]
+		);
+		assert.deepEqual(
+			checkpoints.map((action) => action.requestId),
+			["first-prefix"]
+		);
+		h.emit({ kind: "speech-ended", speechId: h.speaks[1]?.speechId ?? "missing" });
+		await until(() => h.controller.getPhase() === "idle");
+		assert.deepEqual(
+			checkpoints.map((action) => action.requestId),
+			["first-prefix", "second-prefix"]
+		);
+		assert.deepEqual(
+			h.speaks.map((speech) => speech.text),
+			[prefix, suffix.trim()]
+		);
+		assert.deepEqual(h.errors, []);
+	});
+}
+
+for (const stage of ["rpc", "speech-ended", "drain", "receipt"] as const) {
+	test(`cancelling a checkpoint during ${stage} drops its late receipt and old turn effects`, async () => {
+		const speech = deferred<void>();
+		const drain = deferred<void>();
+		const receipt = deferred<void>();
+		let draining = false;
+		let checkpointCalls = 0;
+		let receipts = 0;
+		let ui = 0;
+		let speechSignal: AbortSignal | undefined;
+		let receiptSignal: AbortSignal | undefined;
+		const text = "Pending narration";
+		const h = harness({
+			getConversationContext: () => ({}),
+			acknowledgementText: undefined,
+			onNarrationCheckpoint: async (_action, signal) => {
+				checkpointCalls++;
+				receiptSignal = signal;
+				await receipt.promise;
+				if (!signal.aborted) receipts++;
+			},
+			onConversationAction: () => {
+				ui++;
+			},
+			media: () => ({
+				connect: async (offer) => {
+					await offer({ type: "offer", sdp: "offer" });
+				},
+				stopCapture: () => {},
+				drain: () => {
+					draining = true;
+					return drain.promise;
+				},
+				close: () => {},
+			}),
+		});
+		h.options.agent.start = async (input) => ({ ...identity(input), status: "running" });
+		const speak = h.options.voice.speak;
+		h.options.voice.speak = async (input, signal) => {
+			speechSignal = signal;
+			await speak(input, signal);
+			if (stage === "rpc") await speech.promise;
+		};
+		h.setPoll(async (input) => ({
+			...identity(input),
+			status: "running",
+			sequence: 3,
+			text,
+			events: [
+				{ ...identity(input), sequence: 1, kind: "text-delta", delta: text },
+				{
+					...identity(input),
+					sequence: 2,
+					kind: "action",
+					action: narrationCheckpoint(input, "pending", text.length),
+				},
+				{
+					...identity(input),
+					sequence: 3,
+					kind: "action",
+					action: reviewNavigation(input, "late-next-file"),
+				},
+			],
+			actions: [],
+		}));
+		await h.capture();
+		h.emit({ kind: "transcript", text: "Explain", final: true });
+		await until(() => h.speaks.length === 1);
+		const old = h.current();
+		if (stage === "drain" || stage === "receipt") {
+			h.emit({ kind: "speech-ended", speechId: h.speaks[0]?.speechId ?? "missing" });
+			await until(() => draining);
+		}
+		if (stage === "receipt") {
+			drain.resolve();
+			await until(() => checkpointCalls === 1);
+		}
+		h.controller.interrupt("push-to-talk");
+		assert.equal(speechSignal?.aborted, true);
+		if (receiptSignal) assert.equal(receiptSignal.aborted, true);
+		assert.ok(h.cancels.voice.some((value) => value.turnId === old.turnId));
+		assert.ok(h.cancels.agent.some((value) => value.turnId === old.turnId));
+		h.controller.beginCapture();
+		const next = h.current();
+		assert.ok(next.generation > old.generation);
+		speech.resolve();
+		drain.resolve();
+		receipt.resolve();
+		h.voiceEvents.push({
+			...old,
+			sequence: 99,
+			kind: "speech-ended",
+			speechId: h.speaks[0]?.speechId ?? "missing",
+		});
+		await until(() => h.controller.getPhase() === "listening");
+		await wait();
+		assert.equal(checkpointCalls, stage === "receipt" ? 1 : 0);
+		assert.equal(receipts, 0);
+		assert.equal(ui, 0);
+		assert.deepEqual(h.controller.getIdentity(), next);
+		assert.equal(h.speaks.length, 1);
+		assert.deepEqual(h.errors, []);
+	});
+}
+
+for (const mismatch of ["short", "long", "changed-prefix"] as const) {
+	test(`a ${mismatch} checkpoint prefix cannot produce a spoken receipt or flush pending text`, async () => {
+		let checkpoints = 0;
+		const text = "Pending narration";
+		const ends: VoiceTurnEnd[] = [];
+		const h = harness({
+			getConversationContext: () => ({}),
+			acknowledgementText: undefined,
+			onNarrationCheckpoint: () => {
+				checkpoints++;
+			},
+			onTurnEnd: (_identity, result) => {
+				ends.push(result);
+			},
+		});
+		h.options.agent.start = async (input) => ({ ...identity(input), status: "running" });
+		h.setPoll(async (input) => ({
+			...identity(input),
+			status: "running",
+			sequence: 2,
+			text: mismatch === "changed-prefix" ? "Different narration" : text,
+			events: [
+				{ ...identity(input), sequence: 1, kind: "text-delta", delta: text },
+				{
+					...identity(input),
+					sequence: 2,
+					kind: "action",
+					action: narrationCheckpoint(
+						input,
+						"mismatch",
+						text.length + (mismatch === "short" ? -1 : mismatch === "long" ? 1 : 0)
+					),
+				},
+			],
+			actions: [],
+		}));
+		await h.capture();
+		h.emit({ kind: "transcript", text: "Explain", final: true });
+		await until(() => h.controller.getPhase() === "error");
+		assert.equal(checkpoints, 0);
+		assert.deepEqual(h.speaks, []);
+		assert.equal(ends[0]?.status, "failed");
+		if (ends[0]?.status === "failed") {
+			assert.equal(ends[0].origin, "agent");
+			assert.equal(ends[0].recoverable, true);
+		}
+		assert.equal(h.cancels.voice.length, 1);
+		assert.equal(h.cancels.agent.length, 1);
+	});
+}
+
+for (const stage of ["speech-ended", "drain", "receipt"] as const) {
+	test(`checkpoint ${stage} waiting is bounded and prevents late acknowledgement`, async () => {
+		const drain = deferred<void>();
+		const receipt = deferred<void>();
+		let checkpointCalls = 0;
+		let receipts = 0;
+		let signal: AbortSignal | undefined;
+		const text = "Pending narration";
+		const h = harness({
+			getConversationContext: () => ({}),
+			acknowledgementText: undefined,
+			speechTimeoutMs: 100,
+			rpcTimeoutMs: 100,
+			onNarrationCheckpoint: async (_action, abort) => {
+				checkpointCalls++;
+				signal = abort;
+				await receipt.promise;
+				if (!abort.aborted) receipts++;
+			},
+			media: () => ({
+				connect: async (offer) => {
+					await offer({ type: "offer", sdp: "offer" });
+				},
+				stopCapture: () => {},
+				drain: () => (stage === "drain" ? drain.promise : Promise.resolve()),
+				close: () => {},
+			}),
+		});
+		h.options.agent.start = async (input) => ({ ...identity(input), status: "running" });
+		h.setPoll(async (input) => ({
+			...identity(input),
+			status: "running",
+			sequence: 2,
+			text,
+			events: [
+				{ ...identity(input), sequence: 1, kind: "text-delta", delta: text },
+				{
+					...identity(input),
+					sequence: 2,
+					kind: "action",
+					action: narrationCheckpoint(input, "stalled", text.length),
+				},
+			],
+			actions: [],
+		}));
+		await h.capture();
+		h.emit({ kind: "transcript", text: "Explain", final: true });
+		await until(() => h.speaks.length === 1);
+		if (stage !== "speech-ended")
+			h.emit({ kind: "speech-ended", speechId: h.speaks[0]?.speechId ?? "missing" });
+		await until(() => h.controller.getPhase() === "error");
+		assert.equal(checkpointCalls, stage === "receipt" ? 1 : 0);
+		if (signal) assert.equal(signal.aborted, true);
+		drain.resolve();
+		receipt.resolve();
+		await wait();
+		assert.equal(receipts, 0);
+		assert.equal(h.cancels.voice.length, 1);
+		assert.equal(h.cancels.agent.length, 1);
+	});
 }
 
 test("conversation event and snapshot actions flow once and wait for the UI receipt before reply", async () => {

@@ -93,7 +93,7 @@ export type VoiceControllerOptions = {
 	onTurnStart?(identity: TurnIdentity): void;
 	onTurnEnd?(identity: TurnIdentity, result: VoiceTurnEnd): void;
 	/** V1 conversation mode: no screen or review is required; takes precedence over getScreenContext. */
-	getConversationContext?(): Pick<ConversationTurnInput, "prId" | "screen">;
+	getConversationContext?(): Pick<ConversationTurnInput, "prId" | "screen" | "workspace">;
 	/** Legacy review mode requires a real screen context. */
 	getScreenContext?(): ScreenContext;
 	/** PR symbols and paths supplied by composition; snapshotted when capture begins. */
@@ -106,6 +106,11 @@ export type VoiceControllerOptions = {
 	onEvent?(event: AgentEvent): void;
 	onVoiceEvent?(event: VoiceEvent): void;
 	onAnswer?(text: string, identity: TurnIdentity): void;
+	/** Exact text prefix has finished speech and PCM drain. Send the spoken receipt using this signal. */
+	onNarrationCheckpoint?(
+		action: Extract<AgentAction, { kind: "narration-checkpoint" }>,
+		signal: AbortSignal
+	): void | Promise<void>;
 	/** Same live conversation turn, deduplicated by requestId. UI applies/ignores and awaits its receipt. */
 	onConversationAction?(action: AgentAction, signal: AbortSignal): void | Promise<void>;
 	/** Check signal/current screen again immediately before any asynchronous UI effect. */

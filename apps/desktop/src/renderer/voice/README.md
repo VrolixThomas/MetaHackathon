@@ -23,6 +23,7 @@ const conversation = createHandsFreeVoiceController({
   onTurnEnd,
   onTranscript,
   onAnswer,
+  onNarrationCheckpoint,
   onConversationAction,
   onError,
 });
@@ -114,6 +115,25 @@ hooks, serial speech and explicit dual cancellation are retained. The conversati
 precedence when both context getters are supplied. Guided conversation can additionally supply a
 real optional `screen` and `onConversationAction(action, signal)`; UI owns applying/ignoring the
 navigation and awaiting its receipt. Voice does not fabricate a screen or dispatch legacy hooks.
+The getter can additionally supply a validated `workspace` snapshot for the same conversation turn;
+the voice layer forwards it without creating a separate agent or UI binding.
+
+`onNarrationCheckpoint(action, signal)` handles shared `narration-checkpoint` actions before
+`onConversationAction`. `action.throughTextLength` identifies the exact cumulative answer-text
+prefix in the current turn (UTF-16 string length). The controller validates the prefix, flushes
+the pending sentence segment and waits for the serial speech pump: every speak RPC must settle,
+every speech must receive its matching `speech-ended`, and every `media.drain(signal)` must
+finish. Integration then sends `conversation.narrationApplied` with that action's turn identity,
+request ID and `status: "spoken"`; the typed UI sends `status: "displayed"` separately. The callback
+must check `signal.aborted` immediately before sending the receipt and pass the signal to its RPC.
+
+The callback has the existing RPC timeout; speech/drain waits retain their per-speech bounds and
+whole-turn deadline. An absent handler, mismatched prefix or failed receipt fails the agent turn,
+preserving healthy hands-free capture. A checkpoint leaves the generation open, consumes pending
+text once and adds no completion speech. Repeated event/snapshot actions and polls share request-ID
+deduplication. Compacted snapshots recover each unacknowledged checkpoint prefix before later
+file actions or text. Barge-in aborts the old pump/receipt immediately; no later callback can begin
+for that retired generation. The callback's own signal fence prevents a delayed receipt send.
 
 Without the conversation getter, the legacy path still requires `getScreenContext` and sends an
 `AgentTurnInput`. Legacy adapters should parse that schema before reading `input.screenContext`.

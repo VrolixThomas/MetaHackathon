@@ -1,6 +1,10 @@
 /** Bounded, incremental speech chunks. It deliberately does not interpret user intent. */
 export class Sentences {
 	private pending = "";
+	/** Ends only the pending segment; later pushes start fresh without replaying prior text. */
+	flush(): string[] {
+		return this.push("", true);
+	}
 	push(delta: string, final = false): string[] {
 		this.pending += delta;
 		const result: string[] = [];

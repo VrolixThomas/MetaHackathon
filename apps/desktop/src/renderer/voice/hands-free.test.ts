@@ -361,6 +361,138 @@ test("stop during pending permission, error and dispose never auto-rearm on late
 	h.voice.dispose();
 	await assert.rejects(h.voice.startListening(), { name: "AbortError" });
 });
+
+test("VAD barge-in drops a pending narration checkpoint while the same microphone session captures the next user", async () => {
+	let checkpoints = 0;
+	let ui = 0;
+	const text = "Narration still playing";
+	const h = harness({
+		onNarrationCheckpoint: () => {
+			checkpoints++;
+		},
+		onConversationAction: () => {
+			ui++;
+		},
+	});
+	const normalPoll = h.options.agent.poll;
+	h.options.agent.poll = async (input) => ({
+		...identity(input),
+		status: "running",
+		sequence: 3,
+		text,
+		events: [
+			{ ...identity(input), sequence: 1, kind: "text-delta", delta: text },
+			{
+				...identity(input),
+				sequence: 2,
+				kind: "action",
+				action: {
+					...identity(input),
+					screenSequence: 1,
+					requestId: "pending-narration",
+					kind: "narration-checkpoint",
+					throughTextLength: text.length,
+				},
+			},
+			{ ...identity(input), sequence: 3, kind: "action", action: navigation(input) },
+		],
+		actions: [],
+	});
+	h.keepSpeaking();
+	await h.voice.startListening();
+	h.feed(tone(), undefined, 15);
+	h.feed(undefined, undefined, 35);
+	await until(() => h.speaks.length === 1);
+	const old = h.voice.getIdentity();
+	assert.ok(old);
+	h.feed(tone(330, 0.15), tone(660, 0.2), 16);
+	assert.equal(h.turns.length, 2, "VAD immediately begins the distinct user utterance");
+	assert.equal(h.turns[0]?.closed, true);
+	assert.equal(h.sessions[0]?.closed, false);
+	assert.equal(h.sessions[0]?.opens, 1);
+	assert.ok(h.cancels.voice.some((turn) => turn.turnId === old.turnId));
+	assert.ok(h.cancels.agent.some((turn) => turn.turnId === old.turnId));
+	const next = h.voice.getIdentity();
+	assert.ok(next && next.generation > old.generation);
+	h.emit(old, { kind: "speech-ended", speechId: h.speaks[0]?.speechId ?? "missing" });
+	h.options.agent.poll = normalPoll;
+	h.setTranscript("A real follow-up question");
+	h.feed(undefined, undefined, 35);
+	await until(() => h.speaks.length === 2);
+	assert.equal(h.starts[1]?.text, "A real follow-up question");
+	h.emit(next, { kind: "speech-ended", speechId: h.speaks[1]?.speechId ?? "missing" });
+	await until(() => h.voice.getSessionSnapshot().phase === "listening");
+	assert.equal(checkpoints, 0);
+	assert.equal(ui, 0);
+	assert.equal(h.starts.length, 2);
+	assert.equal(h.sessions.length, 1);
+	assert.equal(h.sessions[0]?.closed, false);
+	assert.deepEqual(h.errors, []);
+});
+
+test("narration receipt failure preserves healthy hands-free capture without retry or filler", async () => {
+	const failure = new Error("Narration receipt failed");
+	const text = "First file narration";
+	const h = harness({
+		onNarrationCheckpoint: () => {
+			throw failure;
+		},
+		completionText: "Extra completion must not play.",
+	});
+	const normalPoll = h.options.agent.poll;
+	h.options.agent.poll = async (input) => ({
+		...identity(input),
+		status: "running",
+		sequence: 2,
+		text,
+		events: [
+			{ ...identity(input), sequence: 1, kind: "text-delta", delta: text },
+			{
+				...identity(input),
+				sequence: 2,
+				kind: "action",
+				action: {
+					...identity(input),
+					screenSequence: 1,
+					requestId: "failed-narration",
+					kind: "narration-checkpoint",
+					throughTextLength: text.length,
+				},
+			},
+		],
+		actions: [],
+	});
+	await h.voice.startListening();
+	h.feed(tone(), undefined, 15);
+	h.feed(undefined, undefined, 35);
+	await until(() => h.ends.length === 1 && h.errors.length === 1);
+	assert.deepEqual(h.ends[0]?.result, {
+		status: "failed",
+		error: failure.message,
+		origin: "agent",
+		recoverable: true,
+	});
+	assert.equal(h.errors[0], failure);
+	assert.equal(h.turns[0]?.closed, true);
+	assert.equal(h.sessions[0]?.closed, false);
+	assert.equal(h.voice.getSessionSnapshot().phase, "listening");
+	h.feed(undefined, undefined, 40);
+	await pause(35);
+	assert.equal(h.starts.length, 1, "Silence never injects a continuation utterance");
+	h.options.agent.poll = normalPoll;
+	h.setTranscript("A different user question");
+	h.feed(tone(330), undefined, 15);
+	h.feed(undefined, undefined, 35);
+	await until(() => h.ends.length === 2);
+	assert.deepEqual(h.ends[1]?.result, { status: "completed" });
+	assert.deepEqual(
+		h.speaks.map((speech) => speech.text),
+		[text, "Hello back."]
+	);
+	assert.equal(h.sessions.length, 1);
+	assert.equal(h.sessions[0]?.closed, false);
+	assert.equal(h.errors.length, 1);
+});
 test("continuous noise, idle silence and stalled capture terminate the session", async () => {
 	const continuous = harness({ activity: { maxUtteranceMs: 1000 } });
 	await continuous.voice.startListening();
