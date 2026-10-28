@@ -49,6 +49,7 @@ export const PullRequestFeedbackSchema = z.strictObject({
 	state: z.string().max(100).nullable(),
 	path: RepositoryPathSchema.nullable(),
 	line: z.int().positive().nullable(),
+	startLine: z.int().positive().nullable().optional(),
 	commitSha: CommitShaSchema.nullable(),
 	suggestion: z.string().max(20000).nullable(),
 });
@@ -98,7 +99,8 @@ export const WorkDecisionSchema = z.strictObject({
 });
 export const WorkJobSchema = z.strictObject({
 	id: IdSchema,
-	ticket: LinearTicketSchema,
+	ticket: LinearTicketSchema.nullable(),
+	feedback: PullRequestFeedbackSchema.nullable().optional(),
 	repositoryId: IdSchema,
 	repository: GitHubRepositorySchema,
 	state: z.enum([
@@ -143,7 +145,7 @@ export const WorkJobSummarySchema = WorkJobSchema.omit({
 	checks: true,
 	changedFiles: true,
 }).extend({
-	ticket: LinearTicketSummarySchema,
+	ticket: LinearTicketSummarySchema.nullable(),
 	pendingDecisions: z.int().nonnegative(),
 	changedFileCount: z.int().nonnegative(),
 });
@@ -151,6 +153,7 @@ export const HubPreferencesSchema = z.strictObject({
 	linearTeamIds: z.array(IdSchema).max(50),
 	linearProjectIds: z.array(IdSchema).max(100),
 	maxWorkers: z.int().min(1).max(4).default(2),
+	autoApplySuggestions: z.boolean().default(true),
 });
 export const HubPersistenceSchema = z.strictObject({
 	version: z.literal(1),
@@ -200,6 +203,7 @@ export const HubOperationSchema = z.discriminatedUnion("kind", [
 		repositoryId: IdSchema,
 		brief: z.string().min(1).max(20000),
 	}),
+	z.strictObject({ kind: z.literal("start-feedback-work"), prId: IdSchema, feedbackId: IdSchema }),
 	z.strictObject({
 		kind: z.literal("answer-decision"),
 		jobId: IdSchema,
