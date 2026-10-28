@@ -53,6 +53,7 @@ export function createAgentComposition(options: AgentCompositionOptions) {
 		appendFileSync(
 			join(directory, "usage.jsonl"),
 			`${JSON.stringify({
+				at: new Date().toISOString(),
 				prHash: hash(prId),
 				attemptId: record.attemptId,
 				requestHash: hash(record.requestId),

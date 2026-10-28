@@ -527,3 +527,48 @@ it("hands-free errors release the session and never auto-start another turn", as
 		h.controller.dispose();
 	}
 });
+
+it("an agent reply error keeps an armed microphone available without starting a request", async () => {
+	const h = harness();
+	let starts = 0;
+	let stops = 0;
+	h.controller.attachHandsFree({
+		start: async () => {
+			starts++;
+		},
+		stop() {
+			stops++;
+		},
+		interrupt() {},
+	});
+	try {
+		await h.controller.configure();
+		await h.controller.startConversation();
+		const beforeStops = stops;
+		const turn = h.controller.allocateIdentity();
+		h.controller.beginVoice(turn);
+		h.controller.finishVoice(
+			turn,
+			"error",
+			"The model reached its reply limit. Please ask to continue.",
+			true
+		);
+		assert.equal(h.controller.store.getState().handsFree, true);
+		assert.equal(stops, beforeStops);
+		assert.equal(h.controller.store.getState().phase, "idle");
+		assert.equal(h.starts.length, 0);
+		assert.equal(starts, 1);
+		h.controller.answer(turn, "Late failed answer");
+		assert.equal(h.controller.store.getState().exchanges.at(-1)?.answer, "");
+		const next = h.controller.allocateIdentity();
+		assert.equal(h.controller.beginVoice(next), true);
+		h.controller.answer(next, "A new answer");
+		h.controller.finishVoice(next, "complete");
+		assert.equal(h.controller.store.getState().handsFree, true);
+		h.controller.endConversation();
+		h.controller.finishVoice(next, "error", "Late error", true);
+		assert.equal(h.controller.store.getState().handsFree, false);
+	} finally {
+		h.controller.dispose();
+	}
+});

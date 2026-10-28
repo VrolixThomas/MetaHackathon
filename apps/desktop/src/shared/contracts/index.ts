@@ -3,6 +3,7 @@ export * from "./artifacts";
 export * from "./browser";
 export * from "./common";
 export * from "./conversation";
+export * from "./conversation-diagnostics";
 export * from "./interaction";
 export * from "./local-browser";
 export * from "./prepared-review";

@@ -207,14 +207,19 @@ export function createConversationController(
 		}));
 		return true;
 	}
-	function finish(turn: TurnIdentity, phase: "complete" | "cancelled" | "error", error = "") {
+	function finish(
+		turn: TurnIdentity,
+		phase: "complete" | "cancelled" | "error",
+		error = "",
+		preserveListening = false
+	) {
 		if (!live(turn)) return;
 		updateExchange(turn, { phase });
 		active?.abort.abort();
 		active = null;
 		captureMode = null;
 		store.setState({ active: null, phase: "idle", error });
-		if (phase === "error") {
+		if (phase === "error" && !preserveListening) {
 			handsFreeEpoch++;
 			store.setState({ handsFree: false, handsFreeStarting: false });
 			handsFree?.stop();

@@ -6,6 +6,7 @@ import { prepareReview } from "./agent/prepare-review";
 import { ScreenContextStore } from "./agent/screen-context";
 import { createAgentComposition } from "./composition";
 import { LocalBrowserSurface } from "./composition/browser-surface";
+import { ConversationDiagnostics } from "./composition/diagnostics";
 import { ReviewCoordinator } from "./composition/reviews";
 import { type VoiceCompositionOptions, createVoiceComposition } from "./composition/voice";
 import type { EnvConfiguration } from "./config/env";
@@ -16,6 +17,14 @@ import type { RuntimeOptions, RuntimeService } from "./runtime/service";
 let runtime: RuntimeService | undefined;
 let dataDirectory: string | undefined;
 let closing = false;
+let diagnostics: ConversationDiagnostics | undefined;
+export function initializeDiagnostics(userDataPath: string): void {
+	diagnostics = new ConversationDiagnostics(userDataPath);
+	diagnostics.record({ stage: "app-start" });
+}
+export function getDiagnostics(): ConversationDiagnostics | undefined {
+	return diagnostics;
+}
 let browser: BrowserService | undefined;
 let browserOptions: BrowserServiceOptions | undefined;
 let localBrowser: LocalBrowserSurface | undefined;

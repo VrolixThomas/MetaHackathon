@@ -15,11 +15,13 @@ import { createElectronPreviewPage } from "./runtime/preview-electron";
 import {
 	disposeRuntime,
 	getConfiguration,
+	getDiagnostics,
 	getRuntime,
 	getVoice,
 	initializeBrowser,
 	initializeConfiguration,
 	initializeConfigurationPorts,
+	initializeDiagnostics,
 	initializeLocalBrowser,
 	initializeReviews,
 	initializeRuntime,
@@ -75,6 +77,13 @@ function createWindow(): void {
 // Native interception also works when focus is inside an embedded page or a text field.
 // Plain Space remains available for typing. The shortcut is app-scoped, never a global key grab.
 app.on("web-contents-created", (_event, contents) => {
+	contents.on("render-process-gone", (_gone, details) => {
+		getDiagnostics()?.record({
+			stage: contents === mainWindow?.webContents ? "renderer-exit" : "browser-exit",
+			reason: details.reason,
+			exitCode: details.exitCode,
+		});
+	});
 	contents.on("before-input-event", (event, input) => {
 		if (!mainWindow?.isFocused() || input.type !== "keyDown" || input.isAutoRepeat) return;
 		const command = process.platform === "darwin" ? input.meta : input.control;
@@ -91,6 +100,7 @@ app.on("web-contents-created", (_event, contents) => {
 app
 	.whenReady()
 	.then(async () => {
+		initializeDiagnostics(app.getPath("userData"));
 		database = openDatabase();
 		const envPath =
 			process.env["METAHACKATHON_ENV_FILE"] ??
@@ -210,6 +220,7 @@ app.on("before-quit", (event) => {
 	event.preventDefault();
 	if (shuttingDown) return;
 	shuttingDown = true;
+	getDiagnostics()?.record({ stage: "shutdown-start" });
 	void disposeRuntime()
 		.catch((error: unknown) => {
 			console.warn(
@@ -218,9 +229,11 @@ app.on("before-quit", (event) => {
 			);
 		})
 		.finally(() => {
+			getDiagnostics()?.record({ stage: "shutdown-complete" });
 			shutdownFinished = true;
 			app.quit();
 		});
 });
 
 app.on("will-quit", () => database?.close());
+process.on("uncaughtExceptionMonitor", () => getDiagnostics()?.record({ stage: "main-exception" }));

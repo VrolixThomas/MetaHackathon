@@ -5,7 +5,13 @@ import {
 	VoicePollResultSchema,
 	VoicePollSchema,
 } from "../../main/voice/protocol";
-import { ConversationTurnInputSchema, TurnIdentitySchema } from "../../shared/contracts";
+import {
+	type ConversationDiagnostic,
+	ConversationTurnInputSchema,
+	type TurnIdentity,
+	TurnIdentitySchema,
+	VoiceDiagnosticSchema,
+} from "../../shared/contracts";
 import {
 	type MediaFactory,
 	type VoiceControllerOptions,
@@ -22,6 +28,31 @@ export function connectConversationVoice(
 	ui: ConversationController,
 	media?: MediaFactory
 ) {
+	const onlyTurn = ({ sessionId, turnId, generation }: TurnIdentity): TurnIdentity => ({
+		sessionId,
+		turnId,
+		generation,
+	});
+	const starts = new Map<string, { at: number; stages: Set<string> }>();
+	let lastTurn: TurnIdentity | undefined;
+	const trace = (
+		stage: ConversationDiagnostic["stage"],
+		turn?: TurnIdentity,
+		extra: Partial<ConversationDiagnostic> = {}
+	) => {
+		const key = turn ? JSON.stringify(turn) : "";
+		const timing = starts.get(key);
+		if (timing?.stages.has(stage)) return;
+		timing?.stages.add(stage);
+		void api
+			.call("mutation", "diagnostics.record", {
+				stage,
+				...(turn ? { turn } : {}),
+				...(timing ? { elapsedMs: Math.max(0, Math.round(performance.now() - timing.at)) } : {}),
+				...extra,
+			})
+			.catch(() => {});
+	};
 	const call = (signal: AbortSignal, type: "query" | "mutation", path: string, input: unknown) => {
 		signal.throwIfAborted();
 		return api.call(type, path, input);
@@ -35,6 +66,7 @@ export function connectConversationVoice(
 				signal.throwIfAborted();
 				const turn = ConversationTurnInputSchema.parse(input);
 				ui.requestStarted(turn);
+				trace("agent-start", onlyTurn(turn));
 				return api.start(turn);
 			},
 			poll: (input, signal) => {
@@ -67,13 +99,45 @@ export function connectConversationVoice(
 		},
 		onTurnStart: (turn) => {
 			if (!ui.beginVoice(turn)) throw new Error("Stale conversation identity");
+			lastTurn = turn;
+			starts.set(JSON.stringify(turn), { at: performance.now(), stages: new Set() });
+			if (starts.size > 128) {
+				const first = starts.keys().next().value;
+				if (first) starts.delete(first);
+			}
+			trace("speech-start", turn);
 		},
 		onConversationAction: async (action, signal) => {
 			await ui.applyConversationAction(action, signal);
 		},
-		onTranscript: (update) => ui.transcript(update, update.text),
-		onAnswer: (text, turn) => ui.answer(turn, text),
-		onTurnEnd: (turn, result) =>
+		onTranscript: (update) => {
+			if (update.final) trace("transcript-final", onlyTurn(update));
+			ui.transcript(update, update.text);
+		},
+		onAnswer: (text, turn) => {
+			if (text.trim()) trace("first-answer", turn);
+			ui.answer(turn, text);
+		},
+		onLatency: (value) => {
+			if (value.kind === "answer")
+				trace("first-audio", onlyTurn(value), {
+					releaseToAudioMs: value.elapsedMs,
+				});
+		},
+		onTurnEnd: (turn, result) => {
+			const recoverable =
+				result.status === "failed" && "recoverable" in result && result.recoverable === true;
+			trace(
+				result.status === "completed"
+					? "turn-completed"
+					: result.status === "cancelled"
+						? "turn-cancelled"
+						: "turn-failed",
+				turn,
+				result.status === "failed"
+					? { failureSource: "origin" in result && result.origin === "agent" ? "agent" : "voice" }
+					: {}
+			);
 			ui.finishVoice(
 				turn,
 				result.status === "completed"
@@ -83,9 +147,17 @@ export function connectConversationVoice(
 						: "error",
 				result.status === "failed"
 					? conversationErrorMessage(result.error, ui.store.getState().config?.microphone)
-					: ""
-			),
-		onError: (error) => ui.voiceError(error),
+					: "",
+				recoverable
+			);
+		},
+		onError: (error) => {
+			const diagnostic = VoiceDiagnosticSchema.safeParse(
+				"diagnostic" in error ? error.diagnostic : undefined
+			);
+			trace("turn-failed", undefined, diagnostic.success ? { diagnostic: diagnostic.data } : {});
+			ui.voiceError(error);
+		},
 	};
 	// Explicit injected media retains the deterministic single-utterance test/legacy adapter.
 	if (media) {
@@ -115,6 +187,7 @@ export function connectConversationVoice(
 	});
 	const unsubscribe = conversation.subscribe(() => {
 		const session = conversation.getSessionSnapshot();
+		if (session.phase === "responding" && lastTurn) trace("speech-ended", lastTurn);
 		const phase = conversation.getPhase();
 		ui.voicePhase(
 			session.phase === "capturing" && phase === "idle"

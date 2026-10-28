@@ -8,6 +8,8 @@ const allowed = new Set([
 	"The model response timed out. Please try again.",
 	"Could not reach the model. Check your connection and try again.",
 	"The conversation could not complete this reply. Please try again.",
+	"The model reached its reply limit. Please ask to continue.",
+	"The model reply stopped before it finished. Please try again.",
 ]);
 const denied = voiceDiagnosticMessage({ stage: "microphone", code: "denied" });
 /** Preserve fixed local diagnostics; never display raw provider text or infer macOS permission. */

@@ -6,6 +6,7 @@ import { createAgentScreenRouter } from "../../agent/screen-context";
 import { createCompositionRouters } from "../../composition";
 import { createBrowserRouter } from "../../composition/browser-router";
 import { createLocalBrowserRouter } from "../../composition/browser-surface";
+import { createDiagnosticsRouter } from "../../composition/diagnostics";
 import { createReviewRouter } from "../../composition/reviews-router";
 import { createConfiguredVoiceRouter } from "../../composition/voice";
 import { createAppConfigurationRouter } from "../../config/router";
@@ -15,6 +16,7 @@ import {
 	conversationService,
 	getBrowser,
 	getConfigurationPorts,
+	getDiagnostics,
 	getLocalBrowser,
 	getReviews,
 	getRuntime,
@@ -26,6 +28,7 @@ import { bootstrapRouter } from "./bootstrap";
 
 // Register feature routers here as the application grows.
 export const appRouter = router({
+	diagnostics: createDiagnosticsRouter(getDiagnostics),
 	app: createAppConfigurationRouter(getConfigurationPorts),
 	conversation: createConversationRouter(conversationService),
 	reviews: mergeRouters(

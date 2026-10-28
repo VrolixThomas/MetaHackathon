@@ -27,9 +27,18 @@ export function App() {
 		runtime.reviews.start();
 		runtime.browser.start();
 		const release = () => runtime.controller.release();
+		const recordError = () => {
+			void runtime.api
+				.call("mutation", "diagnostics.record", { stage: "renderer-error" })
+				.catch(() => {});
+		};
 		window.addEventListener("blur", release);
+		window.addEventListener("error", recordError);
+		window.addEventListener("unhandledrejection", recordError);
 		return () => {
 			window.removeEventListener("blur", release);
+			window.removeEventListener("error", recordError);
+			window.removeEventListener("unhandledrejection", recordError);
 			disconnectShortcuts();
 			runtime.controller.dispose();
 			runtime.reviews.dispose();
