@@ -331,6 +331,39 @@ async function native() {
 				const selected = choose(body);
 				assert.equal(body.stream, true);
 				assert.equal(body.store, false);
+				if (
+					process.env.PREPARED_REVIEW_FORCE_LIMIT === "1" &&
+					selected.tool !== "submit_prepared_review" &&
+					!report.forcedOutputLimit
+				) {
+					report.forcedOutputLimit = true;
+					report.initialOutputBudget = body.max_output_tokens;
+					return new Response(
+						`data: ${JSON.stringify({
+							type: "response.incomplete",
+							response: {
+								id: "controlled-output-limit",
+								model: body.model,
+								status: "incomplete",
+								output: [
+									{
+										type: "function_call",
+										call_id: "partial-must-not-run",
+										name: "resume_review",
+										arguments: "{",
+									},
+								],
+								incomplete_details: { reason: "max_output_tokens" },
+								usage: { input_tokens: 4410, output_tokens: body.max_output_tokens },
+							},
+						})}\n\n`,
+						{ headers: { "content-type": "text/event-stream" } }
+					);
+				}
+				if (report.forcedOutputLimit && !report.recoveryOutputBudget) {
+					report.recoveryOutputBudget = body.max_output_tokens;
+					assert.equal(body.max_output_tokens, 4096);
+				}
 				if (selected.tool === "submit_prepared_review") {
 					report.preparationCalls++;
 					assert.equal(report.preparationCalls, 1, "Preparation must be cached before the tour");
@@ -361,7 +394,37 @@ async function native() {
 					path: selected.packet?.reviewScreen?.path,
 					appliedBeforeReply: !selected.tool,
 				});
-				return sse(body, selected, report.model.length);
+				const response = sse(body, selected, report.model.length);
+				if (process.env.PREPARED_REVIEW_STREAM_HOLD === "1" && selected.text) {
+					assert.deepEqual(body.tools, []);
+					const events = (await response.text()).trim().split("\n\n");
+					return new Response(
+						new ReadableStream({
+							start(controller) {
+								controller.enqueue(new TextEncoder().encode(`${events[0]}\n\n`));
+								setTimeout(async () => {
+									try {
+										const visible = await readUI();
+										assert.equal(
+											visible.answer,
+											selected.text,
+											"Safe answer must reach the UI before terminal completion"
+										);
+										assert.notEqual(visible.phase, "complete");
+										report.streamedBeforeCompletion = (report.streamedBeforeCompletion ?? 0) + 1;
+										controller.enqueue(new TextEncoder().encode(`${events.at(-1)}\n\n`));
+										controller.close();
+									} catch (error) {
+										controller.error(error);
+										fail(error);
+									}
+								}, 600);
+							},
+						}),
+						{ headers: { "content-type": "text/event-stream" } }
+					);
+				}
+				return response;
 			}
 			if (parsed.origin === "https://api.github.com") {
 				report.http.push({ url, method: options.method ?? "GET" });
