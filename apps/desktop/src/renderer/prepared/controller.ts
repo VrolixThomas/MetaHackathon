@@ -49,6 +49,7 @@ export function createPreparedController(api: PreparedApi, sessionId: string, po
 	let timer: ReturnType<typeof setTimeout> | undefined;
 	let active = false;
 	let navigationEpoch = 0;
+	let workspaceNavigation: { operation: number; navigation: ReviewNavigation } | undefined;
 	let inboxRead = 0;
 	let progressQueue: Promise<unknown> = Promise.resolve();
 	const deliveries = new Map<string, Promise<"applied" | "ignored">>();
@@ -297,6 +298,7 @@ export function createPreparedController(api: PreparedApi, sessionId: string, po
 		const operation = ++navigationEpoch;
 		const current = () => !disposed && !signal?.aborted && live() && operation === navigationEpoch;
 		if (!current()) return "ignored" as const;
+		workspaceNavigation = { operation, navigation };
 		const interrupted = () => {
 			if (operation === navigationEpoch) {
 				navigationEpoch++;
@@ -349,6 +351,7 @@ export function createPreparedController(api: PreparedApi, sessionId: string, po
 			return "ignored" as const;
 		} finally {
 			signal?.removeEventListener("abort", interrupted);
+			if (workspaceNavigation?.operation === operation) workspaceNavigation = undefined;
 			if (operation === navigationEpoch) store.setState({ fileBusy: false });
 		}
 	}
@@ -457,11 +460,28 @@ export function createPreparedController(api: PreparedApi, sessionId: string, po
 		const openedNewRepository =
 			current.detail?.pr.repository === inbox.repository &&
 			current.inbox?.repository !== inbox.repository;
+		const loading =
+			workspaceNavigation?.operation === navigationEpoch
+				? workspaceNavigation.navigation
+				: undefined;
+		const loadingNewRepository =
+			loading &&
+			inbox.items.some(
+				(item) =>
+					item.status === "ready" &&
+					item.pr.repository === inbox.repository &&
+					item.pr.id === loading.prId &&
+					item.prepared?.id === loading.reviewId &&
+					item.pr.baseSha === loading.baseSha &&
+					item.pr.headSha === loading.headSha
+			);
 		if (
 			current.inbox &&
+			(current.detail || current.file || current.screen.prId || loading) &&
 			(current.inbox.repository !== inbox.repository ||
 				current.inbox.localPath !== inbox.localPath) &&
-			!openedNewRepository
+			!openedNewRepository &&
+			!loadingNewRepository
 		)
 			close();
 		const detail = store.getState().detail;

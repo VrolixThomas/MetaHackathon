@@ -79,6 +79,27 @@ it("reports unavailable inbox without inventing review results", async () => {
 	}
 });
 
+it("a connection poll does not publish a source change when no review is open or loading", async () => {
+	let inbox: ReviewInbox = empty;
+	const calls: string[] = [];
+	const ui = createPreparedController(
+		createPreparedApi(async (_type, path) => {
+			calls.push(path);
+			return inbox;
+		}),
+		"session"
+	);
+	try {
+		await ui.poll();
+		inbox = { ...empty, repository: "owner/project" };
+		await ui.poll();
+		assert.equal(ui.store.getState().screen.sequence, 0);
+		assert.ok(calls.every((path) => path === "reviews.inbox"));
+	} finally {
+		ui.dispose();
+	}
+});
+
 const pr = {
 	id: "owner/project#1",
 	repository: "owner/project",
@@ -234,6 +255,33 @@ it("cancelled workspace source loading cannot install or persist a late file", a
 		assert.equal(await pending, "ignored");
 		assert.equal(h.ui.store.getState().file, null);
 		assert.ok(h.calls.every((call) => call.path !== "reviews.progress"));
+	} finally {
+		h.ui.dispose();
+	}
+});
+
+it("a connection poll preserves only the matching pinned review while its source is loading", async () => {
+	let inbox: ReviewInbox = empty;
+	let finish: (value: unknown) => void = () => {};
+	const h = reviewHarness((path) =>
+		path === "reviews.inbox"
+			? Promise.resolve(inbox)
+			: path === "reviews.file"
+				? new Promise((resolve) => {
+						finish = resolve;
+					})
+				: undefined
+	);
+	try {
+		await h.ui.poll();
+		const opening = h.ui.navigate(h.action().navigation, () => true);
+		for (let i = 0; i < 20 && !h.calls.some((call) => call.path === "reviews.file"); i++)
+			await Promise.resolve();
+		inbox = { ...empty, repository: pr.repository, items: [detail] };
+		await h.ui.poll();
+		finish(source("b.ts"));
+		assert.equal(await opening, "applied");
+		assert.equal(h.ui.store.getState().file?.path, "b.ts");
 	} finally {
 		h.ui.dispose();
 	}

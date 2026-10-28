@@ -36,7 +36,7 @@ const names: Partial<Record<WorkspaceCommand["kind"], [string, string]>> = {
 	],
 	"browser-action": [
 		"browser_action",
-		"Operate the actual browser using fresh observed element IDs/browserId/observationSequence. Never invent targets. Returns refreshed actual page evidence.",
+		"Operate the actual browser using fresh observed element IDs/browserId/observationSequence. Never invent targets. For viewport: 1024x768 selects adaptive Desktop that fits its pane; 390x844 selects Phone; other dimensions are fixed custom sizes. Returns refreshed actual page evidence.",
 	],
 	"show-review": [
 		"open_ready_review",
