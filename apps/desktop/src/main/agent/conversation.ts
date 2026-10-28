@@ -26,6 +26,7 @@ import {
 	type WalkthroughState,
 	runGuidedReview,
 } from "./guided-review";
+import { type ConversationHubPorts, ConversationHubTools } from "./hub-tools";
 import { type AgentModelClient, MetaApiError, type MetaItem } from "./meta-client";
 import { NarrationReceiptGate, type NarrationReceiptOptions } from "./narration";
 import { runWorkspaceConversation } from "./workspace-conversation";
@@ -36,6 +37,7 @@ import {
 } from "./workspace-tools";
 
 export interface ConversationOptions {
+	hub?: ConversationHubPorts;
 	getContext?: (prId: string, signal: AbortSignal) => Promise<ConversationPRContext>;
 	review?: ConversationReviewPorts;
 	actionReceipts?: ConversationReceiptOptions;
@@ -285,7 +287,11 @@ export class ConversationService {
 				{ role: "user", content: pair.user },
 				{ role: "assistant", content: pair.assistant },
 			]);
-			if ((turn.input.prId !== undefined && this.options.review) || this.options.workspace) {
+			if (
+				(turn.input.prId !== undefined && this.options.review) ||
+				this.options.workspace ||
+				this.options.hub
+			) {
 				history.push({ role: "user", content: turn.input.text });
 				const emitAction = (rawAction: AgentAction) => {
 					if (!this.active(session, turn)) throw new Error("Turn is no longer active");
@@ -306,8 +312,15 @@ export class ConversationService {
 				const workspace = this.options.workspace
 					? new ConversationWorkspaceTools(this.options.workspace, turn.input, signal, emitAction)
 					: undefined;
+				const hubPorts = this.options.hub ?? this.options.workspace?.hub;
+				const hub = hubPorts
+					? new ConversationHubTools(hubPorts, turn.input, signal, (source) =>
+							workspace?.allowPinnedSource(source)
+						)
+					: undefined;
+				let narratedThrough = 0;
 				const onNarration = this.options.narrationCheckpoints
-					? (throughTextLength: number, screenSequence: number) => {
+					? async (throughTextLength: number, screenSequence: number) => {
 							if (!this.active(session, turn) || throughTextLength !== turn.text.length)
 								throw new Error("Narration checkpoint is stale");
 							const action = AgentActionSchema.parse({
@@ -322,7 +335,8 @@ export class ConversationService {
 								throughTextLength,
 							});
 							if (action.kind !== "narration-checkpoint") throw new Error("Invalid checkpoint");
-							return this.narrationReceipts.publish(action, signal, () => emitAction(action));
+							await this.narrationReceipts.publish(action, signal, () => emitAction(action));
+							narratedThrough = throughTextLength;
 						}
 					: undefined;
 				const recovery = { used: false };
@@ -341,7 +355,7 @@ export class ConversationService {
 							return this.reviewReceipts.publish(action, signal, () => emitAction(action));
 						},
 						onText,
-						{ state: session.walkthrough, onNarration, workspace, recovery }
+						{ state: session.walkthrough, onNarration, workspace, hub, recovery }
 					);
 				};
 				const observed = await workspace?.observe();
@@ -351,7 +365,7 @@ export class ConversationService {
 						: undefined
 					: turn.input.prId;
 				if (effectivePrId && reviewPorts) await runReview(effectivePrId, history);
-				else if (workspace)
+				else if (workspace || hub)
 					await runWorkspaceConversation(
 						this.client,
 						workspace,
@@ -360,9 +374,24 @@ export class ConversationService {
 						signal,
 						onText,
 						reviewPorts ? runReview : undefined,
-						recovery
+						recovery,
+						hub
 					);
 				if (!this.active(session, turn)) return;
+				if (hub?.hasAnnouncements && turn.text.trim()) {
+					if (onNarration && narratedThrough < turn.text.length)
+						await onNarration(
+							turn.text.length,
+							(await workspace?.observe())?.workspace.sequence ?? 0
+						);
+					throwIfAborted(signal);
+					// A failed local notice acknowledgement must not erase a completed answer.
+					try {
+						await hub.acknowledgeAnnouncements();
+					} catch {
+						throwIfAborted(signal);
+					}
+				}
 			} else {
 				if (turn.input.prId !== undefined) {
 					try {

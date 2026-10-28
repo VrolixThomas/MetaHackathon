@@ -29,11 +29,20 @@ export function reviewModelInput(
 	snapshot: Snapshot,
 	source: CurrentReviewSource,
 	actualWorkspace?: ReturnType<typeof workspaceModelContext>,
-	onInspected?: (baseEndLine: number, headEndLine: number) => void
+	onInspected?: (baseEndLine: number, headEndLine: number) => void,
+	actualHub?: unknown
 ): MetaItem[] {
-	const retained = [...history];
+	const retained = boundedToolHistory(history);
 	let dropped = 0;
-	while (encodedSize(retained) > 32_000 && dropped + 2 <= questionIndex) {
+	const retainedQuestion = retained.reduce(
+		(latest, item, index) =>
+			item["role"] === "user" && typeof item["content"] === "string" ? index : latest,
+		-1
+	);
+	while (
+		encodedSize(retained) > 32_000 &&
+		dropped + 2 <= Math.min(questionIndex, retainedQuestion)
+	) {
 		retained.splice(0, 2);
 		dropped += 2;
 	}
@@ -111,6 +120,7 @@ export function reviewModelInput(
 			};
 	const packet = {
 		...(actualWorkspace === undefined ? {} : { actualWorkspace }),
+		...(actualHub === undefined ? {} : { actualHub }),
 		currentFilePresentation:
 			snapshot.screen.mode !== "review"
 				? "not-shown"
@@ -131,9 +141,9 @@ export function reviewModelInput(
 		currentFileSource,
 		planTextTruncated,
 		readingOrderTruncated: false,
-		historyTruncated: dropped > 0,
+		historyTruncated: dropped > 0 || retained.length < history.length,
 		sourcePolicy:
-			"Only currentFileSource excerpts are inspected source. Plan text is inferred. Source line numbers are one-based; patch line numbers index patch text. Omitted source/lines are uninspected.",
+			"currentFileSource and explicit pinned-source tool results are inspected source. Plan text is inferred. Source line numbers are one-based; patch line numbers index patch text. Omitted source/lines are uninspected.",
 	};
 	const input = (): MetaItem[] => [
 		...retained,
@@ -144,7 +154,10 @@ export function reviewModelInput(
 		preparedReview.files.pop();
 		packet.readingOrderTruncated = true;
 	}
-	while (encodedSize(input()) > 48_000 && dropped + 2 <= questionIndex) {
+	while (
+		encodedSize(input()) > 48_000 &&
+		dropped + 2 <= Math.min(questionIndex, retainedQuestion)
+	) {
 		retained.splice(0, 2);
 		dropped += 2;
 		packet.historyTruncated = true;
@@ -201,4 +214,23 @@ function excerpt(text: string, ends: number[], count: number, totalLines: number
 		totalLines,
 		truncated: count < totalLines,
 	};
+}
+
+/** Keep protocol pairs intact while bounding repeated tool evidence in a long foreground turn. */
+export function boundedToolHistory(history: MetaItem[]): MetaItem[] {
+	const retained = [...history];
+	while (encodedSize(retained) > 32_000) {
+		const index = retained.findIndex((item) => item["type"] === "function_call");
+		if (index < 0) break;
+		const call = retained[index];
+		const output = retained.findIndex(
+			(item) => item["type"] === "function_call_output" && item["call_id"] === call?.["call_id"]
+		);
+		if (output < 0) break;
+		// Keep the newest result, so the model can use its exact inspected source.
+		if (!retained.slice(output + 1).some((item) => item["type"] === "function_call_output")) break;
+		retained.splice(Math.max(index, output), 1);
+		retained.splice(Math.min(index, output), 1);
+	}
+	return retained;
 }

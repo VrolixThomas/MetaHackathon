@@ -20,6 +20,7 @@ import {
 	ReviewScreenSchema,
 } from "../../shared/contracts";
 import { abortable, throwIfAborted } from "./cancellation";
+import type { ConversationHubTools } from "./hub-tools";
 import {
 	type AgentModelClient,
 	type FunctionTool,
@@ -81,6 +82,7 @@ export interface GuidedReviewWorkflow {
 	state: WalkthroughState;
 	onNarration?: (throughTextLength: number, screenSequence: number) => Promise<void>;
 	workspace?: ConversationWorkspaceTools;
+	hub?: ConversationHubTools;
 	recovery?: { used: boolean };
 }
 
@@ -287,6 +289,10 @@ export async function runGuidedReview(
 		assertSameScreen(snapshot.screen, await screen(ports, input, signal));
 		const workspace = workflow?.workspace;
 		const observation = await workspace?.observe();
+		const hub = workflow?.hub;
+		if (snapshot.review) hub?.allowReview(snapshot.review.pr);
+		if (observation?.hub) hub?.acceptSnapshot(observation.hub, input.prId);
+		await hub?.observe(input.prId);
 		const modelInput = reviewModelInput(
 			history,
 			questionIndex,
@@ -295,7 +301,8 @@ export async function runGuidedReview(
 			observation ? workspaceModelContext(observation) : undefined,
 			(base, head) => {
 				if (snapshot.review) workspace?.allowSource(snapshot.review, source.file, base, head);
-			}
+			},
+			hub?.context
 		);
 		const emitText = async (delta: string) => {
 			if (!delta || !onText) return;
@@ -307,13 +314,14 @@ export async function runGuidedReview(
 		const request = {
 			requestId: `${input.requestId}:review:${round}`,
 			workload: "quick" as const,
-			instructions: workspace ? `${INSTRUCTIONS}\n${WORKSPACE_INSTRUCTIONS}` : INSTRUCTIONS,
+			instructions: workspace || hub ? `${INSTRUCTIONS}\n${WORKSPACE_INSTRUCTIONS}` : INSTRUCTIONS,
 			input: modelInput,
 			tools: navigated
 				? []
 				: [
 						...tools.filter((tool) => workflow?.onNarration || !tool.name.endsWith("walkthrough")),
 						...(workspace?.tools ?? []),
+						...(hub?.tools ?? []),
 					],
 			maxOutputTokens: MAX_OUTPUT_TOKENS,
 		};
@@ -372,6 +380,28 @@ export async function runGuidedReview(
 		if (seen.has(call.call_id))
 			throw new GuidedReviewError("The model repeated a review operation. Please try again.");
 		seen.add(call.call_id);
+		if (hub?.has(call.name)) {
+			history.push(...response.completion.output.filter((item) => item["type"] !== "message"));
+			try {
+				const result = await hub.execute(call.name, call.arguments);
+				history.push({
+					type: "function_call_output",
+					call_id: call.call_id,
+					output: JSON.stringify(result),
+				});
+			} catch (error) {
+				throwIfAborted(signal);
+				if (!(error instanceof WorkspaceArgumentError) || repairedArguments) throw error;
+				repairedArguments = true;
+				history.push({
+					type: "function_call_output",
+					call_id: call.call_id,
+					output: JSON.stringify({ status: "rejected-before-execution", message: error.message }),
+				});
+			}
+			continue;
+		}
+
 		if (workspace?.has(call.name)) {
 			history.push(...response.completion.output.filter((item) => item["type"] !== "message"));
 			let result: Awaited<ReturnType<ConversationWorkspaceTools["execute"]>>;
@@ -447,7 +477,7 @@ export async function runGuidedReview(
 		} else {
 			const request: ReviewNavigationRequest =
 				name === "open_review_file"
-					? args
+					? toolArguments.open_review_file.parse(args)
 					: {
 							direction:
 								name === "next_review_file"
@@ -519,6 +549,7 @@ async function runWalkthrough(
 	);
 	if (index < 0) index = 0;
 	if (continuing && state.narrated && state.path === pinned.files[index]?.path) index++;
+
 	if (index >= pinned.files.length) {
 		const text = "We’ve reached the end of the prepared reading order.";
 		await onText?.(text);
@@ -530,6 +561,7 @@ async function runWalkthrough(
 		headSha: pinned.pr.headSha,
 		paused: false,
 	});
+
 	const end = Math.min(index + 3, pinned.files.length);
 	let text = "";
 	for (; index < end; index++) {
@@ -576,7 +608,8 @@ async function runWalkthrough(
 				snapshot,
 				source,
 				workspaceObservation ? workspaceModelContext(workspaceObservation) : undefined,
-				(base, head) => workflow.workspace?.allowSource(pinned, source.file, base, head)
+				(base, head) => workflow.workspace?.allowSource(pinned, source.file, base, head),
+				workflow.hub?.context
 			),
 			tools: [],
 			maxOutputTokens: MAX_OUTPUT_TOKENS,
