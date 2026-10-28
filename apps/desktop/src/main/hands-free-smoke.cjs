@@ -290,6 +290,7 @@ async function native() {
 		actualChromiumMedia: false,
 		liveSpeech: false,
 		acousticVerification: false,
+		physicalSpeakerMutedForTest: true,
 		input: "controlled WebAudio stream, never ambient",
 		userData: owned,
 		offers: [],
@@ -548,6 +549,7 @@ async function native() {
 				});
 		});
 		win = await wait("main window", () => BrowserWindow.getAllWindows()[0]);
+		win.webContents.setAudioMuted(true);
 		await wait("renderer", () => !win.webContents.isLoadingMainFrame());
 		const rpc = async (type, path, input) => {
 			const encoded =
