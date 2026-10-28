@@ -20,7 +20,13 @@ import {
 	ReviewScreenSchema,
 } from "../../shared/contracts";
 import { abortable, throwIfAborted } from "./cancellation";
-import type { AgentModelClient, FunctionTool, MetaCompletion, MetaItem } from "./meta-client";
+import {
+	type AgentModelClient,
+	type FunctionTool,
+	MetaApiError,
+	type MetaCompletion,
+	type MetaItem,
+} from "./meta-client";
 import { type CurrentReviewSource, reviewModelInput } from "./review-source";
 
 export interface ReviewNavigationRequest {
@@ -206,7 +212,10 @@ const callSchema = z.object({
 	arguments: z.string().max(16_000),
 	status: z.literal("completed"),
 });
-const MAX_SPOKEN_REPLY_CHARS = 1600;
+// Brevity is a prompt preference. This bound protects memory, including expanded answers.
+const MAX_REPLY_CHARS = 32_000;
+const MAX_OUTPUT_TOKENS = 2048;
+const RECOVERY_OUTPUT_TOKENS = 4096;
 const INSTRUCTIONS = `Speak naturally with the reviewer about the change. Give only the answer: no filler, no "I'm checking", no tool announcements. Usually use two to four short sentences (about 40–90 words), with one clear point at a time. Use ordinary words, not a catalogue of architecture terms. Avoid spoken markdown, headings, code blocks and long lists; a brief source name or line reference is enough. If more explanation is requested, expand the specific point instead of reciting the plan.
 Lead with purpose and impact: what this code changes for a user or caller. Tie that explanation to the actual currentFileSource: name the relevant shown function, condition or value, describe its before/after effect, then explain why this file matters at this point using currentFile.reason. Do not merely repeat filenames or summaries. For a walkthrough, cover one file or coherent step and stop for the reviewer; do not automatically advance through the whole plan or append a ritual "shall I continue?".
 A cached preparedReview, current reviewScreen/progress, and currentFileSource are supplied each round. Do not regenerate the plan. Answer interruptions and follow-up questions about the actual currently displayed file, even if it differs from a prior turn. A question about this code needs an answer from its source, not another navigation. If no file is displayed and a walkthrough is requested, resume_review starts at the saved position or first file. If the user asks to move, use open_review_file, next_review_file or previous_review_file for that one step.
@@ -221,39 +230,80 @@ export async function runGuidedReview(
 	input: ConversationTurnInput,
 	history: MetaItem[],
 	signal: AbortSignal,
-	onAction: (action: NavigationAction) => Promise<ReviewScreen>
+	onAction: (action: NavigationAction) => Promise<ReviewScreen>,
+	/** Emits the accepted answer once. With this callback, do not also emit the returned string. */
+	onText?: (delta: string) => void | Promise<void>
 ): Promise<string> {
 	if (!input.prId) throw new Error("Selected PR required for guided review");
 	const seen = new Set<string>();
 	const questionIndex = history.length - 1;
 	let pinned: PreparedReview | undefined;
 	let navigated = false;
+	let acknowledgedScreen: ReviewScreen | undefined;
+	let recovered = false;
+	let emitted = false;
 	for (let round = 0; round < 6; round++) {
 		throwIfAborted(signal);
 		const snapshot = await getSnapshot(ports, input, signal);
+		if (acknowledgedScreen) assertSameScreen(acknowledgedScreen, snapshot.screen);
 		if (pinned && snapshot.review && !samePlan(pinned, snapshot.review)) throw changed();
 		if (snapshot.review) pinned = snapshot.review;
 		const source = await currentSource(ports, snapshot, signal);
 		assertSameScreen(snapshot.screen, await screen(ports, input, signal));
 		const modelInput = reviewModelInput(history, questionIndex, snapshot, source);
-		const response = await modelRound(
-			client,
-			{
-				requestId: `${input.requestId}:review:${round}`,
-				workload: "quick",
-				instructions: INSTRUCTIONS,
-				input: modelInput,
-				tools: navigated ? [] : tools,
-				maxOutputTokens: 512,
-			},
-			signal
-		);
+		const emitText = async (delta: string) => {
+			if (!delta || !onText) return;
+			assertSameScreen(snapshot.screen, await screen(ports, input, signal));
+			throwIfAborted(signal);
+			emitted = true;
+			await abortable(Promise.resolve(onText(delta)), signal);
+		};
+		const request = {
+			requestId: `${input.requestId}:review:${round}`,
+			workload: "quick" as const,
+			instructions: INSTRUCTIONS,
+			input: modelInput,
+			tools: navigated ? [] : tools,
+			maxOutputTokens: MAX_OUTPUT_TOKENS,
+		};
+		// Only the phase with tools disabled may stream. Navigation and its durable receipt
+		// have already completed; every delta is still fenced against a changed screen.
+		const streamText = navigated && onText ? emitText : undefined;
+		let response: Awaited<ReturnType<typeof modelRound>>;
+		try {
+			response = await modelRound(client, request, signal, streamText);
+		} catch (error) {
+			throwIfAborted(signal);
+			if (!(error instanceof MetaApiError) || error.code !== "output-limit" || recovered || emitted)
+				throw error;
+			const latest = await getSnapshot(ports, input, signal);
+			assertSameScreen(snapshot.screen, latest.screen);
+			if (
+				Boolean(snapshot.review) !== Boolean(latest.review) ||
+				(snapshot.review && latest.review && !samePlan(snapshot.review, latest.review))
+			)
+				throw changed();
+			recovered = true;
+			// Discard all incomplete output. Retry the original input once, never a partial
+			// tool/result or already-spoken prefix. The incomplete attempt cannot execute tools.
+			response = await modelRound(
+				client,
+				{
+					...request,
+					requestId: `${request.requestId}:retry`,
+					maxOutputTokens: RECOVERY_OUTPUT_TOKENS,
+				},
+				signal,
+				streamText
+			);
+		}
 		const calls = response.completion.output.filter((item) => item["type"] === "function_call");
 		// Navigation-round prose is intentionally not spoken or replayed as an already-spoken answer.
 		if (!calls.length) {
 			assertSameScreen(snapshot.screen, await screen(ports, input, signal));
 			if (!response.text.trim())
 				throw new GuidedReviewError("The review reply was empty. Please try again.");
+			if (!streamText) await emitText(response.text);
 			return response.text;
 		}
 		if (navigated)
@@ -326,6 +376,7 @@ export async function runGuidedReview(
 			const acknowledged = await abortable(onAction(action), signal);
 			assertSameScreen(acknowledged, await screen(ports, input, signal));
 			navigated = true;
+			acknowledgedScreen = acknowledged;
 			result = { status: "applied", navigation, screen: acknowledged };
 		}
 		history.push({
@@ -484,10 +535,14 @@ function validateNavigation(
 async function modelRound(
 	client: AgentModelClient,
 	request: Parameters<AgentModelClient["stream"]>[0],
-	signal: AbortSignal
+	signal: AbortSignal,
+	onText?: (delta: string) => Promise<void>
 ): Promise<{ text: string; completion: MetaCompletion }> {
-	const iterator = client.stream(request, signal)[Symbol.asyncIterator]();
+	const controller = new AbortController();
+	const active = AbortSignal.any([signal, controller.signal]);
+	const iterator = client.stream(request, active)[Symbol.asyncIterator]();
 	let text = "";
+	let completed = false;
 	try {
 		while (true) {
 			const next = await abortable(Promise.resolve(iterator.next()), signal);
@@ -495,10 +550,17 @@ async function modelRound(
 				throw new GuidedReviewError("The review reply did not complete. Please try again.");
 			if (next.value.type === "text") {
 				text += next.value.delta;
-				if (text.length > MAX_SPOKEN_REPLY_CHARS)
+				if (text.length > MAX_REPLY_CHARS)
 					throw new GuidedReviewError("The review reply was too long. Ask a narrower question.");
+				await onText?.(next.value.delta);
 			} else {
 				const completion = next.value.response;
+				if (
+					!request.tools?.length &&
+					completion.output.some((item) => item["type"] === "function_call")
+				)
+					throw new GuidedReviewError("Continue to the next review step with a new request.");
+				const streamed = text.length > 0;
 				if (!text)
 					text = completion.output
 						.filter((item) => item["type"] === "message" && item["role"] === "assistant")
@@ -506,12 +568,16 @@ async function modelRound(
 						.filter((part) => part?.type === "output_text" && typeof part.text === "string")
 						.map((part) => part.text)
 						.join("");
-				if (text.length > MAX_SPOKEN_REPLY_CHARS)
+				if (text.length > MAX_REPLY_CHARS)
 					throw new GuidedReviewError("The review reply was too long. Ask a narrower question.");
+				if (!streamed && text) await onText?.(text);
+				completed = true;
 				return { text, completion };
 			}
 		}
 	} finally {
+		// Screen/callback failures must also stop the provider, even if iterator cleanup stalls.
+		if (!completed) controller.abort();
 		void Promise.resolve()
 			.then(() => iterator.return?.())
 			.catch(() => {});

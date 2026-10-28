@@ -257,7 +257,7 @@ export class ConversationService {
 			if (turn.input.prId !== undefined && this.options.review) {
 				history.push({ role: "user", content: turn.input.text });
 				const gate = this.reviewReceipts;
-				const answer = await runGuidedReview(
+				await runGuidedReview(
 					this.client,
 					this.options.review,
 					turn.input,
@@ -271,10 +271,12 @@ export class ConversationService {
 							turn.actions.push(action);
 							this.emit(turn, { kind: "action", action });
 						});
+					},
+					(delta) => {
+						if (this.active(session, turn)) this.append(turn, delta);
 					}
 				);
 				if (!this.active(session, turn)) return;
-				this.append(turn, answer);
 			} else {
 				if (turn.input.prId !== undefined) {
 					try {
@@ -386,6 +388,10 @@ function safeError(error: unknown): string {
 	if (error instanceof ContextError)
 		return "Could not load the selected pull request. Check GitHub access or continue without a PR.";
 	if (error instanceof MetaApiError) {
+		if (error.code === "output-limit")
+			return "The model reached its reply limit. Please ask to continue.";
+		if (error.code === "incomplete" || error.code === "stream-interrupted")
+			return "The model reply stopped before it finished. Please try again.";
 		if (
 			error.status === 401 ||
 			error.status === 403 ||

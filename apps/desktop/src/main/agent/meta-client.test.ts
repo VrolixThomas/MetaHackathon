@@ -1,7 +1,13 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { setImmediate } from "node:timers/promises";
-import { MetaApiError, MetaClient, type MetaRequest, type UsageRecord } from "./meta-client";
+import {
+	MetaApiError,
+	MetaClient,
+	type MetaRequest,
+	type MetaStreamEvent,
+	type UsageRecord,
+} from "./meta-client";
 import { assertStandardModel, estimateCostUsd, routeModel } from "./models";
 
 const request: MetaRequest = {
@@ -265,4 +271,72 @@ test("invalid usage and contradictory terminal status are rejected without losin
 			assert.equal(logs[0]?.estimatedUsd, null);
 		}
 	}
+});
+
+test("512-token incomplete terminals retain actual usage and expose only safe recovery codes, never tools", async () => {
+	for (const [reason, outputTokens, terminalType, code] of [
+		[undefined, 512, "response.incomplete", "output-limit"],
+		["max_output_tokens", 512, "response.incomplete", "output-limit"],
+		[undefined, 100, "response.incomplete", "incomplete"],
+		["content_filter", 512, "response.incomplete", "incomplete"],
+		["max_output_tokens", 512, "response.completed", null],
+	] as const) {
+		const logs: UsageRecord[] = [];
+		const events: MetaStreamEvent[] = [];
+		const client = new MetaClient({
+			getApiKey: async () => "test-only-key",
+			recordUsage: (record) => logs.push(record),
+			fetch: async (_url, init) => {
+				const body = JSON.parse(String(init?.body));
+				assert.equal(body.max_output_tokens, 512);
+				assert.equal(body.tool_choice, "none");
+				return sseResponse([
+					{ type: "response.output_text.delta", delta: "Unfinished answer" },
+					{
+						type: terminalType,
+						response: {
+							id: "actual-usage-repro",
+							model: "muse-spark-1.3",
+							status: "incomplete",
+							output: [{ type: "function_call", arguments: "SECRET partial tool" }],
+							usage: { input_tokens: 4410, output_tokens: outputTokens },
+							...(reason ? { incomplete_details: { reason } } : {}),
+						},
+					},
+				]);
+			},
+		});
+		await assert.rejects(
+			async () => {
+				for await (const event of client.stream(
+					{ ...request, maxOutputTokens: 512 },
+					new AbortController().signal
+				))
+					events.push(event);
+			},
+			(error: unknown) =>
+				error instanceof MetaApiError && error.code === code && !error.message.includes("SECRET")
+		);
+		assert.deepEqual(events, [{ type: "text", delta: "Unfinished answer" }]);
+		assert.equal(logs.length, 1);
+		assert.equal(logs[0]?.status, terminalType === "response.incomplete" ? "incomplete" : "failed");
+		assert.deepEqual(logs[0]?.usage, { inputTokens: 4410, cachedInputTokens: 0, outputTokens });
+		assert(logs[0]?.estimatedUsd);
+		assert(!JSON.stringify(logs).includes("SECRET"));
+	}
+});
+
+test("truncated stream has a distinct recovery code and tool-free requests disable tool choice", async () => {
+	const client = new MetaClient({
+		getApiKey: async () => "test-key",
+		recordUsage: () => {},
+		fetch: async (_url, init) => {
+			assert.equal(JSON.parse(String(init?.body)).tool_choice, "none");
+			return sseResponse([{ type: "response.output_text.delta", delta: "Partial" }]);
+		},
+	});
+	await assert.rejects(
+		collect(client),
+		(error: unknown) => error instanceof MetaApiError && error.code === "stream-interrupted"
+	);
 });

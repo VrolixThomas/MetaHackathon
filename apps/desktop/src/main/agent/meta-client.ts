@@ -24,6 +24,7 @@ const responseSchema = z.object({
 	status: z.string(),
 	output: z.array(object),
 	usage: usageSchema.nullish(),
+	incomplete_details: z.object({ reason: z.string() }).nullish(),
 });
 export type MetaItem = z.infer<typeof object>;
 export interface FunctionTool {
@@ -68,7 +69,8 @@ export class MetaApiError extends Error {
 	constructor(
 		message: string,
 		readonly status: number | null = null,
-		readonly retryAfter: string | null = null
+		readonly retryAfter: string | null = null,
+		readonly code: "output-limit" | "incomplete" | "stream-interrupted" | null = null
 	) {
 		super(message);
 		this.name = "MetaApiError";
@@ -126,7 +128,7 @@ export class MetaClient implements AgentModelClient {
 					instructions: request.instructions,
 					tools: request.tools ?? [],
 					parallel_tool_calls: false,
-					tool_choice: "auto",
+					tool_choice: request.tools?.length ? "auto" : "none",
 					stream: true,
 					store: false,
 					include: ["reasoning.encrypted_content"],
@@ -212,14 +214,31 @@ export class MetaClient implements AgentModelClient {
 								: "incomplete";
 					if (status !== "completed" || final.status !== "completed") {
 						if (status === "completed") status = "failed";
-						throw new MetaApiError(`Meta response ${status}; partial output cannot execute tools`);
+						// Retry only a consistent output-limit terminal. Older provider responses may
+						// omit the reason; their validated usage must have exhausted this request's cap.
+						const incomplete = status === "incomplete" && final.status === "incomplete";
+						const outputLimit =
+							incomplete &&
+							(final.incomplete_details?.reason === "max_output_tokens" ||
+								(!final.incomplete_details && (usage?.outputTokens ?? 0) >= maxOutputTokens));
+						throw new MetaApiError(
+							`Meta response ${status}; partial output cannot execute tools`,
+							null,
+							null,
+							outputLimit ? "output-limit" : incomplete ? "incomplete" : null
+						);
 					}
 					yield { type: "completed", response: { id: final.id, model, output: final.output } };
 					return;
 				}
 				if (event["type"] === "error") throw new MetaApiError("Meta streaming error");
 			}
-			throw new MetaApiError("Meta stream ended without a completed response");
+			throw new MetaApiError(
+				"Meta stream ended without a completed response",
+				null,
+				null,
+				"stream-interrupted"
+			);
 		} finally {
 			if (signal.aborted) status = "cancelled";
 			if (requested) {

@@ -13,8 +13,16 @@ import type {
 import { type ConversationOptions, ConversationService } from "./conversation";
 import { createConversationRouter } from "./conversation-router";
 import type { ConversationReviewPorts, ReviewNavigationRequest } from "./guided-review";
-import type { AgentModelClient, MetaItem, MetaRequest } from "./meta-client";
-import { eventually } from "./test-support";
+import {
+	type AgentModelClient,
+	MetaApiError,
+	MetaClient,
+	type MetaItem,
+	type MetaRequest,
+	type MetaStreamEvent,
+	type UsageRecord,
+} from "./meta-client";
+import { completed, eventually, transport } from "./test-support";
 
 function plan(): PreparedReview {
 	return {
@@ -63,7 +71,8 @@ function call(name: string, args: unknown = {}, id = name): MetaItem {
 function harness(
 	outputs: MetaItem[][],
 	timeoutMs = 1000,
-	beforeReply?: (request: MetaRequest, signal: AbortSignal) => Promise<void>
+	beforeReply?: (request: MetaRequest, signal: AbortSignal) => Promise<void>,
+	reply?: AgentModelClient["stream"]
 ) {
 	const prepared = plan();
 	const input: ConversationTurnInput = {
@@ -83,13 +92,20 @@ function harness(
 	const client: AgentModelClient = {
 		async *stream(request, signal) {
 			requests.push(structuredClone(request));
+			if (reply) {
+				yield* reply(request, signal);
+				return;
+			}
 			const output = outputs.shift();
 			assert(output, "Unexpected extra inference");
 			await beforeReply?.(request, signal);
 			signal.throwIfAborted();
 			yield {
 				type: "text",
-				delta: output.length ? "PRETOOL FILLER MUST NOT SPEAK" : "This file changes the timeout.",
+				delta:
+					output.length && request.tools?.length
+						? "PRETOOL FILLER MUST NOT SPEAK"
+						: "This file changes the timeout.",
 			};
 			yield {
 				type: "completed",
@@ -199,6 +215,17 @@ async function finish(h: ReturnType<typeof harness>, status = "completed") {
 	await eventually(() => h.poll().status !== "running");
 	assert.equal(h.poll().status, status);
 	return h.poll();
+}
+
+function terminal(output: MetaItem[] = []): MetaStreamEvent {
+	return { type: "completed", response: { id: "test", model: "muse-spark-1.3", output } };
+}
+function barrier() {
+	let release = () => {};
+	const promise = new Promise<void>((resolve) => {
+		release = resolve;
+	});
+	return { promise, release };
 }
 
 test("no selected PR preserves ordinary conversation despite configured review ports", async () => {
@@ -697,11 +724,12 @@ test("one acknowledged step removes tools and cannot autonomously advance to a s
 		await finish(h, "error");
 		assert.equal(h.navigations.length, 1);
 		assert.equal(h.poll().actions.length, 1);
-		assert.equal(h.poll().text, "");
+		assert.equal(h.poll().text, "This file changes the timeout.");
+		assert(!h.poll().events.some((event) => event.kind === "completed"));
 		assert.deepEqual(h.requests[1]?.tools, []);
 		assert(
 			h.requests.every(
-				(request) => request.maxOutputTokens !== undefined && request.maxOutputTokens <= 512
+				(request) => request.maxOutputTokens !== undefined && request.maxOutputTokens > 512
 			)
 		);
 	} finally {
@@ -787,35 +815,287 @@ test("source instructions cannot expand guided tool authority or masquerade as r
 	}
 });
 
-test("excessive spoken prose is rejected before emission for streaming and terminal-only responses", async () => {
+test("expanded answers over 1600 chars complete; only the memory bound rejects streamed or terminal text", async () => {
 	for (const streamText of [true, false]) {
-		const h = harness([]);
-		const text = "A lengthy spoken explanation. ".repeat(100);
-		const client: AgentModelClient = {
-			async *stream() {
-				if (streamText) yield { type: "text", delta: text };
-				yield {
-					type: "completed",
-					response: {
-						id: "test-long",
-						model: "muse-spark-1.3",
-						output: [
-							{ type: "message", role: "assistant", content: [{ type: "output_text", text }] },
-						],
+		for (const size of [2900, 32_001]) {
+			const h = harness([]);
+			const text = "A detailed explanation. ".repeat(1400).slice(0, size);
+			const client: AgentModelClient = {
+				async *stream() {
+					if (streamText) yield { type: "text", delta: text };
+					yield {
+						type: "completed",
+						response: {
+							id: "test-long",
+							model: "muse-spark-1.3",
+							output: [
+								{ type: "message", role: "assistant", content: [{ type: "output_text", text }] },
+							],
+						},
+					};
+				},
+			};
+			const service = new ConversationService(client, h.options);
+			try {
+				service.start(h.input);
+				await eventually(() => service.poll(h.identity).status !== "running");
+				const result = service.poll(h.identity);
+				assert.equal(result.status, size > 32_000 ? "error" : "completed");
+				assert.equal(result.text, size > 32_000 ? "" : text);
+				assert.equal(
+					result.events.filter((event) => event.kind === "text-delta").length,
+					size > 32_000 ? 0 : 1
+				);
+			} finally {
+				await service.dispose();
+				await h.service.dispose();
+			}
+		}
+	}
+});
+
+test("output-limit recovery discards partial tools/prose and retries original input once with a larger budget", async () => {
+	const usage: UsageRecord[] = [];
+	const bodies: Record<string, unknown>[] = [];
+	const native = new MetaClient({
+		getApiKey: async () => "test-key",
+		recordUsage: (record) => usage.push(record),
+		fetch: async (_url, init) => {
+			bodies.push(JSON.parse(String(init?.body)));
+			if (bodies.length === 1)
+				return transport([
+					{ type: "response.output_text.delta", delta: "PARTIAL MUST NOT SPEAK" },
+					{
+						type: "response.incomplete",
+						response: {
+							id: "test-incomplete",
+							model: "muse-spark-1.3",
+							status: "incomplete",
+							output: [call("next_review_file", {}, "partial-call")],
+							incomplete_details: { reason: "max_output_tokens" },
+							usage: { input_tokens: 4410, output_tokens: 512 },
+						},
 					},
-				};
-			},
-		};
-		const service = new ConversationService(client, h.options);
+				]);
+			if (bodies.length === 2) return transport([completed([call("resume_review")])]);
+			return transport([
+				{ type: "response.output_text.delta", delta: "The timeout changed." },
+				completed(),
+			]);
+		},
+	});
+	const h = harness([], 1000, undefined, (request, signal) => native.stream(request, signal));
+	try {
+		h.service.start(h.input);
+		const action = await h.action();
+		assert.equal(h.poll().text, "");
+		assert.equal(h.requests.length, 2);
+		assert.deepEqual(h.navigations, [{ direction: "resume" }]);
+		assert.deepEqual(h.requests[0]?.input, h.requests[1]?.input);
+		assert.equal(h.requests[0]?.maxOutputTokens, 2048);
+		assert.equal(h.requests[1]?.maxOutputTokens, 4096);
+		assert.equal(h.requests[1]?.requestId, `${h.requests[0]?.requestId}:retry`);
+		await h.service.actionApplied(h.receipt(action));
+		assert.equal((await finish(h)).text, "The timeout changed.");
+		assert.equal(h.requests.length, 3);
+		assert.equal(bodies[0]?.["tool_choice"], "auto");
+		assert.equal(bodies[2]?.["tool_choice"], "none");
+		assert(!JSON.stringify(h.requests).includes("partial-call"));
+		assert(!JSON.stringify(h.requests).includes("PARTIAL MUST NOT SPEAK"));
+		await eventually(() => usage.length === 3);
+		assert.deepEqual(
+			usage.map((record) => record.status),
+			["incomplete", "completed", "completed"]
+		);
+		assert.equal(usage[0]?.usage?.outputTokens, 512);
+	} finally {
+		await h.service.dispose();
+	}
+});
+
+test("recovery is bounded, excludes partial history and does not retry unrelated failures", async () => {
+	for (const code of ["output-limit", "incomplete", "stream-interrupted", null] as const) {
+		const h = harness([], 1000, undefined, async function* (request) {
+			if (request.requestId === "next-turn") {
+				yield { type: "text", delta: "Fresh answer" };
+				yield terminal();
+				return;
+			}
+			yield { type: "text", delta: "DISCARDED PREFIX" };
+			throw new MetaApiError("SECRET failure", null, null, code);
+		});
 		try {
-			service.start(h.input);
-			await eventually(() => service.poll(h.identity).status !== "running");
-			const result = service.poll(h.identity);
-			assert.equal(result.status, "error");
+			h.service.start(h.input);
+			const result = await finish(h, "error");
+			assert.equal(h.requests.length, code === "output-limit" ? 2 : 1);
 			assert.equal(result.text, "");
-			assert(!result.events.some((event) => event.kind === "text-delta"));
+			assert.deepEqual(result.actions, []);
+			assert(!result.events.some((event) => event.kind === "completed"));
+			assert(!JSON.stringify(result).includes("SECRET"));
+			const next = { ...h.identity, turnId: "next-turn", generation: 2 };
+			h.service.start({ ...next, requestId: "next-turn", text: "Hello" });
+			await eventually(() => h.service.poll(next).status === "completed");
+			assert.deepEqual(h.requests.at(-1)?.input, [{ role: "user", content: "Hello" }]);
 		} finally {
-			await service.dispose();
+			await h.service.dispose();
+		}
+	}
+});
+
+test("safe answer streams before terminal only after durable receipt; tool-capable prose stays buffered", async () => {
+	const toolTerminal = barrier();
+	const persist = barrier();
+	const answerTerminal = barrier();
+	let toolStarted = false;
+	let committing = false;
+	let answerStarted = false;
+	const h = harness([], 1000, undefined, async function* (request) {
+		if (request.tools?.length) {
+			yield { type: "text", delta: "I opened a file (UNACKNOWLEDGED)." };
+			toolStarted = true;
+			await toolTerminal.promise;
+			yield terminal([call("resume_review")]);
+		} else {
+			yield { type: "text", delta: "The timeout " };
+			answerStarted = true;
+			await answerTerminal.promise;
+			yield { type: "text", delta: "changed." };
+			yield terminal();
+		}
+	});
+	const receiptOptions = h.options.actionReceipts;
+	assert(receiptOptions);
+	receiptOptions.updateScreen = async (receipt, nav, signal) => {
+		committing = true;
+		await persist.promise;
+		signal.throwIfAborted();
+		h.commit(receipt, nav);
+	};
+	try {
+		h.service.start(h.input);
+		await eventually(() => toolStarted);
+		assert.equal(h.poll().text, "");
+		assert.deepEqual(h.poll().actions, []);
+		toolTerminal.release();
+		const action = await h.action();
+		const receipt = h.service.actionApplied(h.receipt(action));
+		await eventually(() => committing);
+		assert.equal(h.poll().text, "");
+		assert.equal(h.requests.length, 1);
+		persist.release();
+		assert.deepEqual(await receipt, { status: "accepted" });
+		await eventually(() => answerStarted);
+		assert.equal(h.poll().status, "running");
+		assert.equal(h.poll().text, "The timeout ");
+		assert.equal(h.commits.length, 1);
+		assert(!h.poll().events.some((event) => event.kind === "completed"));
+		answerTerminal.release();
+		const result = await finish(h);
+		assert.equal(result.text, "The timeout changed.");
+		assert.deepEqual(
+			result.events.filter((event) => event.kind === "text-delta").map((event) => event.delta),
+			["The timeout ", "changed."]
+		);
+		assert(!JSON.stringify(h.requests[1]?.input).includes("UNACKNOWLEDGED"));
+	} finally {
+		toolTerminal.release();
+		persist.release();
+		answerTerminal.release();
+		await h.service.dispose();
+	}
+});
+
+test("safe-phase incomplete never completes/replays spoken text, but empty output can recover", async () => {
+	for (const prefix of ["", "Started answer."]) {
+		const h = harness([], 1000, undefined, async function* (request) {
+			if (request.tools?.length) {
+				yield terminal([call("resume_review")]);
+				return;
+			}
+			if (request.requestId.endsWith(":retry")) {
+				yield { type: "text", delta: "Recovered answer." };
+				yield terminal();
+				return;
+			}
+			if (prefix) yield { type: "text", delta: prefix };
+			throw new MetaApiError("Limit", null, null, "output-limit");
+		});
+		try {
+			h.service.start(h.input);
+			await h.service.actionApplied(h.receipt(await h.action()));
+			const result = await finish(h, prefix ? "error" : "completed");
+			assert.equal(result.text, prefix || "Recovered answer.");
+			assert.equal(h.requests.length, prefix ? 2 : 3);
+			assert.equal(h.navigations.length, 1);
+			assert.equal(
+				result.events.some((event) => event.kind === "completed"),
+				!prefix
+			);
+		} finally {
+			await h.service.dispose();
+		}
+	}
+});
+
+test("cancel and screen changes suppress late safe-phase text and terminal, aborting even an uncooperative stream", async () => {
+	for (const mode of ["cancel", "screen"] as const) {
+		const late = barrier();
+		let answerSignal: AbortSignal | undefined;
+		let started = false;
+		const h = harness([], 1000, undefined, async function* (request, signal) {
+			if (request.tools?.length) {
+				yield terminal([call("resume_review")]);
+				return;
+			}
+			answerSignal = signal;
+			yield { type: "text", delta: "First safe sentence." };
+			started = true;
+			await late.promise;
+			yield { type: "text", delta: "LATE TEXT" };
+			yield terminal();
+		});
+		try {
+			h.service.start(h.input);
+			await h.service.actionApplied(h.receipt(await h.action()));
+			await eventually(() => started);
+			assert.equal(h.poll().text, "First safe sentence.");
+			if (mode === "cancel") h.service.cancel({ ...h.identity, requestId: "stop", reason: "user" });
+			else h.setScreen({ sequence: 99, mode: "conversation", prId: h.prepared.pr.id });
+			late.release();
+			const result = await finish(h, mode === "cancel" ? "cancelled" : "error");
+			assert.equal(result.text, "First safe sentence.");
+			assert(!result.events.some((event) => event.kind === "completed"));
+			assert(answerSignal?.aborted);
+			assert.equal(h.requests.length, 2);
+		} finally {
+			late.release();
+			await h.service.dispose();
+		}
+	}
+});
+
+test("cancel or changed screen before incomplete recovery prevents a new provider request", async () => {
+	for (const mode of ["cancel", "screen"] as const) {
+		const limit = barrier();
+		let started = false;
+		const h = harness([], 1000, undefined, async function* () {
+			yield { type: "text", delta: "Buffered partial" };
+			started = true;
+			await limit.promise;
+			throw new MetaApiError("Limit", null, null, "output-limit");
+		});
+		try {
+			h.service.start(h.input);
+			await eventually(() => started);
+			if (mode === "cancel") h.service.cancel({ ...h.identity, requestId: "stop", reason: "user" });
+			else h.setScreen({ sequence: 99, mode: "conversation", prId: h.prepared.pr.id });
+			limit.release();
+			await finish(h, mode === "cancel" ? "cancelled" : "error");
+			assert.equal(h.requests.length, 1);
+			assert.equal(h.poll().text, "");
+			assert.deepEqual(h.poll().actions, []);
+		} finally {
+			limit.release();
 			await h.service.dispose();
 		}
 	}
