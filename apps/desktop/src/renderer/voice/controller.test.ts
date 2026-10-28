@@ -1250,7 +1250,12 @@ test("external start interruption prevents media and failed turns notify their s
 	};
 	h.controller.beginCapture();
 	assert.equal(h.media.length, 0);
-	assert.deepEqual(ends[1], { status: "failed", error: "Sink unavailable" });
+	assert.deepEqual(ends[1], {
+		status: "failed",
+		error: "Sink unavailable",
+		origin: "controller",
+		recoverable: false,
+	});
 	h.controller.dispose();
 	assert.equal(ends.length, 2);
 });

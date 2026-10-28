@@ -27,6 +27,7 @@ import {
 	VoiceStateSchema,
 } from "../../shared/contracts";
 import { asError, bounded, delay } from "./async";
+import { VoiceFailure, fromOrigin, reportTurnFailure } from "./failure";
 import { Sentences } from "./sentences";
 import type {
 	PcmObservation,
@@ -182,7 +183,11 @@ export function createVoiceController(options: VoiceControllerOptions): VoiceCon
 		}
 	}
 
-	function stop(reason: CancelTurnInput["reason"], error?: Error) {
+	function stop(
+		reason: CancelTurnInput["reason"],
+		error?: Error,
+		origin: Extract<VoiceTurnEnd, { status: "failed" }>["origin"] = "controller"
+	) {
 		const turn = active;
 		if (!turn) return;
 		if (error) turn.failure ??= error;
@@ -195,23 +200,45 @@ export function createVoiceController(options: VoiceControllerOptions): VoiceCon
 		end(
 			turn,
 			error
-				? { status: "failed", error: error.message || "Voice failed" }
+				? {
+						status: "failed",
+						error: error.message || "Voice failed",
+						origin,
+						recoverable: origin === "agent",
+					}
 				: {
 						status: "cancelled",
 						reason,
 					}
 		);
-		if (error) report(error);
+		if (error)
+			reportTurnFailure(error, { ...turn.identity, origin, recoverable: origin === "agent" }, () =>
+				report(error)
+			);
 	}
 	function end(turn: Turn, result: VoiceTurnEnd) {
 		try {
 			options.onTurnEnd?.({ ...turn.identity }, result);
 		} catch (error) {
-			report(error);
+			const failure = asError(error);
+			reportTurnFailure(
+				failure,
+				{ ...turn.identity, origin: "controller", recoverable: false },
+				() => report(failure)
+			);
 		}
 	}
-	function fail(turn: Turn, error: unknown) {
-		if (live(turn)) stop("user", asError(error));
+	function fail(
+		turn: Turn,
+		error: unknown,
+		origin: Extract<VoiceTurnEnd, { status: "failed" }>["origin"] = "controller"
+	) {
+		if (live(turn))
+			stop(
+				"user",
+				error instanceof VoiceFailure ? error.error : asError(error),
+				error instanceof VoiceFailure ? error.origin : origin
+			);
 	}
 	function finish(turn: Turn) {
 		if (!live(turn) || !turn.agentDone || turn.speaking || turn.queue.length) return;
@@ -278,17 +305,22 @@ export function createVoiceController(options: VoiceControllerOptions): VoiceCon
 				turn.ended = ended;
 				publish({ phase: "speaking" });
 				if (!live(turn)) return;
-				await rpc(
-					turn,
-					options.voice.speak(
-						SpeakSchema.parse({ ...turn.identity, speechId: speech.id, text: speech.text }),
-						turn.abort.signal
+				await fromOrigin("voice", () =>
+					rpc(
+						turn,
+						options.voice.speak(
+							SpeakSchema.parse({ ...turn.identity, speechId: speech.id, text: speech.text }),
+							turn.abort.signal
+						)
 					)
 				);
-				await bounded(ending, turn.abort.signal, speechTimeout);
+				await fromOrigin("voice", () => bounded(ending, turn.abort.signal, speechTimeout));
 				if (!live(turn)) return;
-				if (turn.media)
-					await bounded(turn.media.drain(turn.abort.signal), turn.abort.signal, speechTimeout);
+				const media = turn.media;
+				if (media)
+					await fromOrigin("media", () =>
+						bounded(media.drain(turn.abort.signal), turn.abort.signal, speechTimeout)
+					);
 				if (!live(turn)) return;
 				turn.speech = null;
 				turn.ended = null;
@@ -313,7 +345,7 @@ export function createVoiceController(options: VoiceControllerOptions): VoiceCon
 	}
 	function answer(turn: Turn, delta: string, final = false) {
 		if (turn.text.length + delta.length > MAX_TEXT)
-			throw new Error("Agent response limit exceeded");
+			throw new VoiceFailure("agent", new Error("Agent response limit exceeded"));
 		turn.text += delta;
 		options.onAnswer?.(turn.text, { ...turn.identity });
 		if (!live(turn)) return;
@@ -321,22 +353,29 @@ export function createVoiceController(options: VoiceControllerOptions): VoiceCon
 	}
 	async function action(turn: Turn, value: AgentAction) {
 		if (!live(turn) || !sameTurn(value, turn.identity) || turn.actions.has(value.requestId)) return;
-		if (turn.actions.size >= MAX_ACTIONS) throw new Error("Agent action limit exceeded");
+		if (turn.actions.size >= MAX_ACTIONS)
+			throw new VoiceFailure("agent", new Error("Agent action limit exceeded"));
 		turn.actions.add(value.requestId);
 		if (options.getConversationContext) {
 			if (options.onConversationAction)
-				await rpc(turn, Promise.resolve(options.onConversationAction(value, turn.abort.signal)));
+				await fromOrigin("agent", async () =>
+					rpc(turn, Promise.resolve(options.onConversationAction?.(value, turn.abort.signal)))
+				);
 			return;
 		}
 		const current = ScreenContextSchema.parse(options.getScreenContext?.());
 		if (!live(turn)) return;
 		if (current.prId !== turn.prId || current.sequence !== value.screenSequence) {
 			if (options.onActionIgnored)
-				await rpc(turn, Promise.resolve(options.onActionIgnored(value, current)));
+				await fromOrigin("agent", async () =>
+					rpc(turn, Promise.resolve(options.onActionIgnored?.(value, current)))
+				);
 			return;
 		}
 		if (options.onAction)
-			await rpc(turn, Promise.resolve(options.onAction(value, current, turn.abort.signal)));
+			await fromOrigin("agent", async () =>
+				rpc(turn, Promise.resolve(options.onAction?.(value, current, turn.abort.signal)))
+			);
 	}
 	async function agentEvent(turn: Turn, event: AgentEvent) {
 		if (!live(turn) || event.sequence <= turn.agentSequence) return;
@@ -353,7 +392,7 @@ export function createVoiceController(options: VoiceControllerOptions): VoiceCon
 				await action(turn, event.action);
 				break;
 			case "error":
-				throw new Error(event.message);
+				throw new VoiceFailure("agent", new Error(event.message));
 			case "cancelled":
 				stop("user");
 				break;
@@ -383,11 +422,17 @@ export function createVoiceController(options: VoiceControllerOptions): VoiceCon
 				turn.prId = screenContext.prId;
 				input = AgentTurnInputSchema.parse({ ...base, screenContext });
 			}
-			const started = StartResultSchema.parse(
-				await allocation(turn, "agent", () => options.agent.start(input, turn.abort.signal))
+			const started = await fromOrigin("agent", async () =>
+				StartResultSchema.parse(
+					await allocation(turn, "agent", () => options.agent.start(input, turn.abort.signal))
+				)
 			);
 			if (!live(turn)) return;
-			if (!sameTurn(started, turn.identity)) throw new Error("Mismatched agent start identity");
+			if (!sameTurn(started, turn.identity))
+				throw new VoiceFailure("agent", new Error("Mismatched agent start identity"));
+			if (started.status === "error")
+				throw new VoiceFailure("agent", new Error("Agent turn failed"));
+			if (started.status === "cancelled") return stop("user");
 			let stalled = 0;
 			while (live(turn)) {
 				const input = PollTurnSchema.parse({
@@ -395,18 +440,30 @@ export function createVoiceController(options: VoiceControllerOptions): VoiceCon
 					afterSequence: turn.agentSequence,
 					limit: 100,
 				});
-				const result = PollTurnResultSchema.parse(
-					await rpc(turn, options.agent.poll(input, turn.abort.signal))
+				const result = await fromOrigin("agent", async () =>
+					PollTurnResultSchema.parse(await rpc(turn, options.agent.poll(input, turn.abort.signal)))
 				);
 				if (!live(turn)) return;
 				if (!sameTurn(result, turn.identity) || result.status === "stale")
-					throw new Error("Agent turn is stale");
+					throw new VoiceFailure("agent", new Error("Agent turn is stale"));
+				// Failed pages cannot flush a partial answer, dispatch actions or imply completion.
+				const failed = result.events.find(
+					(event) => event.kind === "error" && event.sequence > turn.agentSequence
+				);
+				if (failed?.kind === "error" || result.status === "error")
+					throw new VoiceFailure(
+						"agent",
+						new Error(failed?.kind === "error" ? failed.message : "Agent turn failed")
+					);
 				const previous = turn.agentSequence;
 				const firstNew = result.events.find((event) => event.sequence > turn.agentSequence);
 				if (firstNew && firstNew.sequence > turn.agentSequence + 1) {
 					// A compacted event window has lost a prefix. Recover the full snapshot once.
 					if (!result.text.startsWith(turn.text))
-						throw new Error("Agent snapshot changed already spoken text");
+						throw new VoiceFailure(
+							"agent",
+							new Error("Agent snapshot changed already spoken text")
+						);
 					answer(turn, result.text.slice(turn.text.length));
 					turn.agentSequence = result.sequence;
 				} else {
@@ -416,7 +473,10 @@ export function createVoiceController(options: VoiceControllerOptions): VoiceCon
 				// Empty pages can represent compaction. Recover only unsaid suffixes; never replay speech.
 				if (result.events.length === 0 && result.sequence > turn.agentSequence) {
 					if (!result.text.startsWith(turn.text))
-						throw new Error("Agent snapshot changed already spoken text");
+						throw new VoiceFailure(
+							"agent",
+							new Error("Agent snapshot changed already spoken text")
+						);
 					answer(turn, result.text.slice(turn.text.length));
 					turn.agentSequence = result.sequence;
 				}
@@ -424,7 +484,6 @@ export function createVoiceController(options: VoiceControllerOptions): VoiceCon
 					for (const value of result.actions) await action(turn, value);
 					if (!live(turn)) return;
 					if (result.status === "cancelled") return stop("user");
-					if (result.status === "error") throw new Error("Agent turn failed");
 					if (result.status === "completed") {
 						answer(turn, "", true);
 						if (!turn.hasAnswer && completion) queue(turn, completion, "answer");
@@ -435,7 +494,8 @@ export function createVoiceController(options: VoiceControllerOptions): VoiceCon
 				}
 				stalled =
 					result.sequence > turn.agentSequence && previous === turn.agentSequence ? stalled + 1 : 0;
-				if (stalled >= 3) throw new Error("Agent event pagination made no progress");
+				if (stalled >= 3)
+					throw new VoiceFailure("agent", new Error("Agent event pagination made no progress"));
 				await delay(turn.agentSequence < result.sequence ? 0 : pollInterval, turn.abort.signal);
 			}
 		} catch (error) {
@@ -462,9 +522,10 @@ export function createVoiceController(options: VoiceControllerOptions): VoiceCon
 		options.onVoiceEvent?.(event);
 		if (!live(turn)) return;
 		if (event.kind === "error")
-			throw event.diagnostic
-				? new VoiceDiagnosticError(event.diagnostic)
-				: new Error(event.message);
+			throw new VoiceFailure(
+				"voice",
+				event.diagnostic ? new VoiceDiagnosticError(event.diagnostic) : new Error(event.message)
+			);
 		if (event.kind === "transcript" && !turn.finalized) {
 			if (event.final) turn.finalText = event.text;
 			publish({ transcript: event.text, transcriptFinal: event.final });
@@ -481,8 +542,8 @@ export function createVoiceController(options: VoiceControllerOptions): VoiceCon
 					...turn.identity,
 					afterSequence: turn.voiceSequence,
 				});
-				const result = VoicePollResultSchema.parse(
-					await rpc(turn, options.voice.poll(input, turn.abort.signal))
+				const result = await fromOrigin("voice", async () =>
+					VoicePollResultSchema.parse(await rpc(turn, options.voice.poll(input, turn.abort.signal)))
 				);
 				if (!live(turn)) return;
 				for (const event of result.events) voiceEvent(turn, event);
@@ -504,8 +565,10 @@ export function createVoiceController(options: VoiceControllerOptions): VoiceCon
 						...description,
 						keywords: turn.keywords,
 					});
-					return VoiceAnswerSchema.parse(
-						await allocation(turn, "voice", () => options.voice.offer(offer, turn.abort.signal))
+					return fromOrigin("voice", async () =>
+						VoiceAnswerSchema.parse(
+							await allocation(turn, "voice", () => options.voice.offer(offer, turn.abort.signal))
+						)
 					);
 				}, turn.abort.signal),
 				turn.abort.signal,
@@ -518,7 +581,7 @@ export function createVoiceController(options: VoiceControllerOptions): VoiceCon
 			if (!live(turn)) return;
 			void pollVoice(turn);
 		} catch (error) {
-			fail(turn, error);
+			fail(turn, error, "media");
 		}
 	}
 
@@ -593,13 +656,18 @@ export function createVoiceController(options: VoiceControllerOptions): VoiceCon
 			turn.deadline = setTimeout(() => fail(turn, new Error("Voice turn timed out")), turnTimeout);
 			try {
 				turn.keywords = VoiceOfferSchema.shape.keywords.parse(options.getKeywords?.() ?? []);
+			} catch (error) {
+				fail(turn, error);
+				return;
+			}
+			try {
 				turn.media = options.media({
 					pcm: (sample) => observePcm(turn, sample),
-					disconnected: (error) => fail(turn, error),
+					disconnected: (error) => fail(turn, error, "media"),
 				});
 				void connect(turn);
 			} catch (error) {
-				fail(turn, error);
+				fail(turn, error, "media");
 			}
 		},
 		endCapture() {
@@ -609,11 +677,18 @@ export function createVoiceController(options: VoiceControllerOptions): VoiceCon
 			turn.releasedAt = now();
 			try {
 				turn.media?.stopCapture();
+			} catch (error) {
+				fail(turn, error, "media");
+				return;
+			}
+			try {
 				publish({ phase: "transcribing" });
 				if (!live(turn)) return;
-				void rpc(
-					turn,
-					options.voice.release(TurnIdentitySchema.parse(turn.identity), turn.abort.signal)
+				void fromOrigin("voice", () =>
+					rpc(
+						turn,
+						options.voice.release(TurnIdentitySchema.parse(turn.identity), turn.abort.signal)
+					)
 				).catch((error) => fail(turn, error));
 				acceptFinal(turn);
 			} catch (error) {

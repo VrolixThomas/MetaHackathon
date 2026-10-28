@@ -74,7 +74,13 @@ export type TranscriptUpdate = TurnIdentity & { text: string; final: boolean };
 export type VoiceTurnEnd =
 	| { status: "completed" }
 	| { status: "cancelled"; reason: CancelTurnInput["reason"] }
-	| { status: "failed"; error: string };
+	| {
+			status: "failed";
+			error: string;
+			origin: "agent" | "voice" | "media" | "controller";
+			/** Only agent failures preserve a healthy, explicitly opened hands-free session. */
+			recoverable: boolean;
+	  };
 export type VoiceControllerOptions = {
 	voice: VoicePorts;
 	agent: AgentPorts;
