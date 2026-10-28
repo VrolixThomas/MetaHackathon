@@ -77,11 +77,14 @@ export function createElectronBrowserPage(
 			height: Math.min(requested.height, host ? Math.max(0, host.height - y) : viewport.height),
 		};
 		const scale = Math.min(1, available.width / viewport.width, available.height / viewport.height);
+		const width = Math.max(1, Math.floor(viewport.width * scale));
+		const height = Math.max(1, Math.floor(viewport.height * scale));
+		const centered = options.navigationPolicy === "workspace";
 		view.setBounds({
-			x: Math.round(available.x),
-			y: Math.round(available.y),
-			width: Math.max(1, Math.floor(viewport.width * scale)),
-			height: Math.max(1, Math.floor(viewport.height * scale)),
+			x: Math.round(available.x + (centered ? (available.width - width) / 2 : 0)),
+			y: Math.round(available.y + (centered ? (available.height - height) / 2 : 0)),
+			width,
+			height,
 		});
 		// Electron 40 can crash natively if emulation precedes the first render view.
 		if (renderReady)

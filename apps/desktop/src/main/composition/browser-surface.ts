@@ -13,6 +13,7 @@ import {
 	type LocalBrowserState,
 	LocalBrowserStateSchema,
 	LocalBrowserUrlSchema,
+	type LocalBrowserViewportMode,
 	type WorkspaceBrowserCommand,
 	WorkspaceBrowserCommandSchema,
 	type WorkspaceBrowserObservation,
@@ -24,6 +25,12 @@ import { publicProcedure, router } from "../trpc";
 
 const openSchema = z.strictObject({ url: LocalBrowserUrlSchema });
 const defaultViewport = (): BrowserViewport => ({ width: 1024, height: 768 });
+const viewportMode = (viewport: BrowserViewport): LocalBrowserViewportMode =>
+	viewport.width === 1024 && viewport.height === 768
+		? "desktop"
+		: viewport.width === 390 && viewport.height === 844
+			? "phone"
+			: "fixed";
 const failure = () => new Error("Local browser operation failed");
 const historySchema = z.strictObject({ canGoBack: z.boolean(), canGoForward: z.boolean() });
 export type BrowserOperationCode =
@@ -111,6 +118,7 @@ interface Operation {
 export class LocalBrowserSurface {
 	private active?: OwnedPage;
 	private viewport = defaultViewport();
+	private viewportMode: LocalBrowserViewportMode = "desktop";
 	private bounds: BrowserBounds | null = null;
 	private hideEpoch = 0;
 	private tail: Promise<unknown> = Promise.resolve();
@@ -192,7 +200,13 @@ export class LocalBrowserSurface {
 			}
 			this.check(active, operation);
 			if (command.kind === "viewport") {
-				await this.resize(active, command.viewport, operation);
+				const mode = viewportMode(command.viewport);
+				await this.resize(
+					active,
+					this.fittedViewport(mode, this.bounds, command.viewport),
+					operation
+				);
+				this.viewportMode = mode;
 			} else if (
 				command.kind === "back" ||
 				command.kind === "forward" ||
@@ -249,18 +263,28 @@ export class LocalBrowserSurface {
 		const epoch = this.hideEpoch;
 		return this.enqueue(async (operation) => {
 			if (epoch !== this.hideEpoch) return;
+			const mode = presentation.viewport ? viewportMode(presentation.viewport) : this.viewportMode;
+			const viewport = this.fittedViewport(
+				mode,
+				presentation.bounds,
+				presentation.viewport ?? this.viewport
+			);
 			const active = this.active;
 			if (active) {
 				this.admit(active, operation);
-				if (presentation.viewport) {
-					await this.resize(active, presentation.viewport, operation);
+				if (
+					active.viewport.width !== viewport.width ||
+					active.viewport.height !== viewport.height
+				) {
+					await this.resize(active, viewport, operation);
 				}
 				if (epoch !== this.hideEpoch) return;
 				active.page.present(presentation.bounds);
 			}
 			operation.signal.throwIfAborted();
 			this.bounds = presentation.bounds;
-			if (presentation.viewport) this.viewport = presentation.viewport;
+			this.viewport = viewport;
+			this.viewportMode = mode;
 		});
 	}
 
@@ -274,6 +298,7 @@ export class LocalBrowserSurface {
 		this.tail = Promise.resolve();
 		this.bounds = null;
 		this.viewport = defaultViewport();
+		this.viewportMode = "desktop";
 		try {
 			if (active) this.destroy(active);
 		} catch {
@@ -403,6 +428,7 @@ export class LocalBrowserSurface {
 			url,
 			title: snapshot.title,
 			viewport: (snapshot as WorkspaceSnapshot).viewport ?? active.viewport,
+			...(this.options.allowWebNavigation ? { viewportMode: this.viewportMode } : {}),
 			canGoBack: Boolean(active.page.back) && history.canGoBack,
 			canGoForward: Boolean(active.page.forward) && history.canGoForward,
 			provenance:
@@ -415,6 +441,24 @@ export class LocalBrowserSurface {
 	private nativePresentation(active: OwnedPage) {
 		if (!active.page.presentation) throw new CommandUnavailable();
 		return presentationSchema.parse(active.page.presentation());
+	}
+	private fittedViewport(
+		mode: LocalBrowserViewportMode,
+		bounds: BrowserBounds | null,
+		fallback: BrowserViewport
+	): BrowserViewport {
+		if (
+			!this.options.allowWebNavigation ||
+			mode !== "desktop" ||
+			!bounds ||
+			bounds.width < 1 ||
+			bounds.height < 1
+		)
+			return fallback;
+		return {
+			width: Math.max(320, Math.min(3840, Math.floor(bounds.width))),
+			height: Math.max(240, Math.min(2160, Math.floor(bounds.height))),
+		};
 	}
 
 	private async resize(active: OwnedPage, viewport: BrowserViewport, operation: Operation) {

@@ -575,6 +575,13 @@ export class WorkspaceCoordinator {
 				return false;
 			candidate.review.sequence = expected.review.sequence;
 		}
+		// Fitting a desktop page happens after its canvas renders. Only its dimensions may
+		// settle differently; applied() verifies them against the actual native observation.
+		if (
+			expected.browser?.viewportMode === "desktop" &&
+			candidate.browser?.viewportMode === "desktop"
+		)
+			candidate.browser.viewport = expected.browser.viewport;
 		return equal(candidate, expected);
 	}
 	private savedCandidate(pending: Pending, snapshot: WorkspaceSnapshot): SavedWorkspaceCanvases {
@@ -649,6 +656,25 @@ export class WorkspaceCoordinator {
 					);
 					if (this.browserVisible(snapshot) !== (observed?.presented ?? false))
 						fail("Native browser presentation has not settled.");
+					if (observed?.presented && snapshot.browser?.viewportMode) {
+						const native = parse(
+							LocalBrowserStateSchema.nullable(),
+							await this.call(pending.signal, () => this.ports.getBrowser().state())
+						);
+						if (
+							native?.viewportMode !== snapshot.browser.viewportMode ||
+							native.url !== snapshot.browser.url
+						)
+							fail(
+								"Browser receipt does not identify the current native page and presentation mode."
+							);
+					}
+					if (
+						snapshot.browser?.viewportMode === "desktop" &&
+						observed?.presented &&
+						!equal(snapshot.browser.viewport, observed.viewport)
+					)
+						fail("Browser receipt does not identify the actual displayed viewport.");
 				};
 				await checkActual();
 				this.current(session, pending);

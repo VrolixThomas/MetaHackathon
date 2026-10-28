@@ -34,7 +34,19 @@ export function createLocalBrowserController(call: ConversationApi["call"]) {
 		// A pending show may already be visible, even if the last settled call hid it.
 		lastPresentation = undefined;
 		await call("mutation", "localBrowser.present", input);
-		if (current === presentationEpoch) lastPresentation = key;
+		if (current === presentationEpoch) {
+			lastPresentation = key;
+			// Presentation can resize a desktop page. Publish its actual native viewport before
+			// workspace receipts are built; never resize or re-create the page in the renderer.
+			if (input.bounds && !disposed && store.getState().page?.viewportMode === "desktop") {
+				const pageEpoch = epoch;
+				const page = LocalBrowserStateSchema.nullable().parse(
+					await call("query", "localBrowser.state")
+				);
+				if (!disposed && current === presentationEpoch && pageEpoch === epoch)
+					store.setState({ page });
+			}
+		}
 	}
 	function queuePresentation(viewport?: BrowserViewport) {
 		const next = presentations

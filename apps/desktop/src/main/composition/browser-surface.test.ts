@@ -665,6 +665,8 @@ test("DOM sequence tracks documents, URLs, title, text, refs, scroll and viewpor
 	const f = workspaceFixture();
 	try {
 		await f.surface.open({ url: "https://example.com/" });
+		// Fix the viewport explicitly: changing only native presentation must not stale DOM refs.
+		await f.surface.present({ bounds: null, viewport: { width: 1000, height: 700 } });
 		const page = f.pages[0];
 		assert(page);
 		const first = await f.surface.observe();
@@ -1165,5 +1167,34 @@ test("web mode still retires unsafe observed URLs without reflecting page conten
 		} finally {
 			await f.surface.dispose();
 		}
+	}
+});
+
+test("desktop tracks pane bounds and refreshes observed DOM identity while phone retains its explicit viewport", async () => {
+	const f = workspaceFixture();
+	try {
+		await f.surface.open({ url: "https://example.com/" });
+		assert.equal((await f.surface.state())?.viewportMode, "desktop");
+		await f.surface.present({ bounds: { x: 20, y: 80, width: 1300, height: 850 } });
+		const first = await f.surface.observe();
+		assert.ok(first);
+		assert.deepEqual(first.viewport, { width: 1300, height: 850 });
+		await f.surface.present({ bounds: { x: 420, y: 80, width: 880, height: 650 } });
+		const resized = await f.surface.observe();
+		assert.ok(resized);
+		assert.equal(resized.browserId, first.browserId);
+		assert.deepEqual(resized.viewport, { width: 880, height: 650 });
+		assert.equal(resized.sequence, first.sequence + 1);
+		await f.surface.executeBrowser({ kind: "viewport", viewport: { width: 390, height: 844 } });
+		await f.surface.present({ bounds: { x: 20, y: 80, width: 1200, height: 900 } });
+		assert.deepEqual((await f.surface.state())?.viewport, { width: 390, height: 844 });
+		assert.equal((await f.surface.state())?.viewportMode, "phone");
+		await f.surface.executeBrowser({ kind: "viewport", viewport: { width: 1024, height: 768 } });
+		assert.deepEqual((await f.surface.state())?.viewport, { width: 1200, height: 900 });
+		assert.equal((await f.surface.state())?.viewportMode, "desktop");
+		assert.equal((await f.surface.observe())?.browserId, first.browserId);
+		assert.equal(f.pages.length, 1);
+	} finally {
+		await f.surface.dispose();
 	}
 });

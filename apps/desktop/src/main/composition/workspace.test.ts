@@ -233,6 +233,32 @@ function received(action: Action): WorkspaceActionReceipt {
 }
 
 describe("WorkspaceCoordinator", () => {
+	it("accepts only the main-verified desktop viewport that settles after a canvas renders", async (t) => {
+		const h = harness(t);
+		const original = h.ports.getBrowser();
+		h.ports.getBrowser = () => ({
+			...original,
+			open: async (url, signal) => {
+				const page = await original.open(url, signal);
+				page.viewportMode = "desktop";
+				return page;
+			},
+		});
+		const action = await h.prepare({ kind: "open-browser", url: "https://example.com/" });
+		assert.ok(h.state.page);
+		h.state.page.viewportMode = "desktop";
+		h.state.page.viewport = { width: 1280, height: 900 };
+		h.state.presented = true;
+		const receipt = received(action);
+		assert.ok(receipt.workspace.browser);
+		receipt.workspace.browser.viewport = h.state.page.viewport;
+		assert.deepEqual(await h.coordinator.applied(receipt), { status: "accepted" });
+		const next = await h.prepare({ kind: "code-view", view: "head" }, "forged-size");
+		const forged = received(next);
+		assert.ok(forged.workspace.browser);
+		forged.workspace.browser.viewport = { width: 1100, height: 800 };
+		await assert.rejects(h.coordinator.applied(forged), /actual displayed viewport/);
+	});
 	it("starts each UI session with one real review canvas and fresh bounded evidence", async (t) => {
 		const { coordinator, state } = harness(t);
 		const observed = await coordinator.observe("session");
