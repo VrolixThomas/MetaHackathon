@@ -110,6 +110,19 @@ export function connectConversationVoice(
 		onConversationAction: async (action, signal) => {
 			await ui.applyConversationAction(action, signal);
 		},
+		onNarrationCheckpoint: async (action, signal) => {
+			signal.throwIfAborted();
+			const result = (await api.call("mutation", "conversation.narrationApplied", {
+				sessionId: action.sessionId,
+				turnId: action.turnId,
+				generation: action.generation,
+				requestId: action.requestId,
+				status: "spoken",
+			})) as { status?: string };
+			signal.throwIfAborted();
+			if (result?.status !== "accepted")
+				throw new Error("Narration checkpoint is no longer current");
+		},
 		onTranscript: (update) => {
 			if (update.final) trace("transcript-final", onlyTurn(update));
 			ui.transcript(update, update.text);

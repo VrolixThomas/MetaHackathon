@@ -23,9 +23,10 @@ it("bundles the real startup without fixtures or the legacy artifact workspace",
 	);
 	assert.ok(inputs.some((path) => path.endsWith("conversation/ConversationApp.tsx")));
 });
-it("prioritizes review with persistent voice and a collapsed accessible conversation panel", () => {
+it("opens a canvas workspace with persistent voice and a collapsed accessible conversation panel", () => {
 	const html = renderToStaticMarkup(createElement(App));
-	assert.match(html, /Choose a pull request/);
+	assert.match(html, /aria-label="Workspace canvases"/);
+	assert.match(html, /Open repository/);
 	assert.match(html, /data-testid="repository-selector"[^>]*aria-haspopup="dialog"/);
 	assert.match(html, /data-testid="workspace-more"[^>]*aria-haspopup="dialog"/);
 	const header = html.match(/<header class="app-header">(.*?)<\/header>/)?.[1] ?? "";

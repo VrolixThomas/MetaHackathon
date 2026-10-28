@@ -572,3 +572,145 @@ it("an agent reply error keeps an armed microphone available without starting a 
 		h.controller.dispose();
 	}
 });
+
+it("typed narration checkpoints acknowledge only after the prefix reaches display state", async () => {
+	let ui: ReturnType<typeof createConversationController>;
+	let receipts = 0;
+	const h = harness({
+		call: async (_type, path, input) => {
+			if (path === "conversation.narrationApplied") {
+				assert.equal(ui.store.getState().exchanges.at(-1)?.answer, "A visible explanation.");
+				assert.equal((input as { status: string }).status, "displayed");
+				receipts++;
+				return { status: "accepted" };
+			}
+			return undefined;
+		},
+		poll: async (input) => {
+			const turn = {
+				sessionId: input.sessionId,
+				turnId: input.turnId,
+				generation: input.generation,
+			};
+			const action = {
+				...turn,
+				kind: "narration-checkpoint" as const,
+				requestId: "checkpoint",
+				screenSequence: 0,
+				throughTextLength: 22,
+			};
+			return {
+				...turn,
+				status: "completed",
+				sequence: 3,
+				text: "A visible explanation.",
+				actions: [action],
+				events: [
+					{ ...turn, sequence: 1, kind: "text-delta", delta: "A visible explanation." },
+					{ ...turn, sequence: 2, kind: "action", action },
+					{ ...turn, sequence: 3, kind: "completed" },
+				],
+			};
+		},
+	});
+	ui = h.controller;
+	try {
+		await ui.submit("Explain it");
+		assert.equal(receipts, 1);
+	} finally {
+		ui.dispose();
+	}
+});
+
+it("an acknowledged workspace PR selection updates the current turn before later review effects", async () => {
+	let chosen = pr.id;
+	let reviewEffects = 0;
+	const reviewScreen = () => ({
+		sequence: chosen === pr.id ? 1 : 2,
+		mode: "review" as const,
+		prId: chosen,
+		reviewId: "plan",
+		path: "file.ts",
+		baseSha: pr.baseSha,
+		headSha: pr.headSha,
+		paused: false,
+	});
+	const snapshot = (sequence: number) => ({
+		sequence,
+		canvases: [{ id: "review", kind: "review" as const, title: "Review", revision: 1 }],
+		primaryId: "review",
+		secondaryId: null,
+		review: reviewScreen(),
+		codeView: "diff" as const,
+		browser: null,
+	});
+	const h = harness({
+		poll: async (input) => {
+			const turn = {
+				sessionId: input.sessionId,
+				turnId: input.turnId,
+				generation: input.generation,
+			};
+			const selected = {
+				...snapshot(1),
+				review: { ...reviewScreen(), prId: "owner/project#13", sequence: 2 },
+			};
+			const workspaceAction = {
+				...turn,
+				kind: "workspace-canvas" as const,
+				requestId: "select",
+				screenSequence: 0,
+				effect: { expectedSequence: 0, snapshot: selected },
+			};
+			const reviewAction = {
+				...turn,
+				kind: "review-navigation" as const,
+				requestId: "next",
+				screenSequence: 2,
+				navigation: {
+					reviewId: "plan",
+					prId: "owner/project#13",
+					baseSha: pr.baseSha,
+					headSha: pr.headSha,
+					path: "file.ts",
+					paused: false,
+				},
+			};
+			return {
+				...turn,
+				status: "completed",
+				sequence: 3,
+				text: "Done",
+				actions: [workspaceAction, reviewAction],
+				events: [
+					{ ...turn, sequence: 1, kind: "action", action: workspaceAction },
+					{ ...turn, sequence: 2, kind: "action", action: reviewAction },
+					{ ...turn, sequence: 3, kind: "completed" },
+				],
+			};
+		},
+	});
+	h.controller.attachReview({
+		getContext: () => ({ prId: chosen, screen: reviewScreen() }),
+		applyAction: async (_action, live) => {
+			assert.equal(live?.(), true);
+			reviewEffects++;
+			return "applied";
+		},
+	});
+	h.controller.attachWorkspace({
+		getContext: () => snapshot(chosen === pr.id ? 0 : 1),
+		applyAction: async (_action, live) => {
+			assert.equal(live(), true);
+			chosen = "owner/project#13";
+			return "applied";
+		},
+	});
+	try {
+		await h.controller.submit("Open the other review");
+		assert.equal(reviewEffects, 1);
+		assert.equal(h.controller.getConversationContext().prId, "owner/project#13");
+	} finally {
+		h.controller.dispose();
+	}
+});

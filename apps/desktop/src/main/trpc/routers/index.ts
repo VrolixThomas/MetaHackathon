@@ -1,6 +1,14 @@
 import { z } from "zod";
 import { mergeRouters, publicProcedure, router } from "..";
-import { GitHubRepositorySchema } from "../../../shared/contracts";
+import {
+	AgentActionReceiptResultSchema,
+	AgentActionSchema,
+	GitHubRepositorySchema,
+	IdSchema,
+	WorkspaceActionReceiptSchema,
+	WorkspaceCommandSchema,
+	WorkspaceObservationSchema,
+} from "../../../shared/contracts";
 import { createConversationRouter } from "../../agent/conversation-router";
 import { createAgentScreenRouter } from "../../agent/screen-context";
 import { createCompositionRouters } from "../../composition";
@@ -21,6 +29,7 @@ import {
 	getReviews,
 	getRuntime,
 	getVoice,
+	getWorkspace,
 	pickReviewRepository,
 	screenContexts,
 } from "../../services";
@@ -28,6 +37,31 @@ import { bootstrapRouter } from "./bootstrap";
 
 // Register feature routers here as the application grows.
 export const appRouter = router({
+	workspace: router({
+		observe: publicProcedure
+			.input(z.strictObject({ sessionId: IdSchema }))
+			.output(WorkspaceObservationSchema)
+			.query(({ input }) => getWorkspace().observe(input.sessionId)),
+		prepare: publicProcedure
+			.input(
+				z.strictObject({
+					sessionId: IdSchema,
+					requestId: IdSchema,
+					expectedSequence: z.int().nonnegative(),
+					command: WorkspaceCommandSchema,
+				})
+			)
+			.output(AgentActionSchema)
+			.mutation(({ input }) => getWorkspace().prepare(input)),
+		applied: publicProcedure
+			.input(WorkspaceActionReceiptSchema)
+			.output(AgentActionReceiptResultSchema)
+			.mutation(({ input }) => getWorkspace().applied(input)),
+		release: publicProcedure
+			.input(z.strictObject({ sessionId: IdSchema }))
+			.output(z.void())
+			.mutation(({ input }) => getWorkspace().release(input.sessionId)),
+	}),
 	diagnostics: createDiagnosticsRouter(getDiagnostics),
 	app: createAppConfigurationRouter(getConfigurationPorts),
 	conversation: createConversationRouter(conversationService),

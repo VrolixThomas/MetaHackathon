@@ -8,6 +8,7 @@ import type {
 	PullRequest,
 	TurnIdentity,
 	VoiceSetupStatus,
+	WorkspaceSnapshot,
 } from "../../shared/contracts";
 import type { PreparedController } from "../prepared/controller";
 import { bounded, delay } from "../voice/async";
@@ -43,7 +44,15 @@ export type HandsFreeHandle = {
 type Active = TurnIdentity & {
 	abort: AbortController;
 	source: Exchange["source"];
-	context: Pick<ConversationTurnInput, "prId" | "screen">;
+	context: Pick<ConversationTurnInput, "prId" | "screen" | "workspace">;
+};
+type WorkspacePort = {
+	getContext(): WorkspaceSnapshot | undefined;
+	applyAction(
+		action: AgentAction,
+		isLive: () => boolean,
+		signal?: AbortSignal
+	): Promise<"applied" | "ignored">;
 };
 export type ConversationState = {
 	exchanges: Exchange[];
@@ -83,6 +92,7 @@ export function createConversationController(
 	let handsFree: HandsFreeHandle | null = null;
 	let handsFreeEpoch = 0;
 	let review: Pick<PreparedController, "getContext" | "applyAction"> | null = null;
+	let workspace: WorkspacePort | null = null;
 	let disposed = false;
 	let configEpoch = 0;
 	let githubEpoch = 0;
@@ -274,11 +284,15 @@ export function createConversationController(
 					(!events.length && result.sequence > cursor)
 				) {
 					answer = result.text;
+					updateExchange(turn, { answer });
 					for (const value of result.actions) await action(value);
 					cursor = result.sequence;
 				} else {
 					for (const event of events) {
-						if (event.kind === "text-delta") answer += event.delta;
+						if (event.kind === "text-delta") {
+							answer += event.delta;
+							updateExchange(turn, { answer });
+						}
 						if (event.kind === "action") await action(event.action);
 						cursor = event.sequence;
 					}
@@ -479,13 +493,37 @@ export function createConversationController(
 			if (!disposed && epoch === selectionEpoch) store.setState({ githubBusy: false });
 		}
 	}
-	function getConversationContext(): Pick<ConversationTurnInput, "prId" | "screen"> {
-		if (review) return review.getContext();
+	function getConversationContext(): Pick<ConversationTurnInput, "prId" | "screen" | "workspace"> {
+		const currentWorkspace = workspace?.getContext();
+		if (review)
+			return {
+				...review.getContext(),
+				...(currentWorkspace ? { workspace: currentWorkspace } : {}),
+			};
 		const prId = store.getState().selected?.pr.id;
-		return prId ? { prId } : {};
+		return {
+			...(prId ? { prId } : {}),
+			...(currentWorkspace ? { workspace: currentWorkspace } : {}),
+		};
 	}
-	function applyConversationAction(action: AgentAction, signal?: AbortSignal) {
+	async function applyConversationAction(action: AgentAction, signal?: AbortSignal) {
 		const turn = active;
+		const isCurrent = () => !!turn && live(turn) && same(turn, action) && !signal?.aborted;
+		if (action.kind === "narration-checkpoint") {
+			const entry = store.getState().exchanges.find((item) => same(item, action));
+			const displayed = isCurrent() && !!entry && entry.answer.length >= action.throughTextLength;
+			await api.call("mutation", "conversation.narrationApplied", {
+				...identity(action),
+				requestId: action.requestId,
+				status: displayed ? "displayed" : "ignored",
+			});
+			return displayed ? ("applied" as const) : ("ignored" as const);
+		}
+		if (action.kind === "workspace-canvas") {
+			const applied = (await workspace?.applyAction(action, isCurrent, signal)) ?? "ignored";
+			if (applied === "applied" && isCurrent() && turn) turn.context = getConversationContext();
+			return applied;
+		}
 		return (
 			review?.applyAction(
 				action,
@@ -526,6 +564,9 @@ export function createConversationController(
 		attachReview: (port: Pick<PreparedController, "getContext" | "applyAction">) => {
 			review = port;
 		},
+		attachWorkspace: (port: WorkspacePort) => {
+			workspace = port;
+		},
 		attachVoice: (handle: VoiceHandle) => {
 			voice = handle;
 		},
@@ -544,7 +585,8 @@ export function createConversationController(
 				});
 		},
 		requestStarted: (input: ConversationTurnInput) => {
-			if (active && live(input)) active.context = { prId: input.prId, screen: input.screen };
+			if (active && live(input))
+				active.context = { prId: input.prId, screen: input.screen, workspace: input.workspace };
 			updateExchange(input, { requestId: input.requestId });
 		},
 		beginVoice: (turn: TurnIdentity) => begin(turn, "voice", ""),

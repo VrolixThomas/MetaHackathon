@@ -26,6 +26,7 @@ import {
 	initializeReviews,
 	initializeRuntime,
 	initializeVoice,
+	initializeWorkspace,
 } from "./services";
 import { setupTRPCIPC } from "./trpc/ipc-link";
 import { startUpdateCheck } from "./updates";
@@ -151,12 +152,17 @@ app
 				}),
 		});
 		initializeLocalBrowser((origin) =>
-			createElectronBrowserPage(origin, () => {
-				if (!mainWindow || mainWindow.isDestroyed())
-					throw new Error("Review window is unavailable");
-				return mainWindow;
-			})
+			createElectronBrowserPage(
+				origin,
+				() => {
+					if (!mainWindow || mainWindow.isDestroyed())
+						throw new Error("Review window is unavailable");
+					return mainWindow;
+				},
+				{ navigationPolicy: "workspace" }
+			)
 		);
+		initializeWorkspace(app.getPath("userData"));
 		const voiceRoot = join(mainDirectory, "../../../../services/voice");
 		const voiceCommand = app.isPackaged
 			? join(process.resourcesPath, "voice/metahackathon-voice")

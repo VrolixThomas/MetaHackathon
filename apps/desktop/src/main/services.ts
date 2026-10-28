@@ -9,6 +9,8 @@ import { LocalBrowserSurface } from "./composition/browser-surface";
 import { ConversationDiagnostics } from "./composition/diagnostics";
 import { ReviewCoordinator } from "./composition/reviews";
 import { type VoiceCompositionOptions, createVoiceComposition } from "./composition/voice";
+import { WorkspaceCoordinator } from "./composition/workspace";
+import { createWorkspaceStore } from "./composition/workspace-store";
 import type { EnvConfiguration } from "./config/env";
 import type { AppConfigurationPorts } from "./config/router";
 import { type BrowserPage, BrowserService, type BrowserServiceOptions } from "./runtime/browser";
@@ -32,6 +34,7 @@ let voice: ReturnType<typeof createVoiceComposition> | undefined;
 let configuration: EnvConfiguration | undefined;
 let configurationPorts: AppConfigurationPorts | undefined;
 let reviews: ReviewCoordinator | undefined;
+let workspace: WorkspaceCoordinator | undefined;
 let chooseRepository: (() => Promise<{ repository: string; localPath: string } | null>) | undefined;
 export const screenContexts = new ScreenContextStore();
 export const agentComposition = createAgentComposition({
@@ -57,6 +60,13 @@ const conversationClient = new MetaClient({
 	recordUsage: (record) => agentComposition.usage.record("conversation", record),
 });
 export const conversationService = new ConversationService(conversationClient, {
+	narrationCheckpoints: true,
+	workspace: {
+		observe: (sessionId, signal) => getWorkspace().observe(sessionId, signal),
+		execute: (command, turn, signal, onAction) =>
+			getWorkspace().execute(command, turn, signal, onAction),
+		cancel: (turn) => workspace?.cancel(turn),
+	},
 	getContext: (prId, signal) => getRuntime().github.prContext(prId, signal),
 	review: {
 		getReady: (prId, signal) => getReviews().getReady(prId, signal),
@@ -104,6 +114,27 @@ export function initializeReviews(
 		.initialize()
 		.catch(() => console.warn("Saved review connection could not initialize."));
 }
+export function initializeWorkspace(userDataPath: string): void {
+	const store = createWorkspaceStore(userDataPath);
+	workspace = new WorkspaceCoordinator({
+		getReviews,
+		getBrowser: () => ({
+			open: async (url, signal) => {
+				await getLocalBrowser().present({ bounds: null });
+				return getLocalBrowser().open({ url }, signal);
+			},
+			observe: (signal) => getLocalBrowser().observe(signal),
+			execute: (command, signal) => getLocalBrowser().executeBrowser(command, signal),
+			state: () => getLocalBrowser().state(),
+		}),
+		loadCanvases: () => store.load(),
+		saveCanvases: (value, signal) => store.save(value, signal),
+	});
+}
+export function getWorkspace(): WorkspaceCoordinator {
+	if (closing || !workspace) throw new Error("Workspace is unavailable");
+	return workspace;
+}
 export function getReviews(): ReviewCoordinator {
 	if (closing || !reviews) throw new Error("Review preparation is unavailable");
 	return reviews;
@@ -143,7 +174,7 @@ export async function closeBrowser(): Promise<void> {
 }
 export function initializeLocalBrowser(createPage: (origin: string) => BrowserPage): void {
 	if (localBrowser) throw new Error("Local browser has already been initialized");
-	localBrowser = new LocalBrowserSurface({ createPage });
+	localBrowser = new LocalBrowserSurface({ createPage, allowWebNavigation: true });
 }
 export function getLocalBrowser(): LocalBrowserSurface {
 	if (closing || !localBrowser) throw new Error("Local browser is unavailable");
@@ -207,6 +238,7 @@ export async function disposeRuntime(): Promise<void> {
 			await voice?.dispose();
 		} finally {
 			await conversationService.dispose();
+			await workspace?.dispose();
 			await reviews?.dispose();
 			// Drain provider, confirmation and source jobs while runtime/ledger remain available.
 			await agentComposition.dispose();

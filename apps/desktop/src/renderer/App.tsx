@@ -6,6 +6,7 @@ import { connectShortcuts } from "./conversation/shortcuts";
 import { connectConversationVoice } from "./conversation/voice";
 import { createPreparedApi } from "./prepared/api";
 import { createPreparedController } from "./prepared/controller";
+import { createWorkspaceController } from "./workspace/controller";
 import { createLocalBrowserController } from "./workspace/local-browser";
 
 export function App() {
@@ -14,7 +15,12 @@ export function App() {
 		const controller = createConversationController(api);
 		const reviews = createPreparedController(createPreparedApi(api.call), controller.sessionId);
 		controller.attachReview(reviews);
-		return { api, controller, reviews, browser: createLocalBrowserController(api.call) };
+		const browser = createLocalBrowserController(api.call);
+		const workspace = createWorkspaceController(api.call, reviews, browser, controller.sessionId, {
+			onManualChange: controller.interruptReply,
+		});
+		controller.attachWorkspace(workspace);
+		return { api, controller, reviews, browser, workspace };
 	});
 	useEffect(() => {
 		const disconnectVoice = connectConversationVoice(runtime.api, runtime.controller);
@@ -26,6 +32,7 @@ export function App() {
 		void runtime.controller.configure();
 		runtime.reviews.start();
 		runtime.browser.start();
+		void runtime.workspace.start();
 		const release = () => runtime.controller.release();
 		const recordError = () => {
 			void runtime.api
@@ -41,9 +48,13 @@ export function App() {
 			window.removeEventListener("unhandledrejection", recordError);
 			disconnectShortcuts();
 			runtime.controller.dispose();
+			runtime.workspace.dispose();
 			runtime.reviews.dispose();
 			runtime.browser.dispose();
 			disconnectVoice();
+			void runtime.api
+				.call("mutation", "workspace.release", { sessionId: runtime.controller.sessionId })
+				.catch(() => {});
 		};
 	}, [runtime]);
 	return (
@@ -51,6 +62,7 @@ export function App() {
 			controller={runtime.controller}
 			reviews={runtime.reviews}
 			browser={runtime.browser}
+			workspace={runtime.workspace}
 		/>
 	);
 }

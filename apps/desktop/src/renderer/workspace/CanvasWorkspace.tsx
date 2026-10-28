@@ -1,6 +1,11 @@
 import { type KeyboardEvent, useCallback, useLayoutEffect, useRef, useState } from "react";
 import { useStore } from "zustand";
-import type { BrowserBounds, Canvas, WorkspaceCommand } from "../../shared/contracts";
+import {
+	type BrowserBounds,
+	type Canvas,
+	type WorkspaceCommand,
+	WorkspaceUrlSchema,
+} from "../../shared/contracts";
 import { ReviewWorkspace } from "../prepared/ReviewWorkspace";
 import type { PreparedController } from "../prepared/controller";
 import { ArtifactCanvas } from "./ArtifactCanvas";
@@ -145,7 +150,40 @@ export function CanvasWorkspace({
 					</button>
 				</div>
 			);
-		return <ArtifactCanvas canvas={canvas} />;
+		return (
+			<ArtifactCanvas
+				canvas={canvas}
+				onOpenUrl={(url) => {
+					if (!WorkspaceUrlSchema.safeParse(url).success) {
+						controller.store.setState({
+							error: "Use HTTPS or a local HTTP address to open a link.",
+						});
+						return;
+					}
+					command({ kind: "open-browser", url });
+				}}
+				onReference={(reference) => {
+					const selected = reviews.store.getState().detail?.pr;
+					if (
+						!selected ||
+						selected.repository !== reference.repository ||
+						reference.commitSha !==
+							(reference.revision === "base" ? selected.baseSha : selected.headSha)
+					) {
+						controller.store.setState({
+							error: "Open the matching PR revision to follow this source reference.",
+						});
+						return;
+					}
+					command({
+						kind: "navigate-review",
+						path: reference.path,
+						side: reference.revision,
+						line: reference.startLine,
+					});
+				}}
+			/>
+		);
 	};
 	return (
 		<section

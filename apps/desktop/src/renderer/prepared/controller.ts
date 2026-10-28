@@ -452,9 +452,16 @@ export function createPreparedController(api: PreparedApi, sessionId: string, po
 	}
 	function acceptInbox(inbox: ReviewInbox) {
 		const current = store.getState();
+		// An agent may open a review from the main-process inbox before this poll arrives.
+		// Retain that pinned source when it already belongs to the new connection.
+		const openedNewRepository =
+			current.detail?.pr.repository === inbox.repository &&
+			current.inbox?.repository !== inbox.repository;
 		if (
 			current.inbox &&
-			(current.inbox.repository !== inbox.repository || current.inbox.localPath !== inbox.localPath)
+			(current.inbox.repository !== inbox.repository ||
+				current.inbox.localPath !== inbox.localPath) &&
+			!openedNewRepository
 		)
 			close();
 		const detail = store.getState().detail;

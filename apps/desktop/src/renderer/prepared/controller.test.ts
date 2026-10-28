@@ -192,6 +192,28 @@ it("workspace navigation loads exact source and saves it without using the legac
 	}
 });
 
+it("a delayed connection poll retains an already displayed review from the new repository", async () => {
+	let inbox: ReviewInbox = empty;
+	const h = reviewHarness((path) =>
+		path === "reviews.inbox" ? Promise.resolve(inbox) : undefined
+	);
+	try {
+		await h.ui.poll();
+		assert.equal(await h.ui.navigate(h.action().navigation, () => true), "applied");
+		const shown = h.ui.getContext();
+		inbox = { ...empty, repository: pr.repository, items: [detail] };
+		await h.ui.poll();
+		assert.deepEqual(h.ui.getContext(), shown);
+		assert.equal(h.ui.store.getState().file?.path, "b.ts");
+		inbox = { ...empty, repository: "other/repository" };
+		await h.ui.poll();
+		assert.equal(h.ui.store.getState().file, null);
+		assert.equal(h.ui.store.getState().screen.mode, "conversation");
+	} finally {
+		h.ui.dispose();
+	}
+});
+
 it("cancelled workspace source loading cannot install or persist a late file", async () => {
 	let finish: (value: unknown) => void = () => {};
 	const h = reviewHarness((path) =>

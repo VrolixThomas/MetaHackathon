@@ -430,6 +430,7 @@ export class WorkspaceCoordinator {
 					path: navigation.path,
 					paused: navigation.paused,
 				};
+				if (navigation.highlight) snapshot.codeView = navigation.highlight.revision;
 				if (!snapshot.canvases.some(({ id }) => id === "review"))
 					this.put(snapshot, initialReview());
 				this.focus(snapshot, "review", command.kind === "show-review" ? command.target : undefined);

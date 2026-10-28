@@ -7,9 +7,11 @@ type Artifact = Extract<Canvas, { kind: "document" | "visual" }>;
 export function ArtifactCanvas({
 	canvas,
 	onReference,
+	onOpenUrl,
 }: {
 	canvas: Artifact;
 	onReference?(location: CodeLocation): void;
+	onOpenUrl?(url: string): void;
 }) {
 	const titleId = useId();
 	const visual = canvas.kind === "visual" ? VisualSpecSchema.safeParse(canvas.visual) : null;
@@ -27,7 +29,7 @@ export function ArtifactCanvas({
 				</div>
 			</header>
 			{canvas.kind === "document" ? (
-				<MarkdownContent markdown={canvas.markdown} />
+				<MarkdownContent markdown={canvas.markdown} onOpenUrl={onOpenUrl} />
 			) : visual?.success ? (
 				<div className="canvas-visual-stage">
 					<svg
