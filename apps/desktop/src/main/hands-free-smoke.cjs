@@ -626,7 +626,9 @@ async function native() {
 				`(() => ({ armed:document.querySelector('footer.voice-bar')?.dataset.handsFree,phase:document.querySelector('main.conversation-main')?.dataset.conversationState,error:document.querySelector('.voice-bar-error')?.textContent||'',messages:[...document.querySelectorAll('article.exchange')].map(e=>({phase:e.dataset.phase,turnId:e.dataset.turnId,answer:e.querySelector('.assistant-message p')?.textContent||''})) }))()`
 			);
 		const config = await rpc("query", "app.config");
-		await wait("initial executive Home", () => js(`document.querySelector('.hub-center')?.dataset.centerSection==='home'`));
+		await wait("initial executive Home", () =>
+			js(`document.querySelector('.hub-center')?.dataset.centerSection==='home'`)
+		);
 		report.centerHomeStartup = true;
 		assert.equal(config.envPath, envPath);
 		assert.equal(

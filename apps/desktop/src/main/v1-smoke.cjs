@@ -246,8 +246,14 @@ async function native() {
 			return s.sessionId ? s : null;
 		});
 		assert.equal(initial.count, 0);
-		await wait("initial executive Home", () => js(`document.querySelector('.hub-center')?.dataset.centerSection==='home'`));
-		assert.ok(await js(`document.querySelector('.hub-home-intro')?.textContent.includes('Your priority brief')`));
+		await wait("initial executive Home", () =>
+			js(`document.querySelector('.hub-center')?.dataset.centerSection==='home'`)
+		);
+		assert.ok(
+			await js(
+				`document.querySelector('.hub-home-intro')?.textContent.includes('Your priority brief')`
+			)
+		);
 		report.centerHomeStartup = true;
 		assert.equal(await js(`document.querySelector('#conversation-panel')?.hidden`), true);
 		assert.ok(
@@ -368,9 +374,43 @@ async function native() {
 if (process.argv.includes("--self-check")) {
 	for (let i = 0; i < 3; i++)
 		validateRequest({ input: expectedHistory(i), tools: [], stream: true, store: false }, i);
-	const actualWorkspace = { workspace: { review: { sequence: 0, mode: "conversation", prId: null }, canvases: [{ kind: "center", section: "home" }], centerSection: "home" }, reviews: [], browser: null };
-	const actualHub = { repositories: [], incomingReviews: [], ownPRFeedback: [], tickets: [], jobs: [], counts: { pendingDecisions: 0 } };
-	const withWorkspace = () => ({ input: [...expectedHistory(0), { role: "user", content: [{ type: "input_text", text: JSON.stringify({ actualWorkspace, actualHub }) }] }], tools: ["inspect_workspace", "inspect_hub", "open_command_center", "open_pinned_source", "create_source_flow", "revise_work", "approve_work"].map((name) => ({ name })), stream: true, store: false });
+	const actualWorkspace = {
+		workspace: {
+			review: { sequence: 0, mode: "conversation", prId: null },
+			canvases: [{ kind: "center", section: "home" }],
+			centerSection: "home",
+		},
+		reviews: [],
+		browser: null,
+	};
+	const actualHub = {
+		repositories: [],
+		incomingReviews: [],
+		ownPRFeedback: [],
+		tickets: [],
+		jobs: [],
+		counts: { pendingDecisions: 0 },
+	};
+	const withWorkspace = () => ({
+		input: [
+			...expectedHistory(0),
+			{
+				role: "user",
+				content: [{ type: "input_text", text: JSON.stringify({ actualWorkspace, actualHub }) }],
+			},
+		],
+		tools: [
+			"inspect_workspace",
+			"inspect_hub",
+			"open_command_center",
+			"open_pinned_source",
+			"create_source_flow",
+			"revise_work",
+			"approve_work",
+		].map((name) => ({ name })),
+		stream: true,
+		store: false,
+	});
 	validateRequest(withWorkspace(), 0);
 	actualWorkspace.workspace.canvases[0].kind = "review";
 	assert.throws(() => validateRequest(withWorkspace(), 0));

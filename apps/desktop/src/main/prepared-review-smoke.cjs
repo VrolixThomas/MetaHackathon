@@ -236,11 +236,25 @@ function github(url, method, fixture) {
 	if (url === apiRoot) return repo;
 	if (parsed.pathname === "/search/issues") {
 		const query = parsed.searchParams.get("q");
-		assert.ok([`repo:${repository} is:pr is:open review-requested:${viewer}`, `repo:${repository} is:pr is:open author:${viewer}`].includes(query));
-		const items = query.includes("review-requested:") ? [{ number: 7, repository_url: apiRoot, pull_request: { url: `${apiRoot}/pulls/7` } }] : [];
+		assert.ok(
+			[
+				`repo:${repository} is:pr is:open review-requested:${viewer}`,
+				`repo:${repository} is:pr is:open author:${viewer}`,
+			].includes(query)
+		);
+		const items = query.includes("review-requested:")
+			? [{ number: 7, repository_url: apiRoot, pull_request: { url: `${apiRoot}/pulls/7` } }]
+			: [];
 		return { total_count: items.length, incomplete_results: false, items };
 	}
-	if ([`${apiRoot}/pulls/7/reviews`, `${apiRoot}/pulls/7/comments`, `${apiRoot}/issues/7/comments`].includes(`${parsed.origin}${parsed.pathname}`)) return [];
+	if (
+		[
+			`${apiRoot}/pulls/7/reviews`,
+			`${apiRoot}/pulls/7/comments`,
+			`${apiRoot}/issues/7/comments`,
+		].includes(`${parsed.origin}${parsed.pathname}`)
+	)
+		return [];
 	if (url === `${apiRoot}/pulls?state=open&per_page=100&page=1&sort=updated&direction=desc`)
 		return [metadata];
 	if (url === `${apiRoot}/pulls/7`) return metadata;
@@ -532,7 +546,9 @@ async function native() {
 		assert.equal(config.envPath, envPath);
 		assert.deepEqual(config.configured, { meta: true, github: true, elevenlabs: false });
 		assert.equal(config.voiceId, null);
-		await wait("initial executive Home", () => js(`document.querySelector('.hub-center')?.dataset.centerSection==='home'`));
+		await wait("initial executive Home", () =>
+			js(`document.querySelector('.hub-center')?.dataset.centerSection==='home'`)
+		);
 		report.centerHomeStartup = true;
 		await rpc("mutation", "reviews.connect", { repository, localPath: fixture.localPath });
 		await js(`document.querySelector('[data-testid="repository-selector"]').click()`);
@@ -736,15 +752,31 @@ async function selfCheck() {
 	const fixture = { baseSha: "a".repeat(40), headSha: "b".repeat(40), files: [] };
 	assert.equal(github(`${apiRoot}/pulls/7`, "GET", fixture).head.sha, fixture.headSha);
 	assert.throws(() => github(`${apiRoot}/pulls/7/comments`, "POST", fixture));
-	assert.equal(github("https://api.github.com/user", "GET", fixture).login, "prepared-smoke-viewer");
+	assert.equal(
+		github("https://api.github.com/user", "GET", fixture).login,
+		"prepared-smoke-viewer"
+	);
 	assert.equal(github(apiRoot, "GET", fixture).full_name, repository);
-	for (const [qualifier, count] of [["review-requested:prepared-smoke-viewer", 1], ["author:prepared-smoke-viewer", 0]]) {
-		const rows = github(`https://api.github.com/search/issues?q=${encodeURIComponent(`repo:${repository} is:pr is:open ${qualifier}`)}`, "GET", fixture);
+	for (const [qualifier, count] of [
+		["review-requested:prepared-smoke-viewer", 1],
+		["author:prepared-smoke-viewer", 0],
+	]) {
+		const rows = github(
+			`https://api.github.com/search/issues?q=${encodeURIComponent(`repo:${repository} is:pr is:open ${qualifier}`)}`,
+			"GET",
+			fixture
+		);
 		assert.equal(rows.total_count, count);
 		assert.equal(rows.incomplete_results, false);
 	}
 	assert.deepEqual(github(`${apiRoot}/pulls/7/reviews?per_page=100&page=1`, "GET", fixture), []);
-	assert.throws(() => github(`https://api.github.com/search/issues?q=${encodeURIComponent("repo:unrelated/repo is:pr")}`, "GET", fixture));
+	assert.throws(() =>
+		github(
+			`https://api.github.com/search/issues?q=${encodeURIComponent("repo:unrelated/repo is:pr")}`,
+			"GET",
+			fixture
+		)
+	);
 	assert.throws(() => github("https://api.github.com/repos/unrelated/repo", "GET", fixture));
 	const packet = {
 		reviewAvailability: "ready",
