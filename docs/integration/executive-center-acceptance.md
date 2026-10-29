@@ -45,6 +45,18 @@ controlled test data; it was not a real Linear-ticket run. No speech recording w
 ![Own PRs from actual GitHub data](screenshots/executive-own-prs.png)
 ![Actual prepared PR source](screenshots/executive-real-review.png)
 
+## Validation results
+
+- Frozen dependency install, type-check, lint and production build pass.
+- Full TypeScript suite: 841 tests pass across 105 files. The final retry-context ordering change
+  was additionally checked by all 15 coordinator regressions and the native executive scenario.
+- Python voice suite: 18 tests pass.
+- Native V1, prepared-review, workspace, hands-free, local-browser and executive checks pass.
+- New cancellation regressions cover pending metadata, queued mutations, approval/Linear mutation,
+  suggestion assessment, PR observation, automatic/manual push, draft creation, restore and actual
+  old-child exit before another writer is admitted. Remote effects already committed before an
+  abort are not described as rolled back; late responses cannot authorize follow-on effects.
+
 ## Controlled behavior checks
 
 `bun run test:executive` starts the actual built default Electron renderer/preload/IPC and a real child
@@ -55,7 +67,7 @@ A third child revises the same job/worktree, records a new head/check, rejects a
 and accepts the current loaded diff through the UI. SQLite reconnect plus renderer reload retain the
 job, accepted state and exact diff; staged/unstaged/untracked original work is preserved. No GitHub write.
 
-Native V1, prepared-review, workspace and hands-free checks also pass. They cover general conversation,
+Native V1, prepared-review, workspace, local-browser and hands-free checks also pass. They cover general conversation,
 history/cancellation, exact pinned source/highlighting, review display/playback gates, real native
 browser operations and layout, buffered PCM, interruption and modal Escape behavior. Speech/model
 transports in those checks are simulated. The Python voice suite covers its transport/provider adapters.

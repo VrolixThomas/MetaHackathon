@@ -378,9 +378,9 @@ async function native() {
 		);
 		await wait("single canvas layout", () => js(`!document.querySelector('.workspace-divider')`));
 		await wait("single canvas committed", settledCanvas);
-		await js(`document.querySelector('#canvas-tab-review').click()`);
-		await wait("code tab hides page", () => !view.getVisible());
-		await wait("code canvas committed", settledCanvas);
+		await js(`document.querySelector('#canvas-tab-center').click()`);
+		await wait("Home tab hides page", () => !view.getVisible());
+		await wait("Home canvas committed", settledCanvas);
 		const hidden = await inspect("hidden", phone, false);
 		assert.equal(hidden.dom.value, "preserved unsubmitted draft");
 		await js(`document.querySelector('#canvas-tab-browser').click()`);
