@@ -158,6 +158,7 @@ export const WorkspaceCommandSchema = z.discriminatedUnion("kind", [
 	z.strictObject({ kind: z.literal("open-source"), location: CodeLocationSchema, target }),
 	z.strictObject({
 		kind: z.literal("create-flow"),
+		id: IdSchema.optional(),
 		title: z.string().min(1).max(200),
 		summary: z.string().max(6000),
 		steps: z
@@ -234,7 +235,7 @@ export const WorkspaceObservationSchema = z.strictObject({
 		.max(7),
 	hub: HubSnapshotSchema.optional(),
 	savedCanvases: z
-		.array(z.strictObject({ ...canvasFields, kind: z.enum(["document", "visual"]) }))
+		.array(z.strictObject({ ...canvasFields, kind: z.enum(["document", "visual", "flow"]) }))
 		.max(50)
 		.optional(),
 });

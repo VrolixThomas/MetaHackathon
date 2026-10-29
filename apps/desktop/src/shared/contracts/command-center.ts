@@ -115,6 +115,14 @@ export const WorkJobSchema = z.strictObject({
 	]),
 	pauseReason: z.enum(["user", "shutdown"]).nullable().optional(),
 	reviewedAt: z.iso.datetime().nullable().optional(),
+	publishedHeadSha: CommitShaSchema.nullable().optional(),
+	feedbackAppliedAt: z.iso.datetime().nullable().optional(),
+	revisions: z
+		.array(
+			z.strictObject({ instruction: z.string().min(1).max(10000), createdAt: z.iso.datetime() })
+		)
+		.max(50)
+		.optional(),
 	branch: z.string().min(1).max(250),
 	worktreePath: z.string().max(4096).nullable(),
 	baseSha: CommitShaSchema.nullable(),
@@ -217,6 +225,11 @@ export const HubOperationSchema = z.discriminatedUnion("kind", [
 	z.strictObject({ kind: z.literal("cancel-work"), jobId: IdSchema }),
 	z.strictObject({ kind: z.literal("publish-work"), jobId: IdSchema }),
 	z.strictObject({
+		kind: z.literal("revise-work"),
+		jobId: IdSchema,
+		instruction: z.string().min(1).max(10000),
+	}),
+	z.strictObject({
 		kind: z.literal("approve-work"),
 		jobId: IdSchema,
 		headSha: CommitShaSchema,
@@ -291,3 +304,12 @@ export type PinnedSource = z.infer<typeof PinnedSourceSchema>;
 export type CodeFlow = z.infer<typeof CodeFlowSchema>;
 export type WorkReview = z.infer<typeof WorkReviewSchema>;
 export type WorkChangedFile = WorkReview["files"][number];
+
+export const HUB_ERROR_MESSAGES = {
+	github: "Connect GitHub in Settings to load repositories and reviews.",
+	linear: "Add your Linear API key in Settings to load your assigned tickets.",
+	repository: "Add and select a repository for this work.",
+	notFound: "This item is unavailable. Refresh its source and try again.",
+	busy: "Finish or pause this repository's active work before removing it.",
+	failed: "The work request could not complete. Check its connection and try again.",
+} as const;
