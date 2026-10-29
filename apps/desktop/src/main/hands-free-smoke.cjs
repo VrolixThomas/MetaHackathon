@@ -334,9 +334,17 @@ async function native() {
 			const index = report.model.length;
 			assert.ok(index < 2);
 			assert.ok(body.tools.some((tool) => tool.name === "inspect_workspace"));
-			const context = JSON.parse(body.input.at(-1).content[0].text).actualWorkspace;
+			assert.ok(body.tools.some((tool) => tool.name === "inspect_hub"));
+			assert.ok(body.tools.some((tool) => tool.name === "open_command_center"));
+			assert.equal(body.tool_choice, "auto");
+			const packet = JSON.parse(body.input.at(-1).content[0].text);
+			const context = packet.actualWorkspace;
 			assert.equal(context.workspace.review.prId, null);
+			assert.equal(context.workspace.canvases[0].kind, "center");
+			assert.equal(context.workspace.centerSection, "home");
 			assert.deepEqual(context.reviews, []);
+			assert.deepEqual(packet.actualHub.jobs, []);
+			assert.equal(packet.actualHub.counts.pendingDecisions, 0);
 			assert.equal(
 				body.input.findLast((item) => item.role === "user" && typeof item.content === "string")
 					?.content,
@@ -598,6 +606,8 @@ async function native() {
 				});
 		});
 		win = await wait("main window", () => BrowserWindow.getAllWindows()[0]);
+		win.setIgnoreMouseEvents(true);
+		win.setFocusable(false);
 		win.webContents.setAudioMuted(true);
 		await wait("renderer", () => !win.webContents.isLoadingMainFrame());
 		const rpc = async (type, path, input) => {
@@ -616,6 +626,8 @@ async function native() {
 				`(() => ({ armed:document.querySelector('footer.voice-bar')?.dataset.handsFree,phase:document.querySelector('main.conversation-main')?.dataset.conversationState,error:document.querySelector('.voice-bar-error')?.textContent||'',messages:[...document.querySelectorAll('article.exchange')].map(e=>({phase:e.dataset.phase,turnId:e.dataset.turnId,answer:e.querySelector('.assistant-message p')?.textContent||''})) }))()`
 			);
 		const config = await rpc("query", "app.config");
+		await wait("initial executive Home", () => js(`document.querySelector('.hub-center')?.dataset.centerSection==='home'`));
+		report.centerHomeStartup = true;
 		assert.equal(config.envPath, envPath);
 		assert.equal(
 			config.microphone,
@@ -679,6 +691,7 @@ async function native() {
 			await wait("More dialog", () => js(`!!document.querySelector('#workspace-more[open]')`));
 			await js(`document.querySelector('[data-testid="configuration-toggle"]').click()`);
 			await wait("Settings dialog", () => js(`!!document.querySelector('#configuration[open]')`));
+			win.setFocusable(true);
 			win.focus();
 			win.webContents.focus();
 			win.webContents.sendInputEvent({ type: "keyDown", keyCode: "Escape" });
@@ -687,6 +700,7 @@ async function native() {
 			assert.equal((await ui()).armed, "true");
 			assert.equal((await media()).microphones.length, 1);
 			assert.equal(report.cancels.length, 0);
+			win.setFocusable(false);
 			report.modalEscapePreservedSession = true;
 		}
 		await js("window.__handsSmoke.drive([[700,600]])");
@@ -720,6 +734,7 @@ async function native() {
 		await js("window.__handsSmoke.drive([[500,2000]])");
 		await wait("third delayed offer", () => releaseOffer);
 		if (process.env.HANDS_FREE_STOP === "escape") {
+			win.setFocusable(true);
 			win.focus();
 			win.webContents.focus();
 			win.webContents.sendInputEvent({ type: "keyDown", keyCode: "Escape" });
@@ -734,6 +749,7 @@ async function native() {
 				(await ui()).armed === "false" &&
 				(await media()).microphones.every((item) => item.state === "ended")
 		);
+		win.setFocusable(false);
 		releaseOffer();
 		await sleep(1100);
 		report.finalMedia = await media();

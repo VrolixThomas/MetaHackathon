@@ -41,6 +41,26 @@ function validateRequest(body, index) {
 		"focus_canvas",
 		"close_canvas",
 		"set_canvas_layout",
+		"open_command_center",
+		"open_pinned_source",
+		"create_source_flow",
+		"inspect_hub",
+		"inspect_ticket",
+		"inspect_work_job",
+		"inspect_pr_feedback",
+		"inspect_work_review",
+		"read_pinned_source",
+		"search_pinned_source",
+		"start_work",
+		"start_feedback_work",
+		"publish_work",
+		"revise_work",
+		"approve_work",
+		"pause_work",
+		"resume_work",
+		"cancel_work",
+		"answer_work_decision",
+		"queue_notice_announcement",
 	]);
 	for (const tool of body.tools ?? [])
 		assert.ok(workspaceTools.has(tool.name), "Unexpected workspace tool");
@@ -53,9 +73,14 @@ function validateRequest(body, index) {
 			prId: null,
 		});
 		assert.equal(context.actualWorkspace.workspace.canvases.length, 1);
-		assert.equal(context.actualWorkspace.workspace.canvases[0].kind, "review");
+		assert.equal(context.actualWorkspace.workspace.canvases[0].kind, "center");
+		assert.equal(context.actualWorkspace.workspace.canvases[0].section, "home");
+		assert.equal(context.actualWorkspace.workspace.centerSection, "home");
 		assert.deepEqual(context.actualWorkspace.reviews, []);
 		assert.equal(context.actualWorkspace.browser, null);
+		for (const key of ["repositories", "incomingReviews", "ownPRFeedback", "tickets", "jobs"])
+			assert.deepEqual(context.actualHub[key], [], `No seeded ${key} in general conversation`);
+		assert.equal(context.actualHub.counts.pendingDecisions, 0);
 	}
 	assert.ok(
 		!/prId|screenContext|fixture|Noor|stackable|shop-web|selectedPullRequest/i.test(
@@ -101,6 +126,10 @@ async function wait(label, read) {
 }
 async function native() {
 	const { app, BrowserWindow } = require("electron");
+	app.on("browser-window-created", (_event, win) => {
+		win.setIgnoreMouseEvents(true);
+		win.setFocusable(false);
+	});
 	assert.ok(
 		process.versions.electron && !process.env.ELECTRON_RENDERER_URL,
 		"Root must run the built app with Electron"
@@ -217,6 +246,9 @@ async function native() {
 			return s.sessionId ? s : null;
 		});
 		assert.equal(initial.count, 0);
+		await wait("initial executive Home", () => js(`document.querySelector('.hub-center')?.dataset.centerSection==='home'`));
+		assert.ok(await js(`document.querySelector('.hub-home-intro')?.textContent.includes('Your priority brief')`));
+		report.centerHomeStartup = true;
 		assert.equal(await js(`document.querySelector('#conversation-panel')?.hidden`), true);
 		assert.ok(
 			await js(
@@ -336,6 +368,15 @@ async function native() {
 if (process.argv.includes("--self-check")) {
 	for (let i = 0; i < 3; i++)
 		validateRequest({ input: expectedHistory(i), tools: [], stream: true, store: false }, i);
+	const actualWorkspace = { workspace: { review: { sequence: 0, mode: "conversation", prId: null }, canvases: [{ kind: "center", section: "home" }], centerSection: "home" }, reviews: [], browser: null };
+	const actualHub = { repositories: [], incomingReviews: [], ownPRFeedback: [], tickets: [], jobs: [], counts: { pendingDecisions: 0 } };
+	const withWorkspace = () => ({ input: [...expectedHistory(0), { role: "user", content: [{ type: "input_text", text: JSON.stringify({ actualWorkspace, actualHub }) }] }], tools: ["inspect_workspace", "inspect_hub", "open_command_center", "open_pinned_source", "create_source_flow", "revise_work", "approve_work"].map((name) => ({ name })), stream: true, store: false });
+	validateRequest(withWorkspace(), 0);
+	actualWorkspace.workspace.canvases[0].kind = "review";
+	assert.throws(() => validateRequest(withWorkspace(), 0));
+	actualWorkspace.workspace.canvases[0].kind = "center";
+	actualHub.jobs.push({ id: "unexpected-seeded-job" });
+	assert.throws(() => validateRequest(withWorkspace(), 0));
 	assert.throws(() =>
 		validateRequest(
 			{ input: [{ role: "user", content: questions[1] }], tools: [], stream: true, store: false },
@@ -356,7 +397,7 @@ if (process.argv.includes("--self-check")) {
 		"text/event-stream"
 	);
 	console.log(
-		"V1_SELF_CHECK_PASS: 3 histories, 3 rejection checks, SSE; no Electron/network/config reads"
+		"V1_SELF_CHECK_PASS: conversation histories, Home/empty-hub and expanded-tool guards, rejection checks, SSE; no Electron/network/config reads"
 	);
 } else if (process.versions.electron || require.main === module)
 	native().catch((error) => {
