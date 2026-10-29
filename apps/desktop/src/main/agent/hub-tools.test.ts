@@ -1418,3 +1418,151 @@ test("ordinary home conversation leaves background completion visual unless the 
 		await service.dispose();
 	}
 });
+
+test("revise_work dispatches the real user's change to the same inspected ready, paused or failed saved job", async () => {
+	for (const state of ["ready", "paused", "failed"] as const) {
+		const d = data();
+		const summary = d.hub.jobs[0];
+		const feedback = (await d.ports.feedback("own-pr"))[0];
+		assert(summary && feedback);
+		d.job.state = state;
+		summary.state = state;
+		d.job.ticket = null;
+		summary.ticket = null;
+		d.job.feedback = feedback;
+		summary.feedback = feedback;
+		const instruction = "Replace the control with a keyboard accessible toggle.";
+		d.ports.operate = async (operation, requestId) => {
+			assert.equal(operation.kind, "revise-work");
+			d.operations.push({ operation, requestId });
+			summary.state = "queued";
+			summary.revisions = [{ instruction, createdAt: time }];
+			return { snapshot: d.hub, jobId: d.job.id };
+		};
+		const tools = new ConversationHubTools(
+			d.ports,
+			{ ...input, text: instruction },
+			new AbortController().signal
+		);
+		await assert.rejects(
+			tools.execute("revise_work", JSON.stringify({ jobId: "job", instruction })),
+			/Inspect an actual/
+		);
+		await tools.execute("inspect_work_job", JSON.stringify({ id: "job" }));
+		const result = await tools.execute(
+			"revise_work",
+			JSON.stringify({ jobId: "job", instruction })
+		);
+		assert.deepEqual(
+			d.operations.map((entry) => entry.operation),
+			[{ kind: "revise-work", jobId: "job", instruction }]
+		);
+		assert(JSON.stringify(result).includes('"jobId":"job"'));
+		assert(JSON.stringify(result).includes('"ticket":null'));
+		assert.equal(summary.feedback?.id, feedback.id);
+		assert.equal(summary.pullRequest, null);
+		assert(
+			tools.tools
+				.find((tool) => tool.name === "revise_work")
+				?.description.includes("real user explicitly requests a change")
+		);
+	}
+});
+
+test("revise_work rejects blank instructions, active/uninspected jobs, stale heads and substituted result IDs", async () => {
+	const d = data();
+	const summary = d.hub.jobs[0];
+	assert(summary);
+	const tools = new ConversationHubTools(d.ports, input, new AbortController().signal);
+	for (const instruction of ["", "   ", "x".repeat(10001)])
+		await assert.rejects(
+			tools.execute("revise_work", JSON.stringify({ jobId: "job", instruction })),
+			/arguments were rejected/
+		);
+	for (const state of ["queued", "running", "needs-input", "validating", "cancelled"] as const) {
+		d.job.state = state;
+		summary.state = state;
+		await tools.execute("inspect_work_job", JSON.stringify({ id: "job" }));
+		await assert.rejects(
+			tools.execute(
+				"revise_work",
+				JSON.stringify({ jobId: "job", instruction: "Make the requested change" })
+			),
+			/Inspect an actual/
+		);
+	}
+	d.job.state = "ready";
+	summary.state = "ready";
+	await tools.execute("inspect_work_job", JSON.stringify({ id: "job" }));
+	summary.state = "running";
+	await assert.rejects(
+		tools.execute(
+			"revise_work",
+			JSON.stringify({ jobId: "job", instruction: "Make the requested change" })
+		),
+		/saved job changed/
+	);
+	summary.state = "ready";
+	summary.headSha = "c".repeat(40);
+	await assert.rejects(
+		tools.execute(
+			"revise_work",
+			JSON.stringify({ jobId: "job", instruction: "Make the requested change" })
+		),
+		/saved job changed/
+	);
+	summary.headSha = d.job.headSha;
+	assert.equal(d.operations.length, 0);
+	d.ports.operate = async () => ({ snapshot: d.hub, jobId: "replacement-job" });
+	await assert.rejects(
+		tools.execute(
+			"revise_work",
+			JSON.stringify({ jobId: "job", instruction: "Make the requested change" })
+		),
+		/same saved job/
+	);
+	d.ports.operate = async () => ({ snapshot: { ...d.hub, jobs: [] }, jobId: "job" });
+	await assert.rejects(
+		tools.execute(
+			"revise_work",
+			JSON.stringify({ jobId: "job", instruction: "Make the requested change" })
+		),
+		/same saved job/
+	);
+});
+
+test("revision invalidates the earlier inspected review while bounded job contexts retain actual acceptance", async () => {
+	const d = data();
+	const summary = d.hub.jobs[0];
+	assert(summary);
+	d.job.reviewedAt = time;
+	summary.reviewedAt = time;
+	const tools = new ConversationHubTools(
+		d.ports,
+		{ ...input, text: "Change the review layout" },
+		new AbortController().signal
+	);
+	const context = await tools.observe();
+	assert.equal(context.jobs[0]?.reviewedAt, time);
+	assert(context.evidencePolicy.includes("already accepted work"));
+	const detail = await tools.execute("inspect_work_review", JSON.stringify({ jobId: "job" }));
+	assert(JSON.stringify(detail).includes(`"reviewedAt":"${time}"`));
+	d.ports.operate = async (operation, requestId) => {
+		d.operations.push({ operation, requestId });
+		summary.reviewedAt = null;
+		return { snapshot: d.hub };
+	};
+	await tools.execute(
+		"revise_work",
+		JSON.stringify({ jobId: "job", instruction: "Change the review layout" })
+	);
+	await tools.execute("inspect_work_job", JSON.stringify({ id: "job" }));
+	await assert.rejects(
+		tools.execute(
+			"approve_work",
+			JSON.stringify({ jobId: "job", headSha: d.job.headSha, confirmed: true })
+		),
+		/reviewed current head/
+	);
+	assert.equal(d.operations.length, 1);
+});
