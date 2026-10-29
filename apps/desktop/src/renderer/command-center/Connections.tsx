@@ -1,6 +1,10 @@
-import { useEffect, useState } from "react";
+import { useEffect, useId, useState } from "react";
 import { useStore } from "zustand";
-import type { LinearScope, RepositoryChoice } from "../../shared/contracts";
+import {
+	GitHubRepositorySchema,
+	type LinearScope,
+	type RepositoryChoice,
+} from "../../shared/contracts";
 import type { HubController } from "./controller";
 
 export function HubConnections({ hub, onSettings }: { hub: HubController; onSettings?(): void }) {
@@ -25,6 +29,7 @@ export function HubConnections({ hub, onSettings }: { hub: HubController; onSett
 
 export function Connections({ hub, onSettings }: { hub: HubController; onSettings?(): void }) {
 	const { snapshot, busy } = useStore(hub.store);
+	const repositoryChoicesId = useId();
 	const [choices, setChoices] = useState<RepositoryChoice[]>([]);
 	const [scopes, setScopes] = useState<LinearScope[]>([]);
 	const [loading, setLoading] = useState(true);
@@ -66,6 +71,7 @@ export function Connections({ hub, onSettings }: { hub: HubController; onSetting
 		.filter((scope) => scope.kind === "project" && selected.includes(scope.id))
 		.map((scope) => scope.id);
 	const add = async () => {
+		if (!GitHubRepositorySchema.safeParse(repository.trim()).success) return;
 		const result = await hub.operate({
 			kind: "add-repository",
 			repository: repository.trim(),
@@ -92,22 +98,29 @@ export function Connections({ hub, onSettings }: { hub: HubController; onSetting
 			>
 				<label>
 					GitHub repository
-					<select
+					<input
+						type="text"
+						required
+						list={repositoryChoicesId}
+						placeholder="owner/repository"
+						spellCheck={false}
+						autoCapitalize="none"
+						autoComplete="off"
 						value={repository}
 						onChange={(event) => setRepository(event.currentTarget.value)}
-						disabled={loading || busy}
-					>
-						<option value="">Choose a repository…</option>
-						{repository && !choices.some((choice) => choice.repository === repository) && (
-							<option value={repository}>{repository}</option>
-						)}
+						disabled={busy}
+					/>
+					<datalist id={repositoryChoicesId}>
 						{choices.map((choice) => (
 							<option key={choice.repository} value={choice.repository}>
 								{choice.repository}
 								{choice.private ? " · private" : ""}
 							</option>
 						))}
-					</select>
+					</datalist>
+					<span className="hub-muted">
+						Enter owner/repository or choose a suggestion. GitHub verifies access when you add it.
+					</span>
 				</label>
 				<label>
 					Local checkout path{" "}
@@ -119,7 +132,10 @@ export function Connections({ hub, onSettings }: { hub: HubController; onSetting
 					/>
 				</label>
 				<div className="hub-actions">
-					<button type="submit" disabled={!repository || busy}>
+					<button
+						type="submit"
+						disabled={!GitHubRepositorySchema.safeParse(repository.trim()).success || busy}
+					>
 						{snapshot?.repositories.some((repo) => repo.repository === repository)
 							? "Connect checkout"
 							: "Add repository"}

@@ -17,13 +17,21 @@ export const jobReference = (
 	job: Pick<WorkJobSummary, "ticket" | "feedback" | "summary" | "branch">
 ) => job.ticket?.identifier ?? job.feedback?.prId ?? job.branch;
 export const isFinished = (state: string) => ["ready", "failed", "cancelled"].includes(state);
+export const isPendingReview = (job: Pick<WorkJobSummary, "state" | "reviewedAt">) =>
+	job.state === "ready" && !job.reviewedAt;
+export const jobOutcomeLabel = (
+	job: Pick<WorkJobSummary, "state" | "reviewedAt" | "feedbackAppliedAt">
+) => (job.feedbackAppliedAt ? "Applied" : job.reviewedAt ? "Accepted" : stateLabel(job.state));
 export const stateLabel = (state: string) => state.replaceAll("-", " ");
 export const priorityLabel = (priority: number) =>
 	["No priority", "Urgent", "High", "Normal", "Low"][priority] ?? "No priority";
 export function sectionCount(snapshot: HubSnapshot, section: CenterSection) {
 	switch (section) {
 		case "home":
-			return snapshot.jobs.reduce((count, job) => count + job.pendingDecisions, 0);
+			return snapshot.jobs.reduce(
+				(count, job) => count + job.pendingDecisions + (isPendingReview(job) ? 1 : 0),
+				0
+			);
 		case "reviews":
 			return snapshot.reviews.filter((item) => item.kind === "incoming").length;
 		case "feedback":
@@ -62,19 +70,17 @@ export function priorityItems(snapshot: HubSnapshot): PriorityItem[] {
 				tone: "attention",
 			})
 		);
-	const ready = snapshot.jobs
-		.filter((job) => job.state === "ready")
-		.map(
-			(job): PriorityItem => ({
-				id: `ready:${job.id}`,
-				title: jobTitle(job),
-				detail: `${job.repository} · ${job.changedFileCount} changed file${job.changedFileCount === 1 ? "" : "s"}`,
-				label: "Ready to inspect",
-				section: "completed",
-				selectedId: job.id,
-				tone: "ready",
-			})
-		);
+	const ready = snapshot.jobs.filter(isPendingReview).map(
+		(job): PriorityItem => ({
+			id: `ready:${job.id}`,
+			title: jobTitle(job),
+			detail: `${job.repository} · ${job.changedFileCount} changed file${job.changedFileCount === 1 ? "" : "s"}`,
+			label: "Ready to inspect",
+			section: "completed",
+			selectedId: job.id,
+			tone: "ready",
+		})
+	);
 	const failed = snapshot.jobs
 		.filter((job) => job.state === "failed")
 		.map(

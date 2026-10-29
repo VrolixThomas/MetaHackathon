@@ -6,6 +6,7 @@ import type { HubController } from "./controller";
 import {
 	centerSections,
 	isFinished,
+	jobOutcomeLabel,
 	jobReference,
 	jobTitle,
 	sectionCount,
@@ -34,6 +35,8 @@ export function CommandSidebar({
 	const command = (input: WorkspaceCommand) => void workspace.command(input);
 	const select = (next: CenterSection, id?: string) =>
 		command({ kind: "open-center", section: next, ...(id ? { selectedId: id } : {}) });
+	const showRepositories = ["home", "reviews", "feedback"].includes(section);
+	const showJobs = ["home", "completed", "activity"].includes(section);
 	const queueKind = section === "feedback" ? "own" : "incoming";
 	return (
 		<aside className="command-navigation" aria-label="Executive workspace">
@@ -116,67 +119,80 @@ export function CommandSidebar({
 						</p>
 					) : (
 						<>
-							<div className="command-group-title">
-								<span>{section === "feedback" ? "Your pull requests" : "Requested reviews"}</span>
-								<span>{snapshot.reviews.filter((item) => item.kind === queueKind).length}</span>
-							</div>
-							{snapshot.repositories.map((repo) => {
-								const items = snapshot.reviews.filter(
-									(item) => item.repositoryId === repo.id && item.kind === queueKind
-								);
-								return (
-									<details className="command-repo" key={repo.id} open>
-										<summary>
-											<HubIcon name="repository" />
-											<span title={repo.repository}>{repo.repository.split("/").at(-1)}</span>
-											<span className="hub-count">{items.length}</span>
-										</summary>
-										{items.length ? (
-											items.map((item) => (
-												<button
-													type="button"
-													className="command-item quiet"
-													key={item.pr.id}
-													aria-current={selectedId === item.pr.id ? "true" : undefined}
-													onClick={() =>
-														queueKind === "own"
-															? select("feedback", item.pr.id)
-															: command({ kind: "show-review", prId: item.pr.id })
-													}
-												>
-													<span className="command-item-title">{item.pr.title}</span>
-													<span className="command-item-meta">
-														#{item.pr.number} · {item.pr.author}
-													</span>
-													<span className="command-item-meta">
+							{showRepositories && (
+								<>
+									<div className="command-group-title">
+										<span>
+											{section === "feedback" ? "Your pull requests" : "Requested reviews"}
+										</span>
+										<span>{snapshot.reviews.filter((item) => item.kind === queueKind).length}</span>
+									</div>
+									{snapshot.repositories.map((repo) => {
+										const items = snapshot.reviews.filter(
+											(item) => item.repositoryId === repo.id && item.kind === queueKind
+										);
+										return (
+											<details className="command-repo" key={repo.id} open>
+												<summary>
+													<HubIcon name="repository" />
+													<span title={repo.repository}>{repo.repository.split("/").at(-1)}</span>
+													<span className="hub-count">{items.length}</span>
+												</summary>
+												{items.length ? (
+													items.map((item) => (
+														<button
+															type="button"
+															className="command-item quiet"
+															key={item.pr.id}
+															aria-current={selectedId === item.pr.id ? "true" : undefined}
+															onClick={() =>
+																queueKind === "own"
+																	? select("feedback", item.pr.id)
+																	: command({ kind: "show-review", prId: item.pr.id })
+															}
+														>
+															<span className="command-item-title">{item.pr.title}</span>
+															<span className="command-item-meta">
+																#{item.pr.number} · {item.pr.author}
+															</span>
+															<span className="command-item-meta">
+																{queueKind === "own"
+																	? `${item.feedbackCount} feedback · ${stateLabel(item.reviewState)}`
+																	: `${item.headBranch} → ${item.baseBranch}`}
+															</span>
+														</button>
+													))
+												) : (
+													<p className="hub-sidebar-empty">
 														{queueKind === "own"
-															? `${item.feedbackCount} feedback · ${stateLabel(item.reviewState)}`
-															: `${item.headBranch} → ${item.baseBranch}`}
-													</span>
-												</button>
-											))
-										) : (
-											<p className="hub-sidebar-empty">
-												{queueKind === "own"
-													? "No own PRs in this repository."
-													: "No requested reviews."}
-											</p>
-										)}
-									</details>
-								);
-							})}
-							{!snapshot.repositories.length && (
-								<button
-									type="button"
-									className="hub-sidebar-empty quiet"
-									onClick={() => select("home", "connections")}
-								>
-									Add a repository to follow reviews.
-								</button>
+															? "No own PRs in this repository."
+															: "No requested reviews."}
+													</p>
+												)}
+											</details>
+										);
+									})}
+									{!snapshot.repositories.length && (
+										<button
+											type="button"
+											className="hub-sidebar-empty quiet"
+											onClick={() => select("home", "connections")}
+										>
+											Add a repository to follow reviews.
+										</button>
+									)}
+								</>
 							)}
 							{section === "tickets" && (
 								<>
 									<div className="command-group-title">Assigned to you</div>
+									{!snapshot.tickets.some(
+										(ticket) => !["completed", "canceled"].includes(ticket.state.type)
+									) && (
+										<p className="hub-sidebar-empty">
+											No assigned tickets in your selected scopes.
+										</p>
+									)}
 									{snapshot.tickets
 										.filter((ticket) => !["completed", "canceled"].includes(ticket.state.type))
 										.map((ticket) => (
@@ -195,42 +211,52 @@ export function CommandSidebar({
 										))}
 								</>
 							)}
-							<div className="command-group-title">
-								<span>{section === "completed" ? "Saved outcomes" : "Workers"}</span>
-								<span>
-									{
-										snapshot.jobs.filter(
-											(job) => isFinished(job.state) === (section === "completed")
-										).length
-									}
-								</span>
-							</div>
-							{snapshot.jobs
-								.filter((job) => isFinished(job.state) === (section === "completed"))
-								.map((job) => (
-									<button
-										type="button"
-										className="command-item quiet"
-										key={job.id}
-										aria-current={selectedId === job.id ? "true" : undefined}
-										onClick={() => select(isFinished(job.state) ? "completed" : "activity", job.id)}
-									>
-										<span className="command-item-title">
-											<span className={`hub-state-dot state-${job.state}`} />
-											{jobTitle(job)}
+							{showJobs && (
+								<>
+									<div className="command-group-title">
+										<span>{section === "completed" ? "Saved outcomes" : "Workers"}</span>
+										<span>
+											{
+												snapshot.jobs.filter(
+													(job) => isFinished(job.state) === (section === "completed")
+												).length
+											}
 										</span>
-										<span className="command-item-meta">
-											{jobReference(job)} · {stateLabel(job.state)}
-											{job.pendingDecisions
-												? ` · ${job.pendingDecisions} decision${job.pendingDecisions === 1 ? "" : "s"}`
-												: ""}
-										</span>
-									</button>
-								))}
-							{!snapshot.jobs.length && (
-								<p className="hub-sidebar-empty">
-									Start work from a ticket. Jobs and outcomes stay here.
-								</p>
+									</div>
+									{snapshot.jobs
+										.filter((job) => isFinished(job.state) === (section === "completed"))
+										.map((job) => (
+											<button
+												type="button"
+												className="command-item quiet"
+												key={job.id}
+												aria-current={selectedId === job.id ? "true" : undefined}
+												onClick={() =>
+													select(isFinished(job.state) ? "completed" : "activity", job.id)
+												}
+											>
+												<span className="command-item-title">
+													<span className={`hub-state-dot state-${job.state}`} />
+													{jobTitle(job)}
+												</span>
+												<span className="command-item-meta">
+													{jobReference(job)} · {jobOutcomeLabel(job)}
+													{job.pendingDecisions
+														? ` · ${job.pendingDecisions} decision${job.pendingDecisions === 1 ? "" : "s"}`
+														: ""}
+												</span>
+											</button>
+										))}
+									{!snapshot.jobs.some(
+										(job) => isFinished(job.state) === (section === "completed")
+									) && (
+										<p className="hub-sidebar-empty">
+											{section === "completed"
+												? "No saved outcomes yet."
+												: "Start work from a ticket. Jobs and outcomes stay here."}
+										</p>
+									)}
+								</>
 							)}
 						</>
 					)}

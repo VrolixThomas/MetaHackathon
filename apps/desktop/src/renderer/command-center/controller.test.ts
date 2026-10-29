@@ -142,3 +142,43 @@ it("rejects cross-job log pages and cross-PR feedback rather than mislabelling r
 	await assert.rejects(() => hub.feedback("pr"), /identity mismatch/);
 	hub.dispose();
 });
+
+it("accepts only explicit SHA-bound confirmation and revises the same saved job", async () => {
+	const inputs: unknown[] = [];
+	const hub = createHubController(async (_type, _path, input) => {
+		inputs.push(input);
+		return { snapshot: snapshot(2) };
+	});
+	await hub.operate({
+		kind: "approve-work",
+		jobId: "saved-job",
+		headSha: "a".repeat(40),
+		confirmed: true,
+	});
+	await hub.operate({
+		kind: "revise-work",
+		jobId: "saved-job",
+		instruction: "Keep this checkout and fix the edge case.",
+	});
+	assert.deepEqual((inputs[0] as { operation: unknown }).operation, {
+		kind: "approve-work",
+		jobId: "saved-job",
+		headSha: "a".repeat(40),
+		confirmed: true,
+	});
+	assert.deepEqual((inputs[1] as { operation: unknown }).operation, {
+		kind: "revise-work",
+		jobId: "saved-job",
+		instruction: "Keep this checkout and fix the edge case.",
+	});
+	await assert.rejects(() =>
+		hub.operate({
+			kind: "approve-work",
+			jobId: "saved-job",
+			headSha: "a".repeat(40),
+			confirmed: false,
+		} as unknown as Parameters<typeof hub.operate>[0])
+	);
+	assert.equal(inputs.length, 2);
+	hub.dispose();
+});

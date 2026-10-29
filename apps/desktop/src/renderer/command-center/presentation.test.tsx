@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { it } from "node:test";
 import { renderToStaticMarkup } from "react-dom/server";
 import {
+	type CenterSection,
 	type HubSnapshot,
 	HubSnapshotSchema,
 	type PinnedSource,
@@ -14,11 +15,12 @@ import { highlightSource } from "../prepared/highlighting";
 import { createWorkspaceController } from "../workspace/controller";
 import { createLocalBrowserController } from "../workspace/local-browser";
 import { CenterCanvas } from "./CenterCanvas";
+import { Connections } from "./Connections";
 import { CommandSidebar } from "./Sidebar";
 import { FlowCanvas, SourceBlock, exactSourceRows } from "./SourceCanvas";
-import { WorkDiff } from "./WorkViews";
+import { WorkAcceptance, WorkDiff, loadedReviewMatchesJob } from "./WorkViews";
 import { createHubController } from "./controller";
-import { jobReference, jobTitle, priorityItems } from "./model";
+import { jobOutcomeLabel, jobReference, jobTitle, priorityItems, sectionCount } from "./model";
 
 const stamp = "2026-10-28T12:00:00.000Z";
 const sha = "a".repeat(40);
@@ -108,7 +110,7 @@ function suppliedHub(snapshot: HubSnapshot) {
 	hub.store.setState({ snapshot });
 	return { ...hub, store: { ...hub.store, getInitialState: hub.store.getState } };
 }
-function suppliedWorkspace(section: "reviews" | "feedback") {
+function suppliedWorkspace(section: CenterSection) {
 	const call = async () => null;
 	const reviews = createPreparedController(createPreparedApi(call), "test-session");
 	const browser = createLocalBrowserController(call);
@@ -283,7 +285,7 @@ it("source and continuous flow retain exact bytes, pinned identity, ordered snip
 	assert.equal((flow.match(/class="hub-source"/g) ?? []).length, 2);
 });
 
-it("local work diff uses real base/head source and never requires an invented PR identity", () => {
+function localReview() {
 	const snapshot = makeSnapshot();
 	const ticket = snapshot.tickets[0];
 	assert.ok(ticket);
@@ -292,9 +294,10 @@ it("local work diff uses real base/head source and never requires an invented PR
 		changedFileCount: _count,
 		...localJob
 	} = summary("ready", "local");
-	const review = WorkReviewSchema.parse({
+	return WorkReviewSchema.parse({
 		job: {
 			...localJob,
+			headSha: "b".repeat(40),
 			ticket: { ...ticket, description: "Supplied ticket" },
 			brief: "Supplied brief",
 			checks: [],
@@ -316,6 +319,10 @@ it("local work diff uses real base/head source and never requires an invented PR
 			},
 		],
 	});
+}
+
+it("local work diff uses real base/head source and never requires an invented PR identity", () => {
+	const review = localReview();
 	assert.equal("prId" in (review.files[0] ?? {}), false);
 	const html = renderToStaticMarkup(<WorkDiff review={review} command={() => {}} />);
 	assert.match(html, /old\(\)/);
@@ -323,4 +330,102 @@ it("local work diff uses real base/head source and never requires an invented PR
 	assert.match(html, /Open base src\/first.ts line 1/);
 	assert.match(html, /Open head src\/first.ts line 1/);
 	assert.doesNotMatch(html, /Open PR|pull\/0|prId/);
+});
+
+it("acceptance stays disabled until the loaded local review matches the current job and pinned revisions", () => {
+	const review = localReview();
+	const render = (loaded: typeof review | null) =>
+		renderToStaticMarkup(
+			<WorkAcceptance job={review.job} review={loaded} busy={false} operate={async () => null} />
+		);
+	assert.equal(loadedReviewMatchesJob(review.job, null), false);
+	assert.match(render(null), /<button[^>]*disabled=""[^>]*>Accept work and complete ticket/);
+	const stale = { ...review, job: { ...review.job, headSha: "c".repeat(40) } };
+	assert.equal(loadedReviewMatchesJob(review.job, stale), false);
+	assert.match(render(stale), /<button[^>]*disabled=""[^>]*>Accept work and complete ticket/);
+	assert.equal(
+		loadedReviewMatchesJob(review.job, { ...review, job: { ...review.job, id: "other-job" } }),
+		false
+	);
+	assert.equal(loadedReviewMatchesJob(review.job, review), true);
+	assert.match(render(review), /<button type="button">Accept work and complete ticket/);
+	assert.match(render(review), /Requested changes/);
+	assert.match(render(review), /Request changes/);
+});
+
+it("accepted outcomes leave Home's pending-ready brief and count without inventing an applied result", () => {
+	const review = localReview();
+	const accepted = { ...review.job, reviewedAt: stamp };
+	const html = renderToStaticMarkup(
+		<WorkAcceptance job={accepted} review={review} busy={false} operate={async () => null} />
+	);
+	assert.match(html, /Accepted/);
+	assert.doesNotMatch(html, /Accept work and complete ticket|Applied|Published head/);
+	assert.equal(jobOutcomeLabel(accepted), "Accepted");
+	const snapshot = makeSnapshot();
+	snapshot.jobs = [
+		{ ...summary("ready", "ready"), reviewedAt: stamp },
+		summary("ready", "pending"),
+	];
+	assert.equal(sectionCount(snapshot, "home"), 1);
+	assert.deepEqual(
+		priorityItems(snapshot)
+			.filter((item) => item.id.startsWith("ready:"))
+			.map((item) => item.selectedId),
+		["pending"]
+	);
+	const published = { ...review.job, publishedHeadSha: sha };
+	assert.equal(jobOutcomeLabel(published), "ready");
+	const publishedHtml = renderToStaticMarkup(
+		<WorkAcceptance job={published} review={review} busy={false} operate={async () => null} />
+	);
+	assert.match(publishedHtml, /Published head/);
+	assert.doesNotMatch(publishedHtml, /Applied/);
+	const applied = { ...published, feedbackAppliedAt: stamp };
+	assert.equal(jobOutcomeLabel(applied), "Applied");
+	assert.match(
+		renderToStaticMarkup(
+			<WorkAcceptance job={applied} review={review} busy={false} operate={async () => null} />
+		),
+		/Applied/
+	);
+});
+
+it("ticket, completed and activity sidebars focus their own lists without repository groups", () => {
+	const snapshot = makeSnapshot();
+	snapshot.jobs = [summary("ready", "saved"), summary("needs-input", "active")];
+	const hub = suppliedHub(snapshot);
+	for (const section of ["tickets", "completed", "activity"] as const) {
+		const html = renderToStaticMarkup(
+			<CommandSidebar
+				hub={hub}
+				workspace={suppliedWorkspace(section)}
+				conversationOpen={false}
+				onConversation={() => {}}
+				onSettings={() => {}}
+			/>
+		);
+		assert.doesNotMatch(html, /class="command-repo"|Requested change|Owned change/);
+		assert.match(
+			html,
+			section === "tickets"
+				? /Assigned change/
+				: section === "completed"
+					? /work\/saved/
+					: /work\/active/
+		);
+		if (section === "tickets") assert.doesNotMatch(html, /work\/saved|work\/active/);
+	}
+	hub.dispose();
+});
+
+it("repository entry remains available while optional repository suggestions load", () => {
+	const hub = suppliedHub(makeSnapshot());
+	const html = renderToStaticMarkup(<Connections hub={hub} />);
+	assert.match(html, /<input[^>]*type="text"[^>]*list="[^"]+"[^>]*placeholder="owner\/repository"/);
+	const repositoryInput = html.match(/<input[^>]*placeholder="owner\/repository"[^>]*>/)?.[0] ?? "";
+	assert.doesNotMatch(repositoryInput, /disabled/);
+	assert.match(html, /<datalist/);
+	assert.match(html, /GitHub verifies access/);
+	hub.dispose();
 });

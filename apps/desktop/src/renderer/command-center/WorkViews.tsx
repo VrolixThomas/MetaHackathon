@@ -3,6 +3,7 @@ import type { z } from "zod";
 import { useStore } from "zustand";
 import type {
 	CodeLocation,
+	HubOperation,
 	LinearTicket,
 	PinnedSource,
 	WorkJob,
@@ -15,7 +16,7 @@ import { type HighlightedSource, highlightSource } from "../prepared/highlightin
 import { MarkdownContent } from "../workspace/MarkdownContent";
 import { SourceBlock } from "./SourceCanvas";
 import type { HubController } from "./controller";
-import { jobReference, jobTitle, priorityLabel, stateLabel } from "./model";
+import { jobOutcomeLabel, jobReference, jobTitle, priorityLabel, stateLabel } from "./model";
 
 type WorkReview = z.infer<typeof WorkReviewSchema>;
 type Command = (input: WorkspaceCommand) => void;
@@ -377,6 +378,124 @@ function JobLog({ hub, id, sequence }: { hub: HubController; id: string; sequenc
 	);
 }
 
+/** Approval is bound to the actual loaded local review and current pinned revisions. */
+export function loadedReviewMatchesJob(job: WorkJob, review: WorkReview | null): boolean {
+	return (
+		!!review &&
+		!!job.baseSha &&
+		!!job.headSha &&
+		review.job.id === job.id &&
+		review.job.repository === job.repository &&
+		review.job.baseSha === job.baseSha &&
+		review.job.headSha === job.headSha
+	);
+}
+
+export function WorkAcceptance({
+	job,
+	review,
+	busy,
+	operate,
+}: {
+	job: WorkJob;
+	review: WorkReview | null;
+	busy: boolean;
+	operate(input: HubOperation): ReturnType<HubController["operate"]>;
+}) {
+	const [instruction, setInstruction] = useState("");
+	const reviewed = loadedReviewMatchesJob(job, review);
+	return (
+		<section aria-label="Work review actions">
+			{job.reviewedAt && (
+				<p className="hub-muted">
+					Accepted ·{" "}
+					<time dateTime={job.reviewedAt}>{new Date(job.reviewedAt).toLocaleString()}</time>
+				</p>
+			)}
+			{job.feedbackAppliedAt && (
+				<p className="hub-muted">
+					Applied ·{" "}
+					<time dateTime={job.feedbackAppliedAt}>
+						{new Date(job.feedbackAppliedAt).toLocaleString()}
+					</time>
+				</p>
+			)}
+			{job.publishedHeadSha && (
+				<p className="hub-muted">
+					Published head: <code>{job.publishedHeadSha}</code>
+				</p>
+			)}
+			{job.state === "ready" && !job.reviewedAt && (
+				<>
+					<div className="hub-actions">
+						<button
+							type="button"
+							disabled={busy || !reviewed}
+							onClick={() => {
+								if (!busy && reviewed && job.headSha)
+									void operate({
+										kind: "approve-work",
+										jobId: job.id,
+										headSha: job.headSha,
+										confirmed: true,
+									});
+							}}
+						>
+							{job.ticket ? "Accept work and complete ticket" : "Accept work"}
+						</button>
+					</div>
+					{!reviewed && (
+						<p className="hub-muted">Load the current local diff before accepting this work.</p>
+					)}
+					<form
+						className="hub-form"
+						onSubmit={(event) => {
+							event.preventDefault();
+							const requested = instruction.trim();
+							if (requested && !busy)
+								void operate({ kind: "revise-work", jobId: job.id, instruction: requested }).then(
+									(result) => {
+										if (result) setInstruction("");
+									}
+								);
+						}}
+					>
+						<label>
+							Requested changes
+							<textarea
+								rows={3}
+								required
+								maxLength={10000}
+								value={instruction}
+								onChange={(event) => setInstruction(event.currentTarget.value)}
+							/>
+						</label>
+						<p className="hub-muted">
+							The worker will revise this saved job in its current checkout.
+						</p>
+						<button type="submit" disabled={busy || !instruction.trim()}>
+							Request changes
+						</button>
+					</form>
+				</>
+			)}
+			{!!job.revisions?.length && (
+				<details className="hub-disclosure">
+					<summary>Requested revisions</summary>
+					{job.revisions.map((revision) => (
+						<div key={`${revision.createdAt}:${revision.instruction}`}>
+							<time dateTime={revision.createdAt}>
+								{new Date(revision.createdAt).toLocaleString()}
+							</time>
+							<p className="hub-preserve">{revision.instruction}</p>
+						</div>
+					))}
+				</details>
+			)}
+		</section>
+	);
+}
+
 export function JobView({
 	hub,
 	id,
@@ -419,7 +538,7 @@ export function JobView({
 			<div className="hub-detail-meta">
 				<span>{jobReference(job)}</span>
 				<span>{job.repository}</span>
-				<span className={`hub-status status-${job.state}`}>{stateLabel(job.state)}</span>
+				<span className={`hub-status status-${job.state}`}>{jobOutcomeLabel(job)}</span>
 			</div>
 			<h1>{jobTitle(job)}</h1>
 			<p className="hub-muted hub-branch">{job.branch}</p>
@@ -605,9 +724,7 @@ export function JobView({
 						{reviewError}
 					</p>
 				)}
-				{review?.job.id === id &&
-				review.job.baseSha === job.baseSha &&
-				review.job.headSha === job.headSha ? (
+				{review && loadedReviewMatchesJob(job, review) ? (
 					<WorkDiff
 						key={`${review.job.id}:${review.job.headSha}`}
 						review={review}
@@ -623,6 +740,13 @@ export function JobView({
 					<p className="hub-muted">No changed files recorded yet.</p>
 				)}
 			</section>
+			<WorkAcceptance
+				key={`${job.id}:${job.headSha}`}
+				job={job}
+				review={review}
+				busy={busy || reviewBusy}
+				operate={hub.operate}
+			/>
 			<JobLog hub={hub} id={id} sequence={sequence} />
 		</article>
 	);
