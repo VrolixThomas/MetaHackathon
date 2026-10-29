@@ -42,6 +42,7 @@ const OwnershipSchema = z.strictObject({
 	gitIdentity: IdentitySchema,
 	commitConventionRequired: z.boolean(),
 	finalizedHead: CommitShaSchema.nullable(),
+	publishedHeadSha: CommitShaSchema.optional(),
 	checks: z.array(WorkCheckSchema).max(100),
 });
 type Ownership = z.infer<typeof OwnershipSchema>;
@@ -448,16 +449,22 @@ export class WorkJobRuntime {
 						!job.pullRequest ||
 						job.feedback.prId !== job.pullRequest.id ||
 						job.pullRequest.repository !== repository.repository ||
-						job.pullRequest.headSha !== record.baseSha))
+						(job.pullRequest.headSha !== record.baseSha &&
+							job.pullRequest.headSha !== record.publishedHeadSha)))
 			)
 				throw new Error("Feedback publication requires the current pull request head");
 			const ref = `refs/heads/${target}`;
-			const expected = targetBranch === undefined ? "0".repeat(40) : record.baseSha;
+			const expected =
+				record.publishedHeadSha ?? (targetBranch === undefined ? "0".repeat(40) : record.baseSha);
 			const url = this.url(repository.repository);
 			const remote = (
 				await this.network(this.tree(job.id), ["ls-remote", "--refs", "--", url, ref], signal)
 			).stdout.trim();
-			if (remote === `${head}\t${ref}`) return;
+			if (remote === `${head}\t${ref}`) {
+				record.publishedHeadSha = head;
+				await this.save(record);
+				return;
+			}
 			if ((remote ? remote.split("\t")[0] : "0".repeat(40)) !== expected)
 				throw new Error("Remote branch changed; refresh before publishing");
 			// Ordinary push checks the server's advertised old SHA. This private hook additionally
@@ -485,6 +492,8 @@ export class WorkJobRuntime {
 					],
 					signal
 				);
+				record.publishedHeadSha = head;
+				await this.save(record);
 			} finally {
 				await rm(hooks, { recursive: true, force: true });
 			}

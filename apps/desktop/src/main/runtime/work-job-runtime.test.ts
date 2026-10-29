@@ -509,6 +509,46 @@ test("rejects rewritten Git configuration and symlinked owned metadata before mu
 	});
 });
 
+function feedbackWork(job: WorkJob): WorkJob {
+	assert.ok(job.baseSha);
+	return {
+		...job,
+		pullRequest: {
+			id: "actual-pr",
+			repository: job.repository,
+			number: 17,
+			url: "https://github.com/actual-owner/actual-repository/pull/17",
+			title: "Actual PR",
+			author: "author",
+			baseSha: job.baseSha,
+			headSha: job.baseSha,
+		},
+		feedback: {
+			id: "actual-feedback",
+			prId: "actual-pr",
+			author: "reviewer",
+			body: "Actual feedback",
+			url: "https://github.com/actual-owner/actual-repository/pull/17#issuecomment-4",
+			createdAt: new Date().toISOString(),
+			updatedAt: new Date().toISOString(),
+			kind: "conversation",
+			state: null,
+			path: null,
+			line: null,
+			commitSha: job.baseSha,
+			suggestion: null,
+		},
+	};
+}
+
+async function publishedSha(job: WorkJob): Promise<string | undefined> {
+	return (
+		JSON.parse(
+			await readFile(join(job.worktreePath as string, "..", "ownership.json"), "utf8")
+		) as { publishedHeadSha?: string }
+	).publishedHeadSha;
+}
+
 /** Test-only transport redirects the explicit HTTPS argv to an actual temporary bare Git remote.
  * No HTTP server, provider call or product transport injection is used. Git still performs its
  * real advertisement, pre-push hook, pack transfer and atomic ref update/rejection. */
@@ -519,9 +559,8 @@ async function localPushTransport(
 	race?: { ref: string; sha: string }
 ) {
 	const executable = (await exec("/usr/bin/which", ["git"])).stdout.trim();
-	const bin = join(root, "git-transport");
-	await mkdir(bin);
-	const capture = join(root, "git-network-argv.jsonl");
+	const bin = await mkdtemp(join(root, "git-transport-"));
+	const capture = join(bin, "git-network-argv.jsonl");
 	const wrapper = `#!${process.execPath}\nconst {spawnSync}=require('node:child_process'); const fs=require('node:fs');\nlet args=process.argv.slice(2);\nif(args.includes('https://github.com/actual-owner/actual-repository.git')) {\n  fs.appendFileSync(${JSON.stringify(capture)}, JSON.stringify(args)+'\\n');\n  if(args.includes('push') && ${JSON.stringify(Boolean(race))}) { const r=spawnSync(${JSON.stringify(executable)}, ['update-ref', ${JSON.stringify(race?.ref ?? "unused")}, ${JSON.stringify(race?.sha ?? "unused")}], {cwd:${JSON.stringify(remote)},env:process.env}); if(r.status!==0) process.exit(91); }\n  args=args.map(a=>a==='https://github.com/actual-owner/actual-repository.git'?${JSON.stringify(remote)}:a);\n  args.unshift('-c','protocol.file.allow=always');\n}\nconst result=spawnSync(${JSON.stringify(executable)},args,{stdio:'inherit',env:process.env}); process.exit(result.status??1);\n`;
 	await writeFile(join(bin, "git"), wrapper, { mode: 0o700 });
 	const previous = process.env["PATH"];
@@ -534,52 +573,111 @@ async function localPushTransport(
 	}
 }
 
-test("ordinary no-force push publishes the actual local commit and keeps credentials out of argv/config/logs", async () => {
-	await fixture(async ({ root, source, owned, repository, prepare }) => {
-		const job = await prepare();
-		let tokenRequests = 0;
-		const runtime = new WorkJobRuntime({
-			directory: owned,
-			getToken: async () => {
+test("ordinary no-force push publishes checked revisions and recovers private publication state on restart", async () => {
+	await fixture(
+		async ({ root, source, owned, repository, prepare }) => {
+			await writeFile(join(source, "source.txt"), "staged user work\n");
+			await git(source, "add", "source.txt");
+			await writeFile(join(source, "source.txt"), "unstaged user work\n");
+			const originalState = async () => ({
+				head: await git(source, "rev-parse", "HEAD"),
+				refs: await git(source, "show-ref"),
+				index: await readFile(join(source, ".git", "index")),
+				config: await readFile(join(source, ".git", "config")),
+				content: await readFile(join(source, "source.txt")),
+				status: await git(source, "status", "--porcelain"),
+			});
+			const original = await originalState();
+			const job = await prepare();
+			let tokenRequests = 0;
+			const getToken = async () => {
 				tokenRequests++;
 				return "test-only-private-token";
-			},
-		});
-		await writeFile(join(job.worktreePath as string, "source.txt"), "actual publication\n");
-		const finalized = { ...job, ...(await runtime.finalize(job, signal())) };
-		const remote = join(root, "local-remote.git");
-		await git(root, "clone", "--bare", "--no-hardlinks", "--", source, remote);
-		await localPushTransport(root, remote, async (capture) => {
-			await runtime.push(finalized, repository, signal());
-			assert.equal(await git(remote, "rev-parse", `refs/heads/${job.branch}`), finalized.headSha);
-			const calls = (await readFile(capture, "utf8"))
-				.trim()
-				.split("\n")
-				.map((line) => JSON.parse(line) as string[]);
-			assert.equal(calls.length, 2);
-			assert.ok(calls[1]?.includes("--no-force"));
-			assert.ok(
-				calls.every(
-					(args) =>
-						!args.some(
-							(arg) =>
-								arg.includes("test-only-private-token") ||
-								arg === "--force" ||
-								arg.startsWith("--force-with-lease")
-						)
-				)
+			};
+			const runtime = new WorkJobRuntime({ directory: owned, getToken });
+			const ownershipPath = join(job.worktreePath as string, "..", "ownership.json");
+			const ownership = async () =>
+				JSON.parse(await readFile(ownershipPath, "utf8")) as {
+					publishedHeadSha?: string;
+					finalizedHead: string;
+				};
+			await writeFile(join(job.worktreePath as string, "source.txt"), "actual publication\n");
+			const finalized = { ...job, ...(await runtime.finalize(job, signal())) };
+			assert.equal((await ownership()).publishedHeadSha, undefined);
+			assert.equal(finalized.checks.length, 1);
+			assert.equal(finalized.checks[0]?.commitSha, finalized.headSha);
+			assert.equal(finalized.checks[0]?.exitCode, 0);
+			const remote = join(root, "local-remote.git");
+			await git(root, "clone", "--bare", "--no-hardlinks", "--", source, remote);
+			await localPushTransport(root, remote, async (capture) => {
+				await runtime.push(finalized, repository, signal());
+				assert.equal(await git(remote, "rev-parse", `refs/heads/${job.branch}`), finalized.headSha);
+				assert.equal((await ownership()).publishedHeadSha, finalized.headSha);
+				const calls = (await readFile(capture, "utf8"))
+					.trim()
+					.split("\n")
+					.map((line) => JSON.parse(line) as string[]);
+				assert.equal(calls.length, 2);
+				assert.ok(calls[1]?.includes("--no-force"));
+				assert.ok(
+					calls.every(
+						(args) =>
+							!args.some(
+								(arg) =>
+									arg.includes("test-only-private-token") ||
+									arg === "--force" ||
+									arg.startsWith("--force-with-lease")
+							)
+					)
+				);
+				await runtime.push(finalized, repository, signal()); // Idempotent exact-head publication.
+				await writeFile(
+					join(job.worktreePath as string, "source.txt"),
+					"checked second revision\n"
+				);
+				const revision = {
+					...finalized,
+					publishedHeadSha: "f".repeat(40),
+					revisions: [
+						{ instruction: "Revise the actual result", createdAt: new Date().toISOString() },
+					],
+					...(await runtime.finalize(finalized, signal())),
+				};
+				assert.notEqual(revision.headSha, finalized.headSha);
+				assert.equal((await ownership()).publishedHeadSha, finalized.headSha);
+				assert.equal((await ownership()).finalizedHead, revision.headSha);
+				assert.equal(revision.checks.length, 1);
+				assert.equal(revision.checks[0]?.commitSha, revision.headSha);
+				assert.equal(revision.checks[0]?.exitCode, 0);
+				await runtime.push(revision, repository, signal());
+				assert.equal(await git(remote, "rev-parse", `refs/heads/${job.branch}`), revision.headSha);
+				assert.equal((await ownership()).publishedHeadSha, revision.headSha);
+				const restarted = new WorkJobRuntime({ directory: owned, getToken });
+				await restarted.push(revision, repository, signal());
+				assert.equal((await ownership()).publishedHeadSha, revision.headSha);
+				// Simulate a confirmed push whose ownership checkpoint did not reach disk.
+				const checkpoint = await ownership();
+				Reflect.deleteProperty(checkpoint, "publishedHeadSha");
+				await writeFile(ownershipPath, JSON.stringify(checkpoint));
+				await new WorkJobRuntime({ directory: owned, getToken }).push(
+					revision,
+					repository,
+					signal()
+				);
+				assert.equal((await ownership()).publishedHeadSha, revision.headSha);
+			});
+			assert.equal(tokenRequests, 7);
+			assert.deepEqual(await originalState(), original);
+			assert.deepEqual(await readdir(join(owned, "credentials")), []);
+			assert.equal(
+				(
+					await readFile(join(job.worktreePath as string, "..", "repository.git", "config"), "utf8")
+				).includes("test-only-private-token"),
+				false
 			);
-			await runtime.push(finalized, repository, signal()); // Idempotent exact-head publication.
-		});
-		assert.equal(tokenRequests, 3);
-		assert.deepEqual(await readdir(join(owned, "credentials")), []);
-		assert.equal(
-			(
-				await readFile(join(job.worktreePath as string, "..", "repository.git", "config"), "utf8")
-			).includes("test-only-private-token"),
-			false
-		);
-	});
+		},
+		{ test: "node validate.cjs" }
+	);
 });
 
 test("feedback push rejects a concurrent fast-forward remote advance between observation and push advertisement", async () => {
@@ -610,34 +708,7 @@ test("feedback push rejects a concurrent fast-forward remote advance between obs
 			getToken: async () => "test-only-private-token",
 		});
 		const finalized = { ...job, ...(await runtime.finalize(job, signal())) };
-		const feedbackJob: WorkJob = {
-			...finalized,
-			pullRequest: {
-				id: "actual-pr",
-				repository: repository.repository,
-				number: 17,
-				url: "https://github.com/actual-owner/actual-repository/pull/17",
-				title: "Actual PR",
-				author: "author",
-				baseSha: job.baseSha as string,
-				headSha: job.baseSha as string,
-			},
-			feedback: {
-				id: "actual-feedback",
-				prId: "actual-pr",
-				author: "reviewer",
-				body: "Actual feedback",
-				url: "https://github.com/actual-owner/actual-repository/pull/17#issuecomment-4",
-				createdAt: new Date().toISOString(),
-				updatedAt: new Date().toISOString(),
-				kind: "conversation",
-				state: null,
-				path: null,
-				line: null,
-				commitSha: null,
-				suggestion: null,
-			},
-		};
+		const feedbackJob = feedbackWork(finalized);
 		await assert.rejects(
 			runtime.push(feedbackJob, repository, signal()),
 			/current pull request head/
@@ -654,5 +725,166 @@ test("feedback push rejects a concurrent fast-forward remote advance between obs
 			},
 			{ ref: `refs/heads/${target}`, sha: intermediate }
 		);
+	});
+});
+
+test("feedback revisions update the previously applied branch while retaining original feedback and base identity", async () => {
+	await fixture(
+		async ({ root, source, owned, repository, prepare }) => {
+			const job = feedbackWork(await prepare());
+			const tree = job.worktreePath as string;
+			const runtime = new WorkJobRuntime({
+				directory: owned,
+				getToken: async () => "test-only-private-token",
+			});
+			const remote = join(root, "local-remote.git");
+			await git(root, "clone", "--bare", "--no-hardlinks", "--", source, remote);
+			const target = "actual-existing-pr-branch";
+			await git(remote, "update-ref", `refs/heads/${target}`, job.baseSha as string);
+			await writeFile(join(tree, "source.txt"), "first addressed feedback\n");
+			const first = { ...job, ...(await runtime.finalize(job, signal())) };
+			await localPushTransport(root, remote, async () => {
+				await runtime.push(first, repository, signal(), target);
+				assert.equal(await publishedSha(first), first.headSha);
+				assert.equal(await git(remote, "rev-parse", `refs/heads/${target}`), first.headSha);
+				assert.ok(first.pullRequest);
+				const revising: WorkJob = {
+					...first,
+					publishedHeadSha: "e".repeat(40),
+					pullRequest: { ...first.pullRequest, headSha: first.headSha },
+				};
+				await writeFile(join(tree, "source.txt"), "revised addressed feedback\n");
+				const second = { ...revising, ...(await runtime.finalize(revising, signal())) };
+				assert.notEqual(second.headSha, first.headSha);
+				assert.equal(await publishedSha(second), first.headSha);
+				assert.equal(second.checks.length, 1);
+				assert.equal(second.checks[0]?.commitSha, second.headSha);
+				assert.equal(second.checks[0]?.exitCode, 0);
+				await assert.rejects(
+					runtime.push({ ...second, baseSha: "f".repeat(40) }, repository, signal(), target),
+					/ownership mismatch/
+				);
+				await assert.rejects(
+					runtime.push(
+						{
+							...second,
+							pullRequest: {
+								...(revising.pullRequest as NonNullable<WorkJob["pullRequest"]>),
+								id: "another-pr",
+							},
+						},
+						repository,
+						signal(),
+						target
+					),
+					/current pull request head/
+				);
+				await assert.rejects(
+					runtime.push(
+						{
+							...second,
+							pullRequest: {
+								...(revising.pullRequest as NonNullable<WorkJob["pullRequest"]>),
+								headSha: "e".repeat(40),
+							},
+						},
+						repository,
+						signal(),
+						target
+					),
+					/current pull request head/
+				);
+				assert.equal(await publishedSha(second), first.headSha);
+				await runtime.push(second, repository, signal(), target);
+				assert.equal(await publishedSha(second), second.headSha);
+				assert.equal(await git(remote, "rev-parse", `refs/heads/${target}`), second.headSha);
+				assert.equal(second.baseSha, job.baseSha);
+				assert.equal(second.feedback?.commitSha, job.baseSha);
+				const review = await runtime.review(second);
+				assert.equal(review.files[0]?.base.commitSha, job.baseSha);
+				assert.equal(review.files[0]?.head.commitSha, second.headSha);
+				const restarted = new WorkJobRuntime({
+					directory: owned,
+					getToken: async () => "test-only-private-token",
+				});
+				await restarted.push(
+					{
+						...second,
+						pullRequest: {
+							...(revising.pullRequest as NonNullable<WorkJob["pullRequest"]>),
+							headSha: second.headSha,
+						},
+					},
+					repository,
+					signal(),
+					target
+				);
+				assert.equal(await publishedSha(second), second.headSha);
+			});
+		},
+		{ test: "node validate.cjs" }
+	);
+});
+
+test("revisions reject external ancestors and changed push advertisements without advancing owned publication state", async () => {
+	await fixture(async ({ root, source, owned, repository, prepare }) => {
+		const job = await prepare();
+		const tree = job.worktreePath as string;
+		const runtime = new WorkJobRuntime({
+			directory: owned,
+			getToken: async () => "test-only-private-token",
+		});
+		const remote = join(root, "local-remote.git");
+		await git(root, "clone", "--bare", "--no-hardlinks", "--", source, remote);
+		await writeFile(join(tree, "source.txt"), "initial published result\n");
+		const first = { ...job, ...(await runtime.finalize(job, signal())) };
+		await localPushTransport(root, remote, async () => {
+			await runtime.push(first, repository, signal());
+		});
+		const ref = `refs/heads/${job.branch}`;
+		await writeFile(join(tree, "source.txt"), "externally advanced ancestor\n");
+		await git(tree, "add", ".");
+		await git(tree, "commit", "-m", "Intermediate revision");
+		const external = await git(tree, "rev-parse", "HEAD");
+		await git(
+			remote,
+			"-c",
+			"protocol.file.allow=always",
+			"fetch",
+			"--",
+			join(tree, "..", "repository.git"),
+			`${external}:refs/heads/race-object`
+		);
+		await writeFile(join(tree, "source.txt"), "final revised result\n");
+		const second = {
+			...first,
+			publishedHeadSha: external,
+			...(await runtime.finalize(first, signal())),
+		};
+		await git(tree, "merge-base", "--is-ancestor", external, second.headSha);
+		await git(remote, "update-ref", ref, external, first.headSha);
+		await localPushTransport(root, remote, async (capture) => {
+			await assert.rejects(runtime.push(second, repository, signal()), /Remote branch changed/);
+			assert.equal((await readFile(capture, "utf8")).trim().split("\n").length, 1);
+		});
+		assert.equal(await publishedSha(second), first.headSha);
+		assert.equal(await git(remote, "rev-parse", ref), external);
+		await git(remote, "update-ref", ref, first.headSha, external);
+		await localPushTransport(
+			root,
+			remote,
+			async () => {
+				await assert.rejects(runtime.push(second, repository, signal()), /Git operation failed/);
+			},
+			{ ref, sha: external }
+		);
+		assert.equal(await publishedSha(second), first.headSha);
+		assert.equal(await git(remote, "rev-parse", ref), external);
+		await git(remote, "update-ref", ref, first.headSha, external);
+		await localPushTransport(root, remote, async () => {
+			await runtime.push(second, repository, signal());
+		});
+		assert.equal(await publishedSha(second), second.headSha);
+		assert.equal(await git(remote, "rev-parse", ref), second.headSha);
 	});
 });
