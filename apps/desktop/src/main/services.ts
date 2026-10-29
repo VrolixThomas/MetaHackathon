@@ -80,6 +80,7 @@ export const conversationService = new ConversationService(conversationClient, {
 		operate: (operation, requestId, signal) => getHub().operate(operation, requestId, signal),
 		ticket: (id, signal) => getHub().ticket(id, signal),
 		job: (id) => getHub().job(id),
+		jobLog: (id, cursor, limit) => getWorkJobs().log(id, cursor, limit),
 		feedback: (id, signal) => getHub().feedback(id, signal),
 		reviewWork: (id) => getWorkJobs().review(id),
 		source: (request, signal) => getHub().source(request, signal),

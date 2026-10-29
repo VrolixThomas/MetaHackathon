@@ -23,6 +23,34 @@ import {
 
 type Command = (input: WorkspaceCommand) => void;
 
+function OpenReview({
+	item,
+	hub,
+	command,
+}: { item: ReviewQueueItem; hub: HubController; command: Command }) {
+	const { busy } = useStore(hub.store);
+	const status = item.preparationStatus;
+	return status === "error" ? (
+		<button
+			type="button"
+			disabled={busy}
+			onClick={() => void hub.operate({ kind: "retry-review", prId: item.pr.id })}
+		>
+			Retry review preparation
+		</button>
+	) : (
+		<button
+			type="button"
+			disabled={status === "queued" || status === "preparing"}
+			onClick={() => command({ kind: "show-review", prId: item.pr.id })}
+		>
+			{status === "queued" || status === "preparing"
+				? "Preparing code review…"
+				: "Open code review"}
+		</button>
+	);
+}
+
 function FeedbackView({
 	hub,
 	item,
@@ -67,9 +95,7 @@ function FeedbackView({
 				{item.feedbackCount === 1 ? "" : "s"}
 			</p>
 			<div className="hub-actions">
-				<button type="button" onClick={() => command({ kind: "show-review", prId: item.pr.id })}>
-					Open code review
-				</button>
+				<OpenReview item={item} hub={hub} command={command} />
 				<button
 					type="button"
 					className="quiet"
@@ -341,12 +367,7 @@ function ConnectedCenter({
 						<p className="hub-muted">
 							{selectedReview.pr.author} · {selectedReview.headBranch} → {selectedReview.baseBranch}
 						</p>
-						<button
-							type="button"
-							onClick={() => command({ kind: "show-review", prId: selectedReview.pr.id })}
-						>
-							Open review
-						</button>
+						<OpenReview item={selectedReview} hub={hub} command={command} />
 					</article>
 				)
 			) : canvas.selectedId && canvas.selectedId !== "connections" ? (
@@ -459,9 +480,9 @@ function ConnectedCenter({
 										className="hub-list-row quiet"
 										key={item.pr.id}
 										onClick={() =>
-											canvas.section === "reviews"
+											canvas.section === "reviews" && item.preparationStatus === "ready"
 												? command({ kind: "show-review", prId: item.pr.id })
-												: select("feedback", item.pr.id)
+												: select(canvas.section, item.pr.id)
 										}
 									>
 										<div>
@@ -473,9 +494,13 @@ function ConnectedCenter({
 										<span className="hub-status">
 											{canvas.section === "feedback"
 												? `${item.feedbackCount} feedback`
-												: item.draft
-													? "Draft"
-													: "Review requested"}
+												: item.preparationStatus === "error"
+													? "Preparation needs retry"
+													: item.preparationStatus && item.preparationStatus !== "ready"
+														? "Preparing review…"
+														: item.draft
+															? "Draft"
+															: "Review requested"}
 										</span>
 									</button>
 								))}

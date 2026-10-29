@@ -1566,3 +1566,51 @@ test("revision invalidates the earlier inspected review while bounded job contex
 	);
 	assert.equal(d.operations.length, 1);
 });
+
+test("a ready review in another watched repository can open through the workspace receipt gate", async () => {
+	const d = data();
+	const row = d.hub.reviews[1];
+	assert.ok(row);
+	row.preparationStatus = "preparing";
+	const w = workspace(d);
+	w.observation.capabilities.push("review");
+	await w.tools.observe();
+	await assert.rejects(w.tools.command({ kind: "show-review", prId: row.pr.id }), /not ready/);
+	assert.equal(w.commands.length, 0);
+	row.preparationStatus = "ready";
+	await w.tools.observe();
+	const opening = w.tools.command({ kind: "show-review", prId: row.pr.id });
+	await eventually(() => w.actions.length === 1);
+	assert.deepEqual(w.commands, [{ kind: "show-review", prId: row.pr.id }]);
+	w.settle();
+	await opening;
+	await assert.rejects(
+		w.tools.command({ kind: "show-review", prId: "unobserved#99" }),
+		/not ready/
+	);
+});
+
+test("execution log inspection requires the actual job and bounds raw log content without inventing outcomes", async () => {
+	const d = data();
+	d.ports.jobLog = async (jobId, cursor, limit) => ({
+		jobId,
+		cursor: cursor + limit,
+		lines: Array.from({ length: limit }, () => "untrusted command output ".repeat(100)),
+		truncated: false,
+	});
+	const tools = new ConversationHubTools(d.ports, input, new AbortController().signal);
+	await assert.rejects(
+		tools.execute("inspect_work_log", JSON.stringify({ jobId: d.job.id })),
+		/Inspect the actual/
+	);
+	await tools.execute("inspect_work_job", JSON.stringify({ id: d.job.id }));
+	const output = await tools.execute(
+		"inspect_work_log",
+		JSON.stringify({ jobId: d.job.id, cursor: 4, limit: 20 })
+	);
+	const text = JSON.stringify(output);
+	assert.ok(Buffer.byteLength(text) < 20000);
+	assert.equal((output as { cursor: number }).cursor, 24);
+	assert.equal((output as { truncated: boolean }).truncated, true);
+	assert.ok(!text.includes('"exitCode":0'));
+});

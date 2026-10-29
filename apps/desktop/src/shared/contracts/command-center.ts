@@ -36,6 +36,7 @@ export const ReviewQueueItemSchema = z.strictObject({
 	reviewState: z.enum(["requested", "waiting", "commented", "changes-requested", "approved"]),
 	feedbackCount: z.int().nonnegative(),
 	lastFeedbackAt: z.iso.datetime().nullable(),
+	preparationStatus: z.enum(["queued", "preparing", "ready", "error"]).optional(),
 });
 export const PullRequestFeedbackSchema = z.strictObject({
 	id: IdSchema,
@@ -200,6 +201,7 @@ export const HubSnapshotSchema = z.strictObject({
 });
 export const HubOperationSchema = z.discriminatedUnion("kind", [
 	z.strictObject({ kind: z.literal("refresh") }),
+	z.strictObject({ kind: z.literal("retry-review"), prId: IdSchema }),
 	z.strictObject({
 		kind: z.literal("add-repository"),
 		repository: GitHubRepositorySchema,

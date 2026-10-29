@@ -851,3 +851,62 @@ describe("WorkspaceCoordinator", () => {
 		assert.equal((await h.coordinator.observe("session")).workspace.sequence, 0);
 	});
 });
+
+it("creates a durable flow from main-read exact source outside changed files and rejects mixed commits", async (t) => {
+	const requests: unknown[] = [];
+	const h = harness(t, {
+		readSource: async (location) => {
+			requests.push(location);
+			return {
+				location,
+				text: "unchanged source();\r\n",
+				language: "typescript",
+				truncated: false,
+			};
+		},
+	});
+	const location = {
+		repository: "example/project",
+		commitSha: "b".repeat(40),
+		revision: "head" as const,
+		path: "unchanged/caller.ts",
+		startLine: 8,
+		endLine: 8,
+	};
+	const command = {
+		kind: "create-flow" as const,
+		title: "Whole payment flow",
+		summary: "Inferred order across actual source",
+		steps: [{ title: "Caller", explanation: "Inferred relationship", location }],
+	};
+	const action = await h.prepare(command);
+	assert.equal((await h.coordinator.observe("session")).workspace.primaryId, "review");
+	await h.apply(action);
+	const canvas = (await h.coordinator.observe("session")).workspace.canvases.find(
+		(c) => c.kind === "flow"
+	);
+	assert.equal(canvas?.kind, "flow");
+	if (canvas?.kind !== "flow") throw Error("Expected actual flow");
+	assert.equal(canvas.flow.steps[0]?.source.text, "unchanged source();\r\n");
+	assert.deepEqual(canvas.flow.steps[0]?.source.location, location);
+	assert.equal(canvas.flow.provenance, "source-with-inferred-order");
+	assert.ok(h.state.saved.canvases.some((entry) => entry.canvas.id === canvas.id));
+	await assert.rejects(
+		h.prepare(
+			{
+				...command,
+				steps: [
+					...command.steps,
+					{
+						title: "Another caller",
+						explanation: "Inferred relationship",
+						location: { ...location, commitSha: "c".repeat(40) },
+					},
+				],
+			},
+			"mixed-pins"
+		),
+		/one pinned/
+	);
+	assert.equal(requests.length, 1, "Mixed revisions reject before another source read");
+});

@@ -62,7 +62,8 @@ interface HubPorts {
 		"account" | "repository" | "repositories" | "reviews" | "feedback" | "source"
 	>;
 	linear: Pick<HubLinearClient, "viewer" | "tickets" | "ticket" | "scopes">;
-	registry: Pick<ReviewRegistry, "register" | "ensure" | "remove">;
+	registry: Pick<ReviewRegistry, "register" | "ensure" | "remove"> &
+		Partial<Pick<ReviewRegistry, "statuses" | "retry">>;
 	connections(): Promise<{ github: boolean; linear: boolean; model: boolean }>;
 	legacyCache(): Promise<ReviewCache>;
 }
@@ -152,6 +153,7 @@ export class CommandCenterService {
 	async snapshot(): Promise<HubSnapshot> {
 		await this.initialize();
 		const connections = await this.ports.connections();
+		const preparation = await this.ports.registry.statuses?.();
 		const preferences = this.state.preferences;
 		const tickets = this.state.tickets
 			.filter(
@@ -169,7 +171,10 @@ export class CommandCenterService {
 			viewer: { githubLogin: this.githubLogin, linearName: this.linearName },
 			connections,
 			repositories: this.state.repositories,
-			reviews: this.reviews,
+			reviews: this.reviews.map((item) => ({
+				...item,
+				...(preparation ? { preparationStatus: preparation.get(item.pr.id) ?? "queued" } : {}),
+			})),
 			tickets,
 			jobs: this.state.jobs.map(
 				({ brief: _, decisions, checks: __, changedFiles, ticket, ...job }) => ({
@@ -336,6 +341,14 @@ export class CommandCenterService {
 		)
 			throw new HubFailure("failed");
 		switch (operation.kind) {
+			case "retry-review":
+				if (
+					!this.reviews.some((item) => item.pr.id === operation.prId) ||
+					!this.ports.registry.retry
+				)
+					throw new HubFailure("notFound");
+				await this.ports.registry.retry(operation.prId);
+				break;
 			case "refresh":
 				await this.refresh();
 				break;

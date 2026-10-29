@@ -220,7 +220,9 @@ export function ConversationApp({
 					<span className="app-symbol" aria-hidden="true">
 						◌
 					</span>
-					<span className="repository-identity-name">{repository ?? "Open repository"}</span>
+					<span className="repository-identity-name">
+						{repository ?? (hub ? "Repositories" : "Open repository")}
+					</span>
 					{identity && (
 						<>
 							<span className="identity-number">#{identity.number}</span>

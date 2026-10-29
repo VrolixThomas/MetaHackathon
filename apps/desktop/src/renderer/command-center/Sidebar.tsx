@@ -146,8 +146,8 @@ export function CommandSidebar({
 															key={item.pr.id}
 															aria-current={selectedId === item.pr.id ? "true" : undefined}
 															onClick={() =>
-																queueKind === "own"
-																	? select("feedback", item.pr.id)
+																queueKind === "own" || item.preparationStatus !== "ready"
+																	? select(queueKind === "own" ? "feedback" : "reviews", item.pr.id)
 																	: command({ kind: "show-review", prId: item.pr.id })
 															}
 														>

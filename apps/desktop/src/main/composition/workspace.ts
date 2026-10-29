@@ -503,6 +503,13 @@ export class WorkspaceCoordinator {
 					PreparedReviewSchema,
 					await invoke(() => this.ports.getReviews().getReady(prId, signal))
 				);
+				if (command.kind === "show-review" && this.ports.hubSnapshot) {
+					const hub = await this.ports.hubSnapshot();
+					snapshot.centerSection =
+						hub.reviews.find((item) => item.pr.id === prId)?.kind === "own"
+							? "feedback"
+							: "reviews";
+				}
 				const direction =
 					command.kind === "navigate-review"
 						? {

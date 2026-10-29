@@ -243,7 +243,12 @@ export class ConversationWorkspaceTools {
 			throw new GuidedReviewError("Review navigation is unavailable in this workspace.");
 		if (
 			command.kind === "show-review" &&
-			!expected.reviews.some((review) => review.pr.id === command.prId && review.status === "ready")
+			!expected.reviews.some(
+				(review) => review.pr.id === command.prId && review.status === "ready"
+			) &&
+			!expected.hub?.reviews.some(
+				(review) => review.pr.id === command.prId && review.preparationStatus === "ready"
+			)
 		)
 			throw new GuidedReviewError("That review is not ready. Select a prepared review.");
 		if (command.kind === "browser-action" && "browserId" in command.action) {
