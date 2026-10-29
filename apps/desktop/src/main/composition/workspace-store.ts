@@ -10,7 +10,7 @@ export function createWorkspaceStore(userDataPath: string) {
 	return {
 		async load(): Promise<SavedWorkspaceCanvases | null> {
 			try {
-				if ((await stat(path)).size > 16 * 1024 * 1024)
+				if ((await stat(path)).size > 32 * 1024 * 1024)
 					throw new Error("Saved canvas data exceeds its storage limit");
 				return SavedWorkspaceCanvasesSchema.parse(JSON.parse(await readFile(path, "utf8")));
 			} catch (error) {
@@ -21,7 +21,7 @@ export function createWorkspaceStore(userDataPath: string) {
 		async save(value: SavedWorkspaceCanvases, signal?: AbortSignal): Promise<void> {
 			signal?.throwIfAborted();
 			const payload = JSON.stringify(SavedWorkspaceCanvasesSchema.parse(value));
-			if (Buffer.byteLength(payload) > 16 * 1024 * 1024)
+			if (Buffer.byteLength(payload) > 32 * 1024 * 1024)
 				throw new Error("Saved canvas data exceeds its storage limit");
 			await mkdir(directory, { recursive: true, mode: 0o700 });
 			const temporary = join(directory, `canvases-${randomUUID()}.tmp`);

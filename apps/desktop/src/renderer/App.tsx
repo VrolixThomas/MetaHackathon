@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { createHubController } from "./command-center/controller";
 import { ConversationApp } from "./conversation/ConversationApp";
 import { createConversationApi } from "./conversation/api";
 import { createConversationController } from "./conversation/controller";
@@ -20,7 +21,8 @@ export function App() {
 			onManualChange: controller.interruptReply,
 		});
 		controller.attachWorkspace(workspace);
-		return { api, controller, reviews, browser, workspace };
+		const hub = createHubController(api.call);
+		return { api, controller, reviews, browser, workspace, hub };
 	});
 	useEffect(() => {
 		const disconnectVoice = connectConversationVoice(runtime.api, runtime.controller);
@@ -33,6 +35,7 @@ export function App() {
 		runtime.reviews.start();
 		runtime.browser.start();
 		void runtime.workspace.start();
+		runtime.hub.start();
 		const release = () => runtime.controller.release();
 		const recordError = () => {
 			void runtime.api
@@ -49,6 +52,7 @@ export function App() {
 			disconnectShortcuts();
 			runtime.controller.dispose();
 			runtime.workspace.dispose();
+			runtime.hub.dispose();
 			runtime.reviews.dispose();
 			runtime.browser.dispose();
 			disconnectVoice();
@@ -63,6 +67,7 @@ export function App() {
 			reviews={runtime.reviews}
 			browser={runtime.browser}
 			workspace={runtime.workspace}
+			hub={runtime.hub}
 		/>
 	);
 }

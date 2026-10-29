@@ -186,7 +186,7 @@ export function hubModelContext(raw: HubSnapshot) {
 			activeJobs: hub.jobs.filter((j) =>
 				["queued", "running", "needs-input", "validating"].includes(j.state)
 			).length,
-			completedJobs: hub.jobs.filter((j) => j.state === "ready").length,
+			completedJobs: hub.jobs.filter((j) => j.state === "ready" && !j.reviewedAt).length,
 			pendingDecisions: hub.jobs.reduce((n, j) => n + j.pendingDecisions, 0),
 			unannouncedNotices: hub.notices.filter((n) => !n.announcedAt).length,
 		},

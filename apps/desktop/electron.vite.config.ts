@@ -25,7 +25,10 @@ export default defineConfig({
 		],
 		build: {
 			rollupOptions: {
-				input: resolve(__dirname, "src/main/index.ts"),
+				input: {
+					index: resolve(__dirname, "src/main/index.ts"),
+					"coding-worker": resolve(__dirname, "src/main/work/coding-entry.ts"),
+				},
 			},
 		},
 	},

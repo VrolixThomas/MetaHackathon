@@ -3,6 +3,7 @@ import { join } from "node:path";
 import Database from "better-sqlite3";
 import { drizzle } from "drizzle-orm/better-sqlite3";
 import { app } from "electron";
+import { HubStore } from "./hub-store";
 import { ReviewStore } from "./review-store";
 import { RuntimeState } from "./runtime-state";
 import * as schema from "./schema";
@@ -18,6 +19,7 @@ export function openDatabase() {
 		db: drizzle(sqlite, { schema }),
 		runtime: new RuntimeState(sqlite),
 		reviews: new ReviewStore(sqlite),
+		hub: new HubStore(sqlite),
 		close: () => sqlite.close(),
 	};
 }

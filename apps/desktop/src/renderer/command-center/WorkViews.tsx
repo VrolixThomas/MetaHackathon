@@ -562,7 +562,7 @@ export function JobView({
 						Pause work
 					</button>
 				)}
-				{job.state === "ready" && !job.pullRequest && (
+				{job.state === "ready" && !job.pullRequest && job.changedFiles.length > 0 && (
 					<button
 						type="button"
 						disabled={busy}
@@ -637,12 +637,13 @@ export function JobView({
 								required
 								maxLength={10000}
 								value={answers[decision.id] ?? ""}
-								onChange={(event) =>
+								onChange={(event) => {
+									const value = event.currentTarget.value;
 									setAnswers((previous) => ({
 										...previous,
-										[decision.id]: event.currentTarget.value,
-									}))
-								}
+										[decision.id]: value,
+									}));
+								}}
 							/>
 						</label>
 						<button type="submit" disabled={busy || !answers[decision.id]?.trim()}>

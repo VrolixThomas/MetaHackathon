@@ -9,6 +9,7 @@ import {
 	ConversationPRContextSchema,
 	type ConversationTurnInput,
 	ConversationTurnInputSchema,
+	HUB_ERROR_MESSAGES,
 	IdSchema,
 	MicrophoneStatusSchema,
 	type PollTurn,
@@ -35,8 +36,12 @@ export function createConversationApi(request: Request) {
 		const response = await request({ type, path, input: superjson.serialize(input) });
 		if ("error" in response)
 			throw new Error(
-				path.startsWith("workspace.") && response.error.message === WORKSPACE_GITHUB_REQUIRED
-					? WORKSPACE_GITHUB_REQUIRED
+				(path.startsWith("workspace.") && response.error.message === WORKSPACE_GITHUB_REQUIRED) ||
+					(path.startsWith("hub.") &&
+						Object.values(HUB_ERROR_MESSAGES).includes(
+							response.error.message as (typeof HUB_ERROR_MESSAGES)[keyof typeof HUB_ERROR_MESSAGES]
+						))
+					? response.error.message
 					: conversationErrorMessage(response.error.message)
 			);
 		return superjson.deserialize(response.result.data);

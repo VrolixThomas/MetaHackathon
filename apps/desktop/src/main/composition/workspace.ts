@@ -6,9 +6,12 @@ import {
 	AgentActionSchema,
 	type Canvas,
 	CanvasSchema,
+	type CodeLocation,
+	type HubSnapshot,
 	IdSchema,
 	type LocalBrowserState,
 	LocalBrowserStateSchema,
+	type PinnedSource,
 	PreparedReviewSchema,
 	ReviewInboxSchema,
 	type ReviewNavigation,
@@ -31,9 +34,10 @@ import {
 } from "../../shared/contracts";
 import type { ReviewCoordinator } from "./reviews";
 
-export type GeneratedCanvas = Extract<Canvas, { kind: "document" | "visual" }>;
+export type GeneratedCanvas = Extract<Canvas, { kind: "document" | "visual" | "flow" }>;
 const generatedSchema = CanvasSchema.refine(
-	(value): value is GeneratedCanvas => value.kind === "document" || value.kind === "visual",
+	(value): value is GeneratedCanvas =>
+		value.kind === "document" || value.kind === "visual" || value.kind === "flow",
 	"Only generated drafts can be saved"
 );
 /** Root owns the durable adapter; closed drafts remain addressable by their assigned ID. */
@@ -47,7 +51,7 @@ export const SavedWorkspaceCanvasesSchema = z
 			new Set(canvases.map(({ canvas }) => canvas.id)).size !== canvases.length ||
 			canvases.filter(({ closed }) => closed).length > 50 ||
 			canvases.filter(({ closed }) => !closed).length > 12 ||
-			canvases.some(({ canvas }) => canvas.id === "review" || canvas.id === "browser")
+			canvases.some(({ canvas }) => ["review", "browser", "center"].includes(canvas.id))
 		)
 			context.addIssue({ code: "custom", message: "Invalid saved canvas identities or limits" });
 	});
@@ -70,6 +74,9 @@ export interface WorkspaceCoordinatorPorts {
 	getBrowser(): WorkspaceBrowserPort;
 	loadCanvases?(): Promise<SavedWorkspaceCanvases | null>;
 	saveCanvases?(value: SavedWorkspaceCanvases, signal?: AbortSignal): Promise<void>;
+	hubSnapshot?(): Promise<HubSnapshot>;
+	readSource?(location: CodeLocation, signal: AbortSignal): Promise<PinnedSource>;
+	activateReview?(prId: string, signal: AbortSignal): Promise<void>;
 }
 type WorkspaceAction = Extract<AgentAction, { kind: "workspace-canvas" }>;
 const prepareSchema = z.strictObject({
@@ -81,7 +88,7 @@ const prepareSchema = z.strictObject({
 const turnSchema = TurnIdentitySchema.extend({ requestId: IdSchema });
 const clone = <T>(value: T): T => structuredClone(value);
 const generated = (canvas: Canvas): canvas is GeneratedCanvas =>
-	canvas.kind === "document" || canvas.kind === "visual";
+	canvas.kind === "document" || canvas.kind === "visual" || canvas.kind === "flow";
 const initialReview = (): Canvas => ({
 	id: "review",
 	kind: "review",
@@ -215,11 +222,14 @@ export class WorkspaceCoordinator {
 					await this.call(created.controller.signal, () => this.ports.getReviews().getScreen(id))
 				);
 				this.live(created.controller.signal);
-				// Saved drafts are retained in the library. Startup always has the real review canvas.
+				// The executive brief is live data; legacy isolated compositions retain their review canvas.
 				created.snapshot = parse(WorkspaceSnapshotSchema, {
 					sequence: 0,
-					canvases: [initialReview()],
-					primaryId: "review",
+					canvases: this.ports.hubSnapshot
+						? [{ id: "center", title: "Home", revision: 1, kind: "center", section: "home" }]
+						: [initialReview()],
+					primaryId: this.ports.hubSnapshot ? "center" : "review",
+					...(this.ports.hubSnapshot ? { centerSection: "home" } : {}),
 					secondaryId: null,
 					review: screen,
 					codeView: "diff",
@@ -337,6 +347,98 @@ export class WorkspaceCoordinator {
 		let navigation: ReviewNavigation | undefined;
 		const invoke = <T>(work: () => T | Promise<T>) => this.call(signal, work);
 		switch (command.kind) {
+			case "open-center": {
+				if (!this.ports.hubSnapshot) fail("Command center is unavailable.");
+				const titles = {
+					home: "Home",
+					reviews: "PR reviews",
+					feedback: "My PR feedback",
+					tickets: "My tickets",
+					completed: "Completed work",
+					activity: "Activity",
+				};
+				const previous = snapshot.canvases.find((canvas) => canvas.id === "center");
+				this.put(
+					snapshot,
+					parse(CanvasSchema, {
+						id: "center",
+						kind: "center",
+						revision: (previous?.revision ?? 0) + 1,
+						title: titles[command.section],
+						section: command.section,
+						...(command.selectedId ? { selectedId: command.selectedId } : {}),
+					})
+				);
+				snapshot.centerSection = command.section;
+				snapshot.primaryId = "center";
+				snapshot.secondaryId = null;
+				break;
+			}
+			case "open-source": {
+				if (!this.ports.readSource) fail("Pinned source is unavailable.");
+				const source = await invoke(() => this.ports.readSource?.(command.location, signal));
+				const id = command.target === "secondary" ? "source-secondary" : "source-primary";
+				const previousSource = snapshot.canvases.find((canvas) => canvas.id === id);
+				this.put(
+					snapshot,
+					parse(CanvasSchema, {
+						id,
+						kind: "source",
+						revision: (previousSource?.revision ?? 0) + 1,
+						title: command.location.path.slice(-120),
+						source,
+					})
+				);
+				this.focus(snapshot, id, command.target);
+				break;
+			}
+			case "create-flow": {
+				if (!this.ports.readSource) fail("Pinned source is unavailable.");
+				const first = command.steps[0]?.location;
+				if (
+					!first ||
+					command.steps.some(
+						(step) =>
+							step.location.repository !== first.repository ||
+							step.location.commitSha !== first.commitSha ||
+							step.location.revision !== first.revision
+					)
+				)
+					fail("A flow must use one pinned repository revision.");
+				const previous = command.id
+					? (snapshot.canvases.find((canvas) => canvas.id === command.id) ??
+						this.library.canvases.find((item) => item.canvas.id === command.id)?.canvas)
+					: undefined;
+				if (command.id && previous?.kind !== "flow") fail("Unknown code flow.");
+				const steps = [];
+				for (const step of command.steps) {
+					const source = await invoke(() => this.ports.readSource?.(step.location, signal));
+					steps.push({
+						id: randomUUID(),
+						title: step.title,
+						explanation: step.explanation,
+						source,
+					});
+				}
+				const id = previous?.id ?? randomUUID();
+				this.put(
+					snapshot,
+					parse(CanvasSchema, {
+						id,
+						kind: "flow",
+						revision: (previous?.revision ?? 0) + 1,
+						title: command.title,
+						flow: {
+							title: command.title,
+							summary: command.summary,
+							steps,
+							provenance: "source-with-inferred-order",
+						},
+					})
+				);
+				this.focus(snapshot, id, command.target);
+				break;
+			}
 			case "write-document":
 			case "create-visual": {
 				const previous = command.id
@@ -395,6 +497,8 @@ export class WorkspaceCoordinator {
 			case "navigate-review": {
 				const prId = command.kind === "show-review" ? command.prId : snapshot.review.prId;
 				if (!prId) fail("Open a ready review before navigating its source.");
+				if (command.kind === "show-review" && this.ports.activateReview)
+					await invoke(() => this.ports.activateReview?.(prId, signal));
 				const review = parse(
 					PreparedReviewSchema,
 					await invoke(() => this.ports.getReviews().getReady(prId, signal))
@@ -755,6 +859,12 @@ export class WorkspaceCoordinator {
 				...(status === "ready" && prepared ? { reviewId: prepared.id } : {}),
 			})),
 			capabilities: ["documents", "visuals", "browser", "review"],
+			...(this.ports.hubSnapshot
+				? {
+						hub: await this.ports.hubSnapshot(),
+						capabilities: ["documents", "visuals", "browser", "review", "center", "source", "flow"],
+					}
+				: {}),
 			savedCanvases: this.library.canvases
 				.filter(
 					({ closed, canvas }) => closed || !current.canvases.some(({ id }) => id === canvas.id)

@@ -376,8 +376,12 @@ export class ConversationService {
 					return reply;
 				};
 				const observed = await workspace?.observe();
+				const primary = observed?.workspace.canvases.find(
+					(canvas) => canvas.id === observed.workspace.primaryId
+				);
+				const executiveContext = primary && ["center", "source", "flow"].includes(primary.kind);
 				const effectivePrId = observed
-					? observed.workspace.review.mode === "review"
+					? !executiveContext && observed.workspace.review.mode === "review"
 						? observed.workspace.review.prId
 						: undefined
 					: turn.input.prId;

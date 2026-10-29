@@ -26,6 +26,8 @@ MODEL_API_KEY=
 # ElevenLabs speech API key and public voice ID.
 ELEVENLABS_API_KEY=
 ELEVENLABS_VOICE_ID=
+# Linear personal API key for your own assigned tickets.
+LINEAR_API_KEY=
 `;
 export type EnvMigration = Partial<Record<CredentialProvider | "voiceId", string>>;
 interface Document {
@@ -230,6 +232,15 @@ export class EnvConfiguration {
 	voiceId(): Promise<string | undefined> {
 		return this.serialize(async () => (await this.read())?.values[voiceKey]?.trim() || undefined);
 	}
+	linearToken(): Promise<string | undefined> {
+		return this.serialize(async () => {
+			const raw = (await this.read())?.values["LINEAR_API_KEY"]?.trim();
+			if (!raw) return undefined;
+			if (raw.length > 16384 || /[\r\n\0]/.test(raw))
+				throw new Error("Invalid Linear configuration");
+			return raw;
+		});
+	}
 	setVoiceId(voiceId: string): Promise<void> {
 		return this.serialize(async () => {
 			const normalized = value(voiceId);
@@ -262,7 +273,12 @@ export class EnvConfiguration {
 	}
 	ensureTemplate(): Promise<void> {
 		return this.serialize(async () => {
-			if (!(await this.read())) await this.write(template, true);
+			const source = await this.read();
+			if (!source) await this.write(template, true);
+			else if (source.values["LINEAR_API_KEY"] === undefined)
+				await this.write(
+					`${source.text}${source.text.endsWith("\n") ? "" : "\n"}# Linear personal API key\nLINEAR_API_KEY=\n`
+				);
 		});
 	}
 }

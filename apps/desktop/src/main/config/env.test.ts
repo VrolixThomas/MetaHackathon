@@ -41,6 +41,7 @@ describe("main-only environment configuration", () => {
 			MODEL_API_KEY: "",
 			ELEVENLABS_API_KEY: "",
 			ELEVENLABS_VOICE_ID: "",
+			LINEAR_API_KEY: "",
 		});
 		assert.equal((await stat(path)).mode & 0o777, 0o600);
 		await env.set("meta", "fake-meta");
@@ -255,4 +256,18 @@ describe("main-only environment configuration", () => {
 			(error: Error) => !error.message.includes("fake-secret")
 		);
 	});
+});
+
+it("keeps the real Linear key main-only and upgrades a preexisting template without replacing other keys", async (t) => {
+	const original = "# Existing configuration\nMODEL_API_KEY=retained-test-key\n";
+	const { env, path } = await fixture(t, original);
+	await env.ensureTemplate();
+	assert.ok((await readFile(path, "utf8")).startsWith(original));
+	await writeFile(
+		path,
+		(await readFile(path, "utf8")).replace("LINEAR_API_KEY=", "LINEAR_API_KEY=lin_api_test_value")
+	);
+	assert.equal(await env.linearToken(), "lin_api_test_value");
+	assert.ok(!JSON.stringify(await env.status()).includes("lin_api_test_value"));
+	assert.equal(await env.get("meta"), "retained-test-key");
 });

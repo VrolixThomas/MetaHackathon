@@ -1,9 +1,12 @@
+import { dirname, join } from "node:path";
+import { fileURLToPath } from "node:url";
 import { TRPCError } from "@trpc/server";
 import type { ReviewCache } from "../shared/contracts";
 import { ConversationService } from "./agent/conversation";
 import { MetaClient } from "./agent/meta-client";
 import { prepareReview } from "./agent/prepare-review";
 import { ScreenContextStore } from "./agent/screen-context";
+import { assessSuggestedFix } from "./agent/suggestion-review";
 import { createAgentComposition } from "./composition";
 import { LocalBrowserSurface } from "./composition/browser-surface";
 import { ConversationDiagnostics } from "./composition/diagnostics";
@@ -13,8 +16,15 @@ import { WorkspaceCoordinator } from "./composition/workspace";
 import { createWorkspaceStore } from "./composition/workspace-store";
 import type { EnvConfiguration } from "./config/env";
 import type { AppConfigurationPorts } from "./config/router";
+import type { HubStore } from "./db/hub-store";
 import { type BrowserPage, BrowserService, type BrowserServiceOptions } from "./runtime/browser";
+import { HubGitHubClient } from "./runtime/hub-github";
+import { HubLinearClient } from "./runtime/hub-linear";
 import type { RuntimeOptions, RuntimeService } from "./runtime/service";
+import { WorkJobRuntime } from "./runtime/work-job-runtime";
+import { CommandCenterService } from "./work/hub";
+import { WorkJobCoordinator } from "./work/jobs";
+import { ReviewRegistry } from "./work/review-registry";
 
 let runtime: RuntimeService | undefined;
 let dataDirectory: string | undefined;
@@ -35,6 +45,10 @@ let configuration: EnvConfiguration | undefined;
 let configurationPorts: AppConfigurationPorts | undefined;
 let reviews: ReviewCoordinator | undefined;
 let workspace: WorkspaceCoordinator | undefined;
+let hub: CommandCenterService | undefined;
+let workJobs: WorkJobCoordinator | undefined;
+let reviewRegistry: ReviewRegistry | undefined;
+let hubReviewStore: HubStore | undefined;
 let chooseRepository: (() => Promise<{ repository: string; localPath: string } | null>) | undefined;
 export const screenContexts = new ScreenContextStore();
 export const agentComposition = createAgentComposition({
@@ -61,6 +75,16 @@ const conversationClient = new MetaClient({
 });
 export const conversationService = new ConversationService(conversationClient, {
 	narrationCheckpoints: true,
+	hub: {
+		snapshot: () => getHub().snapshot(),
+		operate: (operation, requestId, signal) => getHub().operate(operation, requestId, signal),
+		ticket: (id, signal) => getHub().ticket(id, signal),
+		job: (id) => getHub().job(id),
+		feedback: (id, signal) => getHub().feedback(id, signal),
+		reviewWork: (id) => getWorkJobs().review(id),
+		source: (request, signal) => getHub().source(request, signal),
+		search: (request, signal) => getHub().search(request, signal),
+	},
 	workspace: {
 		observe: (sessionId, signal) => getWorkspace().observe(sessionId, signal),
 		execute: (command, turn, signal, onAction) =>
@@ -91,7 +115,11 @@ export function initializeReviews(
 	chooseRepository = picker;
 	reviews = new ReviewCoordinator({
 		loadCache: () => store.load(),
-		saveCache: (cache) => store.save(cache),
+		saveCache: async (cache) => {
+			await store.save(cache);
+			if (hubReviewStore && cache.repository)
+				await hubReviewStore.saveReview(cache.repository, cache);
+		},
 		listOpen: (repository, signal) =>
 			runtimeForActiveJobs().repositoryPullRequests(repository, signal),
 		readPR: (prId, signal) => {
@@ -114,10 +142,119 @@ export function initializeReviews(
 		.initialize()
 		.catch(() => console.warn("Saved review connection could not initialize."));
 }
+export async function initializeHub(
+	userDataPath: string,
+	store: HubStore,
+	legacyStore: { load(): ReviewCache | Promise<ReviewCache> }
+) {
+	if (!reviews) throw new Error("Review foundation unavailable");
+	hubReviewStore = store;
+	const github = new HubGitHubClient({ getToken: () => getConfiguration().get("github") });
+	const linear = new HubLinearClient({ getKey: () => getConfiguration().linearToken() });
+	reviewRegistry = new ReviewRegistry(
+		reviews,
+		(repository) =>
+			new ReviewCoordinator({
+				loadCache: async () =>
+					(await store.loadReview(repository.repository)) ?? {
+						repository: repository.repository,
+						localPath: repository.localPath,
+						prepared: [],
+						progress: [],
+					},
+				saveCache: (cache) => store.saveReview(repository.repository, cache),
+				listOpen: async (name, signal) =>
+					(await github.reviews(name, signal)).map((item) => item.pr),
+				readPR: (id, signal) => {
+					const match = /^([^#]+)#([1-9][0-9]*)$/.exec(id);
+					if (!match) throw new Error("Invalid PR");
+					return runtimeForActiveJobs().github.readPullRequest(
+						match[1] ?? "",
+						Number(match[2]),
+						signal
+					);
+				},
+				getContext: (id, signal) => runtimeForActiveJobs().prContext(id, signal),
+				readFile: (input, localPath, signal) =>
+					runtimeForActiveJobs().reviewFile(input, signal, localPath ?? undefined),
+				validateLocal: (path, name, signal) =>
+					runtimeForActiveJobs().validateLocalRepository(path, name, signal),
+				prepare: (context, signal) => prepareReview(conversationClient, context, signal),
+			})
+	);
+	hub = new CommandCenterService({
+		store,
+		github,
+		linear,
+		registry: reviewRegistry,
+		legacyCache: () => Promise.resolve(legacyStore.load()),
+		connections: async () => ({
+			github: !!(await getConfiguration()
+				.get("github")
+				.catch(() => undefined)),
+			linear: !!(await getConfiguration()
+				.linearToken()
+				.catch(() => undefined)),
+			model: !!(await getConfiguration()
+				.get("meta")
+				.catch(() => undefined)),
+		}),
+	});
+	await hub.initialize();
+	const values = (
+		await Promise.all([
+			getConfiguration()
+				.get("meta")
+				.catch(() => undefined),
+			getConfiguration()
+				.get("github")
+				.catch(() => undefined),
+			getConfiguration()
+				.get("elevenlabs")
+				.catch(() => undefined),
+			getConfiguration()
+				.linearToken()
+				.catch(() => undefined),
+		])
+	).filter((value): value is string => !!value && value.length > 5);
+	const redact = (text: string) =>
+		values.reduce((clean, value) => clean.split(value).join("[redacted]"), text);
+	const runtime = new WorkJobRuntime({
+		directory: join(userDataPath, "work", "git"),
+		getToken: () => getConfiguration().get("github"),
+	});
+	workJobs = new WorkJobCoordinator({
+		hub,
+		runtime,
+		github,
+		linear,
+		directory: join(userDataPath, "work", "jobs"),
+		workerEntry: join(dirname(fileURLToPath(import.meta.url)), "coding-worker.js"),
+		envPath: getConfiguration().path,
+		assessSuggestion: (job, review, signal) =>
+			assessSuggestedFix(conversationClient, job, review, signal),
+		redact,
+	});
+	hub.attachJobs(workJobs);
+	await workJobs.restore();
+	void hub.refresh().catch(() => {});
+}
+export function getHub() {
+	if (closing || !hub) throw new Error("Command center unavailable");
+	return hub;
+}
+export function getWorkJobs() {
+	if (closing || !workJobs) throw new Error("Work runtime unavailable");
+	return workJobs;
+}
+
 export function initializeWorkspace(userDataPath: string): void {
 	const store = createWorkspaceStore(userDataPath);
 	workspace = new WorkspaceCoordinator({
 		getReviews,
+		hubSnapshot: () => getHub().snapshot(),
+		readSource: (location, signal) => getHub().source(location, signal),
+		activateReview: (prId, signal) => reviewRegistry?.activate(prId, signal) ?? Promise.resolve(),
 		getBrowser: () => ({
 			open: async (url, signal) => {
 				await getLocalBrowser().present({ bounds: null });
@@ -137,7 +274,7 @@ export function getWorkspace(): WorkspaceCoordinator {
 }
 export function getReviews(): ReviewCoordinator {
 	if (closing || !reviews) throw new Error("Review preparation is unavailable");
-	return reviews;
+	return reviewRegistry?.getActive() ?? reviews;
 }
 export function pickReviewRepository(): Promise<{ repository: string; localPath: string } | null> {
 	if (closing || !chooseRepository) throw new Error("Repository picker is unavailable");
@@ -239,7 +376,10 @@ export async function disposeRuntime(): Promise<void> {
 		} finally {
 			await conversationService.dispose();
 			await workspace?.dispose();
-			await reviews?.dispose();
+			await workJobs?.dispose();
+			await hub?.dispose();
+			if (reviewRegistry) await reviewRegistry.dispose();
+			else await reviews?.dispose();
 			// Drain provider, confirmation and source jobs while runtime/ledger remain available.
 			await agentComposition.dispose();
 		}

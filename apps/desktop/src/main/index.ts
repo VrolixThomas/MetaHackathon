@@ -6,6 +6,7 @@ import { promisify } from "node:util";
 import { BrowserWindow, app, dialog, safeStorage, shell, systemPreferences } from "electron";
 import electronUpdater from "electron-updater";
 import { MicrophoneStatusSchema } from "../shared/contracts";
+import { developmentEnvPath } from "./config/development-path";
 import { EnvConfiguration } from "./config/env";
 import { initializeAppConfiguration } from "./config/initialize";
 import { openDatabase } from "./db";
@@ -22,6 +23,7 @@ import {
 	initializeConfiguration,
 	initializeConfigurationPorts,
 	initializeDiagnostics,
+	initializeHub,
 	initializeLocalBrowser,
 	initializeReviews,
 	initializeRuntime,
@@ -107,7 +109,7 @@ app
 			process.env["METAHACKATHON_ENV_FILE"] ??
 			(app.isPackaged
 				? join(app.getPath("userData"), ".env")
-				: join(mainDirectory, "../../../..", ".env"));
+				: await developmentEnvPath(join(mainDirectory, "../../../..")));
 		const bundledEnv = join(process.resourcesPath, ".env");
 		const config = await initializeAppConfiguration({
 			envPath,
@@ -162,6 +164,7 @@ app
 				{ navigationPolicy: "workspace" }
 			)
 		);
+		await initializeHub(app.getPath("userData"), database.hub, database.reviews);
 		initializeWorkspace(app.getPath("userData"));
 		const voiceRoot = join(mainDirectory, "../../../../services/voice");
 		const voiceCommand = app.isPackaged

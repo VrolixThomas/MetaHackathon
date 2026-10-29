@@ -4,9 +4,23 @@ import { mergeRouters, publicProcedure, router } from "..";
 import {
 	AgentActionReceiptResultSchema,
 	AgentActionSchema,
+	CommitShaSchema,
 	GitHubRepositorySchema,
+	HUB_ERROR_MESSAGES,
+	HubOperationResultSchema,
+	HubOperationSchema,
+	HubSnapshotSchema,
 	IdSchema,
+	LinearScopeSchema,
+	LinearTicketSchema,
+	PinnedSourceSchema,
+	PullRequestFeedbackSchema,
+	RepositoryChoiceSchema,
+	SourceRangeRequestSchema,
 	WORKSPACE_GITHUB_REQUIRED,
+	WorkJobSchema,
+	WorkLogPageSchema,
+	WorkReviewSchema,
 	WorkspaceActionReceiptSchema,
 	WorkspaceCommandSchema,
 	WorkspaceObservationSchema,
@@ -28,18 +42,91 @@ import {
 	getConfiguration,
 	getConfigurationPorts,
 	getDiagnostics,
+	getHub,
 	getLocalBrowser,
 	getReviews,
 	getRuntime,
 	getVoice,
+	getWorkJobs,
 	getWorkspace,
 	pickReviewRepository,
 	screenContexts,
 } from "../../services";
+import { HubFailure } from "../../work/hub";
 import { bootstrapRouter } from "./bootstrap";
 
+const hubCall = async <T>(work: () => Promise<T>): Promise<T> => {
+	try {
+		return await work();
+	} catch (error) {
+		throw new TRPCError({
+			code: "BAD_REQUEST",
+			message: error instanceof HubFailure ? error.message : HUB_ERROR_MESSAGES.failed,
+		});
+	}
+};
 // Register feature routers here as the application grows.
 export const appRouter = router({
+	hub: router({
+		snapshot: publicProcedure
+			.input(z.strictObject({}).optional())
+			.output(HubSnapshotSchema)
+			.query(() => hubCall(() => getHub().snapshot())),
+		operate: publicProcedure
+			.input(z.strictObject({ requestId: IdSchema, operation: HubOperationSchema }))
+			.output(HubOperationResultSchema)
+			.mutation(({ input }) => hubCall(() => getHub().operate(input.operation, input.requestId))),
+		ticket: publicProcedure
+			.input(z.strictObject({ id: IdSchema }))
+			.output(LinearTicketSchema)
+			.query(({ input }) => hubCall(() => getHub().ticket(input.id))),
+		job: publicProcedure
+			.input(z.strictObject({ id: IdSchema }))
+			.output(WorkJobSchema)
+			.query(({ input }) => hubCall(() => getHub().job(input.id))),
+		jobLog: publicProcedure
+			.input(
+				z.strictObject({
+					jobId: IdSchema,
+					cursor: z.int().nonnegative().default(0),
+					limit: z.int().min(1).max(200).default(100),
+				})
+			)
+			.output(WorkLogPageSchema)
+			.query(({ input }) =>
+				hubCall(() => getWorkJobs().log(input.jobId, input.cursor, input.limit))
+			),
+		reviewWork: publicProcedure
+			.input(z.strictObject({ jobId: IdSchema }))
+			.output(WorkReviewSchema)
+			.query(({ input }) => hubCall(() => getWorkJobs().review(input.jobId))),
+		feedback: publicProcedure
+			.input(z.strictObject({ prId: IdSchema }))
+			.output(z.array(PullRequestFeedbackSchema).max(1000))
+			.query(({ input }) => hubCall(() => getHub().feedback(input.prId))),
+		repositories: publicProcedure
+			.input(z.strictObject({}).optional())
+			.output(z.array(RepositoryChoiceSchema).max(1000))
+			.query(() => hubCall(() => getHub().repositories())),
+		linearScopes: publicProcedure
+			.input(z.strictObject({}).optional())
+			.output(z.array(LinearScopeSchema).max(1000))
+			.query(() => hubCall(() => getHub().linearScopes())),
+		source: publicProcedure
+			.input(SourceRangeRequestSchema)
+			.output(PinnedSourceSchema)
+			.query(({ input }) => hubCall(() => getHub().source(input))),
+		search: publicProcedure
+			.input(
+				z.strictObject({
+					repository: GitHubRepositorySchema,
+					commitSha: CommitShaSchema,
+					query: z.string().min(1).max(200),
+				})
+			)
+			.output(z.array(PinnedSourceSchema).max(12))
+			.query(({ input }) => hubCall(() => getHub().search(input))),
+	}),
 	workspace: router({
 		observe: publicProcedure
 			.input(z.strictObject({ sessionId: IdSchema }))
