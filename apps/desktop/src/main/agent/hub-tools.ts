@@ -3,7 +3,6 @@ import { z } from "zod";
 import {
 	CommitShaSchema,
 	type ConversationTurnInput,
-	GitHubRepositorySchema,
 	type HubOperation,
 	type HubOperationResult,
 	HubOperationResultSchema,

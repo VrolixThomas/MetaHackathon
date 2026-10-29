@@ -1,8 +1,9 @@
-# Muse — local PR review
+# Muse — voice command center
 
-Talk with Muse, connect a real GitHub repository, and review its pull requests in a prepared
-reading order. Voice is available without a PR. Text conversation is optional, behind
-**More → Conversation and typing**. The app starts without demo PRs, fixture explanations or scripted answers.
+Talk with Muse about your requested reviews, feedback on your own PRs, and assigned Linear tickets.
+The Home brief and left sidebar show your real work. Muse can run independent coding jobs while
+you review, ask about product decisions, and bring completed work back for review. Voice is available
+everywhere; text is optional. Startup contains no sample repositories, tickets or scripted answers.
 
 ## Run
 
@@ -19,16 +20,17 @@ On another checkout, install Node 22.12+ and Bun 1.3.9+, then run
 
 ## Configure
 
-The development app reads repository-root `.env`. Copy `.env.example` if needed:
-
-Each worktree has its own `.env`. When switching checkout folders, reuse your configured file
-or select it explicitly with `METAHACKATHON_ENV_FILE`; Git does not transfer local credentials.
+Development worktrees reuse `.env` in the main repository checkout when that file exists.
+On this machine that is `/Users/Werk/Documents/Repositories/MetaHackathon/.env`.
+Otherwise the app uses its checkout-root `.env`; copy `.env.example` if needed.
+`METAHACKATHON_ENV_FILE` explicitly selects another file. Git never transfers local credentials.
 
 ```dotenv
 MODEL_API_KEY=
 ELEVENLABS_API_KEY=
 ELEVENLABS_VOICE_ID=
 GITHUB_TOKEN=
+LINEAR_API_KEY=
 ```
 
 Configuration shows the active path and whether values are present. **Open configuration**
@@ -69,20 +71,52 @@ check the app's status before changing unrelated system settings.
 
 Open **More → Settings**, then **Connect GitHub**. The app imports your existing `gh` login
 into the configured `.env`; if necessary, first run `gh auth login --hostname github.com`.
-You can also set `GITHUB_TOKEN` directly. Then connect your repository as described below.
+You can also set `GITHUB_TOKEN` directly. Use the sidebar **+** or **Home → Manage connections**
+to add `owner/repository` or choose a local clone. Multiple repositories stay connected together.
+Incoming requested reviews and your own PR feedback appear separately.
 There is no sample PR fallback. Ordinary conversation works without GitHub or a selected PR.
 Cached ready reviews still require GitHub access to verify their current revisions before opening.
 If GitHub is unconfigured, the workspace offers **Connect GitHub** directly.
 
+## Tickets and background work
+
+Set your personal `LINEAR_API_KEY` in the same `.env`, reload Settings, then select teams or projects
+under **Manage connections**. Muse fetches tickets assigned to your Linear user; selected team and
+project scopes form a union. With no selected scopes, all of your assigned active tickets are shown.
+
+Say **“What needs my attention?”**, **“Start work on MET-123 in owner/repo”**, or open a ticket and
+start work. Muse uses the Meta model configured by `MODEL_API_KEY`; it does not require SuperiorSwarm,
+Claude, or Codex to be installed. Each job has a separate app-owned Git copy/worktree and child process.
+The original clone's branch, index and dirty files stay intact. Product questions and departures from
+repository conventions become saved decisions; answer by voice or in the job view. Ordinary changes
+and actual check results come back for review.
+
+Closing the app pauses active processes and saves checkpoints. Reopening resumes work interrupted
+by shutdown; explicitly paused jobs stay paused. Foreground speech interruption never cancels a
+background job. **Activity queue** holds decisions, completed outcomes and failures. Muse mentions
+new updates at a settled conversational pause; the queue remains available manually.
+
+Completed work includes its actual diff, source, commit and command logs. Ask for a revision to keep
+working in the same job. **Accept reviewed work** binds acceptance to the inspected head and completes
+the linked Linear ticket. **Publish draft PR** pushes the app-owned branch and creates or updates a
+real draft; this does not accept or merge it. Supported direct feedback suggestions may be applied
+to your own PR branch after actual successful checks and a separate inferred assessment. Product
+ambiguity asks for a decision. Disable automatic suggestions in **Manage connections** if desired.
+
+Workers run with your OS permissions, not inside a security sandbox. Declared JavaScript package
+checks and standard package managers are supported. Detected custom commit hooks stop the commit;
+the repository convention must be resolved rather than silently bypassed. No checks are invented for repositories
+without configured validation commands.
+
 ## Prepared reviews
 
-Use the repository/PR selector at the top left to choose a local GitHub clone, or enter `owner/repository`. Muse fetches
+Add repositories through the sidebar and choose a PR from **Incoming reviews** or **Own PR feedback**. The top-left selector remains available for direct local review access. Muse fetches
 open PRs and prepares a reading order, explanations and suggested comments in the background.
 Preparation is inferred from the PR description and available patches; it is not execution
 proof or a claim about the author's intent. Partial source coverage is labeled.
 
 Select a ready PR and say **“Walk me through this review”**. Muse takes the initiative through
-up to three files in the prepared reading order, then pauses naturally for a question or **“Continue”**.
+a logical section of consecutive files in the prepared reading order, then pauses for a question or **“Continue”**.
 Each file stays on screen until its spoken explanation finishes. Speaking interrupts the walkthrough
 while keeping the microphone available. You can also say **“Next file”**, **“Show me
 `path/to/file`”**, **“Pause the review”**, or **“Resume”**. Muse opens the pinned source before
@@ -99,13 +133,19 @@ fallback is used. Suggested comments remain unposted; the current review flow do
 The storage interface is separated from orchestration for a later Supabase adapter. Team accounts,
 GitHub App/webhook ingestion and preparation while the desktop is closed are future work.
 
+If preparation is still running, its status is shown before opening. Failed preparation has an
+explicit retry action. A ready review in any watched repository can be opened by Muse.
+
 ## Canvases and browser
 
 Ask Muse to **“Create an explanation document”**, **“Make a checkout mockup beside it”**,
 **“Show me the code”**, or **“Open https://example.com”**. It manages code, document, visual and
 browser canvases in the same conversation, chooses the primary/secondary panes, and waits for
 each change to display before describing it. Tabs and **Split panes** remain available manually.
-Documents and visual drafts are saved privately in app storage; **Recent** reopens closed drafts.
+Documents, visual drafts and source flows are saved privately in app storage; **Recent** reopens closed artifacts.
+Ask **“Show the whole payment flow”** to create one continuous source artifact from exact pinned
+excerpts, including unchanged files. Source text and locations remain exact; ordering and explanations
+are labeled inference. Local repository search is available when the pinned commit exists locally.
 
 The browser is an actual persistent native page. Give an explicit HTTPS address or a running
 local HTTP URL. Muse observes the page you see and can click, type, scroll, navigate, and change
@@ -140,6 +180,7 @@ bun run test:hands-free
 bun run test:prepared-reviews
 bun run test:local-browser
 bun run test:workspace
+bun run test:executive
 bun test apps/desktop/src/shared apps/desktop/src/main apps/desktop/src/renderer
 services/voice/.venv/bin/python -m unittest discover -s services/voice/tests
 ```
@@ -171,3 +212,5 @@ Current hands-free behavior and validation: [conversation polish acceptance](doc
 Current canvas and proactive review validation: [multi-canvas acceptance](docs/integration/multi-canvas-acceptance.md).
 
 Browser layout and sizing follow-up: [browser pane acceptance](docs/integration/browser-pane-acceptance.md).
+
+Executive center acceptance and live GitHub screenshots: [executive center acceptance](docs/integration/executive-center-acceptance.md).

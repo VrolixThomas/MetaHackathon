@@ -19,7 +19,8 @@
 		"test:prepared-reviews": "electron-vite build && PREPARED_REVIEW_MISSING_GITHUB=1 PREPARED_REVIEW_REQUIRE_SOURCE=1 PREPARED_REVIEW_REQUIRE_SYNTAX=1 env -u ELECTRON_RUN_AS_NODE electron src/main/prepared-review-smoke.cjs",
 		"test:local-browser": "electron-vite build && env -u ELECTRON_RUN_AS_NODE electron src/main/local-browser-smoke.cjs",
 		"test:hands-free": "electron-vite build && HANDS_FREE_MODAL_CHECKS=1 env -u ELECTRON_RUN_AS_NODE electron src/main/hands-free-smoke.cjs",
-		"test:workspace": "electron-vite build && WORKSPACE_SMOKE_LAYOUT_CHECKS=1 env -u ELECTRON_RUN_AS_NODE electron src/main/workspace-smoke.cjs"
+		"test:workspace": "electron-vite build && WORKSPACE_SMOKE_LAYOUT_CHECKS=1 env -u ELECTRON_RUN_AS_NODE electron src/main/workspace-smoke.cjs",
+		"test:executive": "electron-vite build && env -u ELECTRON_RUN_AS_NODE electron src/main/executive-smoke.cjs"
 	},
 	"dependencies": {
 		"@tanstack/react-query": "5.95.2",

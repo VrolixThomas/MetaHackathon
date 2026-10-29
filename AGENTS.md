@@ -177,3 +177,29 @@ model/GitHub responses. It does not establish live speech. Integration alone lau
 
 Propose contract changes on MET-8; integration publishes the resulting commit and migration
 notes. Keep lanes on the same contract version.
+
+## Executive center increment (2026-10-29)
+
+MET-46 covers independent app-owned Muse workers, MET-47 the sidebar/home/job review, MET-48 real
+GitHub/Linear providers and SQLite, and MET-49 foreground tools and source-flow guidance. Integration
+owns `main/work/`, final renderer bindings and composition. Provider/Git helpers remain runtime
+modules; foreground/coding tools remain agent modules. Temporary exclusive reservations and review
+handoffs live on MET-8. Use Codex-only SuperiorSwarm dispatch during development; SuperiorSwarm is
+not an installed-app dependency.
+
+Home derives priorities from actual sources, with incoming requested reviews separate from own-PR
+feedback. Linear uses the configured personal key and assigned tickets. No product fixture fallback.
+Workers use separate app-owned repositories/worktrees; retain original user work. Jobs/decisions and
+checkpoints persist; shutdown-paused jobs resume, manually paused jobs stay paused. Speech cancellation
+only owns the foreground turn. Ready, reviewed/accepted, draft-published and feedback-applied are
+distinct recorded states. Never complete Linear from worker readiness alone or merge a PR implicitly.
+
+`command-center.ts` contracts cover source queues, tickets, jobs, decisions, actual check receipts,
+notices and pinned source flows. `ReviewQueueItem.preparationStatus` is derived from actual review
+coordinators; `retry-review` explicitly restarts failed preparation. Source flow excerpts are read in
+main, preserve exact commit/path/line/text identity, and label ordering/explanation as inference.
+Development worktrees reuse the main checkout `.env`; `LINEAR_API_KEY` stays main-only.
+
+`bun run test:executive` runs the real built UI/IPC, app-owned Git worktree, worker child, checkpoint,
+decision and actual validation command with controlled GitHub/Linear/model responses. It is not live
+provider or microphone verification. Root alone runs this and all other combined native acceptance.
