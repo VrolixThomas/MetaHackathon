@@ -1,6 +1,7 @@
 // ROOT ONLY after build:
 // env -u ELECTRON_RUN_AS_NODE electron src/main/executive-smoke.cjs [built-main]
 // --providers-only checks provider/sidebar/ticket wiring without starting a coding job.
+// --initial-job-only stops after the original ready-job/decision/checkpoint assertions.
 // AUTHOR CHECKS ONLY: node --check this-file; node this-file --self-check.
 // All controlled provider content and the child hook live in this test harness.
 const assert = require("node:assert/strict");
@@ -25,6 +26,8 @@ const SOURCE_PATH = "src/value.cjs";
 const SOURCE_BASE = "module.exports = { value: 1 };\n";
 const SOURCE_REVIEW = "module.exports = { value: 2 };\n";
 const SOURCE_WORK = "module.exports = { value: 3 };\n";
+const REVISION = "Keep the value three and add // Reviewed executive revision to src/value.cjs. Preserve CommonJS and rerun the declared test.";
+const SOURCE_REVISED = "module.exports = { value: 3 }; // Reviewed executive revision\n";
 const NOW = "2026-10-29T00:00:00.000Z";
 const page = (nodes) => ({ nodes, pageInfo: { hasNextPage: false, endCursor: null } });
 const workflowState = (type) => ({ id: `smoke-state-${type}`, name: type, type });
@@ -370,10 +373,11 @@ function childTool(body) {
 	);
 	if (!read) return ["read_file", { path: SOURCE_PATH }];
 	const source = receipts.get(read.call_id);
+	const revising = coordinator.coordinatorDecision.includes(REVISION);
 	assert.equal(
 		source.text,
-		SOURCE_BASE,
-		"The worker must read committed baseline, not dirty original source"
+		revising ? SOURCE_WORK : SOURCE_BASE,
+		"The worker must read its current isolated revision, not dirty original source or stale history"
 	);
 	const edit = calls.find((item) => item.name === "edit_file");
 	if (!edit)
@@ -381,8 +385,8 @@ function childTool(body) {
 			"edit_file",
 			{
 				path: SOURCE_PATH,
-				oldText: "value: 1",
-				newText: "value: 3",
+				oldText: revising ? SOURCE_WORK : "value: 1",
+				newText: revising ? SOURCE_REVISED : "value: 3",
 				expectedSha256: source.sha256,
 			},
 		];
@@ -396,8 +400,9 @@ function childTool(body) {
 	return [
 		"finish_work",
 		{
-			summary:
-				"Changed the confirmed value from one to three in the actual isolated source. npm run test returned exit 0 and its declared check marker. Main still owns final validation and publication.",
+			summary: revising
+				? "Added the requested review comment to the same isolated source, preserving value three and CommonJS. The fresh npm run test receipt returned exit 0 and its declared check marker."
+				: "Changed the confirmed value from one to three in the actual isolated source. npm run test returned exit 0 and its declared check marker. Main still owns final validation and publication.",
 		},
 	];
 }
@@ -483,6 +488,32 @@ function assertOriginal(fixture) {
 	);
 }
 
+function assertReview(review, job, content) {
+	assert.equal(review.job.id, job.id);
+	assert.equal(review.job.repository, job.repository);
+	assert.equal(review.job.baseSha, job.baseSha);
+	assert.equal(review.job.headSha, job.headSha);
+	assert.equal(review.files.length, 1);
+	const file = review.files[0];
+	assert.equal(file.path, SOURCE_PATH);
+	assert.ok(!Object.hasOwn(file, "prId"), "Local work file must not invent PR identity");
+	assert.equal(file.base.commitSha, job.baseSha);
+	assert.equal(file.head.commitSha, job.headSha);
+	assert.equal(file.base.content, SOURCE_BASE);
+	assert.equal(file.head.content, content);
+}
+
+function assertRenderedDiff(visible, job, patch) {
+	assert.equal(visible.base, job.baseSha);
+	assert.equal(visible.head, job.headSha);
+	let inHunk = false;
+	const expectedRows = patch.split("\n").map((line) => {
+		if (line.startsWith("@@")) inHunk = true;
+		return `${inHunk && /^[ +\-]/.test(line) ? line.slice(1) : line}\n`;
+	});
+	assert.deepEqual(visible.rows, expectedRows, "Rendered diff preserves exact pinned source text");
+}
+
 async function native() {
 	assert.ok(
 		process.versions.electron,
@@ -491,6 +522,7 @@ async function native() {
 	assert.ok(!process.env.ELECTRON_RENDERER_URL, "Use the built default renderer");
 	const { app, BrowserWindow } = require("electron");
 	const providersOnly = process.argv.includes("--providers-only");
+	const initialJobOnly = process.argv.includes("--initial-job-only");
 	const main =
 		process.argv.slice(2).find((arg) => !arg.startsWith("--")) ??
 		join(__dirname, "../../out/main/index.js");
@@ -511,13 +543,14 @@ async function native() {
 	fs.mkdirSync(dirname(reportPath), { recursive: true });
 	const report = {
 		status: "running",
-		scope: providersOnly ? "providers-sidebar-ticket-only" : "executive-child-job",
+		scope: providersOnly ? "providers-sidebar-ticket-only" : initialJobOnly ? "executive-initial-child-job" : "executive-revision-approval",
 		simulatedGitHub: true,
 		simulatedLinear: true,
 		simulatedMeta: true,
 		liveProvider: false,
 		liveSpeech: false,
 		appRestartTested: false,
+		rendererReopenTested: false,
 		childCheckpointResume: false,
 		githubWrites: 0,
 		children: [],
@@ -655,6 +688,13 @@ async function native() {
 			);
 		};
 		const snapshot = () => rpc("query", "hub.snapshot");
+		const readStored = () => {
+			const Database = require("better-sqlite3");
+			const db = new Database(join(userData, "metahackathon.db"), { readonly: true });
+			try { return JSON.parse(db.prepare("SELECT data_json FROM hub_state WHERE id=1").get().data_json); }
+			finally { db.close(); }
+		};
+		const displayedDiff = () => js(`(() => {const w=document.querySelector('[aria-label="Local work review"]');return w&&{rows:Array.from(w.querySelectorAll('.hub-diff-row')).map(e=>e.lastElementChild.textContent),base:w.querySelector('.hub-revision-pair span:first-child')?.title,head:w.querySelector('.hub-revision-pair span:last-child')?.title};})()`);
 		const initial = await snapshot();
 		assert.deepEqual(initial.repositories, [], "No seeded repository may enter a clean profile");
 		assert.deepEqual(initial.jobs, [], "No seeded jobs may enter a clean profile");
@@ -788,14 +828,7 @@ async function native() {
 				"true"
 			);
 			const review = await rpc("query", "hub.reviewWork", { jobId });
-			assert.equal(review.job.headSha, result.headSha);
-			assert.equal(review.files.length, 1);
-			assert.ok(
-				!Object.hasOwn(review.files[0], "prId"),
-				"Local work file must not invent PR identity"
-			);
-			assert.equal(review.files[0].base.content, SOURCE_BASE);
-			assert.equal(review.files[0].head.content, SOURCE_WORK);
+			assertReview(review, result, SOURCE_WORK);
 			const patch = git(
 				result.worktreePath,
 				"diff",
@@ -815,20 +848,9 @@ async function native() {
 				"WorkReview must contain the exact pinned Git diff"
 			);
 			await wait("ready UI", () => js(`!!document.querySelector('.hub-detail .status-ready')`));
+			await wait("approval gated on loaded diff", () => js(`Array.from(document.querySelectorAll('[aria-label="Work review actions"] button')).some(e=>e.textContent.trim()==='Accept work and complete ticket'&&e.disabled)`));
 			await clickText(".hub-detail button", "Inspect local diff");
-			const visible = await wait("actual local work diff", () =>
-				js(
-					`(() => {const w=document.querySelector('[aria-label="Local work review"]');return w&&{rows:Array.from(w.querySelectorAll('.hub-diff-row')).map(e=>e.lastElementChild.textContent),base:w.querySelector('.hub-revision-pair span:first-child')?.title,head:w.querySelector('.hub-revision-pair span:last-child')?.title};})()`
-				)
-			);
-			assert.equal(visible.base, result.baseSha);
-			assert.equal(visible.head, result.headSha);
-			let inHunk = false;
-			const expectedRows = patch.split("\n").map((line) => {
-				if (line.startsWith("@@")) inHunk = true;
-				return `${inHunk && /^[ +\-]/.test(line) ? line.slice(1) : line}\n`;
-			});
-			assert.deepEqual(visible.rows, expectedRows, "Rendered diff preserves exact source text");
+			assertRenderedDiff(await wait("actual local work diff", displayedDiff), result, patch);
 			const resumed = checkpointUnder(userData, jobId);
 			assert.equal(resumed.path, checkpoint.path);
 			assert.equal(resumed.state.result.status, "completed");
@@ -846,18 +868,9 @@ async function native() {
 				report.children.map((child) => child.result),
 				["needs-input", "completed"]
 			);
-			const Database = require("better-sqlite3");
-			const db = new Database(join(userData, "metahackathon.db"), { readonly: true });
-			try {
-				const state = JSON.parse(
-					db.prepare("SELECT data_json FROM hub_state WHERE id=1").get().data_json
-				);
-				const saved = state.jobs.find((item) => item.id === jobId);
-				assert.deepEqual(saved, result);
-				assert.equal(state.repositories[0].localPath, fixture.localPath);
-			} finally {
-				db.close();
-			}
+			const stored = readStored();
+			assert.deepEqual(stored.jobs.find((item) => item.id === jobId), result);
+			assert.equal(stored.repositories[0].localPath, fixture.localPath);
 			report.childCheckpointResume = true;
 			report.job = {
 				id: jobId,
@@ -880,6 +893,91 @@ async function native() {
 			await wait("ready outcome in priority brief", () =>
 				js(`document.querySelector('.hub-priorities')?.textContent.includes('Ready to inspect')`)
 			);
+			if (!initialJobOnly) {
+				await section("Completed work");
+				await wait("saved job list", () => js(`Array.from(document.querySelectorAll('.hub-center .hub-list-row')).some(e=>e.textContent.includes(${JSON.stringify(TICKET_TITLE)}))`));
+				await js(`Array.from(document.querySelectorAll('.hub-center .hub-list-row')).find(e=>e.textContent.includes(${JSON.stringify(TICKET_TITLE)})).click()`);
+				await wait("same-job review actions", () => js(`!!document.querySelector('[aria-label="Work review actions"] textarea')`));
+				await js(`(() => {const e=document.querySelector('[aria-label="Work review actions"] textarea');Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype,'value').set.call(e,${JSON.stringify(REVISION)});e.dispatchEvent(new Event('input',{bubbles:true}));})()`);
+				await clickText('[aria-label="Work review actions"] button[type=submit]', "Request changes");
+				const revised = await wait("same-job revised commit and checks", async () => {
+					const value = await job();
+					assert.notEqual(value.state, "failed", value.error);
+					assert.notEqual(value.state, "needs-input", "An explicit review revision must retain the answered product decision");
+					return value.state === "ready" && value.headSha !== result.headSha ? value : null;
+				}, 60000);
+				assert.equal(revised.id, result.id);
+				assert.equal(revised.worktreePath, result.worktreePath);
+				assert.equal(revised.branch, result.branch);
+				assert.equal(revised.baseSha, result.baseSha);
+				assert.equal(revised.reviewedAt, null);
+				assert.equal(revised.revisions.at(-1).instruction, REVISION);
+				assert.deepEqual(revised.changedFiles, [SOURCE_PATH]);
+				assert.ok(revised.checks.length > 0);
+				for (const check of revised.checks) {
+					assert.equal(check.exitCode, 0);
+					assert.equal(check.commitSha, revised.headSha);
+					assert.ok(!result.checks.some((old) => old.id === check.id), "Revision needs new execution receipts");
+				}
+				assert.equal(git(revised.worktreePath, "rev-parse", "HEAD").trim(), revised.headSha);
+				assert.equal(git(revised.worktreePath, "status", "--porcelain=v1"), "");
+				assert.equal(git(revised.worktreePath, "show", `${revised.headSha}:${SOURCE_PATH}`), SOURCE_REVISED);
+				assert.equal((await snapshot()).jobs.length, 1, "Review revision must not create another job");
+				const revisedReview = await rpc("query", "hub.reviewWork", { jobId });
+				assertReview(revisedReview, revised, SOURCE_REVISED);
+				const revisedPatch = git(revised.worktreePath, "diff", "--no-ext-diff", "--no-textconv", "--no-color", "--find-renames", "--unified=3", revised.baseSha, revised.headSha, "--", SOURCE_PATH);
+				assert.equal(revisedReview.files[0].patch, revisedPatch);
+				const stale = await js(`window.electron.trpc.request(${JSON.stringify({ type: "mutation", path: "hub.operate", input: { json: { requestId: randomUUID(), operation: { kind: "approve-work", jobId, headSha: result.headSha, confirmed: true } } } })})`);
+				assert.ok(stale.error, "An old reviewed head cannot approve a newer revision");
+				assert.ok(!providerState.updates.includes("completed"));
+				await wait("new revision needs an actually loaded diff", () => js(`Array.from(document.querySelectorAll('[aria-label="Work review actions"] button')).some(e=>e.textContent.trim()==='Accept work and complete ticket'&&e.disabled)`));
+				await clickText(".hub-detail button", "Inspect local diff");
+				await wait("fresh revised diff", async () => { const visible = await displayedDiff(); return visible?.head === revised.headSha ? visible : null; });
+				assertRenderedDiff(await displayedDiff(), revised, revisedPatch);
+				await clickText('[aria-label="Work review actions"] button', "Accept work and complete ticket");
+				const accepted = await wait("approved exact head and completed Linear ticket", async () => {
+					const value = await job();
+					return value.reviewedAt && value.ticket.state.type === "completed" ? value : null;
+				});
+				assert.equal(accepted.headSha, revised.headSha);
+				assert.equal(accepted.pullRequest, null);
+				assert.deepEqual(providerState.updates, ["started", "completed"]);
+				assert.equal((await snapshot()).tickets.some((item) => item.id === TICKET_ID), false);
+				await wait("actual accepted outcome timestamp", () => js(`document.querySelector('[aria-label="Work review actions"] time')?.dateTime===${JSON.stringify(accepted.reviewedAt)}`));
+				const revisedCheckpoint = checkpointUnder(userData, jobId);
+				assert.equal(revisedCheckpoint.path, resumed.path);
+				assert.ok(revisedCheckpoint.state.history.length > resumed.state.history.length);
+				assert.ok(JSON.stringify(revisedCheckpoint.state.history).includes(REVISION));
+				await wait("all three real children exited", () => report.children.length === 3 && report.children.every((child) => child.exited));
+				assert.deepEqual(report.children.map((child) => child.result), ["needs-input", "completed", "completed"]);
+				assert.deepEqual(readStored().jobs.find((item) => item.id === jobId), accepted);
+				assert.equal(readStored().tickets.find((item) => item.id === TICKET_ID).state.type, "completed");
+				// Reopen the actual renderer and independent SQLite connection. This
+				// exercises restored UI/IPC state without claiming a main-process restart.
+				const loaded = new Promise((done) => win.webContents.once("did-finish-load", done));
+				win.webContents.reload();
+				await loaded;
+				await wait("reopened executive workspace", () => js(`!!document.querySelector('.command-navigation')&&document.querySelector('.hub-center')?.dataset.centerSection==='home'`));
+				assert.deepEqual(await job(), accepted);
+				assert.deepEqual(readStored().jobs.find((item) => item.id === jobId), accepted);
+				assert.equal((await snapshot()).jobs.length, 1);
+				await section("Completed work");
+				await wait("saved job after renderer reopen", () => js(`Array.from(document.querySelectorAll('.hub-center .hub-list-row')).some(e=>e.textContent.includes(${JSON.stringify(TICKET_TITLE)}))`));
+				await wait("accepted outcome in reopened sidebar", () => js(`Array.from(document.querySelectorAll('.command-sidebar-scroll button')).some(e=>e.textContent.includes(${JSON.stringify(TICKET_TITLE)})&&e.textContent.includes('Accepted'))`));
+				await js(`Array.from(document.querySelectorAll('.hub-center .hub-list-row')).find(e=>e.textContent.includes(${JSON.stringify(TICKET_TITLE)})).click()`);
+				await wait("accepted detail after reopen", () => js(`document.querySelector('[aria-label="Work review actions"] time')?.dateTime===${JSON.stringify(accepted.reviewedAt)}`));
+				await clickText(".hub-detail button", "Inspect local diff");
+				const reopened = await wait("reopened exact source diff", displayedDiff);
+				assertRenderedDiff(reopened, accepted, revisedPatch);
+				await section("Home");
+				await wait("accepted job removed from priority brief", () => js(`!!document.querySelector('.hub-priorities')&&!Array.from(document.querySelectorAll('.hub-priority')).some(e=>e.textContent.includes(${JSON.stringify(TICKET_TITLE)}))`));
+				report.rendererReopenTested = true;
+				report.job.headSha = accepted.headSha;
+				report.job.actualChecks = accepted.checks;
+				report.job.reviewedAt = accepted.reviewedAt;
+				report.revision = { jobId, sameWorktree: true, initialHead: result.headSha, headSha: accepted.headSha, freshChecks: accepted.checks, staleApprovalRejected: true };
+				report.acceptance = { headSha: accepted.headSha, reviewedAt: accepted.reviewedAt, ticketState: accepted.ticket.state.type, actualUI: true, sqliteReopened: true };
+			}
 		}
 		assertOriginal(fixture);
 		assert.equal(report.githubWrites, 0);
@@ -1018,6 +1116,24 @@ async function selfCheck() {
 	assert.equal(childTool(body)[0], "finish_work");
 	body.input.at(-1).output = JSON.stringify({ exitCode: 7, interrupted: false, stdout: "failed" });
 	assert.throws(() => childTool(body), /Actual child validation must succeed/);
+	body.input.at(-1).output = JSON.stringify({ exitCode: 0, interrupted: false, stdout: "EXECUTIVE_DECLARED_CHECK_PASS" });
+	body.input.push({ role: "user", content: JSON.stringify({ coordinatorDecision: `User decision: ${ANSWER}\nUser review instruction: ${REVISION}` }) });
+	assert.deepEqual(childTool(body), ["read_file", { path: SOURCE_PATH }]);
+	addReceipt("read_file", { path: SOURCE_PATH }, { path: SOURCE_PATH, text: SOURCE_WORK, sha256: "c".repeat(64) });
+	const revisionEdit = childTool(body);
+	assert.deepEqual(revisionEdit, ["edit_file", { path: SOURCE_PATH, oldText: SOURCE_WORK, newText: SOURCE_REVISED, expectedSha256: "c".repeat(64) }]);
+	addReceipt(revisionEdit[0], revisionEdit[1], { path: SOURCE_PATH });
+	assert.equal(childTool(body)[0], "run_command", "Old validation receipts do not satisfy a new revision");
+	addReceipt("run_command", { command: "npm", args: ["run", "test"] }, { exitCode: 0, interrupted: false, stdout: "EXECUTIVE_DECLARED_CHECK_PASS" });
+	assert.equal(childTool(body)[0], "finish_work");
+	const localJob = { id: "controlled-job", repository: REPOSITORY, baseSha: fixture.baseSha, headSha: fixture.reviewSha };
+	const localReview = { job: { ...localJob }, files: [{ path: SOURCE_PATH, base: { commitSha: fixture.baseSha, content: SOURCE_BASE }, head: { commitSha: fixture.reviewSha, content: SOURCE_REVISED } }] };
+	assertReview(localReview, localJob, SOURCE_REVISED);
+	assert.throws(() => assertReview(localReview, { ...localJob, headSha: "c".repeat(40) }, SOURCE_REVISED));
+	assert.throws(() => assertReview(localReview, localJob, SOURCE_WORK));
+	const exactRows = ["@@ -1 +1 @@\n", "module.exports = { value: 1 };\n", "module.exports = { value: 2 };\n", "\n"];
+	assertRenderedDiff({ base: localJob.baseSha, head: localJob.headSha, rows: exactRows }, localJob, fixture.patch);
+	assert.throws(() => assertRenderedDiff({ base: localJob.baseSha, head: localJob.headSha, rows: ["rewritten source"] }, localJob, fixture.patch));
 	const response = sse(
 		{
 			model: "muse-spark-1.3",
@@ -1039,7 +1155,7 @@ async function selfCheck() {
 		)
 	);
 	console.log(
-		"EXECUTIVE_SELF_CHECK_PASS: controlled endpoint/ownership guards, tool selection and SSE only; no Electron, Git, child, server, SQLite, provider, network or microphone launched"
+		"EXECUTIVE_SELF_CHECK_PASS: controlled endpoints, ownership, decision/revision protocol, exact review/diff guards and SSE; no Electron, Git, child, server, SQLite, provider, network or microphone launched"
 	);
 }
 

@@ -19,6 +19,19 @@ const identity = (value) => ({
 });
 const key = (value) => JSON.stringify(identity(value));
 const sleep = (ms) => new Promise((done) => setTimeout(done, ms));
+function assertWorkspaceRequest(body) {
+	for (const name of ["inspect_workspace", "inspect_hub", "open_command_center"])
+		assert.ok(body.tools.some((tool) => tool.name === name));
+	assert.equal(body.tool_choice, "auto");
+	const packet = JSON.parse(body.input.at(-1).content[0].text);
+	const context = packet.actualWorkspace;
+	assert.equal(context.workspace.review.prId, null);
+	assert.equal(context.workspace.canvases[0].kind, "center");
+	assert.equal(context.workspace.centerSection, "home");
+	assert.deepEqual(context.reviews, []);
+	assert.deepEqual(packet.actualHub.jobs, []);
+	assert.equal(packet.actualHub.counts.pendingDecisions, 0);
+}
 function measure(samples, rate) {
 	let energy = 0;
 	let crossings = 0;
@@ -266,6 +279,10 @@ function installMedia(observeSamples) {
 async function native() {
 	const { app, BrowserWindow } = require("electron");
 	assert.ok(process.versions.electron && !process.env.ELECTRON_RENDERER_URL);
+	app.on("browser-window-created", (_event, win) => {
+		win.setIgnoreMouseEvents(true);
+		win.setFocusable(false);
+	});
 	// Privacy fallback only. Passing assertions still require our single injected stream.
 	app.commandLine.appendSwitch("use-fake-device-for-media-stream");
 	const owned = fs.realpathSync(fs.mkdtempSync(join(tmpdir(), "met-hands-free-smoke-")));
@@ -333,18 +350,7 @@ async function native() {
 			const body = JSON.parse(options.body);
 			const index = report.model.length;
 			assert.ok(index < 2);
-			assert.ok(body.tools.some((tool) => tool.name === "inspect_workspace"));
-			assert.ok(body.tools.some((tool) => tool.name === "inspect_hub"));
-			assert.ok(body.tools.some((tool) => tool.name === "open_command_center"));
-			assert.equal(body.tool_choice, "auto");
-			const packet = JSON.parse(body.input.at(-1).content[0].text);
-			const context = packet.actualWorkspace;
-			assert.equal(context.workspace.review.prId, null);
-			assert.equal(context.workspace.canvases[0].kind, "center");
-			assert.equal(context.workspace.centerSection, "home");
-			assert.deepEqual(context.reviews, []);
-			assert.deepEqual(packet.actualHub.jobs, []);
-			assert.equal(packet.actualHub.counts.pendingDecisions, 0);
+			assertWorkspaceRequest(body);
 			assert.equal(
 				body.input.findLast((item) => item.role === "user" && typeof item.content === "string")
 					?.content,
@@ -787,8 +793,15 @@ function selfCheck() {
 		'{"sessionId":"s","turnId":"t","generation":1}'
 	);
 	new Function(`return (${installMedia.toString()})`);
+	const context = { actualWorkspace: { workspace: { review: { prId: null }, canvases: [{ kind: "center" }], centerSection: "home" }, reviews: [] }, actualHub: { jobs: [], counts: { pendingDecisions: 0 } } };
+	const request = () => ({ tool_choice: "auto", tools: ["inspect_workspace", "inspect_hub", "open_command_center"].map((name) => ({ name })), input: [{ content: [{ text: JSON.stringify(context) }] }] });
+	assertWorkspaceRequest(request());
+	context.actualWorkspace.workspace.canvases[0].kind = "review";
+	assert.throws(() => assertWorkspaceRequest(request()));
+	context.actualWorkspace.workspace.canvases[0].kind = "center";
+	assert.throws(() => assertWorkspaceRequest({ ...request(), tool_choice: "none" }));
 	console.log(
-		"HANDS_FREE_SELF_CHECK_PASS: controlled PCM analysis, identity sanitization, renderer fixture syntax; no media/app/network launched"
+		"HANDS_FREE_SELF_CHECK_PASS: controlled PCM, identity sanitization, Home/hub request guards, renderer fixture syntax; no media/app/network launched"
 	);
 }
 if (process.argv.includes("--self-check")) selfCheck();
