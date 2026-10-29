@@ -779,6 +779,9 @@ export class WorkJobCoordinator implements HubJobs {
 						...(current.revisions ?? []),
 						{ instruction, createdAt: new Date().toISOString() },
 					];
+					// Publish the new revision only after clearing the previous pass's retry context.
+					this.retries.delete(jobId);
+					this.feedback.delete(jobId);
 					current.state = "queued";
 					current.reviewedAt = null;
 					current.error = null;
@@ -787,8 +790,6 @@ export class WorkJobCoordinator implements HubJobs {
 				states
 			);
 			if (ticket) await this.call(signal, () => this.options.hub.syncTicket(ticket));
-			this.retries.delete(jobId);
-			this.feedback.delete(jobId);
 		});
 		this.schedule();
 	}
