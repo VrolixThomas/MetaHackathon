@@ -319,6 +319,7 @@ export class ConversationService {
 						)
 					: undefined;
 				let narratedThrough = 0;
+				let narratedScreenSequence = 0;
 				const onNarration = this.options.narrationCheckpoints
 					? async (throughTextLength: number, screenSequence: number) => {
 							if (!this.active(session, turn) || throughTextLength !== turn.text.length)
@@ -337,13 +338,14 @@ export class ConversationService {
 							if (action.kind !== "narration-checkpoint") throw new Error("Invalid checkpoint");
 							await this.narrationReceipts.publish(action, signal, () => emitAction(action));
 							narratedThrough = throughTextLength;
+							narratedScreenSequence = screenSequence;
 						}
 					: undefined;
 				const recovery = { used: false };
 				const reviewPorts = this.options.review;
 				const runReview = async (prId: string, reviewHistory: MetaItem[]) => {
 					if (!reviewPorts) throw new GuidedReviewError("Review source is not connected.");
-					return runGuidedReview(
+					const reply = await runGuidedReview(
 						this.client,
 						reviewPorts,
 						{ ...turn.input, prId },
@@ -357,6 +359,21 @@ export class ConversationService {
 						onText,
 						{ state: session.walkthrough, onNarration, workspace, hub, recovery }
 					);
+					if (hub && narratedThrough > 0 && narratedThrough === turn.text.length) {
+						let updates: string[] = [];
+						try {
+							updates = await hub.pendingWorkUpdates();
+						} catch {
+							throwIfAborted(signal);
+						}
+						throwIfAborted(signal);
+						if (updates.length) {
+							const tail = `\n\n${updates.join(" ")}`;
+							onText(tail);
+							return reply + tail;
+						}
+					}
+					return reply;
 				};
 				const observed = await workspace?.observe();
 				const effectivePrId = observed
@@ -382,7 +399,7 @@ export class ConversationService {
 					if (onNarration && narratedThrough < turn.text.length)
 						await onNarration(
 							turn.text.length,
-							(await workspace?.observe())?.workspace.sequence ?? 0
+							(await workspace?.observe())?.workspace.sequence ?? narratedScreenSequence
 						);
 					throwIfAborted(signal);
 					// A failed local notice acknowledgement must not erase a completed answer.
