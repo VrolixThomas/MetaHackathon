@@ -47,6 +47,7 @@ function validateRequest(body, index) {
 		"inspect_hub",
 		"inspect_ticket",
 		"inspect_work_job",
+		"inspect_work_log",
 		"inspect_pr_feedback",
 		"inspect_work_review",
 		"read_pinned_source",
@@ -358,7 +359,10 @@ async function native() {
 		assert.equal(requests.length, 3);
 		assert.deepEqual(report.blocked, []);
 		assert.equal(win.contentView.children.length, 0);
-		assert.equal(fs.readFileSync(envPath, "utf8"), `MODEL_API_KEY=${dummy}\n`);
+		assert.equal(
+			fs.readFileSync(envPath, "utf8"),
+			`MODEL_API_KEY=${dummy}\n# Linear personal API key\nLINEAR_API_KEY=\n`
+		);
 		report.historyVerified = true;
 		report.cancelledLateSuppressed = true;
 		report.actualRendererIPC = true;

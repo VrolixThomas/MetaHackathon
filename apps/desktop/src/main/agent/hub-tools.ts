@@ -18,6 +18,7 @@ import {
 	type PullRequestFeedback,
 	PullRequestFeedbackSchema,
 	SourceRangeRequestSchema,
+	SourceSearchRequestSchema,
 	type WorkJob,
 	WorkJobSchema,
 	WorkLogPageSchema,
@@ -51,7 +52,7 @@ export interface ConversationHubPorts {
 		signal?: AbortSignal
 	): Promise<PinnedSource>;
 	search(
-		request: { repository: string; commitSha: string; query: string },
+		request: z.infer<typeof SourceSearchRequestSchema>,
 		signal?: AbortSignal
 	): Promise<PinnedSource[]>;
 }
@@ -68,11 +69,7 @@ const schemas = {
 	inspect_pr_feedback: z.strictObject({ prId: IdSchema }),
 	inspect_work_review: z.strictObject({ jobId: IdSchema }),
 	read_pinned_source: SourceRangeRequestSchema,
-	search_pinned_source: z.strictObject({
-		repository: GitHubRepositorySchema,
-		commitSha: CommitShaSchema,
-		query: z.string().trim().min(1).max(200),
-	}),
+	search_pinned_source: SourceSearchRequestSchema,
 	start_work: z.strictObject({
 		ticketId: IdSchema,
 		repositoryId: IdSchema,
@@ -645,8 +642,14 @@ export class ConversationHubTools {
 			return { source: this.boundedSource(source), evidencePolicy: policy };
 		}
 		if (name === "search_pinned_source") {
-			const request = schemas.search_pinned_source.parse(args);
-			this.assertPin(request.repository, request.commitSha);
+			const parsed = schemas.search_pinned_source.parse(args);
+			const revision =
+				parsed.revision ??
+				(this.pins.has(JSON.stringify([parsed.repository, parsed.commitSha, "head"]))
+					? "head"
+					: "base");
+			const request = { ...parsed, revision };
+			this.assertPin(request.repository, request.commitSha, request.revision);
 			const sources = z
 				.array(PinnedSourceSchema)
 				.max(1000)
@@ -654,7 +657,8 @@ export class ConversationHubTools {
 			for (const source of sources) {
 				if (
 					source.location.repository !== request.repository ||
-					source.location.commitSha !== request.commitSha
+					source.location.commitSha !== request.commitSha ||
+					source.location.revision !== request.revision
 				)
 					throw new GuidedReviewError("The search response did not match the pinned request.");
 				this.assertPin(
@@ -800,7 +804,7 @@ export class ConversationHubTools {
 						: undefined;
 			if (!subject) continue;
 			const status =
-				notice.kind === "work-ready" && job.state === "ready"
+				notice.kind === "work-ready" && job.state === "ready" && !job.reviewedAt
 					? "is ready for review"
 					: notice.kind === "decision" && job.state === "needs-input" && job.pendingDecisions > 0
 						? "needs your decision"

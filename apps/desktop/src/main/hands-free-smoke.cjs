@@ -793,8 +793,18 @@ function selfCheck() {
 		'{"sessionId":"s","turnId":"t","generation":1}'
 	);
 	new Function(`return (${installMedia.toString()})`);
-	const context = { actualWorkspace: { workspace: { review: { prId: null }, canvases: [{ kind: "center" }], centerSection: "home" }, reviews: [] }, actualHub: { jobs: [], counts: { pendingDecisions: 0 } } };
-	const request = () => ({ tool_choice: "auto", tools: ["inspect_workspace", "inspect_hub", "open_command_center"].map((name) => ({ name })), input: [{ content: [{ text: JSON.stringify(context) }] }] });
+	const context = {
+		actualWorkspace: {
+			workspace: { review: { prId: null }, canvases: [{ kind: "center" }], centerSection: "home" },
+			reviews: [],
+		},
+		actualHub: { jobs: [], counts: { pendingDecisions: 0 } },
+	};
+	const request = () => ({
+		tool_choice: "auto",
+		tools: ["inspect_workspace", "inspect_hub", "open_command_center"].map((name) => ({ name })),
+		input: [{ content: [{ text: JSON.stringify(context) }] }],
+	});
 	assertWorkspaceRequest(request());
 	context.actualWorkspace.workspace.canvases[0].kind = "review";
 	assert.throws(() => assertWorkspaceRequest(request()));

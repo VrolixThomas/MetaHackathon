@@ -19,6 +19,7 @@ import {
 	type ReviewCache,
 	type ReviewQueueItem,
 	SourceRangeRequestSchema,
+	SourceSearchRequestSchema,
 	type WatchedRepository,
 	type WorkJob,
 	type WorkNotice,
@@ -599,10 +600,11 @@ export class CommandCenterService {
 		});
 	}
 	async search(
-		raw: { repository: string; commitSha: string; query: string },
+		input: { repository: string; commitSha: string; query: string; revision?: "base" | "head" },
 		signal?: AbortSignal
 	): Promise<PinnedSource[]> {
 		await this.initialize();
+		const raw = SourceSearchRequestSchema.parse(input);
 		const repository = this.repository(GitHubRepositorySchema.parse(raw.repository));
 		const localPath =
 			this.state.jobs.find(
@@ -665,7 +667,7 @@ export class CommandCenterService {
 						repository: repository.repository,
 						commitSha: raw.commitSha,
 						path,
-						revision: "head",
+						revision: raw.revision ?? "head",
 						startLine: Math.max(1, line - 12),
 						endLine: line + 40,
 					},

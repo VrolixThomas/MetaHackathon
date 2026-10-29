@@ -262,6 +262,12 @@ export const SourceRangeRequestSchema = z.strictObject({
 	startLine: z.int().positive().default(1),
 	endLine: z.int().positive().optional(),
 });
+export const SourceSearchRequestSchema = z.strictObject({
+	repository: GitHubRepositorySchema,
+	commitSha: CommitShaSchema,
+	revision: z.enum(["base", "head"]).optional(),
+	query: z.string().trim().min(1).max(200),
+});
 export const PinnedSourceSchema = z.strictObject({
 	location: CodeLocationSchema,
 	text: z.string().max(100000),

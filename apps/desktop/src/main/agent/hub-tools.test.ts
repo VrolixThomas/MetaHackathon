@@ -1614,3 +1614,29 @@ test("execution log inspection requires the actual job and bounds raw log conten
 	assert.equal((output as { truncated: boolean }).truncated, true);
 	assert.ok(!text.includes('"exitCode":0'));
 });
+
+test("base source search keeps the inspected base side and accepted work is not announced as waiting", async () => {
+	const d = data();
+	d.job.reviewedAt = time;
+	const summary = d.hub.jobs.find((job) => job.id === d.job.id);
+	assert.ok(summary);
+	summary.reviewedAt = time;
+	d.ports.search = async (request) => [
+		{
+			...d.source,
+			location: {
+				...d.source.location,
+				commitSha: request.commitSha,
+				revision: request.revision ?? "head",
+			},
+		},
+	];
+	const tools = new ConversationHubTools(d.ports, input, new AbortController().signal);
+	await tools.execute("inspect_work_job", JSON.stringify({ id: d.job.id }));
+	const result = await tools.execute(
+		"search_pinned_source",
+		JSON.stringify({ repository: d.job.repository, commitSha: d.job.baseSha, query: "caller" })
+	);
+	assert.equal((result as { sources: PinnedSource[] }).sources[0]?.location.revision, "base");
+	assert.deepEqual(await tools.pendingWorkUpdates(), []);
+});

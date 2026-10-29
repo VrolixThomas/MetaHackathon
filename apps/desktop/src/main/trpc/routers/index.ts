@@ -4,7 +4,6 @@ import { mergeRouters, publicProcedure, router } from "..";
 import {
 	AgentActionReceiptResultSchema,
 	AgentActionSchema,
-	CommitShaSchema,
 	GitHubRepositorySchema,
 	HUB_ERROR_MESSAGES,
 	HubOperationResultSchema,
@@ -17,6 +16,7 @@ import {
 	PullRequestFeedbackSchema,
 	RepositoryChoiceSchema,
 	SourceRangeRequestSchema,
+	SourceSearchRequestSchema,
 	WORKSPACE_GITHUB_REQUIRED,
 	WorkJobSchema,
 	WorkLogPageSchema,
@@ -117,13 +117,7 @@ export const appRouter = router({
 			.output(PinnedSourceSchema)
 			.query(({ input }) => hubCall(() => getHub().source(input))),
 		search: publicProcedure
-			.input(
-				z.strictObject({
-					repository: GitHubRepositorySchema,
-					commitSha: CommitShaSchema,
-					query: z.string().min(1).max(200),
-				})
-			)
+			.input(SourceSearchRequestSchema)
 			.output(z.array(PinnedSourceSchema).max(12))
 			.query(({ input }) => hubCall(() => getHub().search(input))),
 	}),

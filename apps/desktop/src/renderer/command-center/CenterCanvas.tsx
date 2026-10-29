@@ -13,6 +13,7 @@ import type { HubController } from "./controller";
 import {
 	centerSections,
 	isFinished,
+	jobOutcomeLabel,
 	jobReference,
 	jobTitle,
 	priorityItems,
@@ -594,7 +595,7 @@ function ConnectedCenter({
 							<span className={`hub-status status-${job.state}`}>
 								{job.pendingDecisions
 									? `${job.pendingDecisions} decision${job.pendingDecisions === 1 ? "" : "s"}`
-									: stateLabel(job.state)}
+									: jobOutcomeLabel(job)}
 							</span>
 						</button>
 					))}
