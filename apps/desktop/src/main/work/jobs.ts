@@ -13,6 +13,7 @@ import {
 	WorkLogPageSchema,
 	type WorkReview,
 } from "../../shared/contracts";
+import { abortable, throwIfAborted } from "../agent/cancellation";
 import { type CodingTaskInput, CodingTaskResultSchema } from "../agent/coding-worker";
 import type { HubGitHubClient } from "../runtime/hub-github";
 import type { HubLinearClient } from "../runtime/hub-linear";
@@ -30,6 +31,13 @@ type Running = {
 	done: boolean;
 	promise: Promise<void>;
 };
+const COMMIT_CONVENTION =
+	"Repository commit hooks require an explicit convention decision before committing";
+class WorkChanged extends Error {
+	constructor() {
+		super("Work changed or was interrupted; inspect its current state before retrying");
+	}
+}
 const inProgress = new Set(["queued", "running", "validating", "needs-input", "paused"]);
 interface JobOptions {
 	hub: CommandCenterService;
@@ -56,6 +64,7 @@ export class WorkJobCoordinator implements HubJobs {
 	private retries = new Map<string, number>();
 	private feedback = new Map<string, string>();
 	private publications = new Map<string, Promise<void>>();
+	private operations = new Map<string, Set<AbortController>>();
 	constructor(private readonly options: JobOptions) {}
 	async restore() {
 		await this.options.hub.initialize();
@@ -182,14 +191,132 @@ export class WorkJobCoordinator implements HubJobs {
 			reviewedAt: null,
 		});
 	}
-	private async patch(id: string, update: (job: WorkJob) => void) {
+	private async patch(
+		id: string,
+		update: (job: WorkJob) => void,
+		signal?: AbortSignal,
+		valid?: (job: WorkJob) => boolean
+	) {
 		await this.options.hub.update((state) => {
 			const job = state.jobs.find((item) => item.id === id);
 			if (!job) throw new Error("Work is unavailable");
+			if (signal) throwIfAborted(signal);
+			if (valid && !valid(job)) throw new WorkChanged();
 			update(job);
 			job.updatedAt = new Date().toISOString();
 		});
 	}
+	/** A lease never holds the durable state queue while a provider is pending. */
+	private async operation<T>(jobId: string, work: (signal: AbortSignal) => Promise<T>): Promise<T> {
+		if (this.stopping) throw new WorkChanged();
+		const controller = new AbortController();
+		const set = this.operations.get(jobId) ?? new Set<AbortController>();
+		this.operations.set(jobId, set);
+		set.add(controller);
+		try {
+			return await work(controller.signal);
+		} finally {
+			set.delete(controller);
+			if (!set.size && this.operations.get(jobId) === set) this.operations.delete(jobId);
+		}
+	}
+	private call<T>(signal: AbortSignal, work: () => Promise<T>): Promise<T> {
+		throwIfAborted(signal);
+		return abortable(work(), signal);
+	}
+	/** Synchronous invalidation also catches leases admitted before the queued state write. */
+	private interrupt(jobId: string, keep?: AbortSignal): boolean {
+		let active = false;
+		for (const controller of this.operations.get(jobId) ?? [])
+			if (controller.signal !== keep) {
+				active = true;
+				controller.abort();
+			}
+		const run = this.running.get(jobId);
+		if (run && run.controller.signal !== keep) {
+			active = true;
+			run.controller.abort();
+		}
+		return active;
+	}
+	private async current(job: WorkJob, signal: AbortSignal, states: WorkJob["state"][] = ["ready"]) {
+		const current = await this.call(signal, () => this.options.hub.job(job.id));
+		if (!this.matches(current, job, states)) throw new WorkChanged();
+	}
+	private matches(current: WorkJob, expected: WorkJob, states: WorkJob["state"][]) {
+		return (
+			states.includes(current.state) &&
+			current.headSha === expected.headSha &&
+			current.baseSha === expected.baseSha &&
+			current.branch === expected.branch &&
+			current.worktreePath === expected.worktreePath
+		);
+	}
+	private patchCurrent(
+		job: WorkJob,
+		signal: AbortSignal,
+		update: (job: WorkJob) => void,
+		states: WorkJob["state"][] = ["ready"]
+	) {
+		return this.patch(job.id, update, signal, (current) => this.matches(current, job, states));
+	}
+	private runPatch(
+		id: string,
+		run: Running,
+		update: (job: WorkJob) => void,
+		states: WorkJob["state"][]
+	) {
+		return this.patch(
+			id,
+			update,
+			run.controller.signal,
+			(current) => this.live(id, run) && states.includes(current.state)
+		);
+	}
+	private notify(
+		job: WorkJob,
+		signal: AbortSignal,
+		input: Parameters<CommandCenterService["notice"]>[0],
+		state: WorkJob["state"]
+	) {
+		return this.options.hub.update((store) => {
+			throwIfAborted(signal);
+			const current = store.jobs.find((item) => item.id === job.id);
+			if (!current || !this.matches(current, job, [state])) throw new WorkChanged();
+			store.notices.push({
+				...input,
+				id: randomUUID(),
+				createdAt: new Date().toISOString(),
+				seenAt: null,
+				announcedAt: null,
+			});
+		});
+	}
+	/** Retain ownership until the old process exits; cancellation itself never awaits this. */
+	private async retire(id: string, run: Running) {
+		const child = run.child;
+		if (child?.pid && child.exitCode === null && child.signalCode === null) {
+			await new Promise<void>((resolve) => {
+				const finish = () => {
+					clearTimeout(timer);
+					child.removeListener("exit", finish);
+					resolve();
+				};
+				const timer = setTimeout(() => child.kill("SIGKILL"), 2000);
+				timer.unref?.();
+				child.once("exit", finish);
+				child.kill("SIGTERM");
+				if (child.exitCode !== null || child.signalCode !== null) finish();
+			});
+		}
+		if (this.running.get(id) === run) this.running.delete(id);
+		void this.pump().catch(() =>
+			this.options.hub.workerFailure(
+				"Worker scheduling could not update its state. Existing work was retained."
+			)
+		);
+	}
+
 	private async pump() {
 		if (this.stopping || this.pumping) return;
 		this.pumping = true;
@@ -209,19 +336,13 @@ export class WorkJobCoordinator implements HubJobs {
 				};
 				this.running.set(job.id, run);
 				run.promise = this.execute(job, run)
-					.catch(() =>
+					.catch((error) => {
+						if (error instanceof WorkChanged || run.controller.signal.aborted) return;
 						this.options.hub.workerFailure(
 							"A worker could not confirm or save its state. Its worktree was retained."
-						)
-					)
-					.finally(() => {
-						if (this.running.get(job.id) === run) this.running.delete(job.id);
-						void this.pump().catch(() =>
-							this.options.hub.workerFailure(
-								"Worker scheduling could not update its state. Existing work was retained."
-							)
 						);
-					});
+					})
+					.finally(() => this.retire(job.id, run));
 			}
 		} finally {
 			this.pumping = false;
@@ -231,25 +352,36 @@ export class WorkJobCoordinator implements HubJobs {
 		return !this.stopping && !run.controller.signal.aborted && this.running.get(id) === run;
 	}
 	private async execute(initial: WorkJob, run: Running) {
+		const signal = run.controller.signal;
 		try {
-			const signal = run.controller.signal;
-			const repository = await this.options.hub.readyRepository(initial.repositoryId);
-			await this.patch(initial.id, (job) => {
-				job.state = "running";
-				job.error = null;
-				job.pauseReason = null;
-			});
-			let job = await this.options.hub.job(initial.id);
+			const repository = await this.call(signal, () =>
+				this.options.hub.readyRepository(initial.repositoryId)
+			);
+			await this.runPatch(
+				initial.id,
+				run,
+				(job) => {
+					job.state = "running";
+					job.error = null;
+					job.pauseReason = null;
+				},
+				["queued"]
+			);
+			let job = await this.call(signal, () => this.options.hub.job(initial.id));
 			if (!job.worktreePath) {
 				await this.append(job.id, "Preparing an isolated worktree.");
-				const prepared = await this.options.runtime.prepare(
-					repository,
-					job,
-					signal,
-					job.feedback && job.baseSha ? { baseCommit: job.baseSha } : undefined
+				const prepared = await this.call(signal, () =>
+					this.options.runtime.prepare(
+						repository,
+						job,
+						signal,
+						job.feedback && job.baseSha ? { baseCommit: job.baseSha } : undefined
+					)
 				);
 				if (!this.live(job.id, run)) return;
-				await this.patch(job.id, (current) => Object.assign(current, prepared));
+				await this.runPatch(job.id, run, (current) => Object.assign(current, prepared), [
+					"running",
+				]);
 				job = await this.options.hub.job(job.id);
 			}
 			if (!this.live(job.id, run) || !job.worktreePath) return;
@@ -271,38 +403,54 @@ export class WorkJobCoordinator implements HubJobs {
 				...(decisionContext ? { decisionContext: decisionContext.slice(-20000) } : {}),
 				...(this.feedback.has(job.id) ? { validationFeedback: this.feedback.get(job.id) } : {}),
 			};
-			const result = await this.runChild(job, run, input);
+			const result = await this.call(signal, () => this.runChild(job, run, input));
 			if (!this.live(job.id, run)) return;
 			if (result.status === "needs-input") {
-				await this.patch(job.id, (current) => {
-					current.state = "needs-input";
-					current.summary = result.summary;
-					current.decisions.push({
-						id: randomUUID(),
-						question: result.question ?? "A decision is needed.",
-						reason: result.reason ?? "",
-						createdAt: new Date().toISOString(),
-						answer: null,
-						answeredAt: null,
-					});
-				});
-				await this.options.hub.notice({
-					kind: "decision",
-					title: `Decision needed: ${job.ticket?.identifier ?? "PR feedback"}`,
-					detail: result.question ?? "A decision is needed.",
-					jobId: job.id,
-					prId: job.pullRequest?.id ?? null,
-				});
+				await this.runPatch(
+					job.id,
+					run,
+					(current) => {
+						current.state = "needs-input";
+						current.summary = result.summary;
+						current.decisions.push({
+							id: randomUUID(),
+							question: result.question ?? "A decision is needed.",
+							reason: result.reason ?? "",
+							createdAt: new Date().toISOString(),
+							answer: null,
+							answeredAt: null,
+						});
+					},
+					["running"]
+				);
+				const pending = await this.call(signal, () => this.options.hub.job(job.id));
+				await this.notify(
+					pending,
+					signal,
+					{
+						kind: "decision",
+						title: `Decision needed: ${job.ticket?.identifier ?? "PR feedback"}`,
+						detail: result.question ?? "A decision is needed.",
+						jobId: job.id,
+						prId: job.pullRequest?.id ?? null,
+					},
+					"needs-input"
+				);
 				return;
 			}
-			await this.patch(job.id, (current) => {
-				current.state = "validating";
-				current.summary = result.summary;
-			});
+			await this.runPatch(
+				job.id,
+				run,
+				(current) => {
+					current.state = "validating";
+					current.summary = result.summary;
+				},
+				["running"]
+			);
 			await this.append(job.id, "Committing changes and checking the actual commit.");
-			const finalized = await this.options.runtime.finalize(
-				await this.options.hub.job(job.id),
-				signal
+			const finalizing = await this.call(signal, () => this.options.hub.job(job.id));
+			const finalized = await this.call(signal, () =>
+				this.options.runtime.finalize(finalizing, signal)
 			);
 			if (!this.live(job.id, run)) return;
 			for (const check of finalized.checks)
@@ -310,12 +458,17 @@ export class WorkJobCoordinator implements HubJobs {
 					job.id,
 					`[check] ${check.command} ${check.args.join(" ")} exited ${check.exitCode}\n${await this.options.runtime.getLog(check.logId)}`
 				);
-			await this.patch(job.id, (current) => {
-				Object.assign(current, finalized);
-				if (!finalized.changedFiles.length)
-					current.summary =
-						"No source changes were produced. Review the recorded checks and existing implementation.";
-			});
+			await this.runPatch(
+				job.id,
+				run,
+				(current) => {
+					Object.assign(current, finalized);
+					if (!finalized.changedFiles.length)
+						current.summary =
+							"No source changes were produced. Review the recorded checks and existing implementation.";
+				},
+				["validating"]
+			);
 			const failed = finalized.checks.filter((check) => check.exitCode !== 0);
 			if (failed.length) {
 				const feedback = (
@@ -326,54 +479,89 @@ export class WorkJobCoordinator implements HubJobs {
 						)
 					)
 				).join("\n\n");
+				throwIfAborted(signal);
 				this.feedback.set(job.id, feedback.slice(0, 20000));
 				const count = (this.retries.get(job.id) ?? 0) + 1;
 				this.retries.set(job.id, count);
 				if (count <= 2) {
-					await this.patch(job.id, (current) => {
-						current.state = "queued";
-						current.error = "Validation failed; Muse is addressing the actual check results.";
-					});
+					await this.runPatch(
+						job.id,
+						run,
+						(current) => {
+							current.state = "queued";
+							current.error = "Validation failed; Muse is addressing the actual check results.";
+						},
+						["validating"]
+					);
 					return;
 				}
 				throw new Error("Validation remains unsuccessful");
 			}
-			await this.patch(job.id, (current) => {
-				current.state = "ready";
-				current.error = null;
-			});
+			await this.maybeApplyFeedback(
+				await this.call(signal, () => this.options.hub.job(job.id)),
+				repository,
+				signal
+			);
+			const completed = await this.call(signal, () => this.options.hub.job(job.id));
+			if (completed.state === "needs-input") return;
+			await this.runPatch(
+				job.id,
+				run,
+				(current) => {
+					current.state = "ready";
+					current.error = null;
+				},
+				["validating"]
+			);
 			await this.append(
 				job.id,
 				`Ready for review at ${finalized.headSha}. ${finalized.checks.length} checks recorded.`
 			);
-			await this.maybeApplyFeedback(await this.options.hub.job(job.id), repository, signal);
-			const ready = await this.options.hub.job(job.id);
-			if (ready.state === "needs-input") return;
-			await this.options.hub.notice({
-				kind: "work-ready",
-				title: `Ready to review: ${job.ticket?.identifier ?? "PR feedback"}`,
-				detail:
-					ready.summary.slice(0, 2500) +
-					(finalized.checks.length ? "" : "\nNo configured validation commands were run."),
-				jobId: job.id,
-				prId: job.pullRequest?.id ?? null,
-			});
+			const ready = await this.call(signal, () => this.options.hub.job(job.id));
+			await this.notify(
+				ready,
+				signal,
+				{
+					kind: "work-ready",
+					title: `Ready to review: ${job.ticket?.identifier ?? "PR feedback"}`,
+					detail:
+						ready.summary.slice(0, 2500) +
+						(finalized.checks.length ? "" : "\nNo configured validation commands were run."),
+					jobId: job.id,
+					prId: ready.pullRequest?.id ?? null,
+				},
+				"ready"
+			);
 		} catch (error) {
-			if (!this.live(initial.id, run)) return;
-			await this.append(initial.id, "Worker could not complete; inspect its latest log and retry.");
-			await this.patch(initial.id, (job) => {
-				job.state = "failed";
-				job.error =
-					"Muse could not finish this work. Check its execution log and connection, then resume.";
-			});
-			await this.options.hub.notice({
-				kind: "work-failed",
-				title: `Work needs attention: ${initial.ticket?.identifier ?? "PR feedback"}`,
-				detail:
-					"The work did not complete successfully. Its worktree and execution log were retained.",
-				jobId: initial.id,
-				prId: initial.pullRequest?.id ?? null,
-			});
+			if (error instanceof WorkChanged || !this.live(initial.id, run)) return;
+			const diagnostic =
+				error instanceof Error && error.message === COMMIT_CONVENTION
+					? COMMIT_CONVENTION
+					: "Muse could not finish this work. Check its execution log and connection, then resume.";
+			await this.append(initial.id, diagnostic);
+			await this.runPatch(
+				initial.id,
+				run,
+				(job) => {
+					job.state = "failed";
+					job.error = diagnostic;
+				},
+				["queued", "running", "validating"]
+			);
+			const failed = await this.call(signal, () => this.options.hub.job(initial.id));
+			await this.notify(
+				failed,
+				signal,
+				{
+					kind: "work-failed",
+					title: `Work needs attention: ${initial.ticket?.identifier ?? "PR feedback"}`,
+					detail:
+						"The work did not complete successfully. Its worktree and execution log were retained.",
+					jobId: initial.id,
+					prId: initial.pullRequest?.id ?? null,
+				},
+				"failed"
+			);
 		}
 	}
 	private runChild(job: WorkJob, run: Running, input: CodingTaskInput) {
@@ -424,33 +612,42 @@ export class WorkJobCoordinator implements HubJobs {
 		});
 	}
 	async answer(jobId: string, decisionId: string, answer: string) {
-		const job = await this.options.hub.job(jobId);
-		const decision = job.decisions.find((item) => item.id === decisionId && item.answer === null);
-		if (job.state !== "needs-input" || !decision)
-			throw new Error("This decision is no longer pending");
-		await this.patch(jobId, (current) => {
-			const target = current.decisions.find((item) => item.id === decisionId);
-			if (target) {
-				target.answer = answer;
-				target.answeredAt = new Date().toISOString();
-			}
-			current.state = "queued";
-			current.error = null;
+		await this.operation(jobId, async (signal) => {
+			await this.patch(
+				jobId,
+				(current) => {
+					const target = current.decisions.find(
+						(item) => item.id === decisionId && item.answer === null
+					);
+					if (current.state !== "needs-input" || !target) throw new WorkChanged();
+					this.interrupt(jobId, signal);
+					target.answer = answer;
+					target.answeredAt = new Date().toISOString();
+					current.state = "queued";
+					current.error = null;
+				},
+				signal
+			);
 		});
-		void this.pump().catch(() =>
-			this.options.hub.workerFailure(
-				"Worker scheduling could not update its state. Existing work was retained."
-			)
-		);
+		this.schedule();
 	}
 	async resume(jobId: string) {
-		const job = await this.options.hub.job(jobId);
-		if (!["paused", "failed"].includes(job.state)) throw new Error("This work cannot resume yet");
-		await this.patch(jobId, (current) => {
-			current.state = "queued";
-			current.pauseReason = null;
-			current.error = null;
+		await this.operation(jobId, async (signal) => {
+			await this.patch(
+				jobId,
+				(current) => {
+					if (!["paused", "failed"].includes(current.state)) throw new WorkChanged();
+					this.interrupt(jobId, signal);
+					current.state = "queued";
+					current.pauseReason = null;
+					current.error = null;
+				},
+				signal
+			);
 		});
+		this.schedule();
+	}
+	private schedule() {
 		void this.pump().catch(() =>
 			this.options.hub.workerFailure(
 				"Worker scheduling could not update its state. Existing work was retained."
@@ -458,31 +655,27 @@ export class WorkJobCoordinator implements HubJobs {
 		);
 	}
 	async pause(jobId: string, reason: "user" | "shutdown" = "user") {
-		const job = await this.options.hub.job(jobId);
-		if (!["queued", "running", "validating"].includes(job.state)) return;
-		const run = this.running.get(jobId);
-		this.running.delete(jobId);
-		run?.controller.abort();
+		const active = this.interrupt(jobId);
 		await this.patch(jobId, (current) => {
-			current.state = "paused";
-			current.pauseReason = reason;
+			const admitted = this.interrupt(jobId);
+			if (
+				["queued", "running", "validating"].includes(current.state) ||
+				(current.state === "ready" && (active || admitted))
+			) {
+				current.state = "paused";
+				current.pauseReason = reason;
+			}
 		});
-		if (run) {
-			await Promise.race([run.promise, new Promise((resolve) => setTimeout(resolve, 2000))]);
-			if (run.child && !run.done) run.child.kill("SIGKILL");
-		}
-		void this.pump().catch(() =>
-			this.options.hub.workerFailure(
-				"Worker scheduling could not update its state. Existing work was retained."
-			)
-		);
+		this.schedule();
 	}
 	async cancel(jobId: string) {
-		await this.pause(jobId);
+		this.interrupt(jobId);
 		await this.patch(jobId, (current) => {
+			this.interrupt(jobId);
 			current.state = "cancelled";
 			current.pauseReason = null;
 		});
+		this.schedule();
 	}
 	async review(jobId: string): Promise<WorkReview> {
 		return this.options.runtime.review(await this.options.hub.job(jobId));
@@ -490,23 +683,26 @@ export class WorkJobCoordinator implements HubJobs {
 	async publish(jobId: string) {
 		const previous = this.publications.get(jobId);
 		if (previous) return previous;
-		const work = this.publishOnce(jobId).finally(() => {
+		const work = this.operation(jobId, (signal) => this.publishOnce(jobId, signal)).finally(() => {
 			if (this.publications.get(jobId) === work) this.publications.delete(jobId);
 		});
 		this.publications.set(jobId, work);
 		return work;
 	}
-	private async publishOnce(jobId: string) {
-		const job = await this.options.hub.job(jobId);
+	private async publishOnce(jobId: string, signal: AbortSignal) {
+		const job = await this.call(signal, () => this.options.hub.job(jobId));
 		if (job.state !== "ready" || !job.headSha || !job.changedFiles.length)
 			throw new Error("Review the ready work before publishing");
-		const repository = await this.options.hub.readyRepository(job.repositoryId);
+		const repository = await this.call(signal, () =>
+			this.options.hub.readyRepository(job.repositoryId)
+		);
 		if (!repository.defaultBranch) throw new Error("Repository branch unavailable");
+		await this.current(job, signal);
 		if (job.feedback) {
-			await this.publishFeedback(job, repository, new AbortController().signal);
+			await this.publishFeedback(job, repository, signal, ["ready"]);
 			return;
 		}
-		const rows = await this.options.github.reviews(job.repository);
+		const rows = await this.call(signal, () => this.options.github.reviews(job.repository, signal));
 		const existing = job.pullRequest
 			? rows.find((row) => row.pr.id === job.pullRequest?.id)
 			: rows.find(
@@ -515,86 +711,106 @@ export class WorkJobCoordinator implements HubJobs {
 						row.headBranch === job.branch &&
 						row.baseBranch === repository.defaultBranch
 				);
+		await this.current(job, signal);
 		if (existing?.pr.headSha === job.headSha) {
-			await this.patch(jobId, (current) => {
+			await this.patchCurrent(job, signal, (current) => {
 				current.pullRequest = existing.pr;
 				current.publishedHeadSha = job.headSha;
 			});
 			return;
 		}
-		await this.options.runtime.push(job, repository, new AbortController().signal);
-		await this.patch(jobId, (current) => {
+		await this.call(signal, () => this.options.runtime.push(job, repository, signal));
+		await this.patchCurrent(job, signal, (current) => {
 			current.publishedHeadSha = job.headSha;
 		});
 		if (existing) {
-			const updated = (await this.options.github.reviews(job.repository)).find(
-				(row) => row.pr.id === existing.pr.id
-			)?.pr;
+			const updated = (
+				await this.call(signal, () => this.options.github.reviews(job.repository, signal))
+			).find((row) => row.pr.id === existing.pr.id)?.pr;
 			if (!updated || updated.headSha !== job.headSha)
 				throw new Error("Publication could not be refreshed");
-			await this.patch(jobId, (current) => {
+			await this.patchCurrent(job, signal, (current) => {
 				current.pullRequest = updated;
 			});
 			return;
 		}
-		const pr = await this.options.github.createDraft({
-			repository: job.repository,
-			base: repository.defaultBranch,
-			head: job.branch,
-			title: job.ticket ? `${job.ticket.identifier}: ${job.ticket.title}` : "Muse work",
-			body: `${job.summary}\n\nChecks: ${job.checks.length ? job.checks.map((check) => `${check.command} ${check.args.join(" ")}: ${check.exitCode}`).join("\n") : "No configured checks run"}\n\n${job.ticket?.url ?? ""}`,
-		});
-		await this.patch(jobId, (current) => {
+		await this.current(job, signal);
+		const pr = await this.call(signal, () =>
+			this.options.github.createDraft(
+				{
+					repository: job.repository,
+					base: repository.defaultBranch as string,
+					head: job.branch,
+					title: job.ticket ? `${job.ticket.identifier}: ${job.ticket.title}` : "Muse work",
+					body: `${job.summary}\n\nChecks: ${job.checks.length ? job.checks.map((check) => `${check.command} ${check.args.join(" ")}: ${check.exitCode}`).join("\n") : "No configured checks run"}\n\n${job.ticket?.url ?? ""}`,
+				},
+				signal
+			)
+		);
+		await this.patchCurrent(job, signal, (current) => {
 			current.pullRequest = pr;
 		});
 	}
 	async revise(jobId: string, instruction: string) {
-		const job = await this.options.hub.job(jobId);
-		if (!["ready", "paused", "failed"].includes(job.state))
-			throw new Error("Pause or review this work before requesting changes");
-		if (job.ticket) {
-			const current = await this.options.linear.ticket(job.ticket.id);
-			if (current.state.type === "completed") {
-				const updated = await this.options.linear.updateState(current.id, "started");
-				await this.options.hub.syncTicket(updated);
-				await this.patch(jobId, (item) => {
-					item.ticket = updated;
-				});
+		await this.operation(jobId, async (signal) => {
+			const job = await this.call(signal, () => this.options.hub.job(jobId));
+			const states: WorkJob["state"][] = ["ready", "paused", "failed"];
+			if (!states.includes(job.state))
+				throw new Error("Pause or review this work before requesting changes");
+			this.interrupt(jobId, signal);
+			let ticket = job.ticket;
+			if (ticket) {
+				const actual = await this.call(signal, () =>
+					this.options.linear.ticket(job.ticket?.id ?? "", signal)
+				);
+				await this.current(job, signal, states);
+				if (actual.state.type === "completed")
+					ticket = await this.call(signal, () =>
+						this.options.linear.updateState(actual.id, "started", signal)
+					);
 			}
-		}
-		await this.patch(jobId, (current) => {
-			current.revisions = [
-				...(current.revisions ?? []),
-				{ instruction, createdAt: new Date().toISOString() },
-			];
-			current.state = "queued";
-			current.reviewedAt = null;
-			current.error = null;
-			current.pauseReason = null;
+			await this.patchCurrent(
+				job,
+				signal,
+				(current) => {
+					this.interrupt(jobId, signal);
+					current.ticket = ticket;
+					current.revisions = [
+						...(current.revisions ?? []),
+						{ instruction, createdAt: new Date().toISOString() },
+					];
+					current.state = "queued";
+					current.reviewedAt = null;
+					current.error = null;
+					current.pauseReason = null;
+				},
+				states
+			);
+			if (ticket) await this.call(signal, () => this.options.hub.syncTicket(ticket));
+			this.retries.delete(jobId);
+			this.feedback.delete(jobId);
 		});
-		this.retries.delete(jobId);
-		this.feedback.delete(jobId);
-		void this.pump().catch(() =>
-			this.options.hub.workerFailure("Worker scheduling could not update its state.")
-		);
+		this.schedule();
 	}
 	async approve(jobId: string, headSha: string) {
-		const job = await this.options.hub.job(jobId);
-		if (job.state !== "ready" || job.headSha !== headSha)
-			throw new Error("Review the current work revision before accepting it");
-		const actual = await this.options.runtime.review(job);
-		if (actual.job.headSha !== headSha) throw new Error("Work revision changed");
-		if (job.ticket) {
-			const ticket = await this.options.linear.updateState(job.ticket.id, "completed");
-			await this.options.hub.syncTicket(ticket);
-			await this.patch(jobId, (current) => {
+		await this.operation(jobId, async (signal) => {
+			const job = await this.call(signal, () => this.options.hub.job(jobId));
+			if (job.state !== "ready" || job.headSha !== headSha)
+				throw new Error("Review the current work revision before accepting it");
+			const actual = await this.call(signal, () => this.options.runtime.review(job, signal));
+			if (actual.job.headSha !== headSha) throw new Error("Work revision changed");
+			await this.current(job, signal);
+			const ticket = job.ticket
+				? await this.call(signal, () =>
+						this.options.linear.updateState(job.ticket?.id ?? "", "completed", signal)
+					)
+				: null;
+			await this.patchCurrent(job, signal, (current) => {
 				current.ticket = ticket;
 				current.reviewedAt = new Date().toISOString();
 			});
-		} else
-			await this.patch(jobId, (current) => {
-				current.reviewedAt = new Date().toISOString();
-			});
+			if (ticket) await this.call(signal, () => this.options.hub.syncTicket(ticket));
+		});
 	}
 	private async maybeApplyFeedback(
 		job: WorkJob,
@@ -607,54 +823,75 @@ export class WorkJobCoordinator implements HubJobs {
 			!job.changedFiles.length ||
 			job.feedback.commitSha !== job.baseSha ||
 			!job.checks.length ||
-			job.checks.some((check) => check.exitCode !== 0) ||
-			!(await this.options.hub.snapshot()).preferences.autoApplySuggestions
+			job.checks.some((check) => check.exitCode !== 0)
 		)
 			return;
+		if (
+			!(await this.call(signal, () => this.options.hub.snapshot())).preferences.autoApplySuggestions
+		)
+			return;
+		const states: WorkJob["state"][] = ["validating"];
 		try {
-			if (!this.options.assessSuggestion) return;
-			const assessment = await this.options.assessSuggestion(
-				job,
-				await this.options.runtime.review(job, signal),
-				signal
-			);
+			const assess = this.options.assessSuggestion;
+			if (!assess) return;
+			const review = await this.call(signal, () => this.options.runtime.review(job, signal));
+			const assessment = await this.call(signal, () => assess(job, review, signal));
+			await this.current(job, signal, states);
 			await this.append(job.id, `[inferred fix assessment] ${assessment.reason}`);
 			if (assessment.question?.trim()) {
-				await this.patch(job.id, (current) => {
-					current.state = "needs-input";
-					current.decisions.push({
-						id: randomUUID(),
-						question: assessment.question ?? "A product decision is needed.",
-						reason: assessment.reason,
-						createdAt: new Date().toISOString(),
-						answer: null,
-						answeredAt: null,
-					});
-				});
-				await this.options.hub.notice({
-					kind: "decision",
-					title: "Decision before applying PR feedback",
-					detail: assessment.question,
-					jobId: job.id,
-					prId: job.pullRequest.id,
-				});
+				await this.patchCurrent(
+					job,
+					signal,
+					(current) => {
+						current.state = "needs-input";
+						current.decisions.push({
+							id: randomUUID(),
+							question: assessment.question ?? "A product decision is needed.",
+							reason: assessment.reason,
+							createdAt: new Date().toISOString(),
+							answer: null,
+							answeredAt: null,
+						});
+					},
+					states
+				);
+				const pending = await this.call(signal, () => this.options.hub.job(job.id));
+				await this.notify(
+					pending,
+					signal,
+					{
+						kind: "decision",
+						title: "Decision before applying PR feedback",
+						detail: assessment.question,
+						jobId: job.id,
+						prId: job.pullRequest.id,
+					},
+					"needs-input"
+				);
 				return;
 			}
-			if (!assessment.sound) return;
-			await this.publishFeedback(job, repository, signal);
-		} catch {
+			if (assessment.sound) await this.publishFeedback(job, repository, signal, states);
+		} catch (error) {
+			throwIfAborted(signal);
+			if (error instanceof WorkChanged) throw error;
 			await this.append(
 				job.id,
 				"Suggestion is ready locally; automatic acceptance was not confirmed. Inspect the assessment and PR branch before retrying."
 			);
 		}
 	}
-	private async publishFeedback(job: WorkJob, repository: WatchedRepository, signal: AbortSignal) {
+	private async publishFeedback(
+		job: WorkJob,
+		repository: WatchedRepository,
+		signal: AbortSignal,
+		states: WorkJob["state"][]
+	) {
 		if (!job.feedback || !job.pullRequest || !job.headSha)
 			throw new Error("Feedback work is unavailable");
-		const row = (await this.options.github.reviews(job.repository, signal)).find(
-			(item) => item.pr.id === job.pullRequest?.id && item.kind === "own"
-		);
+		await this.current(job, signal, states);
+		const row = (
+			await this.call(signal, () => this.options.github.reviews(job.repository, signal))
+		).find((item) => item.pr.id === job.pullRequest?.id && item.kind === "own");
 		const expected = job.publishedHeadSha ?? job.baseSha;
 		if (
 			!row ||
@@ -662,23 +899,38 @@ export class WorkJobCoordinator implements HubJobs {
 			(row.pr.headSha !== expected && row.pr.headSha !== job.headSha)
 		)
 			throw new Error("The PR branch changed before publication");
-		await this.options.runtime.push(job, repository, signal, row.headBranch);
-		await this.patch(job.id, (current) => {
-			current.publishedHeadSha = job.headSha;
-			current.feedbackAppliedAt = new Date().toISOString();
-		});
-		const refreshed = (await this.options.github.reviews(job.repository, signal)).find(
-			(item) => item.pr.id === job.pullRequest?.id
-		)?.pr;
+		await this.current(job, signal, states);
+		await this.call(signal, () =>
+			this.options.runtime.push(job, repository, signal, row.headBranch)
+		);
+		await this.patchCurrent(
+			job,
+			signal,
+			(current) => {
+				current.publishedHeadSha = job.headSha;
+				current.feedbackAppliedAt = new Date().toISOString();
+			},
+			states
+		);
+		const refreshed = (
+			await this.call(signal, () => this.options.github.reviews(job.repository, signal))
+		).find((item) => item.pr.id === job.pullRequest?.id)?.pr;
 		if (refreshed?.headSha === job.headSha)
-			await this.patch(job.id, (current) => {
-				current.pullRequest = refreshed;
-			});
+			await this.patchCurrent(
+				job,
+				signal,
+				(current) => {
+					current.pullRequest = refreshed;
+				},
+				states
+			);
+		await this.current(job, signal, states);
 		await this.append(
 			job.id,
 			"Validated changes applied to the PR branch; no merge was performed."
 		);
 	}
+
 	private async append(jobId: string, value: string) {
 		const task = (this.logs.get(jobId) ?? Promise.resolve())
 			.catch(() => {})
@@ -712,6 +964,7 @@ export class WorkJobCoordinator implements HubJobs {
 	}
 	async dispose() {
 		this.stopping = true;
+		for (const id of this.operations.keys()) this.interrupt(id);
 		for (const job of await this.options.hub.allJobs())
 			if (["queued", "running", "validating"].includes(job.state))
 				await this.pause(job.id, "shutdown");
