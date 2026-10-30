@@ -93,8 +93,9 @@ and actual check results come back for review.
 
 Closing the app pauses active processes and saves checkpoints. Reopening resumes work interrupted
 by shutdown; explicitly paused jobs stay paused. Foreground speech interruption never cancels a
-background job. **Activity queue** holds decisions, completed outcomes and failures. Muse mentions
-new updates at a settled conversational pause; the queue remains available manually.
+background job. **Activity queue** holds decisions, completed outcomes and failures. Muse can initiate a short spoken update while hands-free listening is on and the app is focused.
+It defers during speech, replies, dialogs and recent interaction, preserves the current review/panes,
+and keeps listening when you interrupt an update. The queue remains available manually.
 
 Completed work includes its actual diff, source, commit and command logs. Ask for a revision to keep
 working in the same job. **Accept reviewed work** binds acceptance to the inspected head and completes
@@ -181,6 +182,7 @@ bun run test:prepared-reviews
 bun run test:local-browser
 bun run test:workspace
 bun run test:executive
+bun run test:attention
 bun test apps/desktop/src/shared apps/desktop/src/main apps/desktop/src/renderer
 services/voice/.venv/bin/python -m unittest discover -s services/voice/tests
 ```
@@ -214,3 +216,5 @@ Current canvas and proactive review validation: [multi-canvas acceptance](docs/i
 Browser layout and sizing follow-up: [browser pane acceptance](docs/integration/browser-pane-acceptance.md).
 
 Executive center acceptance and live GitHub screenshots: [executive center acceptance](docs/integration/executive-center-acceptance.md).
+
+Proactive supervision and voice latency evidence: [attention acceptance](docs/integration/attention-acceptance.md).

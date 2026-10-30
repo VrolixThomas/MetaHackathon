@@ -203,3 +203,28 @@ Development worktrees reuse the main checkout `.env`; `LINEAR_API_KEY` stays mai
 `bun run test:executive` runs the real built UI/IPC, app-owned Git worktree, worker child, checkpoint,
 decision and actual validation command with controlled GitHub/Linear/model responses. It is not live
 provider or microphone verification. Root alone runs this and all other combined native acceptance.
+
+## Proactive attention (MET-50, 2026-10-30)
+
+`AttentionScheduler` owns real job-notice selection, job/head/decision revalidation, leases and durable
+delivery records. The current policy speaks one event at a time after 2.5s stable eligible presence;
+decisions precede failures and ready work. A delivered update has a 20s global cooldown; interrupted
+attempts wait 60s and stop automatic retries after three attempts. Pending work stays in the queue.
+Hands-free must be explicitly active and the app focused. Speech/onset candidates, an active turn,
+playback, dialogs, typing or recent DOM/native activity defer or cancel initiative.
+
+`ConversationAttentionInput` has claim identity and no user text. The assistant-only read-only turn
+shares session/generation/history/poll/cancel, preserves review/walkthrough position and exposes no
+workspace or worker tools. Narration checkpoints remain mandatory for attention. Only exact spoken
+completion after observed PCM, matching speech-ended and media drain can settle spoken delivery;
+displayed text is not spoken proof. Workspace actions remain rejected in the reply-only voice path.
+Delivery proofs survive immediate followup, final receipt loss and SQLite reconnect; ordinary speech
+cancellation never owns background workers. Keep labels/questions/provider content as untrusted data.
+
+`test:attention` uses the actual default Electron UI/preload/IPC and Chromium WebRTC/media pipeline
+with controlled providers, seeded controlled event state and simulated native focus. It proves
+quiet/modal/focus/input deferral, actual PCM/drain delivery, barge-in/listening continuity and durable
+ledger bytes. It does not prove physical microphone/speaker acoustics or full process restart. Root
+alone runs it. `MET-51` tracks remaining voice latency: ASR/RTC startup overlap is implemented, while
+input FIFO/realtime replay and tool-capable reply buffering remain separate contributors. Never
+claim end-to-end speedup from a component-only or unversioned historical timing sample.

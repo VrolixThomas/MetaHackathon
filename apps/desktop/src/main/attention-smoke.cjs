@@ -544,7 +544,6 @@ async function native() {
 		await wait(`${kind} actual checkpoint action`, () => attempt.checkpoint);
 		return { attempt, session: sessions.get(key(attempt)) };
 	}
-	let deadline;
 	async function quit(error) {
 		if (quitting) return;
 		quitting = true;
@@ -647,7 +646,7 @@ async function native() {
 				app.exit(report.status === "passed" ? 0 : 1);
 			});
 	});
-	deadline = setTimeout(() => {
+	const deadline = setTimeout(() => {
 		void quit(new Error("180-second attention acceptance deadline"));
 	}, 175000);
 	try {
