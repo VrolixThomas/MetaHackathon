@@ -191,6 +191,33 @@ test("delivered notice enters real history once and preserves completion across 
 	}
 });
 
+test("attention completion distinguishes spoken from displayed delivery across later turns", async () => {
+	for (const delivery of ["spoken", "displayed"] as const) {
+		const h = harness();
+		const other = delivery === "spoken" ? "displayed" : "spoken";
+		try {
+			h.service.attend(input());
+			const action = await checkpoint(h.service, input());
+			assert.equal(h.service.attentionCompleted(input(), input().claimId, delivery), false);
+			assert.equal(receipt(h.service, action, delivery).status, "accepted");
+			assert.equal(h.service.attentionCompleted(input(), input().claimId), true);
+			assert.equal(h.service.attentionCompleted(input(), input().claimId, delivery), true);
+			assert.equal(h.service.attentionCompleted(input(), input().claimId, other), false);
+			// A duplicate receipt with another delivery status cannot upgrade the proof.
+			assert.equal(receipt(h.service, action, other).status, "stale");
+			h.service.start(user(2));
+			await terminal(h.service, user(2));
+			assert.equal(h.service.attentionCompleted(input(), input().claimId), true);
+			assert.equal(h.service.attentionCompleted(input(), input().claimId, delivery), true);
+			assert.equal(h.service.attentionCompleted(input(), input().claimId, other), false);
+			h.service.releaseSession(input().sessionId);
+			assert.equal(h.service.attentionCompleted(input(), input().claimId, delivery), false);
+		} finally {
+			await h.service.dispose();
+		}
+	}
+});
+
 test("busy attention admission leaves user identity, events, cancellation and retry state untouched", async () => {
 	const pending = deferred<void>();
 	const h = harness({}, async function* (request) {
@@ -475,6 +502,46 @@ test("tool output, oversized, empty and incomplete model replies cannot become d
 			assert.equal(h.service.poll(identity(input())).text, "");
 			assert.deepEqual(h.service.poll(identity(input())).actions, []);
 			assert.equal(h.service.attentionCompleted(input(), input().claimId), false);
+		} finally {
+			await h.service.dispose();
+		}
+	}
+});
+
+test("mixed text and unsolicited function calls never publish no-tools attention or completed history", async () => {
+	for (const streamed of [true, false]) {
+		const h = harness({}, async function* (request) {
+			if (request.requestId !== input().requestId) {
+				yield { type: "text", delta: "Real followup answer" };
+				yield end();
+				return;
+			}
+			const text = "MUST NOT BE DELIVERED";
+			if (streamed) yield { type: "text", delta: text };
+			yield end([
+				{ type: "message", role: "assistant", content: [{ type: "output_text", text }] },
+				call("start_work", {}),
+			]);
+		});
+		try {
+			h.service.attend(input());
+			await terminal(h.service, input(), "error");
+			const result = h.service.poll(identity(input()));
+			assert.equal(result.text, "");
+			assert.deepEqual(result.actions, []);
+			assert(
+				!result.events.some(
+					(event) =>
+						event.kind === "text-delta" || event.kind === "action" || event.kind === "completed"
+				)
+			);
+			assert.equal(h.service.attentionCompleted(input(), input().claimId), false);
+			assert.equal(h.service.attentionCompleted(input(), input().claimId, "spoken"), false);
+			assert.deepEqual(h.requests[0]?.tools, []);
+			h.service.start(user(2));
+			await terminal(h.service, user(2));
+			assert.deepEqual(h.requests[1]?.input, [{ role: "user", content: "What decision?" }]);
+			assert(!h.requests[1]?.instructions.includes("MUST NOT BE DELIVERED"));
 		} finally {
 			await h.service.dispose();
 		}

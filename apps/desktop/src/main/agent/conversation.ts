@@ -75,7 +75,7 @@ type Identity = Pick<ConversationTurnInput, "sessionId" | "turnId" | "generation
 type RequestRecord = Identity & {
 	fingerprint: string;
 	status: AgentTurnStatus;
-	attention?: { claimId: string; completed: boolean };
+	attention?: { claimId: string; completed: boolean; delivery?: "spoken" | "displayed" };
 };
 type TurnState = {
 	record: RequestRecord;
@@ -144,7 +144,7 @@ export class ConversationService {
 		) {
 			// Commit synchronously at the accepted delivery receipt. A same-tick user turn
 			// must not erase genuinely drained speech before the scheduler can settle it.
-			this.completeAttention(session, turn);
+			this.completeAttention(session, turn, receipt.status);
 		}
 		return result;
 	}
@@ -153,7 +153,11 @@ export class ConversationService {
 		return this.sessions.get(IdSchema.parse(rawSessionId))?.current?.record.status === "running";
 	}
 
-	attentionCompleted(identity: TurnIdentity, rawClaimId: string): boolean {
+	attentionCompleted(
+		identity: TurnIdentity,
+		rawClaimId: string,
+		delivery?: "spoken" | "displayed"
+	): boolean {
 		const input = TurnIdentitySchema.parse({
 			sessionId: identity.sessionId,
 			turnId: identity.turnId,
@@ -167,6 +171,7 @@ export class ConversationService {
 				record.generation === input.generation &&
 				record.attention?.claimId === claimId &&
 				record.attention.completed &&
+				(delivery === undefined || record.attention.delivery === delivery) &&
 				record.status === "completed"
 			)
 				return true;
@@ -369,7 +374,11 @@ export class ConversationService {
 			}
 		}
 	}
-	private completeAttention(session: Session, turn: AttentionTurn) {
+	private completeAttention(
+		session: Session,
+		turn: AttentionTurn,
+		delivery: "spoken" | "displayed"
+	) {
 		if (!turn.claim || !turn.record.attention || !this.active(session, turn)) return;
 		session.history.push({
 			kind: "attention",
@@ -387,6 +396,7 @@ export class ConversationService {
 		if (session.attentionFocus?.claim.id === turn.claim.id)
 			session.attentionFocus.delivery = "delivered";
 		turn.record.attention.completed = true;
+		turn.record.attention.delivery = delivery;
 		turn.record.status = "completed";
 		this.emit(turn, { kind: "completed" });
 	}
