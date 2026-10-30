@@ -25,7 +25,10 @@ export interface AuthorizationSnapshot {
 }
 
 export interface KnowledgeAuthorizationPort {
-	/** Must revalidate actual current membership/owner/source ACL, not reuse old grants. */
+	/**
+	 * Revalidate actual current membership/owner/source ACL, not old grants. Include
+	 * membership for the current owners of requested agentIds, even if not in userIds.
+	 */
 	resolve(request: AuthorizationRequest): Promise<AuthorizationSnapshot>;
 	/** Synchronous final fence check inside the store transaction; false on uncertainty. */
 	isCurrent(snapshot: AuthorizationSnapshot): boolean;

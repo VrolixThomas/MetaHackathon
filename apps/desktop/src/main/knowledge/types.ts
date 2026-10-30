@@ -6,9 +6,7 @@ const Text = z.string().min(1).max(16_384);
 const Time = z.iso.datetime();
 export const SourceRefSchema = z.object({ sourceId: Id, revision: Id }).strict();
 export type SourceRef = z.infer<typeof SourceRefSchema>;
-export const ActorSchema = z
-	.object({ workspaceId: Id, userId: Id, agentId: Id })
-	.strict();
+export const ActorSchema = z.object({ workspaceId: Id, userId: Id, agentId: Id }).strict();
 export type KnowledgeActor = z.infer<typeof ActorSchema>;
 export const ScopeSchema = z.discriminatedUnion("kind", [
 	z.object({ kind: z.literal("company") }).strict(),
@@ -94,6 +92,7 @@ export const MessageSchema = MessageInputSchema.extend({
 	recipientUserId: Id,
 	createdAt: Time,
 	contentRole: z.literal("untrusted-evidence"),
+	payloadDigest: z.string().regex(/^[a-f0-9]{64}$/),
 }).strict();
 export type DirectAgentMessage = z.infer<typeof MessageSchema>;
 export type AdmissionResult =
@@ -108,4 +107,16 @@ export interface AdmissionAudit {
 	result: AdmissionResult;
 	// Hash only: a rejected attempt must not persist the submitted private text.
 	payloadDigest: string;
+}
+
+export interface KnowledgeCitation extends SourceRef {
+	kind: KnowledgeSource["kind"];
+	containerId: string;
+	authorUserId: string;
+	observedAt: string;
+}
+
+export interface KnowledgeFactView {
+	fact: KnowledgeFact;
+	citations: KnowledgeCitation[];
 }
