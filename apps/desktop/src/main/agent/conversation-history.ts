@@ -1,8 +1,17 @@
+import type { AttentionItem } from "../../shared/contracts";
 import type { MetaItem } from "./meta-client";
 
 export type ConversationHistoryEntry =
 	| { kind: "exchange"; user: string; assistant: string }
-	| { kind: "attention"; claimId: string; assistant: string };
+	| {
+			kind: "attention";
+			claimId: string;
+			references: Pick<
+				AttentionItem,
+				"noticeId" | "jobId" | "repository" | "headSha" | "decisionId"
+			>[];
+			assistant: string;
+	  };
 
 export function conversationHistoryItems(history: ConversationHistoryEntry[]): MetaItem[] {
 	return history.flatMap((entry) => [

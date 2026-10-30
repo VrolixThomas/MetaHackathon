@@ -13,7 +13,12 @@ test("mixed history retains bounded whole exchanges and standalone assistant not
 		for (let i = 0; i < 30; i++) {
 			history.push(
 				i % 2
-					? { kind: "attention", claimId: `claim-${i}`, assistant: "a".repeat(chars) }
+					? {
+							kind: "attention",
+							claimId: `claim-${i}`,
+							references: [],
+							assistant: "a".repeat(chars),
+						}
 					: { kind: "exchange", user: "u".repeat(chars), assistant: "a".repeat(chars) }
 			);
 			retainConversationHistory(history);

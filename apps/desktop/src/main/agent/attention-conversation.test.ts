@@ -216,6 +216,42 @@ test("busy attention admission leaves user identity, events, cancellation and re
 	}
 });
 
+test("followup retains exact earlier notice identities after a later notice changes attention focus", async () => {
+	const h = harness({
+		attention: {
+			resolve: async (input) => {
+				const value = claim(input);
+				const item = value.items[0];
+				assert(item);
+				item.noticeId = `notice-${input.generation}`;
+				item.jobId = `job-${input.generation}`;
+				item.decisionId = `decision-${input.generation}`;
+				return value;
+			},
+		},
+	});
+	try {
+		for (const generation of [1, 2]) {
+			const notice = input(generation);
+			h.service.attend(notice);
+			receipt(h.service, await checkpoint(h.service, notice));
+		}
+		h.service.start(user(3, "The first decision, please"));
+		await terminal(h.service, user(3));
+		const request = h.requests[2];
+		assert(request);
+		for (const id of ["notice-1", "job-1", "decision-1", "notice-2", "job-2", "decision-2"])
+			assert(request.instructions.includes(id));
+		assert.deepEqual(
+			request.input.map((item) => item["role"]),
+			["assistant", "assistant", "user"]
+		);
+		assert.equal(request.input.at(-1)?.["content"], "The first decision, please");
+	} finally {
+		await h.service.dispose();
+	}
+});
+
 test("attention request retries deduplicate, conflict with user IDs and cannot replay an admitted claim", async () => {
 	const h = harness();
 	try {
