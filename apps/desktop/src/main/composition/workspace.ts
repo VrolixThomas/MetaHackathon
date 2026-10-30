@@ -362,13 +362,31 @@ export class WorkspaceCoordinator {
 					activity: "Activity",
 				};
 				const previous = snapshot.canvases.find((canvas) => canvas.id === "center");
+				let title = titles[command.section];
+				if (command.selectedId && command.selectedId !== "connections") {
+					const hub = await this.ports.hubSnapshot();
+					const ticket = hub.tickets.find((item) => item.id === command.selectedId);
+					const job = hub.jobs.find((item) => item.id === command.selectedId);
+					const pr = hub.reviews.find((item) => item.pr.id === command.selectedId)?.pr;
+					title = (
+						ticket
+							? `${ticket.identifier} · ${ticket.title}`
+							: job
+								? job.ticket
+									? `${job.ticket.identifier} · ${job.ticket.title}`
+									: job.repository
+								: pr
+									? `#${pr.number} · ${pr.title}`
+									: title
+					).slice(0, 120);
+				}
 				this.put(
 					snapshot,
 					parse(CanvasSchema, {
 						id: "center",
 						kind: "center",
 						revision: (previous?.revision ?? 0) + 1,
-						title: titles[command.section],
+						title,
 						section: command.section,
 						...(command.selectedId ? { selectedId: command.selectedId } : {}),
 					})
@@ -599,12 +617,17 @@ export class WorkspaceCoordinator {
 		}
 		this.current(session, pending);
 		snapshot.sequence++;
+		const baseContentSequence = pending.base.contentSequence ?? pending.base.sequence;
+		if (snapshot.centerSection !== undefined)
+			snapshot.contentSequence =
+				command.kind === "browse-center" ? baseContentSequence : snapshot.sequence;
 		const action = parse(AgentActionSchema, {
 			...pending.turn,
 			kind: "workspace-canvas",
 			screenSequence: pending.expectedSequence,
 			effect: {
 				expectedSequence: pending.expectedSequence,
+				...(snapshot.contentSequence !== undefined ? { baseContentSequence } : {}),
 				snapshot,
 				...(navigation ? { navigation } : {}),
 			},

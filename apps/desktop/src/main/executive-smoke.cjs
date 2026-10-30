@@ -689,7 +689,7 @@ async function native() {
 		};
 		const section = async (name) => {
 			await js(
-				`document.querySelector(${JSON.stringify(`.command-rail button[aria-label="${name}"]`)}).click()`
+				`document.querySelector(${JSON.stringify(`.command-rail button[aria-label^="${name}"]`)}).click()`
 			);
 		};
 		const snapshot = () => rpc("query", "hub.snapshot");
@@ -725,6 +725,7 @@ async function native() {
 			[7, "incoming"],
 			[8, "own"],
 		]);
+		await section("Incoming reviews");
 		await wait("real returned repository in sidebar", () =>
 			js(`!!document.querySelector('.command-repo [title=${JSON.stringify(REPOSITORY)}]')`)
 		);
@@ -904,7 +905,7 @@ async function native() {
 			await section("Completed work");
 			await wait("ready outcome in completed center", () =>
 				js(
-					`document.querySelector('[data-center-section="completed"]')?.textContent.includes(${JSON.stringify(TICKET_TITLE)})`
+					`document.querySelector('.command-sidebar-scroll')?.textContent.includes(${JSON.stringify(TICKET_TITLE)})`
 				)
 			);
 			await section("Home");
@@ -915,11 +916,11 @@ async function native() {
 				await section("Completed work");
 				await wait("saved job list", () =>
 					js(
-						`Array.from(document.querySelectorAll('.hub-center .hub-list-row')).some(e=>e.textContent.includes(${JSON.stringify(TICKET_TITLE)}))`
+						`Array.from(document.querySelectorAll('.command-sidebar .command-item')).some(e=>e.textContent.includes(${JSON.stringify(TICKET_TITLE)}))`
 					)
 				);
 				await js(
-					`Array.from(document.querySelectorAll('.hub-center .hub-list-row')).find(e=>e.textContent.includes(${JSON.stringify(TICKET_TITLE)})).click()`
+					`Array.from(document.querySelectorAll('.command-sidebar .command-item')).find(e=>e.textContent.includes(${JSON.stringify(TICKET_TITLE)})).click()`
 				);
 				await wait("same-job review actions", () =>
 					js(`!!document.querySelector('[aria-label="Work review actions"] textarea')`)
@@ -1063,7 +1064,7 @@ async function native() {
 				await section("Completed work");
 				await wait("saved job after renderer reopen", () =>
 					js(
-						`Array.from(document.querySelectorAll('.hub-center .hub-list-row')).some(e=>e.textContent.includes(${JSON.stringify(TICKET_TITLE)}))`
+						`Array.from(document.querySelectorAll('.command-sidebar .command-item')).some(e=>e.textContent.includes(${JSON.stringify(TICKET_TITLE)}))`
 					)
 				);
 				await wait("accepted outcome in reopened sidebar", () =>
@@ -1072,7 +1073,7 @@ async function native() {
 					)
 				);
 				await js(
-					`Array.from(document.querySelectorAll('.hub-center .hub-list-row')).find(e=>e.textContent.includes(${JSON.stringify(TICKET_TITLE)})).click()`
+					`Array.from(document.querySelectorAll('.command-sidebar .command-item')).find(e=>e.textContent.includes(${JSON.stringify(TICKET_TITLE)})).click()`
 				);
 				await wait("accepted detail after reopen", () =>
 					js(

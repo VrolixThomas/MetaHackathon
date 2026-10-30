@@ -910,3 +910,54 @@ it("creates a durable flow from main-read exact source outside changed files and
 	);
 	assert.equal(requests.length, 1, "Mixed revisions reject before another source read");
 });
+
+it("sidebar browsing acknowledges only the category and preserves the displayed review, browser and panes", async (t) => {
+	const h = harness(t, {
+		hubSnapshot: async () => ({
+			sequence: 0,
+			refreshedAt: null,
+			refreshing: false,
+			viewer: { githubLogin: null, linearName: null },
+			connections: { github: false, linear: false, model: false },
+			repositories: [],
+			reviews: [],
+			tickets: [],
+			jobs: [],
+			notices: [],
+			preferences: {
+				linearTeamIds: [],
+				linearProjectIds: [],
+				maxWorkers: 2,
+				autoApplySuggestions: false,
+			},
+			errors: [],
+		}),
+	});
+	await h.apply(
+		await h.prepare({ kind: "show-review", prId: h.state.review.pr.id }, "open-review")
+	);
+	await h.apply(
+		await h.prepare(
+			{ kind: "open-browser", url: "https://example.com/", target: "secondary" },
+			"open-browser"
+		)
+	);
+	for (const section of ["tickets", "feedback", "activity"] as const) {
+		const before = (await h.coordinator.observe("session")).workspace;
+		const action = await h.prepare({ kind: "browse-center", section }, `browse-${section}`);
+		assert.equal(
+			(await h.coordinator.observe("session")).workspace.centerSection,
+			before.centerSection,
+			"A prepared navigation is private until acknowledged"
+		);
+		assert.equal(await h.apply(action).then((r) => r.status), "accepted");
+		const after = (await h.coordinator.observe("session")).workspace;
+		const { sequence: _beforeSequence, centerSection: _beforeSection, ...content } = before;
+		const { sequence: _afterSequence, centerSection: _afterSection, ...nextContent } = after;
+		assert.deepEqual(nextContent, content);
+		assert.equal(after.centerSection, section);
+	}
+	assert.equal(h.state.navigations.length, 1);
+	assert.equal(h.state.openCalls.length, 1);
+	assert.equal(h.state.presented, true);
+});

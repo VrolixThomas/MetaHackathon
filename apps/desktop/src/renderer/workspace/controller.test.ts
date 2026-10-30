@@ -402,3 +402,87 @@ it("missing GitHub is actionable and a later selection can recover without resta
 		h.dispose();
 	}
 });
+
+it("a sidebar-only receipt keeps the visible native browser and still waits for real rendered bounds", async () => {
+	const page = {
+		url: "https://example.com/actual",
+		title: "Actual page",
+		viewport: { width: 1024, height: 768 },
+		canGoBack: false,
+		canGoForward: false,
+		provenance: "website-unverified-revision" as const,
+	};
+	const before: WorkspaceSnapshot = {
+		...initial,
+		centerSection: "home",
+		browser: page,
+		primaryId: "browser",
+		canvases: [
+			...initial.canvases,
+			{ id: "browser", title: "Actual page", kind: "browser", revision: 1 },
+		],
+	};
+	const h = harness({ observe: async (workspace, count) => (count === 1 ? before : workspace) });
+	try {
+		await h.controller.start();
+		const pending = h.controller.applyAction(
+			action({ ...before, sequence: 1, centerSection: "tickets" }),
+			() => true
+		);
+		await until(() => h.controller.store.getState().workspace?.sequence === 1);
+		assert.equal(
+			h.paths.includes("localBrowser.present"),
+			false,
+			"Browsing must not hide the native page first"
+		);
+		assert.equal(h.receipts.length, 0);
+		h.controller.rendered(1);
+		h.controller.presented(0, null);
+		assert.equal(h.receipts.length, 0);
+		h.controller.presented(1, { x: 306, y: 128, width: 800, height: 600 });
+		assert.equal(await pending, "applied");
+		assert.equal(h.controller.getContext()?.primaryId, "browser");
+		assert.deepEqual(h.browser.store.getState().page, page);
+	} finally {
+		h.dispose();
+	}
+});
+it("category browsing waits for an active canvas effect without cancelling narration and only the newest category applies", async () => {
+	const prepared: string[] = [];
+	const h = harness({
+		prepare: async (input) => {
+			const value = input as { expectedSequence: number; command: { section: string } };
+			prepared.push(value.command.section);
+			return action(
+				{
+					...document,
+					sequence: value.expectedSequence + 1,
+					centerSection: value.command.section as "feedback",
+				},
+				"browse-result"
+			);
+		},
+	});
+	try {
+		await h.controller.start();
+		const showing = h.controller.applyAction(action(), () => true);
+		await until(() => h.controller.getContext()?.sequence === 1);
+		const first = h.controller.command({ kind: "browse-center", section: "tickets" });
+		const second = h.controller.command({ kind: "browse-center", section: "feedback" });
+		assert.deepEqual(prepared, []);
+		assert.equal(h.interruptions(), 0);
+		h.controller.rendered(1);
+		h.controller.presented(1, null);
+		assert.equal(await showing, "applied");
+		assert.equal(await first, "ignored");
+		await until(() => h.controller.getContext()?.sequence === 2);
+		h.controller.rendered(2);
+		h.controller.presented(2, null);
+		assert.equal(await second, "applied");
+		assert.deepEqual(prepared, ["feedback"]);
+		assert.equal(h.interruptions(), 0);
+		assert.equal(h.controller.getContext()?.primaryId, "doc-1");
+	} finally {
+		h.dispose();
+	}
+});

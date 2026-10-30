@@ -74,6 +74,12 @@ export function CanvasWorkspace({
 				canvas.kind === "browser" &&
 				(canvas.id === workspace.primaryId || canvas.id === workspace.secondaryId)
 		) ?? false;
+	const visibleTabs =
+		workspace?.canvases.filter(
+			(canvas) =>
+				canvas.kind !== "center" || (canvas.selectedId && canvas.selectedId !== "connections")
+		) ?? [];
+	const primaryHasTab = visibleTabs.some((canvas) => canvas.id === workspace?.primaryId);
 	const presented = useCallback(
 		(bounds: BrowserBounds | null) => {
 			if (sequence !== undefined) controller.presented(sequence, bounds);
@@ -232,108 +238,115 @@ export function CanvasWorkspace({
 			)}
 			{workspace ? (
 				<>
-					<div className="canvas-toolbar">
-						<div
-							ref={tabs}
-							className="canvas-tablist"
-							role="tablist"
-							aria-label="Canvases"
-							aria-multiselectable="true"
-							onKeyDown={tabKeys}
-						>
-							{workspace.canvases.map((canvas) => {
-								const selected =
-									canvas.id === workspace.primaryId || canvas.id === workspace.secondaryId;
-								const title =
-									canvas.kind === "browser" ? page?.title || canvas.title : canvas.title;
-								return (
-									<div key={canvas.id} className="canvas-tab" data-selected={selected}>
-										<button
-											type="button"
-											role="tab"
-											className="quiet"
-											id={`canvas-tab-${canvas.id}`}
-											aria-selected={selected}
-											aria-controls={selected ? `canvas-panel-${canvas.id}` : undefined}
-											tabIndex={canvas.id === workspace.primaryId ? 0 : -1}
-											title={title}
-											onClick={() => {
-												if (canvas.id !== workspace.primaryId)
-													command({ kind: "focus-canvas", id: canvas.id });
-											}}
-										>
-											<span
-												className="canvas-tab-kind"
-												title={kindLabel[canvas.kind]}
-												aria-hidden="true"
-											>
-												{kindIcon[canvas.kind]}
-											</span>
-											<span className="canvas-tab-title">{title}</span>
-										</button>
-										<button
-											type="button"
-											className="quiet canvas-close"
-											aria-label={`Close ${title}`}
-											onClick={() => command({ kind: "close-canvas", id: canvas.id })}
-										>
-											×
-										</button>
-										{!selected && (
+					{visibleTabs.length > 0 && (
+						<div className="canvas-toolbar">
+							<div
+								ref={tabs}
+								className="canvas-tablist"
+								role="tablist"
+								aria-label="Canvases"
+								aria-multiselectable="true"
+								onKeyDown={tabKeys}
+							>
+								{visibleTabs.map((canvas) => {
+									const selected =
+										canvas.id === workspace.primaryId || canvas.id === workspace.secondaryId;
+									const title =
+										canvas.kind === "browser" ? page?.title || canvas.title : canvas.title;
+									return (
+										<div key={canvas.id} className="canvas-tab" data-selected={selected}>
 											<button
 												type="button"
+												role="tab"
 												className="quiet"
-												aria-label={`Show ${title} beside current canvas`}
-												onClick={() =>
-													command({ kind: "focus-canvas", id: canvas.id, target: "secondary" })
+												id={`canvas-tab-${canvas.id}`}
+												aria-selected={selected}
+												aria-controls={selected ? `canvas-panel-${canvas.id}` : undefined}
+												tabIndex={
+													canvas.id === workspace.primaryId ||
+													(!primaryHasTab && canvas.id === visibleTabs[0]?.id)
+														? 0
+														: -1
 												}
+												title={title}
+												onClick={() => {
+													if (canvas.id !== workspace.primaryId)
+														command({ kind: "focus-canvas", id: canvas.id });
+												}}
 											>
-												◫
+												<span
+													className="canvas-tab-kind"
+													title={kindLabel[canvas.kind]}
+													aria-hidden="true"
+												>
+													{kindIcon[canvas.kind]}
+												</span>
+												<span className="canvas-tab-title">{title}</span>
 											</button>
-										)}
-									</div>
-								);
-							})}
-						</div>
-						{saved.length > 0 && (
-							<button
-								type="button"
-								className="quiet canvas-layout-button"
-								ref={historyToggle}
-								aria-haspopup="dialog"
-								aria-expanded={historyOpen}
-								onClick={() => setHistoryOpen(true)}
-							>
-								Recent
-							</button>
-						)}
-						{workspace.secondaryId ? (
-							<button
-								type="button"
-								className="quiet canvas-layout-button"
-								onClick={() =>
-									command({ kind: "layout", primaryId: workspace.primaryId, secondaryId: null })
-								}
-							>
-								Single pane
-							</button>
-						) : (
-							workspace.canvases.length > 1 && (
+											<button
+												type="button"
+												className="quiet canvas-close"
+												aria-label={`Close ${title}`}
+												onClick={() => command({ kind: "close-canvas", id: canvas.id })}
+											>
+												×
+											</button>
+											{!selected && (
+												<button
+													type="button"
+													className="quiet"
+													aria-label={`Show ${title} beside current canvas`}
+													onClick={() =>
+														command({ kind: "focus-canvas", id: canvas.id, target: "secondary" })
+													}
+												>
+													◫
+												</button>
+											)}
+										</div>
+									);
+								})}
+							</div>
+							{saved.length > 0 && (
 								<button
 									type="button"
 									className="quiet canvas-layout-button"
-									onClick={() => {
-										const next = workspace.canvases.find(
-											(canvas) => canvas.id !== workspace.primaryId
-										);
-										if (next) command({ kind: "focus-canvas", id: next.id, target: "secondary" });
-									}}
+									ref={historyToggle}
+									aria-haspopup="dialog"
+									aria-expanded={historyOpen}
+									onClick={() => setHistoryOpen(true)}
 								>
-									Split panes
+									Recent
 								</button>
-							)
-						)}
-					</div>
+							)}
+							{workspace.secondaryId ? (
+								<button
+									type="button"
+									className="quiet canvas-layout-button"
+									onClick={() =>
+										command({ kind: "layout", primaryId: workspace.primaryId, secondaryId: null })
+									}
+								>
+									Single pane
+								</button>
+							) : (
+								workspace.canvases.length > 1 && (
+									<button
+										type="button"
+										className="quiet canvas-layout-button"
+										onClick={() => {
+											const next = workspace.canvases.find(
+												(canvas) => canvas.id !== workspace.primaryId
+											);
+											if (next) command({ kind: "focus-canvas", id: next.id, target: "secondary" });
+										}}
+									>
+										Split panes
+									</button>
+								)
+							)}
+						</div>
+					)}
 					<CanvasSplit
 						split={workspace.secondaryId !== null}
 						obscured={blocked}
@@ -344,9 +357,16 @@ export function CanvasWorkspace({
 							return (
 								<div
 									className="canvas-pane"
-									role="tabpanel"
+									role={visibleTabs.some((tab) => tab.id === canvas.id) ? "tabpanel" : "region"}
 									id={`canvas-panel-${canvas.id}`}
-									aria-labelledby={`canvas-tab-${canvas.id}`}
+									aria-labelledby={
+										visibleTabs.some((tab) => tab.id === canvas.id)
+											? `canvas-tab-${canvas.id}`
+											: undefined
+									}
+									aria-label={
+										!visibleTabs.some((tab) => tab.id === canvas.id) ? canvas.title : undefined
+									}
 									key={canvas.id}
 									data-canvas-kind={canvas.kind}
 									data-canvas-id={canvas.id}

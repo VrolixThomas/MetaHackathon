@@ -38,6 +38,13 @@ function validateWorkspace(input: WorkspaceSnapshot) {
 	return workspace;
 }
 
+/** Sidebar selection shares receipts while retaining the exact displayed content. */
+function samePresentedContent(a: WorkspaceSnapshot, b: WorkspaceSnapshot) {
+	const { sequence: _aSequence, centerSection: _aSection, ...aContent } = a;
+	const { sequence: _bSequence, centerSection: _bSection, ...bContent } = b;
+	return JSON.stringify(aContent) === JSON.stringify(bContent);
+}
+
 export function createWorkspaceController(
 	call: ConversationApi["call"],
 	reviews: PreparedController,
@@ -55,6 +62,8 @@ export function createWorkspaceController(
 	let obscured = false;
 	let epoch = 0;
 	let manualEpoch = 0;
+	let browseIntent = 0;
+	let manualPending: Promise<Status> | undefined;
 	let manualInteraction = options.onManualChange;
 	let pending: PendingRender | undefined;
 	let operation: AbortController | undefined;
@@ -198,7 +207,8 @@ export function createWorkspaceController(
 			try {
 				validateWorkspace(action.effect.snapshot);
 				// Hide goes ahead of native navigation/resize queues and before installing another canvas.
-				await Promise.race([browser.present(null), cancelled]);
+				if (!samePresentedContent(before, action.effect.snapshot))
+					await Promise.race([browser.present(null), cancelled]);
 				if (!valid()) return await acknowledge(action, status);
 				if (action.effect.navigation) {
 					const navigation = await Promise.race([
@@ -248,18 +258,38 @@ export function createWorkspaceController(
 		}
 		return work;
 	}
-	async function command(input: WorkspaceCommand) {
+	function command(input: WorkspaceCommand): Promise<Status> {
 		const parsed = WorkspaceCommandSchema.safeParse(input);
 		if (!parsed.success) {
 			store.setState({
 				error:
 					"Check the workspace request. Websites require an HTTPS or local HTTP address without credentials.",
 			});
-			return "ignored" as const;
+			return Promise.resolve("ignored" as const);
 		}
+		const intent = ++browseIntent;
 		const command = parsed.data;
+		const prior = manualPending;
+		const display = activeRequest ? deliveries.get(activeRequest) : undefined;
+		const work =
+			command.kind === "browse-center"
+				? (async () => {
+						await Promise.allSettled([...(prior ? [prior] : []), ...(display ? [display] : [])]);
+						if (intent !== browseIntent || disposed || obscured) return "ignored" as const;
+						return performCommand(command);
+					})()
+				: performCommand(command);
+		manualPending = work;
+		void work
+			.finally(() => {
+				if (manualPending === work) manualPending = undefined;
+			})
+			.catch(() => {});
+		return work;
+	}
+	async function performCommand(command: WorkspaceCommand) {
 		if (disposed || obscured) return "ignored" as const;
-		manualInteraction?.();
+		if (command.kind !== "browse-center") manualInteraction?.();
 		const request = ++manualEpoch;
 		invalidate();
 		const current = epoch;

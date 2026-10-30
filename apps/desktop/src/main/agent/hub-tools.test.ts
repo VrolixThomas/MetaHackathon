@@ -599,11 +599,18 @@ function workspace(d: ReturnType<typeof data>) {
 						provenance: "source-with-inferred-order",
 					},
 				});
+			const baseContentSequence = observation.workspace.contentSequence;
+			if (baseContentSequence !== undefined)
+				next.workspace.contentSequence = next.workspace.sequence;
 			const action: AgentAction = {
 				...turn,
 				kind: "workspace-canvas",
-				screenSequence: 0,
-				effect: { expectedSequence: observation.workspace.sequence, snapshot: next.workspace },
+				screenSequence: observation.workspace.sequence,
+				effect: {
+					expectedSequence: observation.workspace.sequence,
+					snapshot: next.workspace,
+					...(baseContentSequence !== undefined ? { baseContentSequence } : {}),
+				},
 			};
 			onAction(action);
 			await new Promise<void>((resolve) => {
@@ -1639,4 +1646,30 @@ test("base source search keeps the inspected base side and accepted work is not 
 	);
 	assert.equal((result as { sources: PinnedSource[] }).sources[0]?.location.revision, "base");
 	assert.deepEqual(await tools.pendingWorkUpdates(), []);
+});
+
+test("sidebar-only revisions preserve an in-flight agent tool, while changed displayed content remains stale", async () => {
+	for (const changedContent of [false, true]) {
+		const d = data();
+		const w = workspace(d);
+		w.tools.allowPinnedSource(d.source);
+		await w.tools.observe();
+		w.observation.workspace.sequence = 1;
+		w.observation.workspace.contentSequence = changedContent ? 1 : 0;
+		w.observation.workspace.centerSection = "tickets";
+		const opening = w.tools.execute(
+			"open_pinned_source",
+			JSON.stringify({ location: d.source.location })
+		);
+		if (changedContent) {
+			await assert.rejects(opening, /does not match this turn/);
+			assert.equal(w.actions.length, 0);
+		} else {
+			await eventually(() => w.actions.length === 1);
+			w.settle();
+			await opening;
+			assert.equal(w.observation.workspace.sequence, 2);
+			assert.equal(w.observation.workspace.centerSection, "tickets");
+		}
+	}
 });

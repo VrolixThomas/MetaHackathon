@@ -9,7 +9,6 @@ import {
 	jobOutcomeLabel,
 	jobReference,
 	jobTitle,
-	priorityItems,
 	sectionCount,
 	stateLabel,
 } from "./model";
@@ -28,7 +27,20 @@ export function CommandSidebar({
 	onSettings(): void;
 }) {
 	const { snapshot, busy, error } = useStore(hub.store);
-	const canvasState = useStore(workspace.store).workspace;
+	const workspaceState = useStore(workspace.store);
+	const canvasState = workspaceState.workspace;
+	const recentCanvases = [
+		...new Map(
+			[
+				...(canvasState?.canvases ?? []).filter((item) =>
+					["document", "source", "flow", "visual"].includes(item.kind)
+				),
+				...(workspaceState.observation?.savedCanvases ?? []),
+			].map((item) => [item.id, item])
+		).values(),
+	]
+		.slice(-12)
+		.reverse();
 	const canvas = canvasState?.canvases.find((item) => item.id === canvasState.primaryId);
 	const section = canvasState?.centerSection ?? "home";
 	const title = centerSections.find((item) => item.id === section)?.label;
@@ -145,21 +157,29 @@ export function CommandSidebar({
 							))}
 							{section === "home" && (
 								<>
-									<div className="command-group-title">Up next</div>
-									{priorityItems(snapshot).map((item) => (
+									<div className="command-group-title">Recent canvases</div>
+									{recentCanvases.map((item) => (
 										<button
 											type="button"
 											className="command-item quiet"
 											key={item.id}
-											onClick={() => select(item.section, item.selectedId)}
+											onClick={() => command({ kind: "focus-canvas", id: item.id })}
 										>
 											<span className="command-item-title">{item.title}</span>
-											<span className="command-item-meta">{item.label}</span>
+											<span className="command-item-meta">
+												{item.kind === "flow"
+													? "Source flow"
+													: item.kind === "visual"
+														? "Visual draft"
+														: item.kind === "source"
+															? "Source"
+															: "Document"}
+											</span>
 										</button>
 									))}
-									{!priorityItems(snapshot).length && (
+									{!recentCanvases.length && (
 										<p className="hub-sidebar-empty">
-											No priorities to show. Open Home to see your brief and connections.
+											Choose a section to browse your work. Your saved canvases will appear here.
 										</p>
 									)}
 								</>

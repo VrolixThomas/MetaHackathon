@@ -319,6 +319,47 @@ async function native() {
 		};
 		const first = await inspect("open desktop");
 		assert.equal(first.dom.path, "/one");
+		const sidebarSession = await js(
+			`document.querySelector('main[data-session-id]').dataset.sessionId`
+		);
+		const beforeBrowsing = (await rpc("query", "workspace.observe", { sessionId: sidebarSession }))
+			.workspace;
+		const visibleBeforeBrowsing = view.getBounds();
+		const nativeSetVisible = view.setVisible;
+		let sidebarHides = 0;
+		view.setVisible = function (visible) {
+			if (!visible) sidebarHides++;
+			return nativeSetVisible.call(this, visible);
+		};
+		try {
+			for (const label of ["My tickets", "Own PR feedback", "Incoming reviews"]) {
+				await js(
+					`document.querySelector(${JSON.stringify(`.command-rail button[aria-label^="${label}"]`)}).click()`
+				);
+				await wait(`sidebar category ${label}`, () =>
+					js(
+						`document.querySelector('.command-sidebar > header strong')?.textContent === ${JSON.stringify(label)}`
+					)
+				);
+				await wait("sidebar-only receipt committed", settledCanvas);
+				const after = (await rpc("query", "workspace.observe", { sessionId: sidebarSession }))
+					.workspace;
+				const {
+					sequence: _beforeSequence,
+					centerSection: _beforeCategory,
+					...content
+				} = beforeBrowsing;
+				const { sequence: _afterSequence, centerSection: _afterCategory, ...nextContent } = after;
+				assert.deepEqual(nextContent, content);
+				assert.equal(view.getVisible(), true);
+				assert.deepEqual(view.getBounds(), visibleBeforeBrowsing);
+				assert.equal(guest.id, guestId);
+			}
+			assert.equal(sidebarHides, 0, "Sidebar browsing must never hide the persistent browser");
+			report.sidebarBrowsingPreservesNativePage = true;
+		} finally {
+			view.setVisible = nativeSetVisible;
+		}
 		const preferences = guest.getLastWebPreferences();
 		assert.equal(preferences.sandbox, true);
 		assert.equal(preferences.contextIsolation, true);
@@ -378,7 +419,7 @@ async function native() {
 		);
 		await wait("single canvas layout", () => js(`!document.querySelector('.workspace-divider')`));
 		await wait("single canvas committed", settledCanvas);
-		await js(`document.querySelector('#canvas-tab-center').click()`);
+		await js(`document.querySelector('.command-rail button[aria-label^="Home"]').click()`);
 		await wait("Home tab hides page", () => !view.getVisible());
 		await wait("Home canvas committed", settledCanvas);
 		const hidden = await inspect("hidden", phone, false);

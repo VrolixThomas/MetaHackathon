@@ -779,3 +779,13 @@ it("repository entry remains available while optional repository suggestions loa
 	assert.match(html, /GitHub verifies access/);
 	hub.dispose();
 });
+
+it("Home's sidebar lists canvases without repeating the executive brief's work items", () => {
+	const hub = suppliedHub(makeSnapshot());
+	const workspace = suppliedWorkspace("home");
+	const html = sidebarControls(hub, workspace).html;
+	assert.match(html, /Recent canvases/);
+	assert.doesNotMatch(html, /Requested change|Owned change|Assigned change|Up next/);
+	hub.dispose();
+	workspace.dispose();
+});

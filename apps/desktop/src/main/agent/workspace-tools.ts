@@ -34,6 +34,10 @@ export interface ConversationWorkspacePorts {
 	cancel?(identity: TurnIdentity): void;
 }
 const names: Partial<Record<WorkspaceCommand["kind"], [string, string]>> = {
+	"browse-center": [
+		"browse_command_center",
+		"Browse a sidebar category without replacing the displayed canvas, review file or browser. Select an actual item with open_command_center or open_ready_review to open its content.",
+	],
 	"open-center": [
 		"open_command_center",
 		"Open the actual executive center section home, reviews, feedback, tickets, completed or activity, optionally selecting an observed item. Waits for displayed receipt.",
@@ -112,7 +116,7 @@ export class ConversationWorkspaceTools {
 			if (kind === "open-browser" || kind === "browser-action")
 				return available.includes("browser");
 			if (kind === "show-review" || kind === "code-view") return available.includes("review");
-			if (kind === "open-center") return available.includes("center");
+			if (kind === "open-center" || kind === "browse-center") return available.includes("center");
 			if (kind === "open-source") return available.includes("source");
 			if (kind === "create-flow") return available.includes("flow");
 			if (kind === "write-document") return available.includes("documents");
@@ -321,7 +325,10 @@ export class ConversationWorkspaceTools {
 							action.sessionId !== this.turn.sessionId ||
 							action.turnId !== this.turn.turnId ||
 							action.generation !== this.turn.generation ||
-							action.effect.expectedSequence !== expected.workspace.sequence
+							(action.effect.expectedSequence !== expected.workspace.sequence &&
+								(action.effect.expectedSequence < expected.workspace.sequence ||
+									action.effect.baseContentSequence !==
+										(expected.workspace.contentSequence ?? expected.workspace.sequence)))
 						)
 							throw new GuidedReviewError("The workspace effect does not match this turn.");
 						emitted = action;

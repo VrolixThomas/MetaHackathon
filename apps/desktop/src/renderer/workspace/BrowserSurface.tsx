@@ -39,6 +39,10 @@ export function BrowserSurface({
 	useEffect(() => {
 		setAddress(state.page?.url ?? "");
 	}, [state.page?.url]);
+	const callbacks = useRef({ onPresented, onPresentationError });
+	callbacks.current = { onPresented, onPresentationError };
+	const previousCallbacks = useRef({ onPresented, onPresentationError });
+	const reportPresentation = useRef<(() => void) | null>(null);
 	useLayoutEffect(() => {
 		let disposed = false;
 		let reportSequence = 0;
@@ -51,16 +55,17 @@ export function BrowserSurface({
 				.then(() => {
 					if (!disposed && current === reportSequence) {
 						setError("");
-						onPresented?.(bounds);
+						callbacks.current.onPresented?.(bounds);
 					}
 				})
 				.catch(() => {
 					if (!disposed && current === reportSequence) {
 						setError("The browser surface is unavailable.");
-						onPresentationError?.();
+						callbacks.current.onPresentationError?.();
 					}
 				});
 		};
+		reportPresentation.current = report;
 		const resize = new ResizeObserver(report);
 		if (host.current) resize.observe(host.current);
 		window.addEventListener("resize", report);
@@ -68,12 +73,22 @@ export function BrowserSurface({
 		report();
 		return () => {
 			disposed = true;
+			if (reportPresentation.current === report) reportPresentation.current = null;
 			resize.disconnect();
 			window.removeEventListener("resize", report);
 			window.removeEventListener("scroll", report, true);
 			void controller.present(null).catch(() => {});
 		};
-	}, [controller, visible, onPresented, onPresentationError]);
+	}, [controller, visible]);
+	useLayoutEffect(() => {
+		if (
+			previousCallbacks.current.onPresented !== onPresented ||
+			previousCallbacks.current.onPresentationError !== onPresentationError
+		) {
+			previousCallbacks.current = { onPresented, onPresentationError };
+			reportPresentation.current?.();
+		}
+	}, [onPresented, onPresentationError]);
 	const command = (input: LocalBrowserCommand) => {
 		if (onCommand) onCommand(input);
 		else void controller.command(input);

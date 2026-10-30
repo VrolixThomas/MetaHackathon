@@ -93,6 +93,8 @@ export const CanvasSchema = z.discriminatedUnion("kind", [
 export const WorkspaceSnapshotSchema = z
 	.strictObject({
 		sequence: z.int().nonnegative(),
+		/** Last revision that changed displayed work; sidebar browsing keeps this value. */
+		contentSequence: z.int().nonnegative().optional(),
 		canvases: z.array(CanvasSchema).min(1).max(12),
 		primaryId: IdSchema,
 		secondaryId: IdSchema.nullable(),
@@ -103,6 +105,11 @@ export const WorkspaceSnapshotSchema = z
 		centerSection: CenterSectionSchema.optional(),
 	})
 	.superRefine((value, ctx) => {
+		if (value.contentSequence !== undefined && value.contentSequence > value.sequence)
+			ctx.addIssue({
+				code: "custom",
+				message: "Content revision cannot exceed the workspace revision",
+			});
 		const ids = value.canvases.map((c) => c.id);
 		if (
 			new Set(ids).size !== ids.length ||
@@ -213,11 +220,15 @@ export const WorkspaceCommandSchema = z.discriminatedUnion("kind", [
 export const WorkspaceEffectSchema = z
 	.strictObject({
 		expectedSequence: z.int().nonnegative(),
+		baseContentSequence: z.int().nonnegative().optional(),
 		snapshot: WorkspaceSnapshotSchema,
 		navigation: ReviewNavigationSchema.optional(),
 	})
 	.refine(
-		(effect) => effect.snapshot.sequence === effect.expectedSequence + 1,
+		(effect) =>
+			effect.snapshot.sequence === effect.expectedSequence + 1 &&
+			(effect.baseContentSequence === undefined ||
+				effect.baseContentSequence <= effect.expectedSequence),
 		"An effect advances the workspace by exactly one revision"
 	);
 export const WorkspaceObservationSchema = z.strictObject({
