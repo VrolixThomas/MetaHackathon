@@ -284,10 +284,15 @@
 }
 .hub-center-header {
 	display: flex;
+	flex-wrap: wrap;
 	align-items: center;
 	justify-content: space-between;
 	gap: 16px;
 	margin-bottom: 35px;
+}
+.hub-center-header > div:first-child {
+	min-width: 0;
+	overflow-wrap: anywhere;
 }
 .hub-center .eyebrow,
 .hub-artifact-title .eyebrow {
@@ -303,12 +308,9 @@
 	font-weight: 500;
 	letter-spacing: -0.5px;
 }
-.hub-center-header .hub-back {
-	padding-left: 0;
-	font-size: 15px;
-}
 .hub-refresh {
 	display: flex;
+	flex-wrap: wrap;
 	align-items: center;
 	gap: 8px;
 	font-size: 10px;

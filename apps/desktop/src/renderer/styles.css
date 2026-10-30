@@ -1575,13 +1575,29 @@ summary:focus-visible {
 }
 .command-rail > button.quiet,
 .command-rail-bottom > button.quiet {
+	position: relative;
 	display: grid;
+	flex-shrink: 0;
 	place-items: center;
 	width: 38px;
 	height: 38px;
 	padding: 8px;
 	border-radius: 10px;
 	color: #888b93;
+}
+.command-rail-count {
+	position: absolute;
+	right: -2px;
+	bottom: -2px;
+	min-width: 15px;
+	padding: 1px 3px;
+	border: 1px solid #30333a;
+	border-radius: 5px;
+	background: #1b1d22;
+	color: #bfc5d1;
+	font-size: 9px;
+	line-height: 12px;
+	font-variant-numeric: tabular-nums;
 }
 .command-rail button.quiet[aria-current="page"] {
 	color: #f0f2f6;
@@ -1614,34 +1630,19 @@ summary:focus-visible {
 	display: flex;
 	align-items: center;
 	justify-content: space-between;
+	gap: 10px;
 	padding: 19px 15px 10px;
 	color: #e1e2e6;
 	font-size: 14px;
 }
+.command-sidebar > header strong {
+	min-width: 0;
+	overflow-wrap: anywhere;
+}
 .command-sidebar > header button {
 	display: flex;
+	flex-shrink: 0;
 	padding: 3px;
-}
-.command-sections {
-	display: flex;
-	flex-direction: column;
-	gap: 2px;
-	padding: 0 8px 15px;
-	border-bottom: 1px solid #232428;
-}
-.command-sections button.quiet {
-	display: flex;
-	align-items: center;
-	justify-content: space-between;
-	min-height: 31px;
-	padding: 5px 10px;
-	color: #a7a9b0;
-	font-size: 12px;
-	text-align: left;
-}
-.command-sections button[aria-current="page"] {
-	color: #f2f3f6;
-	background: #25272c;
 }
 .hub-count {
 	font-size: 10px;
@@ -1747,6 +1748,25 @@ summary:focus-visible {
 	font-size: 11px;
 	color: #707580;
 }
+.command-notice {
+	margin: 8px;
+	padding-block: 10px;
+	border-bottom: 1px solid #292c33;
+	font-size: 11px;
+	overflow-wrap: anywhere;
+}
+.command-notice strong {
+	color: #bfc2ca;
+	font-weight: 500;
+}
+.command-notice p,
+.command-notice time {
+	font-size: 10px;
+	color: #858d9b;
+}
+.command-notice .hub-actions {
+	margin-bottom: 0;
+}
 .command-sidebar > footer {
 	display: flex;
 	align-items: center;
@@ -1794,10 +1814,11 @@ summary:focus-visible {
 }
 @media (max-width: 760px) {
 	.command-navigation {
-		flex-basis: 47px;
+		flex-basis: 214px;
 	}
-	.command-sidebar {
-		display: none;
+	.command-sidebar > header {
+		padding-inline: 10px;
+		font-size: 12px;
 	}
 	.executive-app .identity-title {
 		display: none;

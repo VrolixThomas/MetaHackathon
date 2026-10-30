@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { useStore } from "zustand";
 import type {
 	Canvas,
+	HubSnapshot,
 	PullRequestFeedback,
 	ReviewQueueItem,
 	WorkspaceCommand,
@@ -10,19 +11,72 @@ import { MarkdownContent } from "../workspace/MarkdownContent";
 import { Connections, HubConnections } from "./Connections";
 import { JobView, TicketView } from "./WorkViews";
 import type { HubController } from "./controller";
-import {
-	centerSections,
-	isFinished,
-	jobOutcomeLabel,
-	jobReference,
-	jobTitle,
-	priorityItems,
-	priorityLabel,
-	sectionCount,
-	stateLabel,
-} from "./model";
+import { centerSections, priorityItems, sectionCount, stateLabel } from "./model";
 
 type Command = (input: WorkspaceCommand) => void;
+
+function SectionPrompt({
+	section,
+	snapshot,
+	command,
+}: {
+	section: Exclude<Extract<Canvas, { kind: "center" }>["section"], "home">;
+	snapshot: HubSnapshot;
+	command: Command;
+}) {
+	const count = sectionCount(snapshot, section);
+	const source =
+		section === "tickets"
+			? "linear"
+			: section === "reviews" || section === "feedback"
+				? "github"
+				: "worker";
+	const disconnected = source !== "worker" && !snapshot.connections[source];
+	const failed = snapshot.errors.some((error) => error.source === source);
+	const needsRepository = source === "github" && !snapshot.repositories.length;
+	const emptyTitle = {
+		reviews: "No incoming review requests",
+		feedback: "No own pull requests in your repositories",
+		tickets: "No assigned tickets in these scopes",
+		completed: "No saved outcomes yet",
+		activity: "No coding jobs in progress",
+	}[section];
+	const item = source === "github" ? "pull request" : source === "linear" ? "ticket" : "job";
+	let title = count ? `Select a ${item} in the sidebar` : emptyTitle;
+	if (!count && failed) title = "This queue could not be refreshed";
+	if (needsRepository) title = "Add a repository to follow pull requests";
+	if (disconnected)
+		title =
+			source === "github"
+				? "Connect GitHub to load pull requests"
+				: "Connect Linear to load your tickets";
+	const description = count
+		? "Choose an item in the sidebar to inspect its details. Browsing categories keeps the current workspace in place."
+		: failed
+			? "Check the connection message above and refresh to try again."
+			: source === "github"
+				? "Add repositories in Connections, then refresh to check for pull requests."
+				: source === "linear"
+					? "Choose the Linear teams and projects you want to follow in Connections."
+					: "Choose a ticket from My tickets in the sidebar to start work. Jobs appear in Activity queue and saved outcomes in Completed work.";
+	return (
+		<div className="hub-empty">
+			<h2>{title}</h2>
+			<p>{description}</p>
+			{(disconnected || needsRepository || (section === "tickets" && !count)) && (
+				<button
+					type="button"
+					className="quiet"
+					onClick={() =>
+						command({ kind: "open-center", section: "home", selectedId: "connections" })
+					}
+				>
+					Manage connections
+				</button>
+			)}
+		</div>
+	);
+}
 
 function OpenReview({
 	item,
@@ -243,18 +297,6 @@ function ConnectedCenter({
 	const selectedJob = snapshot?.jobs.find((job) => job.id === canvas.selectedId);
 	const selectedTicket = snapshot?.tickets.find((ticket) => ticket.id === canvas.selectedId);
 	const selectedReview = snapshot?.reviews.find((item) => item.pr.id === canvas.selectedId);
-	const detail = selectedJob || selectedTicket || selectedReview;
-	const jobs =
-		snapshot?.jobs.filter((job) => isFinished(job.state) === (canvas.section === "completed")) ??
-		[];
-	const reviews =
-		snapshot?.reviews.filter(
-			(item) => item.kind === (canvas.section === "feedback" ? "own" : "incoming")
-		) ?? [];
-	const tickets =
-		snapshot?.tickets
-			.filter((ticket) => !["completed", "canceled"].includes(ticket.state.type))
-			.sort((a, b) => (a.priority || 5) - (b.priority || 5)) ?? [];
 	return (
 		<div
 			className="hub-center"
@@ -266,19 +308,7 @@ function ConnectedCenter({
 					<span className="eyebrow">
 						Your workspace{snapshot?.viewer.linearName ? ` / ${snapshot.viewer.linearName}` : ""}
 					</span>
-					<h1>
-						{detail ? (
-							<button
-								type="button"
-								className="quiet hub-back"
-								onClick={() => select(canvas.section)}
-							>
-								← {title}
-							</button>
-						) : (
-							title
-						)}
-					</h1>
+					<h1>{title}</h1>
 				</div>
 				<div className="hub-refresh">
 					<span>
@@ -374,10 +404,7 @@ function ConnectedCenter({
 			) : canvas.selectedId && canvas.selectedId !== "connections" ? (
 				<div className="hub-empty">
 					<h2>This item is no longer in your workspace.</h2>
-					<p>Refresh or return to {title.toLowerCase()} to choose an available item.</p>
-					<button type="button" className="quiet" onClick={() => select(canvas.section)}>
-						Back to {title}
-					</button>
+					<p>Refresh or select another item in the sidebar.</p>
 				</div>
 			) : canvas.section === "home" ? (
 				<>
@@ -392,19 +419,6 @@ function ConnectedCenter({
 								<h2>Your priority brief</h2>
 								<p>Decisions, reviews, and work ready for your attention.</p>
 							</section>
-							<div className="hub-metrics">
-								{(["reviews", "feedback", "tickets", "activity"] as const).map((section) => (
-									<button
-										type="button"
-										className="quiet"
-										key={section}
-										onClick={() => select(section)}
-									>
-										<strong>{sectionCount(snapshot, section)}</strong>
-										<span>{centerSections.find((item) => item.id === section)?.label}</span>
-									</button>
-								))}
-							</div>
 							<section className="hub-priorities">
 								<div className="hub-section-heading">
 									<h2>Up next</h2>
@@ -458,207 +472,8 @@ function ConnectedCenter({
 						</>
 					)}
 				</>
-			) : canvas.section === "reviews" || canvas.section === "feedback" ? (
-				<>
-					<p className="hub-section-intro">
-						{canvas.section === "reviews"
-							? "Pull requests where your review is requested."
-							: "Your pull requests and the feedback people have left."}
-					</p>
-					{snapshot.repositories.map((repo) => (
-						<section className="hub-repo-section" key={repo.id}>
-							<h2>
-								{repo.repository}
-								<span className="hub-count">
-									{reviews.filter((item) => item.repositoryId === repo.id).length}
-								</span>
-							</h2>
-							{reviews
-								.filter((item) => item.repositoryId === repo.id)
-								.map((item) => (
-									<button
-										type="button"
-										className="hub-list-row quiet"
-										key={item.pr.id}
-										onClick={() =>
-											canvas.section === "reviews" && item.preparationStatus === "ready"
-												? command({ kind: "show-review", prId: item.pr.id })
-												: select(canvas.section, item.pr.id)
-										}
-									>
-										<div>
-											<strong>{item.pr.title}</strong>
-											<small>
-												#{item.pr.number} · {item.pr.author} · {item.headBranch} → {item.baseBranch}
-											</small>
-										</div>
-										<span className="hub-status">
-											{canvas.section === "feedback"
-												? `${item.feedbackCount} feedback`
-												: item.preparationStatus === "error"
-													? "Preparation needs retry"
-													: item.preparationStatus && item.preparationStatus !== "ready"
-														? "Preparing review…"
-														: item.draft
-															? "Draft"
-															: "Review requested"}
-										</span>
-									</button>
-								))}
-						</section>
-					))}
-					{!reviews.length && (
-						<div className="hub-empty">
-							<h2>
-								{snapshot.connections.github
-									? canvas.section === "reviews"
-										? "No incoming review requests"
-										: "No own pull requests in your repositories"
-									: "Connect GitHub to load pull requests"}
-							</h2>
-							<p>
-								{snapshot.repositories.length
-									? "Refresh to check your connected repositories."
-									: "Add a repository to get started."}
-							</p>
-							<button type="button" className="quiet" onClick={() => select("home", "connections")}>
-								Manage repositories
-							</button>
-						</div>
-					)}
-				</>
-			) : canvas.section === "tickets" ? (
-				<>
-					<p className="hub-section-intro">
-						Tickets assigned to you in your selected Linear teams and projects.
-					</p>
-					{tickets.map((ticket) => (
-						<button
-							type="button"
-							className="hub-list-row quiet"
-							key={ticket.id}
-							onClick={() => select("tickets", ticket.id)}
-						>
-							<span
-								className={`hub-ticket-priority priority-${ticket.priority}`}
-								title={priorityLabel(ticket.priority)}
-								aria-label={priorityLabel(ticket.priority)}
-							>
-								{ticket.priority === 1 ? "!" : "▥"}
-							</span>
-							<div>
-								<span className="hub-ticket-id">{ticket.identifier}</span>
-								<strong>{ticket.title}</strong>
-								<small>
-									{ticket.teamName}
-									{ticket.projectName ? ` / ${ticket.projectName}` : ""}
-								</small>
-							</div>
-							<span className="hub-status">{ticket.state.name}</span>
-						</button>
-					))}
-					{!tickets.length && (
-						<div className="hub-empty">
-							<h2>
-								{snapshot.connections.linear
-									? "No assigned tickets in these scopes"
-									: "Connect Linear to load your tickets"}
-							</h2>
-							<p>Choose the teams and projects you want to follow.</p>
-							<button type="button" className="quiet" onClick={() => select("home", "connections")}>
-								Choose Linear scopes
-							</button>
-						</div>
-					)}
-				</>
 			) : (
-				<>
-					<p className="hub-section-intro">
-						{canvas.section === "completed"
-							? "Saved worker outcomes and local changes, ready to inspect."
-							: "Saved coding jobs, questions, and updates. Resume work when you are ready."}
-					</p>
-					{jobs.map((job) => (
-						<button
-							type="button"
-							className="hub-list-row quiet"
-							key={job.id}
-							onClick={() => select(canvas.section, job.id)}
-						>
-							<span className={`hub-state-dot state-${job.state}`} />
-							<div>
-								<strong>{jobTitle(job)}</strong>
-								<small>
-									{jobReference(job)} · {job.repository} · {job.branch}
-								</small>
-							</div>
-							<span className={`hub-status status-${job.state}`}>
-								{job.pendingDecisions
-									? `${job.pendingDecisions} decision${job.pendingDecisions === 1 ? "" : "s"}`
-									: jobOutcomeLabel(job)}
-							</span>
-						</button>
-					))}
-					{!jobs.length && (
-						<div className="hub-empty">
-							<h2>
-								{canvas.section === "completed"
-									? "No saved outcomes yet"
-									: "No coding jobs in progress"}
-							</h2>
-							<p>
-								Open a ticket, select its repository, and give a coding worker a clarified brief.
-							</p>
-							<button type="button" className="quiet" onClick={() => select("tickets")}>
-								Open my tickets
-							</button>
-						</div>
-					)}
-					{canvas.section === "activity" && snapshot.notices.length > 0 && (
-						<section className="hub-notices">
-							<h2>Updates</h2>
-							{[...snapshot.notices]
-								.sort((a, b) => b.createdAt.localeCompare(a.createdAt))
-								.map((notice) => (
-									<div className="hub-notice" key={notice.id} data-seen={!!notice.seenAt}>
-										<div>
-											<strong>{notice.title}</strong>
-											<p>{notice.detail}</p>
-											<time dateTime={notice.createdAt}>
-												{new Date(notice.createdAt).toLocaleString()}
-											</time>
-										</div>
-										<div className="hub-actions">
-											{(notice.jobId || notice.prId) && (
-												<button
-													type="button"
-													className="quiet"
-													onClick={() => {
-														if (notice.jobId) select("activity", notice.jobId);
-														else if (notice.prId) select("feedback", notice.prId);
-													}}
-												>
-													Open
-												</button>
-											)}
-											{!notice.seenAt && (
-												<button
-													type="button"
-													className="quiet"
-													disabled={busy}
-													onClick={() =>
-														void hub.operate({ kind: "seen-notice", noticeId: notice.id })
-													}
-												>
-													Mark read
-												</button>
-											)}
-										</div>
-									</div>
-								))}
-						</section>
-					)}
-				</>
+				<SectionPrompt section={canvas.section} snapshot={snapshot} command={command} />
 			)}
 		</div>
 	);

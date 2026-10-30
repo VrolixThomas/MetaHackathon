@@ -9,6 +9,7 @@ import {
 	jobOutcomeLabel,
 	jobReference,
 	jobTitle,
+	priorityItems,
 	sectionCount,
 	stateLabel,
 } from "./model";
@@ -29,39 +30,62 @@ export function CommandSidebar({
 	const { snapshot, busy, error } = useStore(hub.store);
 	const canvasState = useStore(workspace.store).workspace;
 	const canvas = canvasState?.canvases.find((item) => item.id === canvasState.primaryId);
-	const section =
-		canvas?.kind === "center" ? canvas.section : (canvasState?.centerSection ?? "home");
-	const selectedId = canvas?.kind === "center" ? canvas.selectedId : canvasState?.review.prId;
+	const section = canvasState?.centerSection ?? "home";
+	const title = centerSections.find((item) => item.id === section)?.label;
+	const selectedId =
+		canvas?.kind === "center"
+			? canvas.section === section
+				? canvas.selectedId
+				: undefined
+			: section === "reviews" || section === "feedback"
+				? canvasState?.review.prId
+				: undefined;
 	const command = (input: WorkspaceCommand) => void workspace.command(input);
 	const select = (next: CenterSection, id?: string) =>
 		command({ kind: "open-center", section: next, ...(id ? { selectedId: id } : {}) });
-	const showRepositories = ["home", "reviews", "feedback"].includes(section);
-	const showJobs = ["home", "completed", "activity"].includes(section);
+	const showRepositories = section === "reviews" || section === "feedback";
+	const showJobs = section === "completed" || section === "activity";
 	const queueKind = section === "feedback" ? "own" : "incoming";
+	const source = section === "tickets" ? "linear" : showRepositories ? "github" : "worker";
+	const sourceErrors = snapshot?.errors.filter((item) => item.source === source) ?? [];
 	return (
 		<aside className="command-navigation" aria-label="Executive workspace">
 			<nav className="command-rail" aria-label="Workspace sections">
 				<button
 					type="button"
 					className="hub-brand quiet"
-					aria-label="Home"
+					title="Open Home"
+					aria-label="Open Home"
 					onClick={() => select("home")}
 				>
 					m<span>·</span>
 				</button>
-				{centerSections.map((item) => (
-					<button
-						type="button"
-						className="quiet"
-						key={item.id}
-						title={item.label}
-						aria-label={item.label}
-						aria-current={section === item.id ? "page" : undefined}
-						onClick={() => select(item.id)}
-					>
-						<HubIcon name={item.id} />
-					</button>
-				))}
+				{centerSections.map((item) => {
+					const count = snapshot ? sectionCount(snapshot, item.id) : null;
+					const label = `${item.label}${count === null ? "" : ` (${count})`}`;
+					return (
+						<button
+							type="button"
+							className="quiet"
+							key={item.id}
+							title={label}
+							aria-label={label}
+							aria-current={section === item.id ? "page" : undefined}
+							onClick={() =>
+								item.id === "home"
+									? select("home")
+									: command({ kind: "browse-center", section: item.id })
+							}
+						>
+							<HubIcon name={item.id} />
+							{count !== null && (
+								<span className="command-rail-count" aria-hidden="true">
+									{count}
+								</span>
+							)}
+						</button>
+					);
+				})}
 				<div className="command-rail-bottom">
 					<button
 						type="button"
@@ -87,7 +111,7 @@ export function CommandSidebar({
 			</nav>
 			<div className="command-sidebar">
 				<header>
-					<strong>Workspace</strong>
+					<strong>{title}</strong>
 					<button
 						type="button"
 						className="quiet"
@@ -98,27 +122,48 @@ export function CommandSidebar({
 						<HubIcon name="plus" />
 					</button>
 				</header>
-				<nav className="command-sections" aria-label="Your work">
-					{centerSections.map((item) => (
-						<button
-							type="button"
-							key={item.id}
-							className="quiet"
-							aria-current={section === item.id ? "page" : undefined}
-							onClick={() => select(item.id)}
-						>
-							<span>{item.label}</span>
-							{snapshot && <span className="hub-count">{sectionCount(snapshot, item.id)}</span>}
-						</button>
-					))}
-				</nav>
-				<div className="command-sidebar-scroll">
+				<section className="command-sidebar-scroll" key={section} aria-label={`${title} items`}>
 					{!snapshot ? (
 						<p className="hub-sidebar-empty" aria-live="polite">
 							{error ? "Work is unavailable. Open Home to retry." : "Loading your workspace…"}
 						</p>
 					) : (
 						<>
+							{error && (
+								<p className="hub-sidebar-empty" role="alert">
+									{error}
+								</p>
+							)}
+							{sourceErrors.map((item) => (
+								<p
+									className="hub-sidebar-empty"
+									aria-live="polite"
+									key={`${item.repositoryId ?? ""}:${item.message}`}
+								>
+									{item.message}
+								</p>
+							))}
+							{section === "home" && (
+								<>
+									<div className="command-group-title">Up next</div>
+									{priorityItems(snapshot).map((item) => (
+										<button
+											type="button"
+											className="command-item quiet"
+											key={item.id}
+											onClick={() => select(item.section, item.selectedId)}
+										>
+											<span className="command-item-title">{item.title}</span>
+											<span className="command-item-meta">{item.label}</span>
+										</button>
+									))}
+									{!priorityItems(snapshot).length && (
+										<p className="hub-sidebar-empty">
+											No priorities to show. Open Home to see your brief and connections.
+										</p>
+									)}
+								</>
+							)}
 							{showRepositories && (
 								<>
 									<div className="command-group-title">
@@ -130,6 +175,9 @@ export function CommandSidebar({
 									{snapshot.repositories.map((repo) => {
 										const items = snapshot.reviews.filter(
 											(item) => item.repositoryId === repo.id && item.kind === queueKind
+										);
+										const failed = sourceErrors.some(
+											(item) => !item.repositoryId || item.repositoryId === repo.id
 										);
 										return (
 											<details className="command-repo" key={repo.id} open>
@@ -158,27 +206,38 @@ export function CommandSidebar({
 															<span className="command-item-meta">
 																{queueKind === "own"
 																	? `${item.feedbackCount} feedback · ${stateLabel(item.reviewState)}`
-																	: `${item.headBranch} → ${item.baseBranch}`}
+																	: item.preparationStatus === "error"
+																		? "Preparation needs retry"
+																		: item.preparationStatus === "queued" ||
+																				item.preparationStatus === "preparing"
+																			? "Preparing review…"
+																			: `${item.headBranch} → ${item.baseBranch}`}
 															</span>
 														</button>
 													))
 												) : (
 													<p className="hub-sidebar-empty">
-														{queueKind === "own"
-															? "No own PRs in this repository."
-															: "No requested reviews."}
+														{!snapshot.connections.github
+															? "Connect GitHub to load pull requests."
+															: failed
+																? "Pull requests could not be refreshed."
+																: queueKind === "own"
+																	? "No own PRs in this repository."
+																	: "No requested reviews."}
 													</p>
 												)}
 											</details>
 										);
 									})}
-									{!snapshot.repositories.length && (
+									{(!snapshot.connections.github || !snapshot.repositories.length) && (
 										<button
 											type="button"
 											className="hub-sidebar-empty quiet"
 											onClick={() => select("home", "connections")}
 										>
-											Add a repository to follow reviews.
+											{snapshot.connections.github
+												? "Add a repository to follow reviews."
+												: "Connect GitHub to refresh pull requests."}
 										</button>
 									)}
 								</>
@@ -190,7 +249,11 @@ export function CommandSidebar({
 										(ticket) => !["completed", "canceled"].includes(ticket.state.type)
 									) && (
 										<p className="hub-sidebar-empty">
-											No assigned tickets in your selected scopes.
+											{sourceErrors.length
+												? "Assigned tickets could not be refreshed."
+												: snapshot.connections.linear
+													? "No assigned tickets in your selected scopes."
+													: "Connect Linear to load your assigned tickets."}
 										</p>
 									)}
 									{snapshot.tickets
@@ -256,11 +319,59 @@ export function CommandSidebar({
 												: "Start work from a ticket. Jobs and outcomes stay here."}
 										</p>
 									)}
+									{section === "activity" && snapshot.notices.length > 0 && (
+										<>
+											<div className="command-group-title">Updates</div>
+											{[...snapshot.notices]
+												.sort((a, b) => b.createdAt.localeCompare(a.createdAt))
+												.map((notice) => (
+													<article
+														className="command-notice"
+														key={notice.id}
+														data-seen={!!notice.seenAt}
+													>
+														<strong>{notice.title}</strong>
+														<p>{notice.detail}</p>
+														<time dateTime={notice.createdAt}>
+															{new Date(notice.createdAt).toLocaleString()}
+														</time>
+														<div className="hub-actions">
+															{(notice.jobId || notice.prId) && (
+																<button
+																	type="button"
+																	className="quiet"
+																	aria-label={`Open update: ${notice.title}`}
+																	onClick={() => {
+																		if (notice.jobId) select("activity", notice.jobId);
+																		else if (notice.prId) select("feedback", notice.prId);
+																	}}
+																>
+																	Open
+																</button>
+															)}
+															{!notice.seenAt && (
+																<button
+																	type="button"
+																	className="quiet"
+																	disabled={busy}
+																	aria-label={`Mark update read: ${notice.title}`}
+																	onClick={() =>
+																		void hub.operate({ kind: "seen-notice", noticeId: notice.id })
+																	}
+																>
+																	Mark read
+																</button>
+															)}
+														</div>
+													</article>
+												))}
+										</>
+									)}
 								</>
 							)}
 						</>
 					)}
-				</div>
+				</section>
 				<footer>
 					<span className={busy ? "hub-pulse" : "hub-state-dot"} />
 					{busy
