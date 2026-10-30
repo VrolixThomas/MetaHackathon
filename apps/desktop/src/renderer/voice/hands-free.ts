@@ -21,6 +21,7 @@ type Session = {
 	ready: boolean;
 	startedAt: number;
 	lastFrame: number;
+	frames: number;
 	lastActivity: number;
 	noiseTurns: number[];
 	preroll: SpeechFrame[];
@@ -50,6 +51,7 @@ export function createHandsFreeVoiceController(
 	let session: Session | null = null;
 	let starting: Promise<void> | null = null;
 	let disposed = false;
+	let replyStarting = false;
 	let turnObserver: Parameters<MediaFactory>[0] | undefined;
 	let turnSession: Session | null = null;
 	let snapshot: HandsFreeSnapshot = Object.freeze({ phase: "stopped", active: false });
@@ -124,10 +126,11 @@ export function createHandsFreeVoiceController(
 		acknowledgementText: undefined,
 		mediaSetupTimeoutMs: options.mediaSetupTimeoutMs ?? 12_000,
 		media: (observer) => {
-			if (!session?.ready || !session.capture || !session.audio) throw aborted();
+			if (!session?.ready || (!session.capture && !replyStarting) || !session.audio)
+				throw aborted();
 			turnObserver = observer;
 			const media = session.audio.createTurn(observer);
-			session.capture.media = media;
+			if (session.capture) session.capture.media = media;
 			return media;
 		},
 		onTurnEnd: (identity, result) => {
@@ -209,6 +212,8 @@ export function createHandsFreeVoiceController(
 	function frame(current: Session, input: SpeechFrame) {
 		if (session !== current || current.abort.signal.aborted) return;
 		current.lastFrame = now();
+		current.frames++;
+		const pending = current.detector.isSpeechPending;
 		const ms = (input.samples.length / input.sampleRate) * 1000;
 		// Detector validates the frame, including finite PCM and bounded duration, before it is buffered.
 		const decision = current.detector.process(input, voice.getPhase() === "speaking");
@@ -240,6 +245,7 @@ export function createHandsFreeVoiceController(
 			fail(current, timeout());
 			return;
 		}
+		if (pending !== current.detector.isSpeechPending) notify();
 		if (decision === "start") beginUtterance(current);
 		else current.capture?.media?.append(buffered.samples);
 		if (decision === "end") endUtterance(current);
@@ -252,7 +258,32 @@ export function createHandsFreeVoiceController(
 			else refresh();
 		}
 	}
+	function canStartAttention() {
+		return (
+			!disposed &&
+			!!session?.ready &&
+			session.frames > 0 &&
+			!session.abort.signal.aborted &&
+			now() - session.lastFrame < frameTimeout &&
+			!session.capture &&
+			!session.detector.isSpeechPending &&
+			!voice.getIdentity() &&
+			!replyStarting
+		);
+	}
 	return {
+		canStartAttention,
+		startAttention(claimId) {
+			if (!canStartAttention()) return { status: "unavailable" };
+			turnSession = session;
+			replyStarting = true;
+			try {
+				return voice.beginReply(claimId);
+			} finally {
+				replyStarting = false;
+				refresh();
+			}
+		},
 		startListening() {
 			if (disposed) return Promise.reject(aborted());
 			if (starting) return starting;
@@ -264,6 +295,7 @@ export function createHandsFreeVoiceController(
 				ready: false,
 				startedAt: now(),
 				lastFrame: now(),
+				frames: 0,
 				lastActivity: now(),
 				noiseTurns: [],
 				preroll: [],

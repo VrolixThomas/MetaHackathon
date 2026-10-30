@@ -941,3 +941,69 @@ test("late failed-turn callbacks and cancellation cannot stop the next utterance
 	assert.equal(h.ends.length, 1);
 	assert.equal(h.starts.length, 2);
 });
+
+test("attention vetoes pending VAD onset and retains one microphone across a drained reply", async () => {
+	const h = harness();
+	const attends: unknown[] = [];
+	h.options.agent.attend = async (input) => {
+		attends.push(input);
+		return { ...identity(input), status: "running" };
+	};
+	assert.equal(h.voice.canStartAttention(), false);
+	await h.voice.startListening();
+	assert.equal(h.voice.canStartAttention(), false, "Require an observed microphone frame");
+	h.feed();
+	assert.equal(h.voice.canStartAttention(), true);
+	h.feed(tone());
+	assert.equal(h.voice.getIdentity(), null, "Onset has not yet allocated a user turn");
+	assert.equal(h.voice.canStartAttention(), false);
+	assert.deepEqual(h.voice.startAttention("pending-onset"), { status: "unavailable" });
+	h.feed(undefined, undefined, 4);
+	assert.equal(h.voice.canStartAttention(), true);
+	// The already-open deterministic session supplies an output observer below.
+	h.options.voice.speak = async (input) => {
+		h.speaks.push(input);
+		h.turns.at(-1)?.observer.pcm({ rms: 0.1, observedAt: 200, basis: "webaudio-output-analyser" });
+		h.emit(input, { kind: "speech-ended", speechId: input.speechId });
+	};
+	const reply = h.voice.startAttention("ready-claim");
+	assert.equal(reply.status, "started");
+	await until(() => h.ends.length === 1);
+	assert.equal(h.ends[0]?.result.status, "completed");
+	assert.equal(attends.length, 1);
+	assert.deepEqual(h.starts, []);
+	assert.deepEqual(h.releases, []);
+	assert.equal(h.turns[0]?.samples.length, 0);
+	assert.equal(h.turns[0]?.ended, false, "No capture drain/release for assistant initiative");
+	assert.equal(h.sessions[0]?.closed, false);
+	assert.equal(h.sessions[0]?.opens, 1);
+	assert.equal(h.voice.getSessionSnapshot().phase, "listening");
+	assert.equal(h.voice.canStartAttention(), true);
+});
+
+test("real barge-in cancels attention and captures actual onset PCM in the same hardware session", async () => {
+	const h = harness();
+	h.options.agent.attend = async (input) => ({ ...identity(input), status: "running" });
+	h.keepSpeaking();
+	await h.voice.startListening();
+	h.feed();
+	const reply = h.voice.startAttention("barge-claim");
+	assert.equal(reply.status, "started");
+	await until(() => h.speaks.length === 1);
+	h.feed(tone(523), undefined, 15);
+	await until(() => h.turns.length === 2);
+	const user = h.voice.getIdentity();
+	assert.ok(user);
+	assert.equal(user.sessionId, reply.status === "started" ? reply.identity.sessionId : "");
+	assert.ok(user.generation > (reply.status === "started" ? reply.identity.generation : 0));
+	assert.equal(h.ends[0]?.result.status, "cancelled");
+	assert.equal(h.turns[0]?.closed, true);
+	assert.ok(h.turns[1]?.samples.some((frame) => frame.some((sample) => sample !== 0)));
+	assert.equal(h.sessions[0]?.closed, false);
+	assert.equal(h.sessions.length, 1);
+	assert.equal(h.cancels.voice[0]?.turnId, reply.status === "started" ? reply.identity.turnId : "");
+	assert.equal(h.cancels.agent[0]?.turnId, reply.status === "started" ? reply.identity.turnId : "");
+	h.feed(undefined, undefined, 35);
+	await until(() => h.starts.length === 1);
+	assert.equal(h.starts[0]?.text, "Hello", "Only real microphone release creates a user message");
+});

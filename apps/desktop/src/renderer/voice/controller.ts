@@ -16,8 +16,10 @@ import {
 	type CancelTurnInput,
 	CancelTurnInputSchema,
 	CancelTurnResultSchema,
+	ConversationAttentionInputSchema,
 	type ConversationTurnInput,
 	ConversationTurnInputSchema,
+	IdSchema,
 	PollTurnResultSchema,
 	PollTurnSchema,
 	ScreenContextSchema,
@@ -41,8 +43,9 @@ const StartResultSchema = TurnIdentitySchema.extend({ status: AgentTurnStatusSch
 const MAX_TEXT = 32_000;
 const MAX_ACTIONS = 256;
 const MAX_QUEUE = 128;
-type Speech = { id: string; text: string; kind: "acknowledgement" | "answer" };
+type Speech = { id: string; text: string; kind: "acknowledgement" | "answer"; observed: boolean };
 type Turn = {
+	claimId: string | null;
 	identity: TurnIdentity;
 	keywords: string[];
 	abort: AbortController;
@@ -243,6 +246,10 @@ export function createVoiceController(options: VoiceControllerOptions): VoiceCon
 	}
 	function finish(turn: Turn) {
 		if (!live(turn) || !turn.agentDone || turn.speaking || turn.queue.length) return;
+		if (turn.claimId && !turn.hasAnswer) {
+			fail(turn, new VoiceFailure("agent", new Error("Attention produced no spoken answer")));
+			return;
+		}
 		detach(turn);
 		// Explicitly release main/sidecar state as well as the browser peer.
 		cancelRemote(turn, "user");
@@ -266,14 +273,15 @@ export function createVoiceController(options: VoiceControllerOptions): VoiceCon
 
 	function observePcm(turn: Turn, sample: PcmObservation) {
 		const speech = turn.speech;
-		if (!live(turn) || !speech || turn.releasedAt === null || turn.measured.has(speech.kind))
-			return;
+		if (!live(turn) || !speech || turn.releasedAt === null) return;
 		if (
 			!Number.isFinite(sample.observedAt) ||
 			sample.observedAt < turn.releasedAt ||
 			sample.rms <= 0
 		)
 			return;
+		speech.observed = true;
+		if (turn.measured.has(speech.kind)) return;
 		turn.measured.add(speech.kind);
 		try {
 			options.onLatency?.({
@@ -323,6 +331,8 @@ export function createVoiceController(options: VoiceControllerOptions): VoiceCon
 						bounded(media.drain(turn.abort.signal), turn.abort.signal, speechTimeout)
 					);
 				if (!live(turn)) return;
+				if (turn.claimId && !speech.observed)
+					throw new VoiceFailure("media", new Error("Attention playback was not observed"));
 				turn.speech = null;
 				turn.ended = null;
 			}
@@ -340,7 +350,7 @@ export function createVoiceController(options: VoiceControllerOptions): VoiceCon
 		if (!live(turn)) return;
 		if (turn.queue.length >= MAX_QUEUE) throw new Error("Speech queue limit exceeded");
 		SpeakSchema.shape.text.parse(text);
-		turn.queue.push({ id: id(), text, kind });
+		turn.queue.push({ id: id(), text, kind, observed: false });
 		if (kind === "answer") turn.hasAnswer = true;
 		if (!turn.speaking) turn.pump = speakQueue(turn);
 	}
@@ -357,6 +367,8 @@ export function createVoiceController(options: VoiceControllerOptions): VoiceCon
 		if (turn.actions.size >= MAX_ACTIONS)
 			throw new VoiceFailure("agent", new Error("Agent action limit exceeded"));
 		turn.actions.add(value.requestId);
+		if (turn.claimId)
+			throw new VoiceFailure("agent", new Error("Attention cannot change the workspace"));
 		if (value.kind === "narration-checkpoint") {
 			if (turn.text.length !== value.throughTextLength || !sourceText.startsWith(turn.text))
 				throw new VoiceFailure("agent", new Error("Narration checkpoint text prefix mismatch"));
@@ -446,31 +458,45 @@ export function createVoiceController(options: VoiceControllerOptions): VoiceCon
 	}
 	async function runAgent(turn: Turn, text: string) {
 		try {
-			const base = { ...turn.identity, requestId: id(), text };
-			let input: AgentTurnInput | ConversationTurnInput;
-			if (options.getConversationContext) {
-				const context = options.getConversationContext();
-				input = ConversationTurnInputSchema.parse({
-					...base,
-					...(context.prId === undefined ? {} : { prId: context.prId }),
-					...(context.screen === undefined ? {} : { screen: context.screen }),
-					...(context.workspace === undefined ? {} : { workspace: context.workspace }),
-				});
-			} else {
-				const screenContext = ScreenContextSchema.parse(options.getScreenContext?.());
-				if (
-					screenContext.browser &&
-					(screenContext.browser.sessionId !== turn.identity.sessionId ||
-						screenContext.browser.prId !== screenContext.prId)
-				)
-					throw new Error("Browser context does not belong to the current review session");
-				turn.prId = screenContext.prId;
-				input = AgentTurnInputSchema.parse({ ...base, screenContext });
-			}
+			const start = (() => {
+				if (turn.claimId) {
+					const attend = options.agent.attend;
+					if (!attend) throw new Error("Attention is unavailable");
+					return () =>
+						attend(
+							ConversationAttentionInputSchema.parse({
+								...turn.identity,
+								requestId: id(),
+								claimId: turn.claimId,
+							}),
+							turn.abort.signal
+						);
+				}
+				const base = { ...turn.identity, requestId: id(), text };
+				let input: AgentTurnInput | ConversationTurnInput;
+				if (options.getConversationContext) {
+					const context = options.getConversationContext();
+					input = ConversationTurnInputSchema.parse({
+						...base,
+						...(context.prId === undefined ? {} : { prId: context.prId }),
+						...(context.screen === undefined ? {} : { screen: context.screen }),
+						...(context.workspace === undefined ? {} : { workspace: context.workspace }),
+					});
+				} else {
+					const screenContext = ScreenContextSchema.parse(options.getScreenContext?.());
+					if (
+						screenContext.browser &&
+						(screenContext.browser.sessionId !== turn.identity.sessionId ||
+							screenContext.browser.prId !== screenContext.prId)
+					)
+						throw new Error("Browser context does not belong to the current review session");
+					turn.prId = screenContext.prId;
+					input = AgentTurnInputSchema.parse({ ...base, screenContext });
+				}
+				return () => options.agent.start(input, turn.abort.signal);
+			})();
 			const started = await fromOrigin("agent", async () =>
-				StartResultSchema.parse(
-					await allocation(turn, "agent", () => options.agent.start(input, turn.abort.signal))
-				)
+				StartResultSchema.parse(await allocation(turn, "agent", start))
 			);
 			if (!live(turn)) return;
 			if (!sameTurn(started, turn.identity))
@@ -521,7 +547,7 @@ export function createVoiceController(options: VoiceControllerOptions): VoiceCon
 					if (result.status === "cancelled") return stop("user");
 					if (result.status === "completed") {
 						answer(turn, "", true);
-						if (!turn.hasAnswer && completion) queue(turn, completion, "answer");
+						if (!turn.claimId && !turn.hasAnswer && completion) queue(turn, completion, "answer");
 						turn.agentDone = true;
 						finish(turn);
 						return;
@@ -612,99 +638,111 @@ export function createVoiceController(options: VoiceControllerOptions): VoiceCon
 			);
 			if (!live(turn)) return;
 			turn.ready = true;
-			publish({ phase: "listening" });
+			if (turn.claimId) turn.media.stopCapture();
+			publish({ phase: turn.claimId ? "thinking" : "listening" });
 			if (!live(turn)) return;
 			void pollVoice(turn);
+			if (turn.claimId) void runAgent(turn, "");
 		} catch (error) {
 			fail(turn, error, "media");
 		}
 	}
 
+	function beginTurn(claimId: string | null) {
+		if (disposed || (claimId && active)) return { status: "unavailable" } as const;
+		const launch = ++captureSequence;
+		if (!claimId) stop("push-to-talk");
+		if (disposed || captureSequence !== launch) return { status: "unavailable" } as const;
+		let identity: TurnIdentity;
+		try {
+			identity = TurnIdentitySchema.parse(
+				options.allocateIdentity
+					? options.allocateIdentity()
+					: {
+							sessionId,
+							turnId: id(),
+							generation: generation + 1,
+						}
+			);
+			if (identity.sessionId !== sessionId || identity.generation <= generation)
+				throw new Error("Voice identity must advance the current review session generation");
+		} catch (error) {
+			if (!disposed && captureSequence === launch) {
+				publish({ phase: "error", error: asError(error).message });
+				report(error);
+			}
+			return { status: "unavailable" } as const;
+		}
+		if (disposed || captureSequence !== launch) return { status: "unavailable" } as const;
+		generation = identity.generation;
+		const turn: Turn = {
+			claimId,
+			identity,
+			keywords: [],
+			abort: new AbortController(),
+			media: null,
+			deadline: null,
+			ready: false,
+			releasedAt: claimId ? now() : null,
+			finalized: claimId !== null,
+			finalText: null,
+			voiceSequence: 0,
+			agentSequence: 0,
+			prId: null,
+			actions: new Set(),
+			text: "",
+			sentences: new Sentences(),
+			queue: [],
+			speech: null,
+			ended: null,
+			measured: new Set(),
+			agentDone: false,
+			speaking: false,
+			pump: null,
+			hasAnswer: false,
+			failure: null,
+		};
+		active = turn;
+		publish({
+			...identity,
+			phase: "idle",
+			transcript: "",
+			transcriptFinal: false,
+			error: undefined,
+		});
+		if (!live(turn)) return { status: "started", identity } as const;
+		try {
+			options.onTurnStart?.({ ...identity }, claimId ? "attention" : "voice");
+		} catch (error) {
+			fail(turn, error);
+		}
+		if (!live(turn)) return { status: "started", identity } as const;
+		turn.deadline = setTimeout(() => fail(turn, new Error("Voice turn timed out")), turnTimeout);
+		try {
+			turn.keywords = VoiceOfferSchema.shape.keywords.parse(options.getKeywords?.() ?? []);
+		} catch (error) {
+			fail(turn, error);
+			return { status: "started", identity } as const;
+		}
+		try {
+			turn.media = options.media({
+				pcm: (sample) => observePcm(turn, sample),
+				disconnected: (error) => fail(turn, error, "media"),
+			});
+			void connect(turn);
+		} catch (error) {
+			fail(turn, error, "media");
+		}
+		return { status: "started", identity } as const;
+	}
+
 	return {
 		beginCapture() {
-			if (disposed) return;
-			const launch = ++captureSequence;
-			stop("push-to-talk");
-			if (disposed || captureSequence !== launch) return;
-			let identity: TurnIdentity;
-			try {
-				identity = TurnIdentitySchema.parse(
-					options.allocateIdentity
-						? options.allocateIdentity()
-						: {
-								sessionId,
-								turnId: id(),
-								generation: generation + 1,
-							}
-				);
-				if (identity.sessionId !== sessionId || identity.generation <= generation)
-					throw new Error("Voice identity must advance the current review session generation");
-			} catch (error) {
-				if (!disposed && captureSequence === launch) {
-					publish({ phase: "error", error: asError(error).message });
-					report(error);
-				}
-				return;
-			}
-			if (disposed || captureSequence !== launch) return;
-			generation = identity.generation;
-			const turn: Turn = {
-				identity,
-				keywords: [],
-				abort: new AbortController(),
-				media: null,
-				deadline: null,
-				ready: false,
-				releasedAt: null,
-				finalized: false,
-				finalText: null,
-				voiceSequence: 0,
-				agentSequence: 0,
-				prId: null,
-				actions: new Set(),
-				text: "",
-				sentences: new Sentences(),
-				queue: [],
-				speech: null,
-				ended: null,
-				measured: new Set(),
-				agentDone: false,
-				speaking: false,
-				pump: null,
-				hasAnswer: false,
-				failure: null,
-			};
-			active = turn;
-			publish({
-				...identity,
-				phase: "idle",
-				transcript: "",
-				transcriptFinal: false,
-				error: undefined,
-			});
-			if (!live(turn)) return;
-			try {
-				options.onTurnStart?.({ ...identity });
-			} catch (error) {
-				fail(turn, error);
-			}
-			if (!live(turn)) return;
-			turn.deadline = setTimeout(() => fail(turn, new Error("Voice turn timed out")), turnTimeout);
-			try {
-				turn.keywords = VoiceOfferSchema.shape.keywords.parse(options.getKeywords?.() ?? []);
-			} catch (error) {
-				fail(turn, error);
-				return;
-			}
-			try {
-				turn.media = options.media({
-					pcm: (sample) => observePcm(turn, sample),
-					disconnected: (error) => fail(turn, error, "media"),
-				});
-				void connect(turn);
-			} catch (error) {
-				fail(turn, error, "media");
-			}
+			beginTurn(null);
+		},
+		beginReply(claimId) {
+			if (!options.agent.attend) return { status: "unavailable" };
+			return beginTurn(IdSchema.parse(claimId));
 		},
 		endCapture() {
 			const turn = active;

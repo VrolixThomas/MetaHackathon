@@ -38,6 +38,10 @@ export class VoiceActivityDetector {
 	get isPlaybackEcho() {
 		return this.echoOnly;
 	}
+	/** Includes onset candidates before an utterance has been accepted. */
+	get isSpeechPending() {
+		return this.active || this.candidateMs > 0;
+	}
 	private readonly onset: number;
 	private readonly playbackOnset: number;
 	private readonly silence: number;

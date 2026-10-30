@@ -1742,3 +1742,212 @@ test("external start interruption prevents media and failed turns notify their s
 	h.controller.dispose();
 	assert.equal(ends.length, 2);
 });
+
+test("reply-only initiative uses attend without a user turn and completes only after PCM, speech-ended and drain", async () => {
+	const ends: VoiceTurnEnd[] = [];
+	const sources: string[] = [];
+	const attends: unknown[] = [];
+	const speak = deferred<void>();
+	const drain = deferred<void>();
+	let draining = false;
+	const h = harness({
+		getConversationContext: () => {
+			throw new Error("Reply must not read renderer context");
+		},
+		onTurnStart: (_turn, source) => sources.push(source),
+		onTurnEnd: (_turn, result) => ends.push(result),
+	});
+	h.options.agent.attend = async (input) => {
+		attends.push(input);
+		return { ...identity(input), status: "running" };
+	};
+	const factory = h.options.media;
+	h.options.media = (observer) => ({
+		...factory(observer),
+		drain: async () => {
+			draining = true;
+			await drain.promise;
+		},
+	});
+	h.options.voice.speak = async (input) => {
+		h.speaks.push(input);
+		await speak.promise;
+	};
+	h.setPoll(async (input) => ({
+		...identity(input),
+		status: "completed",
+		sequence: 1,
+		text: "The requested work is ready.",
+		actions: [],
+		events: [],
+	}));
+	const reply = h.controller.beginReply("claim-1");
+	assert.equal(reply.status, "started");
+	assert.deepEqual(h.controller.beginReply("claim-1"), { status: "unavailable" });
+	await until(() => h.speaks.length === 1);
+	assert.deepEqual(sources, ["attention"]);
+	assert.deepEqual(attends, [
+		{
+			...h.current(),
+			requestId: (attends[0] as { requestId: string }).requestId,
+			claimId: "claim-1",
+		},
+	]);
+	h.emit({ kind: "transcript", final: true, text: "Must never appear as user speech" });
+	h.emit({ kind: "speech-ended", speechId: h.speaks[0]?.speechId ?? "" });
+	await wait();
+	assert.equal(draining, false);
+	assert.deepEqual(ends, []);
+	h.media[0]?.observer.pcm({ rms: 0.1, observedAt: 101, basis: "webaudio-output-analyser" });
+	speak.resolve();
+	await until(() => draining);
+	assert.deepEqual(ends, []);
+	drain.resolve();
+	await until(() => ends.length === 1);
+	assert.deepEqual(ends, [{ status: "completed" }]);
+	assert.deepEqual(h.starts, []);
+	assert.deepEqual(h.releases, []);
+	assert.equal(h.controller.transcript, "");
+	assert.equal(h.media[0]?.stopped, true);
+	const previous = reply.status === "started" ? reply.identity : null;
+	h.controller.beginCapture();
+	assert.equal(h.current().sessionId, previous?.sessionId);
+	assert.ok(h.current().generation > (previous?.generation ?? 0));
+});
+
+test("an attention answer without observed output PCM fails instead of claiming delivery", async () => {
+	const ends: VoiceTurnEnd[] = [];
+	const h = harness({ onTurnEnd: (_turn, result) => ends.push(result) });
+	h.options.agent.attend = async (input) => ({ ...identity(input), status: "running" });
+	h.setPoll(async (input) => ({
+		...identity(input),
+		status: "completed",
+		sequence: 1,
+		text: "Ready.",
+		actions: [],
+		events: [],
+	}));
+	h.controller.beginReply("claim-silent");
+	await until(() => h.speaks.length === 1);
+	h.emit({ kind: "speech-ended", speechId: h.speaks[0]?.speechId ?? "" });
+	await until(() => ends.length === 1);
+	assert.equal(ends[0]?.status, "failed");
+	assert.equal(h.cancels.voice.length, 1);
+	assert.equal(h.cancels.agent.length, 1);
+});
+
+test("attention refuses pane actions and an empty response never becomes completion filler", async () => {
+	for (const withAction of [false, true]) {
+		const ends: VoiceTurnEnd[] = [];
+		const h = harness({
+			completionText: "Generic completion.",
+			onTurnEnd: (_turn, result) => ends.push(result),
+		});
+		h.options.agent.attend = async (input) => ({ ...identity(input), status: "running" });
+		h.setPoll(async (input) => ({
+			...identity(input),
+			status: "completed",
+			sequence: 1,
+			text: "",
+			events: [],
+			actions: withAction
+				? [
+						{
+							...identity(input),
+							requestId: "navigation",
+							kind: "narration-checkpoint",
+							screenSequence: 2,
+							throughTextLength: 0,
+						},
+					]
+				: [],
+		}));
+		h.controller.beginReply(`claim-${withAction}`);
+		await until(() => ends.length === 1);
+		assert.equal(ends[0]?.status, "failed");
+		assert.deepEqual(h.speaks, []);
+		assert.deepEqual(h.actions, []);
+	}
+});
+
+test("cancelled assistant allocation compensates its late attend result and cannot revive speech", async () => {
+	const pending = deferred<TurnIdentity & { status: "running" }>();
+	const h = harness();
+	let old: TurnIdentity | null = null;
+	h.options.agent.attend = async (input) => {
+		old = identity(input);
+		return pending.promise;
+	};
+	h.controller.beginReply("claim-late");
+	await until(() => old !== null);
+	h.controller.interrupt("push-to-talk");
+	h.controller.beginCapture();
+	const next = h.current();
+	assert.ok(old);
+	pending.resolve({ ...identity(old), status: "running" });
+	await wait();
+	assert.deepEqual(h.controller.getIdentity(), next);
+	assert.equal(h.cancels.agent.filter((turn) => turn.turnId === old?.turnId).length, 2);
+	assert.deepEqual(h.speaks, []);
+});
+
+for (const stage of ["connect", "speech", "drain"] as const) {
+	test(`reply cancellation during ${stage} prevents late completion and preserves the next generation`, async () => {
+		const held = deferred<void>();
+		const ends: Array<{ turn: TurnIdentity; result: VoiceTurnEnd }> = [];
+		const h = harness({ onTurnEnd: (turn, result) => ends.push({ turn, result }) });
+		h.options.agent.attend = async (input) => ({ ...identity(input), status: "running" });
+		const factory = h.options.media;
+		let reached = false;
+		h.options.media = (observer) => {
+			const media = factory(observer);
+			return {
+				...media,
+				connect: async (offer, signal) => {
+					await media.connect(offer, signal);
+					if (stage === "connect") {
+						reached = true;
+						await held.promise;
+					}
+				},
+				drain: async () => {
+					if (stage === "drain") {
+						reached = true;
+						await held.promise;
+					}
+				},
+			};
+		};
+		h.options.voice.speak = async (input) => {
+			h.speaks.push(input);
+			h.media[0]?.observer.pcm({ rms: 0.1, observedAt: 101, basis: "webaudio-output-analyser" });
+			h.emit({ kind: "speech-ended", speechId: input.speechId });
+			if (stage === "speech") {
+				reached = true;
+				await held.promise;
+			}
+		};
+		h.setPoll(async (input) => ({
+			...identity(input),
+			status: "completed",
+			sequence: 1,
+			text: "First notice. Second notice.",
+			actions: [],
+			events: [],
+		}));
+		const reply = h.controller.beginReply(`claim-${stage}`);
+		assert.equal(reply.status, "started");
+		await until(() => reached);
+		h.controller.interrupt("push-to-talk");
+		h.controller.beginCapture();
+		const next = h.current();
+		held.resolve();
+		await wait();
+		assert.deepEqual(h.controller.getIdentity(), next);
+		assert.equal(ends.length, 1);
+		assert.equal(ends[0]?.result.status, "cancelled");
+		assert.ok(h.speaks.length <= 1, "No queued second notice after cancellation");
+		assert.equal(h.media[0]?.closed, true);
+		assert.equal(h.releases.length, 0);
+	});
+}

@@ -13,6 +13,7 @@ import type {
 	AgentTurnStatus,
 	CancelTurnInput,
 	CancelTurnResult,
+	ConversationAttentionInput,
 	ConversationTurnInput,
 	PollTurn,
 	PollTurnResult,
@@ -28,7 +29,16 @@ export type VoicePorts = {
 	cancel(input: TurnIdentity, signal: AbortSignal): Promise<void>;
 	poll(input: VoicePoll, signal: AbortSignal): Promise<VoicePollResult>;
 };
+export type ReplyStartResult =
+	| { status: "started"; identity: TurnIdentity }
+	| { status: "unavailable" };
+
 export type AgentPorts = {
+	/** Authoritative assistant initiative; no synthetic user text or renderer context. */
+	attend?(
+		input: ConversationAttentionInput,
+		signal: AbortSignal
+	): Promise<TurnIdentity & { status: AgentTurnStatus }>;
 	start(
 		input: AgentTurnInput | ConversationTurnInput,
 		signal: AbortSignal
@@ -90,7 +100,7 @@ export type VoiceControllerOptions = {
 	/** Synchronous shared allocator; requires sessionId and an increasing generation. */
 	allocateIdentity?(): TurnIdentity;
 	/** Display lifecycle only. These hooks must never start a second agent turn. */
-	onTurnStart?(identity: TurnIdentity): void;
+	onTurnStart?(identity: TurnIdentity, source: "voice" | "attention"): void;
 	onTurnEnd?(identity: TurnIdentity, result: VoiceTurnEnd): void;
 	/** V1 conversation mode: no screen or review is required; takes precedence over getScreenContext. */
 	getConversationContext?(): Pick<ConversationTurnInput, "prId" | "screen" | "workspace">;
@@ -132,6 +142,8 @@ export type VoiceControllerOptions = {
 /** Structurally satisfies UI review/services.ts VoiceAdapter without importing the UI lane. */
 export type VoiceController = {
 	beginCapture(): void;
+	/** Starts only while idle, without microphone capture, STT or a user transcript. */
+	beginReply(claimId: string): ReplyStartResult;
 	endCapture(): void;
 	interrupt(reason?: CancelTurnInput["reason"]): void;
 	getPhase(): VoiceState["phase"];

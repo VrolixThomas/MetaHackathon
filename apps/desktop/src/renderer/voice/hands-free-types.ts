@@ -1,5 +1,11 @@
 import type { ActivityOptions, SpeechFrame } from "./activity";
-import type { MediaFactory, VoiceController, VoiceControllerOptions, VoiceMedia } from "./types";
+import type {
+	MediaFactory,
+	ReplyStartResult,
+	VoiceController,
+	VoiceControllerOptions,
+	VoiceMedia,
+} from "./types";
 
 export type BufferedVoiceMedia = VoiceMedia & {
 	append(samples: Float32Array): void;
@@ -33,6 +39,8 @@ export type HandsFreeVoiceController = Pick<
 	VoiceController,
 	"getSnapshot" | "getPhase" | "getIdentity" | "subscribe" | "interrupt" | "dispose"
 > & {
+	canStartAttention(): boolean;
+	startAttention(claimId: string): ReplyStartResult;
 	startListening(): Promise<void>;
 	stopListening(reason?: Parameters<VoiceController["interrupt"]>[0]): void;
 	getSessionSnapshot(): HandsFreeSnapshot;
