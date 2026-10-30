@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { type OAuthAccount, OAuthAccountSchema } from "../../shared/contracts/oauth";
 import { SlackTransport } from "./transport";
 import { SlackError, SlackIdSchema, SlackScopesSchema, SlackTokenSchema, parsed } from "./types";
 
@@ -155,4 +156,62 @@ export async function refreshSlackToken(input: {
 	const value = parsed(TokenFieldsSchema, raw);
 	if (!value.refresh_token || !value.expires_in) throw new SlackError("invalid-data");
 	return { ...input.previous, ...tokenFields(value, input.now ?? Date.now()) };
+}
+
+/** Verify actual token identity and resolve display metadata; root alone stores the account/grant. */
+export async function slackProfile(input: {
+	grant: SlackUserGrant;
+	fetch?: typeof fetch;
+	signal?: AbortSignal;
+}): Promise<OAuthAccount> {
+	const transport = new SlackTransport({ fetch: input.fetch });
+	const token = parsed(SlackTokenSchema, input.grant.accessToken);
+	const identity = parsed(
+		z.object({ team_id: SlackIdSchema, user_id: SlackIdSchema, bot_id: SlackIdSchema.optional() }),
+		await transport.call("auth.test", { token, signal: input.signal })
+	);
+	if (
+		identity.bot_id ||
+		identity.team_id !== input.grant.workspaceId ||
+		identity.user_id !== input.grant.userId
+	)
+		throw new SlackError("access-denied");
+	const value = parsed(
+		z.object({
+			user: z.object({
+				id: SlackIdSchema,
+				team_id: SlackIdSchema.optional(),
+				name: z.string().max(100).optional(),
+				deleted: z.boolean().optional(),
+				is_bot: z.boolean().optional(),
+				profile: z
+					.object({
+						real_name: z.string().max(300).optional(),
+						display_name: z.string().max(300).optional(),
+					})
+					.optional(),
+			}),
+		}),
+		await transport.call("users.info", {
+			token,
+			fields: { user: input.grant.userId },
+			signal: input.signal,
+		})
+	);
+	if (
+		value.user.id !== input.grant.userId ||
+		(value.user.team_id && value.user.team_id !== input.grant.workspaceId) ||
+		value.user.deleted ||
+		value.user.is_bot
+	)
+		throw new SlackError("access-denied");
+	return parsed(OAuthAccountSchema, {
+		id: value.user.id,
+		displayName:
+			value.user.profile?.real_name ||
+			value.user.profile?.display_name ||
+			value.user.name ||
+			value.user.id,
+		...(value.user.name ? { login: value.user.name } : {}),
+	});
 }

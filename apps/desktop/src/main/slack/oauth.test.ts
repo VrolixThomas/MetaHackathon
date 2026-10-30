@@ -5,6 +5,7 @@ import {
 	exchangeSlackCode,
 	refreshSlackToken,
 	slackAuthorizationUrl,
+	slackProfile,
 } from "./oauth";
 import { SlackError } from "./types";
 
@@ -155,4 +156,44 @@ test("provider errors, malformed and oversized bodies never expose credentials o
 				error instanceof SlackError && !error.message.includes("controlled-secret")
 		);
 	}
+});
+
+test("profile verifies actual user/workspace before exposing bounded display metadata", async () => {
+	const controlledGrant = await exchangeSlackCode({
+		client,
+		code: "code",
+		redirectUri,
+		fetch: fetcher(grant),
+	});
+	const requests: string[] = [];
+	const account = await slackProfile({
+		grant: controlledGrant,
+		fetch: (async (input) => {
+			const method = new URL(String(input)).pathname;
+			requests.push(method);
+			return Response.json(
+				method.endsWith("auth.test")
+					? { ok: true, team_id: "T123", user_id: "U123" }
+					: {
+							ok: true,
+							user: {
+								id: "U123",
+								team_id: "T123",
+								name: "viewer",
+								profile: { real_name: "Real User" },
+							},
+						}
+			);
+		}) as typeof fetch,
+	});
+	assert.deepEqual(account, { id: "U123", displayName: "Real User", login: "viewer" });
+	assert.deepEqual(requests, ["/api/auth.test", "/api/users.info"]);
+	await assert.rejects(
+		slackProfile({
+			grant: controlledGrant,
+			fetch: (async () =>
+				Response.json({ ok: true, team_id: "T999", user_id: "U123" })) as typeof fetch,
+		}),
+		SlackError
+	);
 });
