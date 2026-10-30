@@ -16,10 +16,11 @@ test("assistant initiative carries a claim and cannot masquerade as a user utter
 		claimId: "claim",
 	};
 	assert.equal(ConversationAttentionInputSchema.safeParse(input).success, true);
-	assert
-		.equal(ConversationAttentionInputSchema.safeParse({ ...input, text: "fake user" }).success)
-		.toBe(false);
-	expect(ConversationTurnInputSchema.safeParse(input).success, false);
+	assert.equal(
+		ConversationAttentionInputSchema.safeParse({ ...input, text: "fake user" }).success,
+		false
+	);
+	assert.equal(ConversationTurnInputSchema.safeParse(input).success, false);
 });
 test("delivery claims have bounded unique job identity and old hub snapshots remain readable", () => {
 	const item = {
