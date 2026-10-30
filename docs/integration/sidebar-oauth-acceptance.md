@@ -46,7 +46,15 @@ from GitHub and are not a product fixture fallback.
 Reports are generated under `apps/desktop/out/`: `oauth-smoke-report.json`,
 `local-browser-smoke-report.json`, `sidebar-live-report.json` and the other named native reports.
 
-Pending: live human OAuth approval needs the user's new client registrations in `.env`.
-No live provider-consent claim is made. MET-53 stays In Progress for that acceptance step.
+Live GitHub OAuth was subsequently verified on 2026-10-30: the user approved registration of
+Muse — MetaHackathon (GitHub app 3979306), its private credentials were saved in the main `.env`,
+and the actual integration app opened the user's default Safari for authorization. The user
+completed sign-in/consent. Settings then showed **Connected — VrolixThomas** and the app's actual
+encrypted GitHub session file was present with mode `0600`. No repository write was made as a test.
+The registration's homepage points to MetaHackathon; it does not limit the OAuth grant to that repo.
+
+![Actual app after live GitHub OAuth authorization](screenshots/github-oauth-connected.png)
+
+Pending: Linear client registration and live user consent. MET-53 stays In Progress for that step.
 Physical microphone/speaker latency and Apple signing are not established by these checks.
 MET-51 still tracks the separately identified voice latency contributors.
