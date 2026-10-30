@@ -1,3 +1,4 @@
+import type { TurnIdentity } from "../../shared/contracts";
 import type { ActivityOptions, SpeechFrame } from "./activity";
 import type {
 	MediaFactory,
@@ -33,6 +34,9 @@ export type HandsFreeOptions = Omit<VoiceControllerOptions, "media" | "acknowled
 	preconnect?: {
 		/** From preparation start; at most 20s, reduced for longer configured utterances. */
 		leaseMs?: number;
+		/** Optional paired main hooks classify speculative setup separately from active voice. */
+		prepareOffer?: VoiceControllerOptions["voice"]["offer"];
+		activate?: (identity: TurnIdentity, signal: AbortSignal) => Promise<void>;
 	};
 	/** Optional user-selected inactivity cap; disabled by default so quiet code reading keeps the session armed. */
 	idleTimeoutMs?: number;

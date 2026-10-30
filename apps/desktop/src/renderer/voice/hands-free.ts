@@ -71,6 +71,13 @@ export function createHandsFreeVoiceController(
 	options: HandsFreeOptions
 ): HandsFreeVoiceController {
 	const now = options.now ?? (() => performance.now());
+	const preconnect = options.preconnect;
+	if (
+		preconnect &&
+		(preconnect.prepareOffer !== undefined || preconnect.activate !== undefined) &&
+		(typeof preconnect.prepareOffer !== "function" || typeof preconnect.activate !== "function")
+	)
+		throw new Error("Preconnection requires both prepareOffer and activate hooks");
 	// The sidecar's 60s capture budget includes provisional silence. Preserve room
 	// for even a configured 45s utterance plus FIFO/RTP tail and scheduling.
 	const preconnectBudget = Math.min(
@@ -203,6 +210,15 @@ export function createHandsFreeVoiceController(
 								timeout()
 							);
 							if (prepared.closed || signal.aborted) throw aborted();
+							if (preconnect?.activate) {
+								const pending = preconnect.activate({ ...prepared.identity }, signal);
+								const compensate = () => {
+									if (prepared.closed) cancelPrepared(prepared);
+								};
+								void pending.then(compensate, compensate);
+								await bounded(pending, signal, rpcTimeout);
+								if (prepared.closed || signal.aborted) throw aborted();
+							}
 						} finally {
 							signal.removeEventListener("abort", cancel);
 						}
@@ -358,10 +374,10 @@ export function createHandsFreeVoiceController(
 			prepared.ready = bounded(
 				prepared.media.connect(async (description) => {
 					signal.throwIfAborted();
-					const pending = options.voice.offer(
-						VoiceOfferSchema.parse({ ...identity, ...description, keywords }),
-						signal
-					);
+					const offer = VoiceOfferSchema.parse({ ...identity, ...description, keywords });
+					const pending = preconnect?.prepareOffer
+						? preconnect.prepareOffer(offer, signal)
+						: options.voice.offer(offer, signal);
 					const compensate = () => {
 						if (prepared.closed) cancelPrepared(prepared);
 					};
@@ -435,7 +451,14 @@ export function createHandsFreeVoiceController(
 		if (!capture?.media || !capture.identity) return;
 		const identity = capture.identity;
 		refresh();
-		void bounded(capture.media.finishInput(), current.abort.signal, 17_000, timeout())
+		// An already-connected peer may drain a short input while main activation is
+		// still pending. Release only after the active controller acknowledges readiness.
+		void bounded(
+			Promise.all([capture.media.finishInput(), captureReady(identity)]),
+			current.abort.signal,
+			17_000,
+			timeout()
+		)
 			.then(() => {
 				const active = voice.getIdentity();
 				if (session === current && active && sameTurn(identity, active)) voice.endCapture();
@@ -445,6 +468,22 @@ export function createHandsFreeVoiceController(
 				if (session === current && active && sameTurn(identity, active))
 					fail(current, asError(error));
 			});
+	}
+	function captureReady(identity: TurnIdentity): Promise<void> {
+		return new Promise((resolve, reject) => {
+			const check = () => {
+				const active = voice.getIdentity();
+				if (!active || !sameTurn(identity, active)) {
+					unsubscribe();
+					reject(aborted());
+				} else if (!voice.connecting) {
+					unsubscribe();
+					resolve();
+				}
+			};
+			const unsubscribe = voice.subscribe(check);
+			check();
+		});
 	}
 	function frame(current: Session, input: SpeechFrame) {
 		if (session !== current || current.abort.signal.aborted) return;

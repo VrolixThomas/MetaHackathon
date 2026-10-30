@@ -277,6 +277,99 @@ test("preconnection is opt-in and its lease cannot exceed the provider capture b
 	assert.equal(h.turns.length, 0);
 });
 
+test("prepared main hooks are paired and activation gates a short utterance's release", async () => {
+	const preparedOffers: VoiceOffer[] = [];
+	const activations: TurnIdentity[] = [];
+	const held = deferred<void>();
+	const prepareOffer = async (input: VoiceOffer) => {
+		preparedOffers.push(input);
+		return { type: "answer" as const, sdp: "controlled prepared" };
+	};
+	const activate = async (turn: TurnIdentity) => {
+		activations.push(turn);
+		await held.promise;
+	};
+	assert.throws(() => harness({ preconnect: { prepareOffer } }), /both prepareOffer and activate/);
+	assert.throws(() => harness({ preconnect: { activate } }), /both prepareOffer and activate/);
+	const h = harness({ preconnect: { prepareOffer, activate } });
+	await h.voice.startListening();
+	await until(() => h.turns[0]?.connected === true);
+	assert.equal(preparedOffers.length, 1);
+	assert.equal(h.offers.length, 0, "Ordinary offer does not label preparation as active input");
+	assert.equal(activations.length, 0);
+	assert.equal(h.openings.length, 0);
+	h.feed(tone(), undefined, 15);
+	h.feed(undefined, undefined, 35);
+	await until(() => activations.length === 1);
+	await pause();
+	assert.deepEqual(activations[0], identity(preparedOffers[0] as VoiceOffer));
+	assert.equal(h.openings.length, 1);
+	assert.equal(h.releases.length, 0, "Input drain alone cannot release before activation ack");
+	assert.equal(h.turns[0]?.ended, true);
+	assert.equal(h.turns[0]?.closed, false);
+	held.resolve();
+	await until(() => h.starts.length === 1);
+	assert.equal(h.releases.length, 1);
+	assert.equal(activations.length, 1);
+	assert.equal(h.errors.length, 0);
+});
+
+test("preconnection activation rejection cannot release input or start the agent", async () => {
+	const h = harness({
+		preconnect: {
+			prepareOffer: async () => ({ type: "answer", sdp: "controlled" }),
+			activate: async () => {
+				throw new Error("Prepared generation expired");
+			},
+		},
+	});
+	await h.voice.startListening();
+	h.feed(tone(), undefined, 15);
+	h.feed(undefined, undefined, 35);
+	await until(() => h.ends.length === 1);
+	assert.equal(h.ends[0]?.result.status, "failed");
+	assert.equal(h.starts.length, 0);
+	assert.equal(h.releases.length, 0);
+	assert.equal(h.speaks.length, 0);
+	assert.equal(h.turns[0]?.closed, true);
+	assert.equal(h.errors.length, 1);
+});
+
+test("late activation acknowledgement after manual interruption cannot release or cancel a newer capture", async () => {
+	const held = deferred<void>();
+	let activation: TurnIdentity | undefined;
+	const h = harness({
+		preconnect: {
+			prepareOffer: async () => ({ type: "answer", sdp: "controlled" }),
+			activate: async (turn) => {
+				activation = turn;
+				await held.promise;
+			},
+		},
+	});
+	await h.voice.startListening();
+	h.feed(tone(), undefined, 15);
+	h.feed(undefined, undefined, 35);
+	await until(() => activation !== undefined);
+	const old = h.voice.getIdentity();
+	assert.ok(old);
+	h.voice.interrupt();
+	h.feed(tone(), undefined, 6);
+	const current = h.voice.getIdentity();
+	assert.ok(current);
+	assert.ok(current.generation > old.generation);
+	held.resolve();
+	await pause();
+	assert.deepEqual(h.voice.getIdentity(), current);
+	assert.equal(h.releases.length, 0);
+	assert.equal(h.starts.length, 0);
+	assert.equal(h.turns[0]?.closed, true);
+	assert.equal(h.turns[1]?.closed, false);
+	assert.ok(h.cancels.voice.every((turn) => turn.turnId === old.turnId));
+	assert.ok(h.cancels.agent.every((turn) => turn.turnId === old.turnId));
+	assert.equal(h.errors.length, 0);
+});
+
 test("prepared capture has no UI/history lifecycle and promotes the same identity with complete 700ms preroll", async () => {
 	let generation = 10;
 	const h = harness({
