@@ -99,7 +99,31 @@ export class CommandCenterService {
 	private errors: HubSnapshot["errors"] = [];
 	private jobs?: HubJobs;
 	private requests = new Map<string, Promise<HubOperationResult>>();
+	private listeners = new Set<() => void>();
 	constructor(private readonly ports: HubPorts) {}
+	subscribe(listener: () => void) {
+		this.listeners.add(listener);
+		return () => {
+			this.listeners.delete(listener);
+		};
+	}
+	async attentionState() {
+		await this.initialize();
+		return structuredClone({
+			jobs: this.state.jobs,
+			notices: this.state.notices,
+			attentionRecords: this.state.attentionRecords,
+		});
+	}
+	private changed() {
+		for (const listener of this.listeners) {
+			try {
+				listener();
+			} catch {
+				/* Observers never undo durable work. */
+			}
+		}
+	}
 	attachJobs(jobs: HubJobs) {
 		this.jobs = jobs;
 	}
@@ -147,6 +171,7 @@ export class CommandCenterService {
 				await this.ports.store.saveState(value);
 				this.state = value;
 				this.sequence++;
+				this.changed();
 			});
 		this.writes = write;
 		return write;
@@ -537,12 +562,22 @@ export class CommandCenterService {
 	}
 	async notice(input: Pick<WorkNotice, "kind" | "title" | "detail" | "jobId" | "prId">) {
 		await this.update((state) => {
+			const job = state.jobs.find((item) => item.id === input.jobId);
 			state.notices.push({
 				...input,
 				id: randomUUID(),
 				createdAt: new Date().toISOString(),
 				announcedAt: null,
 				seenAt: null,
+				...(job
+					? {
+							headSha: job.headSha,
+							decisionId:
+								input.kind === "decision"
+									? (job.decisions.find((d) => d.answer === null)?.id ?? null)
+									: null,
+						}
+					: {}),
 			});
 		});
 	}
@@ -678,6 +713,7 @@ export class CommandCenterService {
 	}
 	async dispose() {
 		this.lifetime.abort();
+		this.listeners.clear();
 		clearInterval(this.timer);
 		await this.refreshing?.catch(() => {});
 		await this.writes.catch(() => {});

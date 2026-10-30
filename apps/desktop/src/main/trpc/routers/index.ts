@@ -4,6 +4,11 @@ import { mergeRouters, publicProcedure, router } from "..";
 import {
 	AgentActionReceiptResultSchema,
 	AgentActionSchema,
+	AttentionPollResultSchema,
+	AttentionPresenceSchema,
+	AttentionReceiptResultSchema,
+	AttentionReleaseInputSchema,
+	AttentionSettleInputSchema,
 	GitHubRepositorySchema,
 	HUB_ERROR_MESSAGES,
 	HubOperationResultSchema,
@@ -38,6 +43,7 @@ import { createRuntimeRouter } from "../../runtime/router";
 import {
 	agentComposition,
 	conversationService,
+	getAttention,
 	getBrowser,
 	getConfiguration,
 	getConfigurationPorts,
@@ -67,6 +73,20 @@ const hubCall = async <T>(work: () => Promise<T>): Promise<T> => {
 };
 // Register feature routers here as the application grows.
 export const appRouter = router({
+	attention: router({
+		poll: publicProcedure
+			.input(AttentionPresenceSchema)
+			.output(AttentionPollResultSchema)
+			.mutation(({ input }) => hubCall(() => getAttention().poll(input))),
+		settle: publicProcedure
+			.input(AttentionSettleInputSchema)
+			.output(AttentionReceiptResultSchema)
+			.mutation(({ input }) => hubCall(() => getAttention().settle(input))),
+		release: publicProcedure
+			.input(AttentionReleaseInputSchema)
+			.output(AttentionReceiptResultSchema)
+			.mutation(({ input }) => getAttention().release(input)),
+	}),
 	hub: router({
 		snapshot: publicProcedure
 			.input(z.strictObject({}).optional())

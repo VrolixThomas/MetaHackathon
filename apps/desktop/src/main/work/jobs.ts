@@ -289,6 +289,11 @@ export class WorkJobCoordinator implements HubJobs {
 				createdAt: new Date().toISOString(),
 				seenAt: null,
 				announcedAt: null,
+				headSha: current.headSha,
+				decisionId:
+					input.kind === "decision"
+						? (current.decisions.find((d) => d.answer === null)?.id ?? null)
+						: null,
 			});
 		});
 	}

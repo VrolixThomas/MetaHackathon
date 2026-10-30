@@ -29,6 +29,7 @@ import {
 	initializeRuntime,
 	initializeVoice,
 	initializeWorkspace,
+	noteAttentionActivity,
 } from "./services";
 import { setupTRPCIPC } from "./trpc/ipc-link";
 import { startUpdateCheck } from "./updates";
@@ -38,6 +39,12 @@ const mainDirectory = dirname(fileURLToPath(import.meta.url));
 let database: ReturnType<typeof openDatabase> | undefined;
 let shuttingDown = false;
 let shutdownFinished = false;
+
+function recordAttentionActivity() {
+	noteAttentionActivity();
+	if (mainWindow && !mainWindow.isDestroyed() && !mainWindow.webContents.isDestroyed())
+		mainWindow.webContents.send("attention:activity", { focused: mainWindow.isFocused() });
+}
 
 function createWindow(): void {
 	mainWindow = new BrowserWindow({
@@ -61,6 +68,8 @@ function createWindow(): void {
 	});
 
 	mainWindow.once("ready-to-show", () => mainWindow?.show());
+	mainWindow.on("blur", recordAttentionActivity);
+	mainWindow.on("focus", recordAttentionActivity);
 	mainWindow.on("closed", () => {
 		mainWindow = null;
 		// The single review window owns microphone, browser and active review jobs.
@@ -80,6 +89,10 @@ function createWindow(): void {
 // Native interception also works when focus is inside an embedded page or a text field.
 // Plain Space remains available for typing. The shortcut is app-scoped, never a global key grab.
 app.on("web-contents-created", (_event, contents) => {
+	contents.on("before-mouse-event", (_mouse, input) => {
+		if (mainWindow?.isFocused() && ["mouseDown", "mouseWheel"].includes(input.type))
+			recordAttentionActivity();
+	});
 	contents.on("render-process-gone", (_gone, details) => {
 		getDiagnostics()?.record({
 			stage: contents === mainWindow?.webContents ? "renderer-exit" : "browser-exit",
@@ -89,6 +102,7 @@ app.on("web-contents-created", (_event, contents) => {
 	});
 	contents.on("before-input-event", (event, input) => {
 		if (!mainWindow?.isFocused() || input.type !== "keyDown" || input.isAutoRepeat) return;
+		recordAttentionActivity();
 		const command = process.platform === "darwin" ? input.meta : input.control;
 		if (command && input.shift && input.code === "Space") {
 			event.preventDefault();
@@ -164,7 +178,12 @@ app
 				{ navigationPolicy: "workspace" }
 			)
 		);
-		await initializeHub(app.getPath("userData"), database.hub, database.reviews);
+		await initializeHub(
+			app.getPath("userData"),
+			database.hub,
+			database.reviews,
+			() => !!mainWindow?.isFocused()
+		);
 		initializeWorkspace(app.getPath("userData"));
 		const voiceRoot = join(mainDirectory, "../../../../services/voice");
 		const voiceCommand = app.isPackaged

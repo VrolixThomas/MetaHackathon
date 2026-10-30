@@ -2,6 +2,8 @@ import { useEffect, useState } from "react";
 import { createHubController } from "./command-center/controller";
 import { ConversationApp } from "./conversation/ConversationApp";
 import { createConversationApi } from "./conversation/api";
+import { createAttentionBinding } from "./conversation/attention";
+import { createAttentionSafety } from "./conversation/attention-safety";
 import { createConversationController } from "./conversation/controller";
 import { connectShortcuts } from "./conversation/shortcuts";
 import { connectConversationVoice } from "./conversation/voice";
@@ -26,6 +28,14 @@ export function App() {
 	});
 	useEffect(() => {
 		const disconnectVoice = connectConversationVoice(runtime.api, runtime.controller);
+		const attentionSafety = createAttentionSafety(
+			runtime.controller,
+			window.electron?.attentionActivity
+		);
+		const attention = createAttentionBinding(runtime.api, runtime.controller, attentionSafety);
+		const attentionTimer = setInterval(() => {
+			void attention.poll();
+		}, 1000);
 		const disconnectShortcuts = connectShortcuts(
 			window.electron?.voiceShortcut,
 			runtime.controller,
@@ -46,6 +56,9 @@ export function App() {
 		window.addEventListener("error", recordError);
 		window.addEventListener("unhandledrejection", recordError);
 		return () => {
+			clearInterval(attentionTimer);
+			attention.dispose();
+			attentionSafety.dispose();
 			window.removeEventListener("blur", release);
 			window.removeEventListener("error", recordError);
 			window.removeEventListener("unhandledrejection", recordError);

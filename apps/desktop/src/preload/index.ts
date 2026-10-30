@@ -3,6 +3,21 @@ import type { ElectronAPI } from "../shared/types";
 
 const api: ElectronAPI = {
 	trpc: { request: (request) => ipcRenderer.invoke("trpc:request", request) },
+	attentionActivity: {
+		subscribe(listener) {
+			const receive = (_event: Electron.IpcRendererEvent, value: unknown) => {
+				if (
+					value &&
+					typeof value === "object" &&
+					"focused" in value &&
+					typeof value.focused === "boolean"
+				)
+					listener({ focused: value.focused });
+			};
+			ipcRenderer.on("attention:activity", receive);
+			return () => ipcRenderer.removeListener("attention:activity", receive);
+		},
+	},
 	voiceShortcut: {
 		subscribe(listener) {
 			const receive = (_event: Electron.IpcRendererEvent, value: unknown) => {

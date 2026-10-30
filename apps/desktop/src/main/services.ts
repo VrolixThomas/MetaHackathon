@@ -22,6 +22,7 @@ import { HubGitHubClient } from "./runtime/hub-github";
 import { HubLinearClient } from "./runtime/hub-linear";
 import type { RuntimeOptions, RuntimeService } from "./runtime/service";
 import { WorkJobRuntime } from "./runtime/work-job-runtime";
+import { AttentionScheduler } from "./work/attention";
 import { CommandCenterService } from "./work/hub";
 import { WorkJobCoordinator } from "./work/jobs";
 import { ReviewRegistry } from "./work/review-registry";
@@ -47,6 +48,8 @@ let reviews: ReviewCoordinator | undefined;
 let workspace: WorkspaceCoordinator | undefined;
 let hub: CommandCenterService | undefined;
 let workJobs: WorkJobCoordinator | undefined;
+let attention: AttentionScheduler | undefined;
+let stopAttentionObserver: (() => void) | undefined;
 let reviewRegistry: ReviewRegistry | undefined;
 let hubReviewStore: HubStore | undefined;
 let chooseRepository: (() => Promise<{ repository: string; localPath: string } | null>) | undefined;
@@ -75,6 +78,10 @@ const conversationClient = new MetaClient({
 });
 export const conversationService = new ConversationService(conversationClient, {
 	narrationCheckpoints: true,
+	attention: {
+		resolve: (input, signal) => getAttention().resolve(input, signal),
+		validate: (input, signal) => getAttention().validate(input, signal),
+	},
 	hub: {
 		snapshot: () => getHub().snapshot(),
 		operate: (operation, requestId, signal) => getHub().operate(operation, requestId, signal),
@@ -146,7 +153,8 @@ export function initializeReviews(
 export async function initializeHub(
 	userDataPath: string,
 	store: HubStore,
-	legacyStore: { load(): ReviewCache | Promise<ReviewCache> }
+	legacyStore: { load(): ReviewCache | Promise<ReviewCache> },
+	focused: () => boolean = () => false
 ) {
 	if (!reviews) throw new Error("Review foundation unavailable");
 	hubReviewStore = store;
@@ -237,6 +245,24 @@ export async function initializeHub(
 		redact,
 	});
 	hub.attachJobs(workJobs);
+	attention = new AttentionScheduler({
+		read: () => getHub().attentionState(),
+		update: (mutator) => getHub().update(mutator),
+		isBusy: (sessionId) => conversationService.isBusy(sessionId),
+		completed: (turn, claimId) => conversationService.attentionCompleted(turn, claimId, "spoken"),
+		interrupt: (turn) => {
+			conversationService.cancel({
+				...turn,
+				requestId: `attention-interrupt-${turn.turnId}`,
+				reason: "user",
+			});
+			void voice?.cancel(turn).catch(() => {});
+		},
+		focused,
+	});
+	stopAttentionObserver = hub.subscribe(() => {
+		void attention?.changed().catch(() => {});
+	});
 	await workJobs.restore();
 	void hub.refresh().catch(() => {});
 }
@@ -247,6 +273,13 @@ export function getHub() {
 export function getWorkJobs() {
 	if (closing || !workJobs) throw new Error("Work runtime unavailable");
 	return workJobs;
+}
+export function getAttention() {
+	if (closing || !attention) throw new Error("Attention is unavailable");
+	return attention;
+}
+export function noteAttentionActivity() {
+	attention?.noteActivity();
 }
 
 export function initializeWorkspace(userDataPath: string): void {
@@ -370,6 +403,10 @@ function runtimeForActiveJobs(): RuntimeService {
 
 export async function disposeRuntime(): Promise<void> {
 	const current = runtime;
+	stopAttentionObserver?.();
+	await attention?.dispose().catch(() => {
+		console.warn("Attention delivery state could not be saved during shutdown.");
+	});
 	closing = true;
 	try {
 		try {
