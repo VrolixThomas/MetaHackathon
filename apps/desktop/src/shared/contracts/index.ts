@@ -15,3 +15,6 @@ export * from "./voice-diagnostics";
 export * from "./command-center";
 export * from "./attention";
 export * from "./oauth";
+export * from "./chat";
+export * from "./day";
+export * from "./knowledge";

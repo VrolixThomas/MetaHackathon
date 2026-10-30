@@ -251,3 +251,30 @@ Registration uses the active `.env`; callbacks are `http://127.0.0.1:43187/oauth
 and `http://127.0.0.1:43187/oauth/linear/callback`. See `docs/integration/oauth-setup.md`.
 `bun run test:oauth` uses the actual built Electron UI/preload/IPC, HTTP callback and OS encryption
 with controlled provider transport. Root alone runs it. It is not live provider consent verification.
+
+## Slack and commitments increment (2026-10-31)
+
+MET-66 owns new `main/slack/`; MET-67 new `main/day/` and `main/db/day-store.ts`;
+MET-68 new `renderer/day/`; MET-69 new `main/knowledge/`. MET-70 temporarily reserves
+`composition/reviews.ts`/tests and `agent/guided-review.ts`/tests for operation-scoped source
+reads. MET-51's existing Astra/MAX Codex worker owns the reserved renderer voice preconnection
+files. Exact workspaces/reservations are on MET-8. Integration retains shared contracts, existing
+renderer bindings, services, root routers, lifecycle, credential composition and dependencies.
+
+`chat.ts`, `day.ts` and `knowledge.ts` are the shared source/queue/knowledge DTOs. New internal
+work is separate from optional Linear links. Incoming ownership needs acceptance; explicit own
+promises may count as acceptance only through a trusted, source-bound classifier. Preparation is
+distinct from execution. Missing context becomes Q&A when the user covers the item. A confirmed
+answer in the original source thread closes its commitment. Draft/ready/unknown-send is not delivery.
+Every retry/outbox mutation uses stable identity, source revision and exact body digest.
+
+DM/private-channel knowledge is private; company knowledge uses only public Slack channels.
+Stored audience snapshots never replace current source membership/revision checks. Derived facts
+and direct agent communication inherit the intersection of all source audiences. Source content
+is untrusted evidence, not tool authority. No mock product messages or knowledge fallback.
+
+First supervisor runtime remains active independently of a window while the Mac is awake;
+sleep/offline and durable checkpoints are explicit states. Hosted execution is not established.
+Slack OAuth requires its documented HTTPS callback setup; do not copy the other providers' HTTP
+callback and claim it works. Credentials/deployment block only relevant live checks. Root alone
+runs combined app/native/provider tests; workers use controlled unit probes in separate worktrees.
