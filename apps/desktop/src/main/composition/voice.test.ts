@@ -3,7 +3,11 @@ import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { type TestContext, describe, it } from "node:test";
-import { VoiceSetupStatusSchema } from "../../shared/contracts";
+import {
+	type TurnIdentity,
+	type VoiceDiagnostic,
+	VoiceSetupStatusSchema,
+} from "../../shared/contracts";
 import { VoiceDiagnosticError } from "../voice/diagnostics";
 import type { SidecarOptions, VoiceBackend } from "../voice/sidecar";
 import {
@@ -140,6 +144,376 @@ async function ready(manager: ReturnType<typeof createVoiceComposition>) {
 	}
 	assert.fail("injected local sidecar never became ready");
 }
+
+const next = (generation = 2): TurnIdentity => ({
+	...identity,
+	turnId: `next-${generation}`,
+	generation,
+});
+const errorEvent = (diagnostic?: VoiceDiagnostic, turn = identity, sequence = 1) => ({
+	...turn,
+	kind: "error" as const,
+	sequence,
+	message: secret,
+	...(diagnostic ? { diagnostic } : {}),
+});
+
+describe("MET-51 provisional voice admission", () => {
+	it("registers before a held offer, deduplicates it and requires a matching activation before capture", async (t) => {
+		const { manager, caller, sidecars } = fixture(t);
+		await ready(manager);
+		const backend = sidecars[0] as FakeSidecar;
+		const response = deferred<unknown>();
+		backend.handle = async (path) => (path === "offer" ? response.promise : {});
+		const first = caller.offerPrepared(offer);
+		const duplicate = caller.offerPrepared(offer);
+		await flush();
+		assert.equal(backend.calls.filter(({ path }) => path === "offer").length, 1);
+		await assert.rejects(caller.activatePrepared(identity), /Voice request failed/);
+		await assert.rejects(caller.release(identity), /Voice request failed/);
+		await assert.rejects(
+			caller.speak({ ...identity, speechId: "early", text: "hello" }),
+			/Voice request failed/
+		);
+		await assert.rejects(caller.offer(offer), /Voice request failed/);
+		await assert.rejects(
+			caller.offerPrepared({ ...offer, sdp: "conflicting" }),
+			/Voice request failed/
+		);
+		assert.deepEqual(
+			backend.calls.map(({ path }) => path),
+			["offer"]
+		);
+		response.resolve(answer);
+		assert.deepEqual(await first, answer);
+		assert.deepEqual(await duplicate, answer);
+		await assert.rejects(
+			caller.activatePrepared({ ...identity, turnId: "foreign" }),
+			/Voice request failed/
+		);
+		assert.deepEqual(await caller.activatePrepared(identity), { ok: true });
+		await assert.rejects(caller.activatePrepared(identity), /Voice request failed/);
+		await assert.rejects(caller.offerPrepared(offer), /Voice request failed/);
+		await caller.release(identity);
+		await caller.speak({ ...identity, speechId: "active", text: "hello" });
+		assert.deepEqual(
+			backend.calls.map(({ path }) => path),
+			["offer", "release", "speak"]
+		);
+		assert.equal((await manager.status()).phase, "ready");
+	});
+
+	it("quietly retires only structured transient provisional offer failures, retaining a healthy service", async (t) => {
+		for (const diagnostic of [
+			{ stage: "media", code: "network" },
+			{ stage: "media", code: "timeout", httpStatus: 408 },
+			{ stage: "meta", code: "unavailable", httpStatus: 503 },
+		] satisfies VoiceDiagnostic[]) {
+			const { manager, sidecars } = fixture(t);
+			await ready(manager);
+			const backend = sidecars[0] as FakeSidecar;
+			backend.handle = async (path) => {
+				if (path === "offer") throw new VoiceDiagnosticError(diagnostic);
+				return {};
+			};
+			await assert.rejects(manager.offerPrepared(offer), VoiceDiagnosticError);
+			await flush();
+			assert.equal((await manager.status()).phase, "ready");
+			await assert.rejects(manager.activatePrepared(identity), /Voice request failed/);
+			await assert.rejects(manager.offer(offer), /Voice request failed/);
+			assert.equal(backend.calls.filter(({ path }) => path === "offer").length, 1);
+			assert(backend.calls.some(({ path }) => path === "cancel"));
+			backend.handle = async (path) => (path === "offer" ? answer : {});
+			await manager.offer({ ...offer, ...next() });
+			await manager.release(next());
+			assert.equal(sidecars.length, 1);
+		}
+	});
+
+	it("keeps auth, access, configuration, protocol and unknown provisional failures visible and canonical", async (t) => {
+		for (const diagnostic of [
+			{ stage: "meta", code: "auth", httpStatus: 401 },
+			{ stage: "meta", code: "access", httpStatus: 403 },
+			{ stage: "meta", code: "rate-limit", httpStatus: 429 },
+			{ stage: "media", code: "tls" },
+			{ stage: "setup", code: "unavailable" },
+			{ stage: "media", code: "protocol" },
+			{ stage: "media", code: "invalid-response" },
+			{ stage: "meta", code: "network", httpStatus: 401 },
+			{ stage: "media", code: "unavailable", httpStatus: 302 },
+			undefined,
+		] satisfies (VoiceDiagnostic | undefined)[]) {
+			const { manager, sidecars } = fixture(t);
+			await ready(manager);
+			const failure = diagnostic ? new VoiceDiagnosticError(diagnostic) : new Error(secret);
+			(sidecars[0] as FakeSidecar).handle = async (path) => {
+				if (path === "offer") throw failure;
+				throw new VoiceDiagnosticError({ stage: "media", code: "failed" });
+			};
+			await assert.rejects(manager.offerPrepared(offer), (error: Error) => {
+				assert.equal(error.message.includes(secret), false);
+				if (diagnostic) assert.equal(error.message, failure.message);
+				return true;
+			});
+			await flush();
+			const status = await manager.status();
+			assert.equal(status.phase, "error");
+			assert.equal(JSON.stringify(status).includes(secret), false);
+			if (diagnostic)
+				assert.equal(status.error, failure.message, "cleanup cannot replace the first failure");
+			await assert.rejects(manager.activatePrepared(identity), /Voice request failed/);
+		}
+	});
+
+	it("classifies provisional poll errors only after validating the entire batch", async (t) => {
+		const transient = { stage: "media", code: "network" } as const;
+		const auth = { stage: "meta", code: "auth", httpStatus: 401 } as const;
+		for (const mode of [
+			"transient",
+			"auth",
+			"transient-then-auth",
+			"foreign",
+			"sequence",
+			"unknown",
+			"malformed",
+		] as const) {
+			const { manager, caller, sidecars } = fixture(t);
+			await ready(manager);
+			await caller.offerPrepared(offer);
+			const backend = sidecars[0] as FakeSidecar;
+			backend.handle = async (path) => {
+				if (path !== "poll") return {};
+				if (mode === "malformed") return { events: [{ message: secret }] };
+				return {
+					events:
+						mode === "transient-then-auth"
+							? [errorEvent(transient), errorEvent(auth, identity, 2)]
+							: [
+									errorEvent(
+										mode === "unknown" ? undefined : mode === "auth" ? auth : transient,
+										mode === "foreign" ? next() : identity
+									),
+								],
+				};
+			};
+			const polled = caller.poll({ ...identity, afterSequence: mode === "sequence" ? 1 : 0 });
+			if (["auth", "transient-then-auth", "unknown"].includes(mode)) {
+				const result = await polled;
+				assert.equal(JSON.stringify(result).includes(secret), false);
+			} else await assert.rejects(polled);
+			await flush();
+			const status = await manager.status();
+			assert.equal(status.phase, mode === "transient" ? "ready" : "error", mode);
+			assert.equal(JSON.stringify(status).includes(secret), false);
+			if (mode === "auth" || mode === "transient-then-auth")
+				assert.match(status.error ?? "", /Meta speech authentication failed/);
+			await assert.rejects(manager.activatePrepared(identity), /Voice request failed/);
+		}
+	});
+
+	it("applies ordinary error policy when a provisional poll fails after activation", async (t) => {
+		for (const mode of ["throw", "event"] as const) {
+			const { manager, sidecars } = fixture(t);
+			await ready(manager);
+			await manager.offerPrepared(offer);
+			const response = deferred<unknown>();
+			const backend = sidecars[0] as FakeSidecar;
+			backend.handle = async () => response.promise;
+			const polled = manager.poll({ ...identity, afterSequence: 0 });
+			const outcome = mode === "throw" ? assert.rejects(polled, VoiceDiagnosticError) : polled;
+			await flush();
+			const activation = manager.activatePrepared(identity);
+			// Complete the backend in the same turn, before the caller receives activation's ack.
+			if (mode === "throw")
+				response.reject(new VoiceDiagnosticError({ stage: "media", code: "network" }));
+			else response.resolve({ events: [errorEvent({ stage: "media", code: "network" })] });
+			assert.deepEqual(await activation, { ok: true });
+			await outcome;
+			assert.equal((await manager.status()).phase, "error");
+			response.resolve({});
+		}
+	});
+
+	it("compensates a replaced late offer or auth failure without cancelling or poisoning the newer session", async (t) => {
+		for (const late of ["answer", "auth"] as const) {
+			const { manager, sidecars } = fixture(t);
+			await ready(manager);
+			const backend = sidecars[0] as FakeSidecar;
+			const response = deferred<unknown>();
+			backend.handle = async (path, body) => {
+				if (path === "offer")
+					return (body as TurnIdentity).generation === 1 ? response.promise : answer;
+				if (path === "cancel") throw new VoiceDiagnosticError({ stage: "media", code: "protocol" });
+				return {};
+			};
+			const old = manager.offerPrepared(offer);
+			const rejected = assert.rejects(old);
+			await flush();
+			await manager.offerPrepared({ ...offer, ...next() });
+			await manager.cancel(identity); // The old cancel must not retire the new candidate.
+			assert.deepEqual(await manager.activatePrepared(next()), { ok: true });
+			assert(backend.calls.find(({ path }) => path === "offer")?.signal?.aborted);
+			if (late === "auth")
+				response.reject(new VoiceDiagnosticError({ stage: "meta", code: "auth" }));
+			else response.resolve(answer);
+			await rejected;
+			await flush();
+			await manager.speak({ ...next(), speechId: "new", text: "still active" });
+			assert.equal((await manager.status()).phase, "ready");
+			const cancels = backend.calls.filter(({ path }) => path === "cancel");
+			assert(cancels.length >= 2, "initial retirement and late-offer compensation both run");
+			assert(cancels.every(({ body }) => (body as TurnIdentity).generation === 1));
+		}
+	});
+
+	it("exact cancellation fences a pending prepared offer and retains its high-water tombstone", async (t) => {
+		const { manager, sidecars } = fixture(t);
+		await ready(manager);
+		const backend = sidecars[0] as FakeSidecar;
+		const response = deferred<unknown>();
+		backend.handle = async (path) => (path === "offer" ? response.promise : {});
+		const old = manager.offerPrepared(offer);
+		const rejected = assert.rejects(old);
+		await flush();
+		const cancelled = manager.cancel(identity);
+		await assert.rejects(manager.activatePrepared(identity));
+		response.resolve(answer);
+		await Promise.all([cancelled, rejected]);
+		await assert.rejects(manager.offerPrepared(offer));
+		assert.deepEqual(
+			backend.calls.map(({ path }) => path),
+			["offer", "cancel", "cancel"]
+		);
+		assert.equal((await manager.status()).phase, "ready");
+	});
+
+	it("measures lease from admission, not readiness, and duplicate offers never renew it", async (t) => {
+		for (const heldOffer of [true, false]) {
+			let now = 100;
+			const { manager, sidecars } = fixture(t, { now: () => now });
+			await ready(manager);
+			const backend = sidecars[0] as FakeSidecar;
+			const response = deferred<unknown>();
+			backend.handle = async (path) => (path === "offer" ? response.promise : {});
+			const offered = manager.offerPrepared(offer);
+			const rejected = heldOffer ? assert.rejects(offered) : undefined;
+			await flush();
+			if (!heldOffer) {
+				response.resolve(answer);
+				await offered;
+				now = 20_099;
+				assert.deepEqual(await manager.offerPrepared(offer), answer);
+			}
+			now = 20_100;
+			if (heldOffer) {
+				response.resolve(answer);
+				await rejected;
+			}
+			await assert.rejects(manager.activatePrepared(identity));
+			await flush();
+			assert.equal(backend.calls.filter(({ path }) => path === "offer").length, 1);
+			assert(backend.calls.some(({ path }) => path === "cancel"));
+			assert.equal((await manager.status()).phase, "ready");
+		}
+	});
+
+	it("server timer retires an idle candidate once and never auto-reconnects", async (t) => {
+		const { manager, sidecars } = fixture(t, { preparedLeaseMs: 5, now: () => 0 });
+		await ready(manager);
+		await manager.offerPrepared(offer);
+		await new Promise((resolve) => setTimeout(resolve, 20));
+		await assert.rejects(manager.activatePrepared(identity));
+		const backend = sidecars[0] as FakeSidecar;
+		assert.deepEqual(
+			backend.calls.map(({ path }) => path),
+			["offer", "cancel"]
+		);
+		await manager.dispose();
+		await new Promise((resolve) => setTimeout(resolve, 10));
+		assert.deepEqual(
+			backend.calls.map(({ path }) => path),
+			["offer", "cancel"]
+		);
+		assert.equal(sidecars.length, 1);
+	});
+
+	it("activation clears the timer before acknowledgement and exact later cancellation remains ordinary", async (t) => {
+		const { manager, sidecars } = fixture(t, { preparedLeaseMs: 30 });
+		await ready(manager);
+		await manager.offerPrepared(offer);
+		assert.deepEqual(await manager.activatePrepared(identity), { ok: true });
+		await new Promise((resolve) => setTimeout(resolve, 40));
+		await manager.release(identity);
+		assert.deepEqual(
+			sidecars[0]?.calls.map(({ path }) => path),
+			["offer", "release"]
+		);
+		await manager.cancel(identity);
+		await assert.rejects(manager.activatePrepared(identity));
+	});
+
+	it("configuration, credential replacement and shutdown retire provisional state and prohibit reuse", async (t) => {
+		for (const change of ["configure", "credentials", "dispose"] as const) {
+			const { manager, state, sidecars } = fixture(t, { preparedLeaseMs: 30 });
+			await ready(manager);
+			await manager.offerPrepared(offer);
+			if (change === "configure") await manager.configure({ voiceId: "new-public-voice" });
+			if (change === "credentials") {
+				state.credentials = { ...state.credentials, meta: "replacement-main-only" };
+				assert.equal((await manager.status()).phase, "stopped");
+			}
+			if (change === "dispose") await manager.dispose();
+			await assert.rejects(manager.activatePrepared(identity));
+			await flush();
+			const before = sidecars[0]?.calls.length;
+			await new Promise((resolve) => setTimeout(resolve, 40));
+			assert.equal(sidecars[0]?.calls.length, before, "retired service retains no lease timer");
+			if (change !== "dispose") {
+				await ready(manager);
+				await assert.rejects(manager.offerPrepared(offer));
+				await manager.offerPrepared({ ...offer, ...next() });
+				assert.deepEqual(await manager.activatePrepared(next()), { ok: true });
+				assert.equal(sidecars.length, 2);
+			}
+		}
+	});
+
+	it("a terminal provisional transcript retires the candidate without admission to actual capture", async (t) => {
+		const { manager, sidecars } = fixture(t);
+		await ready(manager);
+		await manager.offerPrepared(offer);
+		(sidecars[0] as FakeSidecar).handle = async (path) =>
+			path === "poll"
+				? { events: [{ ...identity, kind: "transcript", sequence: 1, text: "", final: true }] }
+				: {};
+		await assert.rejects(manager.poll({ ...identity, afterSequence: 0 }));
+		await assert.rejects(manager.activatePrepared(identity));
+		assert.equal((await manager.status()).phase, "ready");
+	});
+
+	it("validates lease options, clock values and both RPC inputs without starting media", async (t) => {
+		for (const preparedLeaseMs of [0, -1, 20_001, 1.5, Number.NaN, Number.POSITIVE_INFINITY])
+			assert.throws(
+				() =>
+					createVoiceComposition({
+						getCredentials: async () => ({}),
+						getDataDirectory: () => "/unused",
+						command: "/unused",
+						executableAvailable: () => false,
+						preparedLeaseMs,
+					}),
+				/lease/
+			);
+		const { manager, caller, sidecars } = fixture(t, { now: () => Number.NaN });
+		await assert.rejects(caller.offerPrepared({ ...offer, generation: -1 }));
+		await assert.rejects(caller.activatePrepared({ ...identity, generation: -1 }));
+		await assert.rejects(caller.activatePrepared({ ...identity, extra: secret } as TurnIdentity));
+		assert.equal(sidecars.length, 0);
+		await ready(manager);
+		await assert.rejects(caller.offerPrepared(offer));
+		assert.equal(sidecars[0]?.calls.length, 0);
+	});
+});
 
 describe("MET-8 main voice composition setup", () => {
 	it("registers a lazy manager getter without initializing main services", async (t) => {

@@ -1,8 +1,10 @@
 import { mkdirSync, readFileSync, renameSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
+import { z } from "zod";
 import {
 	type TurnIdentity,
 	TurnIdentitySchema,
+	type VoiceDiagnostic,
 	type VoiceSetupInput,
 	VoiceSetupInputSchema,
 	type VoiceSetupStatus,
@@ -40,6 +42,10 @@ export interface VoiceCompositionOptions {
 	getVoiceId?: () => Promise<string | undefined>;
 	setVoiceId?: (voiceId: string) => Promise<void>;
 	createSidecar?: (options: SidecarOptions) => PreparedVoiceBackend;
+	/** Main-only bound from provisional admission, never from connection readiness. */
+	preparedLeaseMs?: number;
+	/** Monotonic main clock; injectable for lease-boundary tests. */
+	now?: () => number;
 }
 
 interface ActiveVoice {
@@ -53,12 +59,26 @@ interface ActiveVoice {
 	warmup?: Promise<void>;
 	pending: Map<Promise<unknown>, TurnIdentity>;
 }
+interface ProvisionalVoice {
+	identity: TurnIdentity;
+	active: ActiveVoice;
+	phase: "offering" | "ready" | "activated" | "retired";
+	deadline: number;
+	timer?: ReturnType<typeof setTimeout>;
+}
 const setupError = "Voice setup failed. Check settings and prepare voice again.";
 const requestError = "Voice request failed. Prepare voice and try again.";
 const sameTurn = (a: TurnIdentity, b: TurnIdentity) =>
 	a.sessionId === b.sessionId && a.turnId === b.turnId && a.generation === b.generation;
 const sameCredentials = (a: Credentials, b: Credentials) =>
 	a.meta === b.meta && a.elevenlabs === b.elevenlabs;
+const transientPreparationFailure = (diagnostic?: Readonly<VoiceDiagnostic>) =>
+	diagnostic &&
+	(diagnostic.stage === "media" || diagnostic.stage === "meta") &&
+	["network", "timeout", "unavailable"].includes(diagnostic.code) &&
+	(diagnostic.httpStatus === undefined ||
+		diagnostic.httpStatus === 408 ||
+		diagnostic.httpStatus >= 500);
 
 /** Main-only owner. Setup serializes configuration, while local warmup and media remain cancellable. */
 export class VoiceCompositionManager {
@@ -69,11 +89,74 @@ export class VoiceCompositionManager {
 	private queue: Promise<unknown> = Promise.resolve();
 	private jobs = new Set<Promise<unknown>>();
 	private disposal?: Promise<void>;
+	private provisional?: ProvisionalVoice;
+	private readonly preparedLeaseMs: number;
 	// Keep admission tombstones across sidecar replacement, not just within a VoiceService.
 	private turns = new Map<string, { identity: TurnIdentity; cancelled: boolean }>();
 	private snapshot: VoiceSetupStatus = { phase: "unconfigured", voiceId: null, missing: [] };
 
-	constructor(private options: VoiceCompositionOptions) {}
+	constructor(private options: VoiceCompositionOptions) {
+		const lease = options.preparedLeaseMs ?? 20_000;
+		if (!Number.isInteger(lease) || lease < 1 || lease > 20_000)
+			throw new Error("Prepared voice lease must be between 1 and 20000 milliseconds");
+		this.preparedLeaseMs = lease;
+	}
+
+	private now() {
+		const value = (this.options.now ?? (() => performance.now()))();
+		if (!Number.isFinite(value) || value < 0) throw new Error(requestError);
+		return value;
+	}
+	private currentTurn(active: ActiveVoice, identity: TurnIdentity) {
+		const turn = this.turns.get(identity.sessionId);
+		return (
+			!this.stopped &&
+			this.active === active &&
+			!active.stopped &&
+			turn &&
+			!turn.cancelled &&
+			sameTurn(turn.identity, identity)
+		);
+	}
+	private clearProvisional(candidate: ProvisionalVoice) {
+		if (candidate.phase === "activated" || candidate.phase === "retired") return;
+		candidate.phase = "retired";
+		clearTimeout(candidate.timer);
+		candidate.timer = undefined;
+		if (this.provisional === candidate) this.provisional = undefined;
+		const turn = this.turns.get(candidate.identity.sessionId);
+		if (turn && sameTurn(turn.identity, candidate.identity)) turn.cancelled = true;
+	}
+	private retireProvisional(candidate: ProvisionalVoice) {
+		if (candidate.phase === "activated" || candidate.phase === "retired") return;
+		this.clearProvisional(candidate);
+		// VoiceService owns abort, high-water admission and compensating late-offer cleanup.
+		void this.pending(
+			candidate.active,
+			candidate.identity,
+			candidate.active.service.cancel(candidate.identity)
+		).catch(() => {});
+	}
+	private quietProvisionalFailure(
+		active: ActiveVoice,
+		identity: TurnIdentity,
+		path: string,
+		diagnostic?: Readonly<VoiceDiagnostic>
+	) {
+		const candidate = this.provisional;
+		if (
+			!candidate ||
+			candidate.active !== active ||
+			!this.currentTurn(active, identity) ||
+			!sameTurn(candidate.identity, identity) ||
+			(candidate.phase !== "offering" && candidate.phase !== "ready") ||
+			(path !== "offer" && path !== "poll") ||
+			!transientPreparationFailure(diagnostic)
+		)
+			return false;
+		this.retireProvisional(candidate);
+		return true;
+	}
 
 	private assertLive() {
 		if (this.stopped) throw new Error("Voice composition is shut down");
@@ -147,6 +230,8 @@ export class VoiceCompositionManager {
 					sameCredentials(active.credentials, credentials)
 				? active.phase
 				: "stopped";
+		if ((phase === "stopped" || phase === "unconfigured") && this.provisional)
+			this.retireProvisional(this.provisional);
 		return {
 			credentials,
 			status: this.publish(
@@ -167,6 +252,7 @@ export class VoiceCompositionManager {
 		});
 	}
 	configure(raw: VoiceSetupInput): Promise<VoiceSetupStatus> {
+		if (this.provisional) this.retireProvisional(this.provisional);
 		return this.serialize(async () => {
 			const input = VoiceSetupInputSchema.parse(raw);
 			try {
@@ -270,20 +356,58 @@ export class VoiceCompositionManager {
 					if (path === "offer") return VoiceAnswerSchema.parse(result);
 					if (path === "poll") {
 						const parsed = VoicePollResultSchema.parse(result);
+						let sequence = VoicePollSchema.parse(body).afterSequence;
+						for (const event of parsed.events) {
+							if (!sameTurn(event, identity) || event.sequence <= sequence)
+								throw new VoiceDiagnosticError({ stage: "media", code: "protocol" });
+							sequence = event.sequence;
+						}
 						for (const event of parsed.events) {
 							if (event.kind === "error") {
 								event.message = event.diagnostic
 									? voiceDiagnosticMessage(event.diagnostic)
 									: requestError;
-								active.error ??= event.message;
-								active.phase = "error";
 							}
 						}
+						const candidate = this.provisional;
+						const errors = parsed.events.filter((event) => event.kind === "error");
+						// Inspect the entire batch before retiring: a transient error cannot hide
+						// a following authentication/configuration/protocol failure in that batch.
+						const failure =
+							candidate?.active === active && sameTurn(candidate.identity, identity)
+								? (errors.find((event) => !transientPreparationFailure(event.diagnostic)) ??
+									errors[0])
+								: errors[0];
+						if (
+							failure &&
+							!signal?.aborted &&
+							this.currentTurn(active, identity) &&
+							!this.quietProvisionalFailure(active, identity, path, failure.diagnostic)
+						) {
+							active.error ??= failure.message;
+							active.phase = "error";
+						}
+						if (
+							!errors.length &&
+							candidate?.active === active &&
+							sameTurn(candidate.identity, identity) &&
+							parsed.events.some((event) => event.kind === "transcript" && event.final)
+						)
+							this.retireProvisional(candidate);
 						return parsed;
 					}
 					return result;
 				} catch (error) {
-					if (!signal?.aborted && !active.stopped) {
+					if (
+						!signal?.aborted &&
+						this.currentTurn(active, identity) &&
+						!this.quietProvisionalFailure(
+							active,
+							identity,
+							path,
+							error instanceof VoiceDiagnosticError ? error.diagnostic : undefined
+						)
+					) {
 						active.phase = "error";
 						active.error ??= error instanceof VoiceDiagnosticError ? error.message : requestError;
 					}
@@ -293,7 +417,10 @@ export class VoiceCompositionManager {
 			})
 		);
 	}
-	private run<T>(identity: TurnIdentity, work: (service: VoiceService) => Promise<T>): Promise<T> {
+	private run<T>(
+		identity: TurnIdentity,
+		work: (service: VoiceService, active: ActiveVoice) => Promise<T>
+	): Promise<T> {
 		try {
 			this.assertLive();
 			const active = this.active;
@@ -304,8 +431,14 @@ export class VoiceCompositionManager {
 				identity,
 				Promise.resolve()
 					.then(async () => {
-						if (active.stopped || this.active !== active) throw new Error(requestError);
-						const result = await work(active.service);
+						if (
+							active.stopped ||
+							this.active !== active ||
+							active.phase !== "ready" ||
+							this.snapshot.phase !== "ready"
+						)
+							throw new Error(requestError);
+						const result = await work(active.service, active);
 						if (active.stopped || this.active !== active) throw new Error(requestError);
 						return result;
 					})
@@ -321,26 +454,106 @@ export class VoiceCompositionManager {
 	offer(raw: VoiceOffer) {
 		const input = VoiceOfferSchema.parse(raw);
 		return this.run(input, (service) => {
-			const previous = this.turns.get(input.sessionId);
-			if (
-				previous &&
-				(input.generation < previous.identity.generation ||
-					(input.generation === previous.identity.generation &&
-						(previous.cancelled || !sameTurn(input, previous.identity))))
-			)
+			if (this.provisional && sameTurn(this.provisional.identity, input))
 				throw new Error(requestError);
-			if (!previous && this.turns.size >= 128) throw new Error(requestError);
-			this.turns.set(input.sessionId, { identity: input, cancelled: false });
+			this.admit(input);
+			if (this.provisional) this.retireProvisional(this.provisional);
 			return service.offer(input);
 		});
 	}
+	private admit(input: TurnIdentity, fresh = false) {
+		const previous = this.turns.get(input.sessionId);
+		if (
+			previous &&
+			(input.generation < previous.identity.generation ||
+				(input.generation === previous.identity.generation &&
+					(fresh || previous.cancelled || !sameTurn(input, previous.identity))))
+		)
+			throw new Error(requestError);
+		if (!previous && this.turns.size >= 128) throw new Error(requestError);
+		const { sessionId, turnId, generation } = input;
+		this.turns.set(sessionId, { identity: { sessionId, turnId, generation }, cancelled: false });
+	}
+	offerPrepared(raw: VoiceOffer) {
+		const input = VoiceOfferSchema.parse(raw);
+		return this.run(input, async (service, active) => {
+			let candidate = this.provisional;
+			if (!candidate || candidate.active !== active || !sameTurn(candidate.identity, input)) {
+				const deadline = this.now() + this.preparedLeaseMs;
+				this.admit(input, true);
+				if (candidate) this.retireProvisional(candidate);
+				const { sessionId, turnId, generation } = input;
+				candidate = {
+					identity: { sessionId, turnId, generation },
+					active,
+					phase: "offering",
+					deadline,
+				};
+				this.provisional = candidate;
+				const registered = candidate;
+				candidate.timer = setTimeout(
+					() => this.retireProvisional(registered),
+					this.preparedLeaseMs
+				);
+				candidate.timer.unref();
+			}
+			if (this.now() >= candidate.deadline) {
+				this.retireProvisional(candidate);
+				throw new Error(requestError);
+			}
+			const answer = await service.offer(input);
+			if (
+				this.provisional !== candidate ||
+				!this.currentTurn(active, input) ||
+				this.now() >= candidate.deadline
+			) {
+				this.retireProvisional(candidate);
+				throw new Error(requestError);
+			}
+			candidate.phase = "ready";
+			return answer;
+		});
+	}
+	activatePrepared(raw: TurnIdentity) {
+		const input = TurnIdentitySchema.parse(raw);
+		return this.run(input, async (_service, active) => {
+			const candidate = this.provisional;
+			if (
+				!candidate ||
+				candidate.active !== active ||
+				!sameTurn(candidate.identity, input) ||
+				!this.currentTurn(active, input) ||
+				candidate.phase !== "ready"
+			)
+				throw new Error(requestError);
+			if (this.now() >= candidate.deadline) {
+				this.retireProvisional(candidate);
+				throw new Error(requestError);
+			}
+			candidate.phase = "activated";
+			clearTimeout(candidate.timer);
+			candidate.timer = undefined;
+			this.provisional = undefined;
+			return { ok: true as const };
+		});
+	}
+	private requireActivated(input: TurnIdentity) {
+		if (this.provisional && sameTurn(this.provisional.identity, input))
+			throw new Error(requestError);
+	}
 	release(raw: TurnIdentity) {
 		const input = TurnIdentitySchema.parse(raw);
-		return this.run(input, (service) => service.release(input));
+		return this.run(input, (service) => {
+			this.requireActivated(input);
+			return service.release(input);
+		});
 	}
 	speak(raw: SpeakInput) {
 		const input = SpeakSchema.parse(raw);
-		return this.run(input, (service) => service.speak(input));
+		return this.run(input, (service) => {
+			this.requireActivated(input);
+			return service.speak(input);
+		});
 	}
 	poll(raw: VoicePoll) {
 		const input = VoicePollSchema.parse(raw);
@@ -362,6 +575,8 @@ export class VoiceCompositionManager {
 						return;
 					if (!previous && this.turns.size >= 128) throw new Error(requestError);
 					this.turns.set(input.sessionId, { identity: input, cancelled: true });
+					if (this.provisional && sameTurn(this.provisional.identity, input))
+						this.clearProvisional(this.provisional);
 					const active = this.active;
 					if (!active) return;
 					try {
@@ -392,6 +607,7 @@ export class VoiceCompositionManager {
 	}
 	private async retire() {
 		const active = this.active;
+		if (this.provisional) this.clearProvisional(this.provisional);
 		this.active = undefined;
 		if (!active) return;
 		active.stopped = true;
@@ -445,6 +661,14 @@ export function createConfiguredVoiceRouter(
 			.input(VoiceOfferSchema)
 			.output(VoiceAnswerSchema)
 			.mutation(({ input }) => getManager().offer(input)),
+		offerPrepared: publicProcedure
+			.input(VoiceOfferSchema)
+			.output(VoiceAnswerSchema)
+			.mutation(({ input }) => getManager().offerPrepared(input)),
+		activatePrepared: publicProcedure
+			.input(TurnIdentitySchema)
+			.output(z.strictObject({ ok: z.literal(true) }))
+			.mutation(({ input }) => getManager().activatePrepared(input)),
 		release: publicProcedure
 			.input(TurnIdentitySchema)
 			.mutation(({ input }) => getManager().release(input)),
