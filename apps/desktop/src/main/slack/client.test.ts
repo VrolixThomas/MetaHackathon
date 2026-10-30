@@ -113,6 +113,28 @@ test("account changes fence late provider responses", async () => {
 	);
 });
 
+test("explicit public reads support user visibility beyond membership; C-prefixed private channels stay private", async () => {
+	const publicClient = harness((method) =>
+		method === "conversations.info"
+			? { ok: true, channel: { id: "C123", is_channel: true, is_private: false } }
+			: method === "conversations.members"
+				? { ok: true, members: ["U456"] }
+				: undefined
+	);
+	const publicPage = await publicClient.client.history({ conversationId: "C123" });
+	assert.equal(publicPage.items[0]?.citation.audience.visibility, "public_channel");
+	const privateClient = harness((method) =>
+		method === "conversations.info"
+			? { ok: true, channel: { id: "C123", is_channel: true, is_private: true } }
+			: undefined
+	);
+	assert.equal(
+		(await privateClient.client.history({ conversationId: "C123" })).items[0]?.citation.audience
+			.visibility,
+		"private_channel"
+	);
+});
+
 test("source authorization requires exact current revision and thread", async () => {
 	await assert.rejects(
 		harness().client.sourceMessage({ ...source, revisionId: "1700000001.000001" }),

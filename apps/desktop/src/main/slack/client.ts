@@ -31,6 +31,7 @@ const ReadSchema = PagingSchema.extend({
 	conversationId: SlackIdSchema,
 	oldest: SlackTsSchema.optional(),
 	latest: SlackTsSchema.optional(),
+	inclusive: z.boolean().optional(),
 });
 const ThreadSchema = ReadSchema.extend({ threadTs: SlackTsSchema });
 const MetadataSchema = z.object({ next_cursor: CursorSchema.optional() }).optional();
@@ -305,7 +306,8 @@ export class SlackClient {
 			if (seen.has(cursor) || page === 49) throw new SlackError("capacity");
 			seen.add(cursor);
 		}
-		if (!members.has(credential.userId)) throw new SlackError("access-denied");
+		if (kind !== "public_channel" && !members.has(credential.userId))
+			throw new SlackError("access-denied");
 		const readerIds = [...members].sort();
 		return parsed(SourceAudienceSchema, {
 			workspaceId: credential.workspaceId,
@@ -363,8 +365,8 @@ export class SlackClient {
 					limit: input.limit ?? 15,
 					...(input.threadTs ? { ts: input.threadTs } : {}),
 					...(input.cursor ? { cursor: input.cursor } : {}),
-					...(input.oldest ? { oldest: input.oldest, inclusive: true } : {}),
-					...(input.latest ? { latest: input.latest, inclusive: true } : {}),
+					...(input.oldest ? { oldest: input.oldest, inclusive: input.inclusive ?? true } : {}),
+					...(input.latest ? { latest: input.latest, inclusive: input.inclusive ?? true } : {}),
 				},
 				signal
 			)
