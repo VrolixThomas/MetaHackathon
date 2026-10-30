@@ -1,7 +1,16 @@
 import { VoiceDiagnosticError } from "../../main/voice/diagnostics";
-import type { CancelTurnInput, TurnIdentity } from "../../shared/contracts";
+import {
+	VoiceAnswerSchema,
+	VoiceOfferSchema,
+	VoicePollResultSchema,
+} from "../../main/voice/protocol";
+import {
+	type CancelTurnInput,
+	type TurnIdentity,
+	TurnIdentitySchema,
+} from "../../shared/contracts";
 import { type SpeechFrame, VoiceActivityDetector } from "./activity";
-import { aborted, asError, bounded } from "./async";
+import { aborted, asError, bounded, delay } from "./async";
 import { createVoiceController, sameTurn } from "./controller";
 import { getTurnFailureReport } from "./failure";
 import { createBrowserHandsFreeAudioFactory } from "./hands-free-audio";
@@ -27,11 +36,28 @@ type Session = {
 	preroll: SpeechFrame[];
 	prerollMs: number;
 	capture: Capture | null;
+	prepared: PreparedCapture | null;
 	failure?: string;
 	errorReported?: boolean;
 	timer?: ReturnType<typeof setInterval>;
 };
-type Capture = { media?: BufferedVoiceMedia; identity?: TurnIdentity };
+type Capture = {
+	media?: BufferedVoiceMedia;
+	identity?: TurnIdentity;
+	prepared?: PreparedCapture;
+};
+type PreparedCapture = {
+	identity: TurnIdentity;
+	abort: AbortController;
+	expiresAt: number;
+	media?: BufferedVoiceMedia;
+	ready: Promise<void>;
+	promoted: boolean;
+	closed: boolean;
+	timer?: ReturnType<typeof setTimeout>;
+	removeAbort: () => void;
+	observer?: Parameters<MediaFactory>[0];
+};
 const timeout = () => new VoiceDiagnosticError({ stage: "media", code: "timeout" });
 function duration(value: number | undefined, fallback: number, maximum: number) {
 	if (value === undefined) return fallback;
@@ -45,6 +71,32 @@ export function createHandsFreeVoiceController(
 	options: HandsFreeOptions
 ): HandsFreeVoiceController {
 	const now = options.now ?? (() => performance.now());
+	// The sidecar's 60s capture budget includes provisional silence. Preserve room
+	// for even a configured 45s utterance plus FIFO/RTP tail and scheduling.
+	const preconnectBudget = Math.min(
+		20_000,
+		60_000 - (options.activity?.maxUtteranceMs ?? 30_000) - 2000
+	);
+	const preconnectLease = options.preconnect
+		? Math.min(duration(options.preconnect.leaseMs, 20_000, 20_000), preconnectBudget)
+		: 0;
+	const rpcTimeout = Math.max(100, options.rpcTimeoutMs ?? 15_000);
+	const id = options.id ?? (() => crypto.randomUUID());
+	if (options.allocateIdentity && options.sessionId === undefined)
+		throw new Error("Shared voice identity allocation requires the review session ID");
+	const sessionId = TurnIdentitySchema.shape.sessionId.parse(options.sessionId ?? id());
+	let generation = 0;
+	function allocateIdentity(): TurnIdentity {
+		const identity = TurnIdentitySchema.parse(
+			options.allocateIdentity
+				? options.allocateIdentity()
+				: { sessionId, turnId: id(), generation: generation + 1 }
+		);
+		if (identity.sessionId !== sessionId || identity.generation <= generation)
+			throw new Error("Voice identity must advance the current review session generation");
+		generation = identity.generation;
+		return identity;
+	}
 	const idleTimeout = duration(options.idleTimeoutMs, Number.POSITIVE_INFINITY, 300_000);
 	const frameTimeout = duration(options.frameTimeoutMs, 2000, 5000);
 	const sessionTimeout = duration(options.sessionTimeoutMs, Number.POSITIVE_INFINITY, 60 * 60_000);
@@ -81,6 +133,7 @@ export function createHandsFreeVoiceController(
 		starting = null;
 		turnObserver = undefined;
 		clearInterval(current.timer);
+		if (current.prepared) retirePrepared(current, current.prepared);
 		current.abort.abort();
 		try {
 			current.audio?.close();
@@ -124,12 +177,49 @@ export function createHandsFreeVoiceController(
 	}
 	const voice = createVoiceController({
 		...options,
+		id,
+		sessionId,
+		allocateIdentity: () => session?.capture?.prepared?.identity ?? allocateIdentity(),
 		acknowledgementText: undefined,
 		mediaSetupTimeoutMs: options.mediaSetupTimeoutMs ?? 12_000,
 		media: (observer) => {
 			if (!session?.ready || (!session.capture && !replyStarting) || !session.audio)
 				throw aborted();
 			turnObserver = observer;
+			const capture = session.capture;
+			const prepared = capture?.prepared;
+			if (prepared && capture) {
+				prepared.observer = observer;
+				const owner = session;
+				const media: BufferedVoiceMedia = {
+					async connect(_offer, signal) {
+						const cancel = () => retirePrepared(owner, prepared, false);
+						signal.addEventListener("abort", cancel, { once: true });
+						try {
+							await bounded(
+								prepared.ready,
+								signal,
+								options.mediaSetupTimeoutMs ?? 12_000,
+								timeout()
+							);
+							if (prepared.closed || signal.aborted) throw aborted();
+						} finally {
+							signal.removeEventListener("abort", cancel);
+						}
+					},
+					append: (samples) => {
+						if (prepared.closed || !prepared.media) throw aborted();
+						prepared.media.append(samples);
+					},
+					finishInput: () => prepared.media?.finishInput() ?? Promise.reject(aborted()),
+					stopCapture: () => prepared.media?.stopCapture(),
+					drain: (signal) => prepared.media?.drain(signal) ?? Promise.reject(aborted()),
+					// The active controller owns normal dual cancellation after promotion.
+					close: () => retirePrepared(owner, prepared, false),
+				};
+				capture.media = media;
+				return media;
+			}
 			const media = session.audio.createTurn(observer);
 			if (session.capture) session.capture.media = media;
 			return media;
@@ -148,6 +238,10 @@ export function createHandsFreeVoiceController(
 				else refresh();
 			}
 			options.onTurnEnd?.(identity, result);
+			// Completion comes after every speech-ended and actual PCM drain. No retry
+			// on failure, cancellation, expiry or an idle timer: one candidate per entry.
+			if (result.status === "completed" && session && session === turnSession)
+				prepareCapture(session);
 		},
 		onError: (error) => {
 			const failure = getTurnFailureReport(error);
@@ -182,16 +276,154 @@ export function createHandsFreeVoiceController(
 		},
 	});
 	const unsubscribe = voice.subscribe(refresh);
+	function cancelPrepared(prepared: PreparedCapture) {
+		// A provisional capture never allocated an agent turn. Its cancellation may
+		// arrive after a newer voice/attention generation, so retain the exact old ID.
+		const signal = AbortSignal.timeout(rpcTimeout);
+		try {
+			void bounded(options.voice.cancel(prepared.identity, signal), signal, rpcTimeout).catch(
+				() => {}
+			);
+		} catch {
+			/* A failed speculative cleanup cannot poison a later real utterance. */
+		}
+	}
+	function retirePrepared(current: Session, prepared: PreparedCapture, cancel = true) {
+		if (prepared.closed) return;
+		prepared.closed = true;
+		if (current.prepared === prepared) current.prepared = null;
+		clearTimeout(prepared.timer);
+		prepared.removeAbort();
+		prepared.abort.abort();
+		try {
+			prepared.media?.close();
+		} catch {
+			/* Continue remote cleanup even if the virtual track fails to close. */
+		}
+		if (cancel) cancelPrepared(prepared);
+	}
+	function prepareCapture(current: Session) {
+		if (
+			!preconnectLease ||
+			disposed ||
+			session !== current ||
+			!current.ready ||
+			!current.audio ||
+			current.abort.signal.aborted ||
+			current.prepared ||
+			current.capture ||
+			current.detector.isSpeechPending ||
+			voice.getIdentity() ||
+			replyStarting
+		)
+			return;
+		let identity: TurnIdentity;
+		try {
+			identity = allocateIdentity();
+		} catch {
+			return; // Normal capture still reports allocator/setup failures at real onset.
+		}
+		if (disposed || session !== current || current.abort.signal.aborted) return;
+		const prepared: PreparedCapture = {
+			identity,
+			abort: new AbortController(),
+			expiresAt: now() + preconnectLease,
+			ready: Promise.resolve(),
+			promoted: false,
+			closed: false,
+			removeAbort: () => {},
+		};
+		current.prepared = prepared;
+		const retire = () => retirePrepared(current, prepared);
+		current.abort.signal.addEventListener("abort", retire, { once: true });
+		prepared.removeAbort = () => current.abort.signal.removeEventListener("abort", retire);
+		prepared.timer = setTimeout(retire, preconnectLease);
+		const signal = prepared.abort.signal;
+		try {
+			const keywords = VoiceOfferSchema.shape.keywords.parse(options.getKeywords?.() ?? []);
+			prepared.media = current.audio.createTurn({
+				pcm: (sample) => {
+					if (!prepared.closed) prepared.observer?.pcm(sample);
+				},
+				disconnected: (error) => {
+					if (prepared.closed) return;
+					if (prepared.promoted && prepared.observer) prepared.observer.disconnected(error);
+					else retire();
+				},
+			});
+			if (prepared.closed) {
+				prepared.media.close();
+				return;
+			}
+			prepared.ready = bounded(
+				prepared.media.connect(async (description) => {
+					signal.throwIfAborted();
+					const pending = options.voice.offer(
+						VoiceOfferSchema.parse({ ...identity, ...description, keywords }),
+						signal
+					);
+					const compensate = () => {
+						if (prepared.closed) cancelPrepared(prepared);
+					};
+					void pending.then(compensate, compensate);
+					return VoiceAnswerSchema.parse(await bounded(pending, signal, rpcTimeout));
+				}, signal),
+				signal,
+				Math.min(Math.max(100, options.mediaSetupTimeoutMs ?? 12_000), preconnectBudget),
+				timeout()
+			);
+			void prepared.ready
+				.then(async () => {
+					// Idle provider activity is never admitted as user input. Poll only while
+					// provisional; promotion hands normal polling to the active controller.
+					while (!prepared.closed && !prepared.promoted) {
+						const result = VoicePollResultSchema.parse(
+							await bounded(
+								options.voice.poll({ ...identity, afterSequence: 0 }, signal),
+								signal,
+								rpcTimeout
+							)
+						);
+						if (prepared.closed || prepared.promoted) return;
+						if (result.events.length) {
+							retire();
+							return;
+						}
+						await delay(Math.max(10, options.pollIntervalMs ?? 50), signal);
+					}
+				})
+				.catch(() => {
+					if (!prepared.promoted) retire();
+				});
+		} catch {
+			retire();
+		}
+	}
 	function beginUtterance(current: Session) {
 		voice.interrupt("push-to-talk"); // Synchronous output disconnect and explicit dual cancellation.
 		if (session !== current) return;
 		turnSession = current;
+		const prepared = current.prepared;
+		if (prepared && (prepared.closed || now() >= prepared.expiresAt))
+			retirePrepared(current, prepared);
 		const capture: Capture = {};
+		if (current.prepared) {
+			capture.prepared = current.prepared;
+			current.prepared = null;
+			capture.prepared.promoted = true;
+			clearTimeout(capture.prepared.timer);
+		}
 		current.capture = capture;
 		voice.beginCapture();
-		if (session !== current || current.capture !== capture || !capture.media) return;
+		if (session !== current || current.capture !== capture || !capture.media) {
+			if (capture.prepared) retirePrepared(current, capture.prepared);
+			return;
+		}
 		const identity = voice.getIdentity();
-		if (!identity) return;
+		if (!identity) {
+			if (capture.prepared) retirePrepared(current, capture.prepared);
+			return;
+		}
 		capture.identity = identity;
 		for (const frame of current.preroll) capture.media.append(frame.samples);
 		current.lastActivity = now();
@@ -280,6 +512,7 @@ export function createHandsFreeVoiceController(
 		canStartAttention,
 		startAttention(claimId) {
 			if (!canStartAttention()) return { status: "unavailable" };
+			if (session?.prepared) retirePrepared(session, session.prepared);
 			turnSession = session;
 			replyStarting = true;
 			try {
@@ -306,6 +539,7 @@ export function createHandsFreeVoiceController(
 				preroll: [],
 				prerollMs: 0,
 				capture: null,
+				prepared: null,
 			};
 			session = current;
 			try {
@@ -349,6 +583,7 @@ export function createHandsFreeVoiceController(
 								closeSession();
 						}, 100);
 						refresh();
+						prepareCapture(current);
 					})
 					.catch((error) => {
 						if (session === current) {
@@ -374,6 +609,8 @@ export function createHandsFreeVoiceController(
 		stopListening: (reason = "user") => closeSession(undefined, reason),
 		interrupt(reason = "user") {
 			if (session) {
+				if (session.prepared) retirePrepared(session, session.prepared);
+				if (session.capture?.prepared) retirePrepared(session, session.capture.prepared, false);
 				session.capture = null;
 				session.detector.reset();
 				session.preroll = [];

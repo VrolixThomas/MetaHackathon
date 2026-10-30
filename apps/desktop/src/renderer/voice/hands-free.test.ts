@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { afterEach, test } from "node:test";
-import type { SpeakInput, VoiceEvent } from "../../main/voice/protocol";
+import type { SpeakInput, VoiceEvent, VoiceOffer } from "../../main/voice/protocol";
 import type {
 	AgentAction,
 	ConversationTurnInput,
@@ -79,6 +79,8 @@ function harness(extra: Partial<HandsFreeOptions> = {}) {
 		drain: ReturnType<typeof deferred<void>>;
 	}[] = [];
 	const starts: ConversationTurnInput[] = [];
+	const openings: TurnIdentity[] = [];
+	const offers: VoiceOffer[] = [];
 	const releases: TurnIdentity[] = [];
 	const cancels = { voice: [] as TurnIdentity[], agent: [] as TurnIdentity[] };
 	const speaks: SpeakInput[] = [];
@@ -86,6 +88,7 @@ function harness(extra: Partial<HandsFreeOptions> = {}) {
 	const ends: Array<{ identity: TurnIdentity; result: VoiceTurnEnd }> = [];
 	const events = new Map<string, VoiceEvent[]>();
 	let open = async () => {};
+	let playbackDrain = async () => {};
 	let cancellation = async () => {};
 	let delayConnect = false;
 	let autoDrain = true;
@@ -144,7 +147,7 @@ function harness(extra: Partial<HandsFreeOptions> = {}) {
 						return turn.drain.promise;
 					},
 					stopCapture: () => {},
-					drain: async () => {},
+					drain: () => playbackDrain(),
 					close: () => {
 						turn.closed = true;
 						turn.drain.reject(new Error("closed"));
@@ -164,8 +167,12 @@ function harness(extra: Partial<HandsFreeOptions> = {}) {
 			errors.push(error);
 		},
 		onTurnEnd: (identity, result) => ends.push({ identity, result }),
+		onTurnStart: (turn) => openings.push(identity(turn)),
 		voice: {
-			offer: async () => ({ type: "answer", sdp: "synthetic" }),
+			offer: async (input) => {
+				offers.push(input);
+				return { type: "answer", sdp: "synthetic" };
+			},
 			release: async (input) => {
 				releases.push(input);
 				emit(input, { kind: "transcript", text: transcript, final: true });
@@ -215,6 +222,8 @@ function harness(extra: Partial<HandsFreeOptions> = {}) {
 		sessions,
 		turns,
 		starts,
+		openings,
+		offers,
 		releases,
 		speaks,
 		cancels,
@@ -226,6 +235,9 @@ function harness(extra: Partial<HandsFreeOptions> = {}) {
 		},
 		setOpen: (fn: typeof open) => {
 			open = fn;
+		},
+		setPlaybackDrain: (fn: typeof playbackDrain) => {
+			playbackDrain = fn;
 		},
 		setCancellation: (fn: typeof cancellation) => {
 			cancellation = fn;
@@ -254,6 +266,341 @@ function harness(extra: Partial<HandsFreeOptions> = {}) {
 		},
 	};
 }
+test("preconnection is opt-in and its lease cannot exceed the provider capture budget", async () => {
+	for (const leaseMs of [0, 99, 20_001, Number.POSITIVE_INFINITY, Number.NaN])
+		assert.throws(() => harness({ preconnect: { leaseMs } }), /Invalid hands-free timeout/);
+	const h = harness();
+	await h.voice.startListening();
+	h.feed(undefined, undefined, 40);
+	await pause();
+	assert.equal(h.offers.length, 0);
+	assert.equal(h.turns.length, 0);
+});
+
+test("prepared capture has no UI/history lifecycle and promotes the same identity with complete 700ms preroll", async () => {
+	let generation = 10;
+	const h = harness({
+		preconnect: {},
+		allocateIdentity: () => ({
+			sessionId: "shared-conversation",
+			turnId: `future-${++generation}`,
+			generation,
+		}),
+	});
+	const before = h.voice.getSnapshot();
+	await h.voice.startListening();
+	await until(() => h.turns[0]?.connected === true);
+	assert.equal(h.offers.length, 1);
+	assert.equal(h.voice.getIdentity(), null);
+	assert.deepEqual(h.voice.getSnapshot(), before);
+	assert.equal(h.voice.getSessionSnapshot().phase, "listening");
+	assert.deepEqual(h.openings, []);
+	assert.equal(h.starts.length, 0);
+	assert.deepEqual(h.releases, []);
+	assert.equal(h.speaks.length, 0);
+	assert.equal(h.turns[0]?.samples.length, 0, "Idle microphone PCM stays local");
+	h.feed(undefined, undefined, 29);
+	assert.equal(h.voice.canStartAttention(), true);
+	const onset = tone(220);
+	h.feed(onset, undefined, 6);
+	assert.deepEqual(h.voice.getIdentity(), identity(h.offers[0] as VoiceOffer));
+	assert.equal(generation, 11, "Promotion does not allocate a second identity");
+	assert.equal(h.offers.length, 1, "Promotion does not perform another handshake");
+	assert.equal(h.openings.length, 1);
+	const captured = h.turns[0]?.samples ?? [];
+	assert.equal(captured.length, 35);
+	assert.ok(captured.slice(0, 29).every((frame) => frame.every((sample) => sample === 0)));
+	for (const frame of captured.slice(29)) assert.deepEqual(frame, onset);
+	h.feed(tone(), undefined, 10);
+	h.feed(undefined, undefined, 35);
+	await until(() => h.starts.length === 1 && h.ends.length === 1);
+	assert.equal(h.starts[0]?.generation, 11);
+	assert.deepEqual(
+		h.speaks.map((speech) => speech.text),
+		["Hello back."]
+	);
+	assert.equal(h.sessions.length, 1);
+	assert.equal(h.sessions[0]?.opens, 1);
+	assert.equal(h.errors.length, 0);
+});
+
+test("promotion during setup retains a short utterance until connection and input drain", async () => {
+	const h = harness({ preconnect: { leaseMs: 200 } });
+	h.setConnectDelay();
+	await h.voice.startListening();
+	const prefix = tone(220);
+	h.feed(prefix, undefined, 6);
+	h.feed(tone(), undefined, 10);
+	h.feed(undefined, undefined, 35);
+	assert.equal(h.turns.length, 1);
+	assert.equal(h.offers.length, 1);
+	assert.equal(h.turns[0]?.ended, true);
+	assert.deepEqual(h.turns[0]?.samples[0], prefix);
+	assert.equal(h.turns[0]?.samples.length, 51);
+	assert.deepEqual(h.releases, []);
+	await pause(230);
+	assert.equal(h.turns[0]?.closed, false, "Promoted capture outlives its provisional lease");
+	h.turns[0]?.ready.resolve();
+	await until(() => h.voice.getPhase() === "listening");
+	assert.equal(h.releases.length, 0);
+	h.turns[0]?.drain.resolve();
+	await until(() => h.starts.length === 1);
+	assert.equal(h.releases.length, 1);
+});
+
+test("next preconnection waits for actual output drain, not merely speech-ended", async () => {
+	const held = deferred<void>();
+	const h = harness({ preconnect: {} });
+	h.setPlaybackDrain(() => held.promise);
+	await h.voice.startListening();
+	h.feed(tone(), undefined, 15);
+	h.feed(undefined, undefined, 35);
+	await until(() => h.speaks.length === 1);
+	await pause();
+	assert.equal(h.ends.length, 0);
+	assert.equal(h.offers.length, 1);
+	assert.equal(h.turns.length, 1);
+	held.resolve();
+	await until(() => h.ends.length === 1 && h.offers.length === 2);
+	assert.equal(h.ends[0]?.result.status, "completed");
+	assert.equal(h.turns[0]?.closed, true);
+	assert.equal(h.turns[1]?.samples.length, 0);
+	assert.equal(h.voice.getIdentity(), null);
+	assert.equal(h.openings.length, 1);
+	assert.ok((h.offers[1]?.generation ?? 0) > (h.offers[0]?.generation ?? 0));
+});
+
+test("expiry retires only the provisional generation and never loops idle retries", async () => {
+	const h = harness({ preconnect: { leaseMs: 100 } });
+	await h.voice.startListening();
+	await until(() => h.cancels.voice.length === 1);
+	assert.equal(h.turns[0]?.closed, true);
+	assert.equal(h.sessions[0]?.closed, false);
+	assert.equal(h.cancels.agent.length, 0);
+	assert.equal(h.ends.length, 0);
+	assert.equal(h.openings.length, 0);
+	await pause(150);
+	assert.equal(h.offers.length, 1);
+	assert.equal(h.errors.length, 0);
+	h.feed(tone(), undefined, 6);
+	await until(() => h.offers.length === 2);
+	assert.ok((h.voice.getIdentity()?.generation ?? 0) > (h.offers[0]?.generation ?? 0));
+	assert.equal(h.turns[1]?.closed, false);
+});
+
+test("onset checks lease time even before a delayed expiry timer runs", async () => {
+	const h = harness({ preconnect: {} });
+	await h.voice.startListening();
+	h.setTime(20_001);
+	h.feed(tone(), undefined, 6);
+	await until(() => h.offers.length === 2);
+	assert.equal(h.turns[0]?.closed, true);
+	assert.equal(h.turns[1]?.samples.length, 6);
+	assert.equal(h.cancels.agent.length, 0);
+});
+
+test("a longer configured utterance shortens preparation to fit the 60s sidecar capture budget", async () => {
+	const h = harness({ preconnect: {}, activity: { maxUtteranceMs: 45_000 } });
+	await h.voice.startListening();
+	h.setTime(13_001);
+	h.feed(tone(), undefined, 6);
+	await until(() => h.offers.length === 2);
+	assert.equal(h.turns[0]?.closed, true);
+	assert.equal(h.turns[1]?.closed, false);
+	assert.equal(h.errors.length, 0);
+});
+
+for (const operation of ["stop", "interrupt", "dispose"] as const) {
+	test(`provisional ${operation} compensates a late offer without publishing a turn`, async () => {
+		const h = harness({ preconnect: {} });
+		const offered = deferred<{ type: "answer"; sdp: string }>();
+		h.options.voice.offer = async (input) => {
+			h.offers.push(input);
+			return offered.promise;
+		};
+		await h.voice.startListening();
+		assert.equal(h.offers.length, 1);
+		if (operation === "stop") h.voice.stopListening();
+		else if (operation === "interrupt") h.voice.interrupt();
+		else h.voice.dispose();
+		assert.equal(h.turns[0]?.closed, true);
+		assert.equal(h.cancels.voice.length, 1);
+		assert.equal(h.cancels.agent.length, 0);
+		offered.resolve({ type: "answer", sdp: "late" });
+		await until(() => h.cancels.voice.length >= 2);
+		assert.ok(h.cancels.voice.every((turn) => turn.turnId === h.offers[0]?.turnId));
+		assert.equal(h.openings.length, 0);
+		assert.equal(h.starts.length, 0);
+		assert.equal(h.errors.length, 0);
+		assert.equal(h.sessions[0]?.closed, operation !== "interrupt");
+		assert.equal(
+			h.voice.getSessionSnapshot().phase,
+			operation === "interrupt" ? "listening" : "stopped"
+		);
+	});
+}
+
+for (const event of ["partial", "final", "error", "disconnect"] as const) {
+	test(`idle ${event} retires a speculative stream and leaves the microphone ready for cold capture`, async () => {
+		const h = harness({ preconnect: {} });
+		await h.voice.startListening();
+		await until(() => h.turns[0]?.connected === true);
+		const first = h.offers[0];
+		assert.ok(first);
+		if (event === "disconnect") h.turns[0]?.observer.disconnected(new Error("idle peer failed"));
+		else if (event === "error")
+			h.options.voice.poll = async () => {
+				throw new Error("idle provider failed");
+			};
+		else
+			h.emit(first, {
+				kind: "transcript",
+				text: event === "partial" ? "Unexpected input" : "",
+				final: event === "final",
+			});
+		await until(() => h.turns[0]?.closed === true);
+		assert.equal(h.sessions[0]?.closed, false);
+		assert.equal(h.voice.getIdentity(), null);
+		assert.equal(h.openings.length, 0);
+		assert.equal(h.errors.length, 0);
+		assert.equal(h.cancels.agent.length, 0);
+		h.options.voice.poll = async () => ({ events: [] });
+		h.feed(tone(), undefined, 6);
+		await until(() => h.offers.length === 2);
+		assert.equal(h.openings.length, 1);
+		assert.ok((h.voice.getIdentity()?.generation ?? 0) > first.generation);
+	});
+}
+
+test("attention retires a pending warm offer; its late cleanup cannot cancel the newer attention generation", async () => {
+	const h = harness({ preconnect: {} });
+	const firstOffer = deferred<{ type: "answer"; sdp: string }>();
+	h.options.voice.offer = async (input) => {
+		h.offers.push(input);
+		return h.offers.length === 1 ? firstOffer.promise : { type: "answer", sdp: "new" };
+	};
+	h.options.agent.attend = async (input) => ({ ...identity(input), status: "running" });
+	h.keepSpeaking();
+	await h.voice.startListening();
+	h.feed();
+	assert.equal(h.voice.canStartAttention(), true);
+	const attention = h.voice.startAttention("actual-claim");
+	assert.equal(attention.status, "started");
+	assert.equal(h.turns[0]?.closed, true);
+	await until(() => h.speaks.length === 1);
+	firstOffer.resolve({ type: "answer", sdp: "late" });
+	await until(() => h.cancels.voice.length >= 2);
+	assert.equal(h.cancels.agent.length, 0);
+	assert.ok(h.cancels.voice.every((value) => value.turnId === h.offers[0]?.turnId));
+	assert.equal(
+		h.voice.getIdentity()?.turnId,
+		attention.status === "started" ? attention.identity.turnId : ""
+	);
+	assert.equal(h.turns[1]?.closed, false);
+	assert.equal(h.starts.length, 0);
+	assert.equal(h.errors.length, 0);
+});
+
+test("failed speculative setup is bounded and never creates a user exchange or idle retry", async () => {
+	const h = harness({ preconnect: {} });
+	h.options.voice.offer = async (input) => {
+		h.offers.push(input);
+		if (h.offers.length === 1) throw new Error("controlled warm offer failure");
+		return { type: "answer", sdp: "controlled cold recovery" };
+	};
+	await h.voice.startListening();
+	await until(() => h.turns[0]?.closed === true);
+	await pause();
+	assert.equal(h.offers.length, 1);
+	assert.equal(h.openings.length, 0);
+	assert.equal(h.ends.length, 0);
+	assert.equal(h.errors.length, 0);
+	assert.equal(h.cancels.agent.length, 0);
+	h.feed(tone(), undefined, 6);
+	await until(() => h.offers.length === 2);
+	assert.equal(h.openings.length, 1);
+	assert.equal(h.sessions[0]?.closed, false);
+	assert.ok((h.voice.getIdentity()?.generation ?? 0) > (h.offers[0]?.generation ?? 0));
+});
+
+test("a stalled prepared offer times out before its lease and late failure cannot poison cold capture", async () => {
+	const h = harness({ preconnect: {}, mediaSetupTimeoutMs: 100 });
+	const held = deferred<{ type: "answer"; sdp: string }>();
+	h.options.voice.offer = async (input) => {
+		h.offers.push(input);
+		return h.offers.length === 1 ? held.promise : { type: "answer", sdp: "controlled" };
+	};
+	await h.voice.startListening();
+	await until(() => h.turns[0]?.closed === true);
+	assert.equal(h.openings.length, 0);
+	assert.equal(h.sessions[0]?.closed, false);
+	h.feed(tone(), undefined, 6);
+	await until(() => h.offers.length === 2);
+	const current = h.voice.getIdentity();
+	assert.ok(current);
+	held.reject(new Error("late setup failure"));
+	await until(() => h.cancels.voice.length >= 2);
+	assert.deepEqual(h.voice.getIdentity(), current);
+	assert.equal(h.turns[1]?.closed, false);
+	assert.equal(h.errors.length, 0);
+	assert.equal(h.cancels.agent.length, 0);
+});
+
+test("a provisional poll that settles after promotion never publishes its idle transcript", async () => {
+	const h = harness({ preconnect: {} });
+	const held = deferred<{ events: VoiceEvent[] }>();
+	const normalPoll = h.options.voice.poll;
+	let polls = 0;
+	h.options.voice.poll = async (input, signal) =>
+		++polls === 1 ? held.promise : normalPoll(input, signal);
+	await h.voice.startListening();
+	await until(() => polls === 1);
+	h.feed(tone(), undefined, 6);
+	const active = h.voice.getIdentity();
+	assert.ok(active);
+	held.resolve({
+		events: [{ ...active, kind: "transcript", text: "old idle result", final: true, sequence: 1 }],
+	});
+	await pause();
+	assert.equal(h.voice.getSnapshot().transcript, "");
+	assert.equal(h.starts.length, 0);
+	assert.equal(h.errors.length, 0);
+	assert.deepEqual(h.voice.getIdentity(), active);
+});
+
+test("barge-in during a promoted reply still cancels old speech and captures the next onset cold", async () => {
+	const h = harness({ preconnect: {} });
+	h.keepSpeaking();
+	await h.voice.startListening();
+	h.feed(tone(), undefined, 15);
+	h.feed(undefined, undefined, 35);
+	await until(() => h.speaks.length === 1);
+	const first = h.voice.getIdentity();
+	assert.ok(first);
+	assert.equal(h.offers.length, 1, "Never replace a peer that is still speaking");
+	const onset = tone(523, 0.15);
+	h.feed(onset, undefined, 15);
+	await until(() => h.offers.length === 2);
+	assert.equal(h.turns[0]?.closed, true);
+	assert.ok(h.cancels.voice.some((turn) => turn.turnId === first.turnId));
+	assert.ok(h.cancels.agent.some((turn) => turn.turnId === first.turnId));
+	assert.ok(h.turns[1]?.samples.some((frame) => frame.every((value, i) => value === onset[i])));
+	assert.ok((h.voice.getIdentity()?.generation ?? 0) > first.generation);
+	assert.equal(h.sessions[0]?.closed, false);
+});
+
+test("reentrant interruption at promoted onTurnStart closes unadopted media and cannot leak a warm offer", async () => {
+	const h = harness({ preconnect: {}, onTurnStart: () => h.voice.interrupt() });
+	await h.voice.startListening();
+	h.feed(tone(), undefined, 6);
+	await pause();
+	assert.equal(h.turns[0]?.closed, true);
+	assert.equal(h.voice.getIdentity(), null);
+	assert.equal(h.sessions[0]?.closed, false);
+	assert.equal(h.starts.length, 0);
+	assert.equal(h.offers.length, 1);
+});
+
 test("one explicit start owns the microphone across silence-endpointed reply cycles with no filler", async () => {
 	const h = harness();
 	await h.voice.startListening();

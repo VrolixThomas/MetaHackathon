@@ -29,6 +29,11 @@ export type HandsFreeSnapshot = Readonly<{
 export type HandsFreeOptions = Omit<VoiceControllerOptions, "media" | "acknowledgementText"> & {
 	audio?: HandsFreeAudioFactory;
 	activity?: ActivityOptions;
+	/** Internal opt-in, pending native/provider acceptance. One silent prepared capture per idle entry. */
+	preconnect?: {
+		/** From preparation start; at most 20s, reduced for longer configured utterances. */
+		leaseMs?: number;
+	};
 	/** Optional user-selected inactivity cap; disabled by default so quiet code reading keeps the session armed. */
 	idleTimeoutMs?: number;
 	frameTimeoutMs?: number;

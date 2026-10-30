@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { createBrowserHandsFreeAudioFactory } from "./hands-free-audio";
+import { type HandsFreeAudioOptions, createBrowserHandsFreeAudioFactory } from "./hands-free-audio";
 
 function deferred<T>() {
 	let resolve!: (value: T) => void;
@@ -17,15 +17,15 @@ function track() {
 		},
 	});
 }
-function environment() {
+function environment(extra: Partial<HandsFreeAudioOptions> = {}) {
 	const hardware = track();
 	const base = track();
 	const cloned: ReturnType<typeof track>[] = [];
-	const messages: unknown[] = [];
+	const messages: Array<{ type: string; epoch?: number; samples?: Float32Array }> = [];
 	const node = {
 		port: {
-			onmessage: null,
-			postMessage: (message: unknown) => messages.push(message),
+			onmessage: null as ((event: { data: unknown }) => void) | null,
+			postMessage: (message: (typeof messages)[number]) => messages.push(message),
 			close() {},
 		},
 		onprocessorerror: null,
@@ -77,6 +77,7 @@ function environment() {
 		createAudioContext: () => context as unknown as AudioContext,
 		createWorklet: () => node as unknown as AudioWorkletNode,
 		loadWorklet: async () => {},
+		...extra,
 	})({ frame() {}, failed: (error) => errors.push(error) });
 	return {
 		audio,
@@ -87,12 +88,87 @@ function environment() {
 		context,
 		messages,
 		errors,
+		deliver: (data: unknown) => node.port.onmessage?.({ data }),
 		opens: () => opens,
 		setPermission: (get: typeof permission) => {
 			permission = get;
 		},
 	};
 }
+test("a connected empty virtual track keeps one epoch for onset PCM and waits for that epoch's drain", async () => {
+	const pending = deferred<{ type: "answer"; sdp: string }>();
+	let offered = false;
+	let peers = 0;
+	const e = environment({
+		createPeer: () => {
+			peers++;
+			return Object.assign(new EventTarget(), {
+				connectionState: "new",
+				iceGatheringState: "complete",
+				localDescription: null as RTCSessionDescriptionInit | null,
+				createDataChannel: () => ({ close() {} }),
+				addTrack() {},
+				createOffer: async () => ({ type: "offer", sdp: "controlled" }),
+				async setLocalDescription() {
+					this.localDescription = { type: "offer", sdp: "controlled" };
+				},
+				async setRemoteDescription() {
+					this.connectionState = "connected";
+				},
+				close() {
+					this.connectionState = "closed";
+				},
+			}) as unknown as RTCPeerConnection;
+		},
+	});
+	await e.audio.start(new AbortController().signal);
+	const turn = e.audio.createTurn({ pcm() {}, disconnected() {} });
+	const connected = turn.connect(async () => {
+		offered = true;
+		return pending.promise;
+	}, new AbortController().signal);
+	for (let i = 0; i < 10 && !offered; i++) await new Promise((resolve) => setImmediate(resolve));
+	assert.equal(offered, true);
+	assert.deepEqual(e.messages.slice(), [{ type: "begin", epoch: 1 }]);
+	pending.resolve({ type: "answer", sdp: "controlled" });
+	await connected;
+	assert.deepEqual(e.messages.slice(), [
+		{ type: "begin", epoch: 1 },
+		{ type: "play", epoch: 1 },
+	]);
+	e.deliver({
+		type: "frame",
+		sequence: 1,
+		sampleRate: 48000,
+		samples: new Float32Array(960).fill(0.2),
+		reference: new Float32Array(960),
+	});
+	assert.equal(
+		e.messages.filter((m) => m.type === "append").length,
+		0,
+		"Capture frames alone do not enter the virtual sender"
+	);
+	const onset = Float32Array.from({ length: 960 }, (_, i) => Math.sin(i) / 10);
+	turn.append(onset);
+	assert.equal(peers, 1);
+	assert.equal(e.messages.filter((m) => m.type === "begin").length, 1);
+	assert.deepEqual(e.messages.find((m) => m.type === "append")?.samples, onset);
+	let drained = false;
+	const done = turn.finishInput().then(() => {
+		drained = true;
+	});
+	e.deliver({ type: "drained", epoch: 0 });
+	await new Promise((resolve) => setImmediate(resolve));
+	assert.equal(drained, false);
+	e.deliver({ type: "drained", epoch: 1 });
+	await done;
+	turn.close();
+	assert.equal(e.hardware.stopped, false);
+	assert.equal(e.context.state, "running");
+	assert.equal(e.opens(), 1);
+	assert.equal(e.cloned[0]?.stopped, true);
+	e.audio.close();
+});
 test("persistent audio opens hardware once and retires only virtual tracks between turns", async () => {
 	const e = environment();
 	await e.audio.start(new AbortController().signal);

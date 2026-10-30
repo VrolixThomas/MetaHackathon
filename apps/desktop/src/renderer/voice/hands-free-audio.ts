@@ -1,6 +1,10 @@
 import { VoiceDiagnosticError } from "../../main/voice/diagnostics";
 import { aborted, bounded } from "./async";
-import { createBrowserMediaFactory, microphoneError } from "./browser-media";
+import {
+	type BrowserMediaOptions,
+	createBrowserMediaFactory,
+	microphoneError,
+} from "./browser-media";
 import type { BufferedVoiceMedia, HandsFreeAudioFactory } from "./hands-free-types";
 
 export type HandsFreeAudioOptions = {
@@ -8,6 +12,7 @@ export type HandsFreeAudioOptions = {
 	createAudioContext?: () => AudioContext;
 	createWorklet?: (context: AudioContext) => AudioWorkletNode;
 	loadWorklet?: (context: AudioContext) => Promise<void>;
+	createPeer?: BrowserMediaOptions["createPeer"];
 };
 const mediaError = (code: "failed" | "timeout" | "protocol" = "failed") =>
 	new VoiceDiagnosticError({ stage: "media", code });
@@ -203,6 +208,7 @@ export function createBrowserHandsFreeAudioFactory(
 				send({ type: "begin", epoch: current });
 				const sharedContext = context;
 				const media = createBrowserMediaFactory({
+					createPeer: options.createPeer,
 					getUserMedia: async () => stream,
 					createAudioContext: () => sharedContext,
 					keepAudioContextOpen: true,
