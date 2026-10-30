@@ -845,12 +845,15 @@ async function native() {
 		);
 		encrypted(["github"]);
 		await rpc("hub.repositories");
-		report.checks.push(
-			"actual UI cancelled GitHub reconnect closes listener and retains previous encrypted session"
+		await wait("retained account Disconnect remains available after cancelled reconnect", () =>
+			js(
+				`(() => {const e=document.querySelector(${JSON.stringify(button("github", "disconnect"))});return !!e&&!e.disabled&&e.getBoundingClientRect().width>0;})()`
+			)
 		);
-		// A cancelled reconnect keeps source=oauth with phase=error. Current OAuthConnections.tsx:37,
-		// 99 hides Disconnect in that phase. Leave that source-level UI follow-up to root; use Retry
-		// for the final pending flow, and prove main disposal closes its actual listener on quit.
+		report.checks.push(
+			"actual UI cancelled GitHub reconnect closes listener, retains previous encrypted session and keeps Disconnect available"
+		);
+		// A new pending flow must be closed by actual main-process disposal on quit.
 		await begin("github");
 		assert.equal(counters.github, 1);
 		assert.equal(counters.linear, 1);
@@ -937,7 +940,10 @@ function selfCheck() {
 }
 
 if (process.argv.includes("--self-check")) selfCheck();
-else if (require.main === module)
+else if (
+	require.main === module ||
+	(process.versions.electron && process.argv[1] && resolve(process.argv[1]) === resolve(__filename))
+)
 	native().catch(() => {
 		console.error(
 			"OAUTH_SMOKE_FAILED: native harness initialization failed; root must run Electron"

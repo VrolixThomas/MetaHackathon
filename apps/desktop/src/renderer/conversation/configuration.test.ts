@@ -53,7 +53,8 @@ it("restores an explicit gh import control and displays pending and verified acc
 	try {
 		const initial = h.render();
 		assert.match(initial, /data-testid="github-connect"/);
-		assert.match(initial, /Connect GitHub/);
+		assert.match(initial, /Import GitHub CLI sign-in/);
+		assert.match(initial, /Other connection methods/);
 		assert.match(initial, /Import your existing <code>gh<\/code> CLI sign-in/);
 		assert.match(initial, /Configured · account not checked/);
 		assert.doesNotMatch(initial, /type="password"/);

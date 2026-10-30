@@ -21,7 +21,8 @@
 		"test:hands-free": "electron-vite build && HANDS_FREE_MODAL_CHECKS=1 env -u ELECTRON_RUN_AS_NODE electron src/main/hands-free-smoke.cjs",
 		"test:workspace": "electron-vite build && WORKSPACE_SMOKE_LAYOUT_CHECKS=1 env -u ELECTRON_RUN_AS_NODE electron src/main/workspace-smoke.cjs",
 		"test:executive": "electron-vite build && env -u ELECTRON_RUN_AS_NODE electron src/main/executive-smoke.cjs",
-		"test:attention": "electron-vite build && env -u ELECTRON_RUN_AS_NODE electron src/main/attention-smoke.cjs"
+		"test:attention": "electron-vite build && env -u ELECTRON_RUN_AS_NODE electron src/main/attention-smoke.cjs",
+		"test:oauth": "electron-vite build && env -u ELECTRON_RUN_AS_NODE electron src/main/oauth-smoke.cjs"
 	},
 	"dependencies": {
 		"@tanstack/react-query": "5.95.2",

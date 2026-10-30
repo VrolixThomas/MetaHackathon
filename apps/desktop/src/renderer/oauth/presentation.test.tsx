@@ -159,6 +159,20 @@ it("one provider's pending mutation disables its controls while the other provid
 	await disconnect;
 });
 
+it("a cancelled reconnect or failed refresh retains Disconnect for the saved session", async () => {
+	for (const error of ["cancelled", "refresh"] as const) {
+		const value = controller(async () =>
+			statuses({ ...connected("github", "saved-account"), phase: "error", error })
+		);
+		await value.reload();
+		const html = render(value);
+		assert.match(button(html, "oauth-github-disconnect"), />Disconnect<\/button>/);
+		assert.match(button(html, "oauth-github-connect"), /Retry reconnect with GitHub/);
+		assert.match(html, /Last account: Test User \(@saved-account\)/);
+		assert.doesNotMatch(html, />Connected<\/output>/);
+	}
+});
+
 it("pending start can be cancelled and queued cancellation stays busy until main acknowledges it", async () => {
 	const action = deferred<unknown>();
 	const value = controller(async (_type, path) =>

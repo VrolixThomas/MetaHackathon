@@ -20,7 +20,8 @@
 		"test:hands-free": "bun run --filter @metahackathon/desktop test:hands-free",
 		"test:workspace": "bun run --filter @metahackathon/desktop test:workspace",
 		"test:executive": "bun run --filter @metahackathon/desktop test:executive",
-		"test:attention": "bun run --filter @metahackathon/desktop test:attention"
+		"test:attention": "bun run --filter @metahackathon/desktop test:attention",
+		"test:oauth": "bun run --filter @metahackathon/desktop test:oauth"
 	},
 	"devDependencies": {
 		"@biomejs/biome": "1.9.4",

@@ -96,7 +96,7 @@ function OAuthRows({ controller }: { controller: OAuthController }) {
 									setupBusy={state.setupBusy}
 								/>
 							)}
-							{connected && (
+							{row?.source && !connecting && pending !== "cancel" && (
 								<button
 									type="button"
 									className="quiet"
@@ -155,7 +155,7 @@ function ConnectButton({
 	const configure = row?.configurationReady === false;
 	const label = configure
 		? `Configure ${names[provider]} login`
-		: row?.phase === "connected"
+		: row?.source
 			? `${failed ? "Retry reconnect with" : "Reconnect"} ${names[provider]} (replace account)`
 			: failed
 				? "Retry"

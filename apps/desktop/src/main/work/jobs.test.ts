@@ -298,6 +298,7 @@ async function harness(t: TestContext, initial = job()) {
 		initial,
 		checks,
 		snapshot: () => hub.snapshot(),
+		stored: () => structuredClone(stored),
 		get: () => hub.job(initial.id),
 		start: () => internal.pump(),
 	};
@@ -381,7 +382,7 @@ test("cancel during approval review prevents Linear completion and stale accepta
 	assert.equal(h.completions.length, 0);
 	assert.equal((await h.get()).state, "cancelled");
 	assert.equal((await h.get()).reviewedAt, null);
-	assert.equal((await h.snapshot()).tickets[0]?.state.type, "started");
+	assert.equal(h.stored().tickets[0]?.state.type, "started");
 });
 
 test("a new revision or changed pinned head invalidates pending approval before any external completion", async (t) => {
@@ -435,7 +436,7 @@ test("cancel aborts a pending Linear mutation and ignores its uncooperative late
 	await rejected;
 	assert.equal((await h.get()).state, "cancelled");
 	assert.equal((await h.get()).reviewedAt, null);
-	assert.equal((await h.snapshot()).tickets[0]?.state.type, "started");
+	assert.equal(h.stored().tickets[0]?.state.type, "started");
 });
 
 test("feedback stays validating during assessment and cancellation prevents an automatic PR push", async (t) => {
