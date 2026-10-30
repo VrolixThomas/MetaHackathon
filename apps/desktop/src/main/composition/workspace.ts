@@ -347,6 +347,10 @@ export class WorkspaceCoordinator {
 		let navigation: ReviewNavigation | undefined;
 		const invoke = <T>(work: () => T | Promise<T>) => this.call(signal, work);
 		switch (command.kind) {
+			case "browse-center":
+				if (!this.ports.hubSnapshot) fail("Command center is unavailable.");
+				snapshot.centerSection = command.section;
+				break;
 			case "open-center": {
 				if (!this.ports.hubSnapshot) fail("Command center is unavailable.");
 				const titles = {

@@ -99,6 +99,7 @@ export const WorkspaceSnapshotSchema = z
 		review: ReviewScreenSchema,
 		codeView: z.enum(["diff", "base", "head"]).default("diff"),
 		browser: LocalBrowserStateSchema.nullable(),
+		/** Browsed sidebar category, independent of the canvas currently displayed. */
 		centerSection: CenterSectionSchema.optional(),
 	})
 	.superRefine((value, ctx) => {
@@ -150,6 +151,7 @@ export const WorkspaceBrowserCommandSchema = z.discriminatedUnion("kind", [
 ]);
 const target = z.enum(["primary", "secondary"]).optional();
 export const WorkspaceCommandSchema = z.discriminatedUnion("kind", [
+	z.strictObject({ kind: z.literal("browse-center"), section: CenterSectionSchema }),
 	z.strictObject({
 		kind: z.literal("open-center"),
 		section: CenterSectionSchema,
