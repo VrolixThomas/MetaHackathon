@@ -719,6 +719,234 @@ test("actual pinned source enters model input and refreshes only the displayed f
 	}
 });
 
+function snapshotPort(h: ReturnType<typeof harness>) {
+	const requests: Parameters<NonNullable<ConversationReviewPorts["readSnapshot"]>>[0][] = [];
+	const getProgress = h.ports.getProgress;
+	h.ports.readSnapshot = async (request, signal) => {
+		requests.push(structuredClone(request));
+		signal.throwIfAborted();
+		return {
+			review: structuredClone(h.prepared),
+			progress: await getProgress(request.prId, signal),
+			file:
+				request.includeSource && request.screen.mode === "review" && request.screen.path
+					? fileSource(h.prepared, request.screen.path)
+					: null,
+		};
+	};
+	for (const port of ["getReady", "getProgress", "getFile"] as const)
+		h.ports[port] = async () => {
+			throw new Error("Legacy reads must not supply operation-scoped context");
+		};
+	return requests;
+}
+
+test("optional snapshot context preserves exact receipt gating and refreshes only the newly displayed source", async () => {
+	const h = harness([[call("next_review_file")], []]);
+	displayed(h);
+	const snapshots = snapshotPort(h);
+	try {
+		h.service.start(h.input);
+		const action = await h.action();
+		assert.equal(h.requests.length, 1);
+		assert.equal(h.poll().text, "");
+		assert.equal(contextPacket(h.requests[0]).currentFileSource.path, "service.ts");
+		assert.deepEqual(
+			snapshots.map((request) => request.includeSource),
+			[true, false, false]
+		);
+		assert(snapshots.every((request) => request.screen.sequence === 3));
+		await h.service.actionApplied(h.receipt(action));
+		await finish(h);
+		assert.deepEqual(
+			snapshots.map((request) => request.includeSource),
+			[true, false, false, true]
+		);
+		assert.equal(snapshots.at(-1)?.screen.sequence, 4);
+		assert.equal(snapshots.at(-1)?.screen.path, "test.ts");
+		const source = contextPacket(h.requests[1]).currentFileSource;
+		assert.equal(source.path, "test.ts");
+		assert.equal(source.head.excerpt.text, "const sourceOnly_test.ts = 2;\n");
+		assert(!JSON.stringify(h.requests[1]?.input).includes("sourceOnly_service.ts"));
+		assert.deepEqual(h.requests[1]?.tools, []);
+	} finally {
+		await h.service.dispose();
+	}
+});
+
+test("operation snapshots keep walkthrough source behind displayed and narrated checkpoints", async () => {
+	const h = harness([[call("start_walkthrough")], [], []]);
+	const snapshots = snapshotPort(h);
+	try {
+		h.service.start(h.input);
+		for (let step = 0; step < 2; step++) {
+			const navigation = await nextEffect(h, step * 2 + 1);
+			assert(navigation.kind === "review-navigation");
+			assert.equal(h.requests.length, step + 1);
+			assert.equal(
+				snapshots.filter((request) => request.includeSource && request.screen.mode === "review")
+					.length,
+				step,
+				"No new source before the displayed receipt"
+			);
+			await h.service.actionApplied(h.receipt(navigation));
+			const checkpoint = await nextEffect(h, step * 2 + 2);
+			assert(checkpoint.kind === "narration-checkpoint");
+			assert.equal(
+				contextPacket(h.requests[step + 1]).currentFileSource.path,
+				navigation.navigation.path
+			);
+			assert.equal(snapshots.at(-1)?.screen.sequence, checkpoint.screenSequence);
+			assert.equal(h.navigations.length, step + 1);
+			assert.equal(h.service.narrationApplied(narrationReceipt(checkpoint)).status, "accepted");
+		}
+		await finish(h);
+		assert.equal(h.requests.length, 3, "Snapshot consolidation adds no model round");
+	} finally {
+		await h.service.dispose();
+	}
+});
+
+test("each snapshot round refreshes source and a failed operation cannot silently fall back", async () => {
+	for (const failing of [false, true]) {
+		const h = harness([[call("inspect_ready_review")], []]);
+		displayed(h);
+		snapshotPort(h);
+		const original = h.ports.readSnapshot;
+		assert(original);
+		let reads = 0;
+		let legacy = 0;
+		h.ports.getReady = async () => {
+			legacy++;
+			return h.prepared;
+		};
+		h.ports.getFile = async () => {
+			legacy++;
+			return fileSource(h.prepared, "service.ts");
+		};
+		h.ports.readSnapshot = async (request, signal) => {
+			const value = await original(request, signal);
+			if (request.includeSource) {
+				if (++reads === 2 && failing) throw new Error("Verification unavailable");
+				assert(value.file);
+				value.file.head.content = `const freshSnapshot = ${reads};\n`;
+			}
+			return value;
+		};
+		try {
+			h.service.start(h.input);
+			await finish(h, failing ? "error" : "completed");
+			assert.equal(legacy, 0);
+			assert.equal(reads, 2);
+			assert.equal(h.requests.length, failing ? 1 : 2);
+			assert.equal(h.poll().actions.length, 0);
+			if (failing) assert.equal(h.poll().text, "");
+			else {
+				assert.equal(
+					contextPacket(h.requests[1]).currentFileSource.head.excerpt.text,
+					"const freshSnapshot = 2;\n"
+				);
+				assert(!JSON.stringify(h.requests[1]?.input).includes("freshSnapshot = 1"));
+			}
+		} finally {
+			await h.service.dispose();
+		}
+	}
+});
+
+test("snapshot plan, progress and both source pins are validated before any model request", async () => {
+	for (const corruption of [
+		"plan",
+		"progress",
+		"pr",
+		"path",
+		"base",
+		"head",
+		"base-path",
+		"head-path",
+		"malformed",
+	] as const) {
+		const h = harness([[]]);
+		displayed(h);
+		snapshotPort(h);
+		const original = h.ports.readSnapshot;
+		assert(original);
+		h.ports.readSnapshot = async (request, signal) => {
+			const value = await original(request, signal);
+			assert(value.review && value.file);
+			if (corruption === "plan") value.review.pr.headSha = "c".repeat(40);
+			if (corruption === "progress")
+				value.progress = {
+					reviewId: "another-review",
+					prId: h.prepared.pr.id,
+					baseSha: h.prepared.pr.baseSha,
+					headSha: h.prepared.pr.headSha,
+					path: "service.ts",
+					paused: false,
+					visited: [],
+					updatedAt: "2026-10-31T00:00:00Z",
+				};
+			if (corruption === "pr") value.file.prId = "another-pr";
+			if (corruption === "path") value.file.path = "test.ts";
+			if (corruption === "base") value.file.base.commitSha = "c".repeat(40);
+			if (corruption === "head") value.file.head.commitSha = "c".repeat(40);
+			if (corruption === "base-path") value.file.base.path = "test.ts";
+			if (corruption === "head-path") value.file.head.path = "test.ts";
+			if (corruption === "malformed") value.file.head.commitSha = "not-a-sha";
+			return value;
+		};
+		try {
+			h.service.start(h.input);
+			await finish(h, "error");
+			assert.equal(h.requests.length, 0, corruption);
+			assert.deepEqual(h.poll().actions, []);
+			assert.equal(h.poll().text, "");
+		} finally {
+			await h.service.dispose();
+		}
+	}
+});
+
+test("cancelled or sequence-changed snapshot completion cannot reach inference", async () => {
+	for (const interruption of ["cancel", "same-path-sequence", "different-file"] as const) {
+		const h = harness([[]]);
+		displayed(h);
+		snapshotPort(h);
+		const original = h.ports.readSnapshot;
+		assert(original);
+		const held = barrier();
+		let active: AbortSignal | undefined;
+		h.ports.readSnapshot = async (request, signal) => {
+			const value = await original(request, signal);
+			active = signal;
+			await held.promise; // Late provider result deliberately ignores cancellation.
+			return value;
+		};
+		try {
+			h.service.start(h.input);
+			await eventually(() => Boolean(active));
+			if (interruption === "cancel")
+				h.service.cancel({ ...h.identity, requestId: "cancel-snapshot", reason: "user" });
+			else {
+				const screen = await h.ports.getScreen(h.input.sessionId);
+				h.setScreen({
+					...screen,
+					sequence: screen.sequence + 1,
+					...(interruption === "different-file" ? { path: "test.ts" } : {}),
+				});
+			}
+			held.release();
+			await finish(h, interruption === "cancel" ? "cancelled" : "error");
+			if (interruption === "cancel") assert(active?.aborted);
+			assert.equal(h.requests.length, 0);
+			assert.deepEqual(h.poll().actions, []);
+		} finally {
+			held.release();
+			await h.service.dispose();
+		}
+	}
+});
+
 test("missing source port, headless screen and failed reads expose unavailable source explicitly", async () => {
 	for (const mode of ["no-port", "headless", "failed"] as const) {
 		const h = harness([[]]);

@@ -46,6 +46,15 @@ export interface ConversationReviewPorts {
 	getReady: (prId: string, signal: AbortSignal) => Promise<PreparedReview>;
 	getProgress: (prId: string, signal: AbortSignal) => Promise<ReviewProgress | null>;
 	getScreen: (sessionId: string, initial?: ReviewScreen) => ReviewScreen | Promise<ReviewScreen>;
+	/** One fresh operation, with authoritative pre/post pin checks when source is requested. */
+	readSnapshot?: (
+		input: { prId: string; sessionId: string; screen: ReviewScreen; includeSource: boolean },
+		signal: AbortSignal
+	) => Promise<{
+		review: PreparedReview | null;
+		progress: ReviewProgress | null;
+		file: ReviewFile | null;
+	}>;
 	getFile?: (
 		prId: string,
 		reviewId: string,
@@ -284,7 +293,7 @@ export async function runGuidedReview(
 	let repairedArguments = false;
 	for (let round = 0; round < 6; round++) {
 		throwIfAborted(signal);
-		const snapshot = await getSnapshot(ports, input, signal);
+		const snapshot = await getSnapshot(ports, input, signal, true);
 		if (acknowledgedScreen) assertSameScreen(acknowledgedScreen, snapshot.screen);
 		if (pinned && snapshot.review && !samePlan(pinned, snapshot.review)) throw changed();
 		if (snapshot.review) pinned = snapshot.review;
@@ -594,7 +603,7 @@ async function runWalkthrough(
 		);
 		if (navigation.paused) throw changed();
 		Object.assign(state, { path, narrated: false });
-		snapshot = await getSnapshot(ports, input, signal);
+		snapshot = await getSnapshot(ports, input, signal, true);
 		if (!snapshot.review || !samePlan(pinned, snapshot.review)) throw changed();
 		assertSameScreen(acknowledged, snapshot.screen);
 		const source = await currentSource(ports, snapshot, signal);
@@ -731,13 +740,18 @@ async function currentSource(
 	if (!review) return { file: null, unavailableReason: "review-not-ready" };
 	if (screen.mode !== "review" || !screen.path)
 		return { file: null, unavailableReason: "no-current-review-file" };
-	if (!ports.getFile) return { file: null, unavailableReason: "source-port-not-configured" };
 	let raw: ReviewFile;
-	try {
-		raw = await abortable(ports.getFile(review.pr.id, review.id, screen.path, signal), signal);
-	} catch {
-		throwIfAborted(signal);
-		return { file: null, unavailableReason: "source-read-failed" };
+	if (snapshot.file !== undefined) {
+		if (!snapshot.file) return { file: null, unavailableReason: "source-read-failed" };
+		raw = snapshot.file;
+	} else {
+		if (!ports.getFile) return { file: null, unavailableReason: "source-port-not-configured" };
+		try {
+			raw = await abortable(ports.getFile(review.pr.id, review.id, screen.path, signal), signal);
+		} catch {
+			throwIfAborted(signal);
+			return { file: null, unavailableReason: "source-read-failed" };
+		}
 	}
 	const file = ReviewFileSchema.parse(raw);
 	for (const path of [file.path, file.base.path, file.head.path]) RepositoryPathSchema.parse(path);
@@ -788,14 +802,49 @@ function samePlan(a: PreparedReview, b: PreparedReview) {
 async function getSnapshot(
 	ports: ConversationReviewPorts,
 	input: ConversationTurnInput,
-	signal: AbortSignal
-) {
+	signal: AbortSignal,
+	includeSource = false
+): Promise<{
+	review: PreparedReview | null;
+	progress: ReviewProgress | null;
+	screen: ReviewScreen;
+	file?: ReviewFile | null;
+}> {
 	const current = await screen(ports, input, signal);
-	let raw: PreparedReview;
-	try {
-		raw = await abortable(ports.getReady(input.prId ?? "", signal), signal);
-	} catch {
-		throwIfAborted(signal);
+	const bundled = ports.readSnapshot
+		? z
+				.strictObject({
+					review: PreparedReviewSchema.nullable(),
+					progress: ReviewProgressSchema.nullable(),
+					file: ReviewFileSchema.nullable(),
+				})
+				.parse(
+					await abortable(
+						ports.readSnapshot(
+							{
+								prId: input.prId ?? "",
+								sessionId: input.sessionId,
+								screen: current,
+								includeSource,
+							},
+							signal
+						),
+						signal
+					)
+				)
+		: undefined;
+	let raw: PreparedReview | null;
+	if (bundled) raw = bundled.review;
+	else {
+		try {
+			raw = await abortable(ports.getReady(input.prId ?? "", signal), signal);
+		} catch {
+			throwIfAborted(signal);
+			raw = null;
+		}
+	}
+	if (!raw) {
+		if (bundled?.progress || bundled?.file) throw changed();
 		assertSameScreen(current, await screen(ports, input, signal));
 		return { review: null, progress: null, screen: current };
 	}
@@ -820,7 +869,9 @@ async function getSnapshot(
 				throw changed();
 		}
 	const progress = ReviewProgressSchema.nullable().parse(
-		await abortable(ports.getProgress(input.prId ?? "", signal), signal)
+		bundled
+			? bundled.progress
+			: await abortable(ports.getProgress(input.prId ?? "", signal), signal)
 	);
 	if (
 		progress &&
@@ -834,7 +885,12 @@ async function getSnapshot(
 	)
 		throw changed();
 	assertSameScreen(current, await screen(ports, input, signal));
-	return { review, progress, screen: current };
+	return {
+		review,
+		progress,
+		screen: current,
+		...(bundled && includeSource ? { file: bundled.file } : {}),
+	};
 }
 function validateNavigation(
 	nav: ReviewNavigation,

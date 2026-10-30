@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { type TestContext, describe, it } from "node:test";
 import type {
 	ConversationPRContext,
+	ConversationTurnInput,
 	PinnedReviewFileRequest,
 	PreparedReview,
 	PullRequest,
@@ -10,6 +11,8 @@ import type {
 	ReviewNavigation,
 	ReviewScreen,
 } from "../../shared/contracts";
+import { type ConversationReviewPorts, runGuidedReview } from "../agent/guided-review";
+import type { AgentModelClient } from "../agent/meta-client";
 import { ReviewCoordinator, type ReviewCoordinatorPorts } from "./reviews";
 import { createReviewRouter } from "./reviews-router";
 
@@ -167,6 +170,237 @@ function receipt(screen: ReviewScreen) {
 		screen,
 	};
 }
+
+async function snapshotHarness(t: TestContext) {
+	const h = harness(t);
+	const review = prepared(pr());
+	h.state.cache = { repository: repo, localPath: null, prepared: [review], progress: [] };
+	await h.coordinator.initialize();
+	const screen: ReviewScreen = {
+		sequence: 1,
+		mode: "review",
+		prId: review.pr.id,
+		reviewId: review.id,
+		baseSha: review.pr.baseSha,
+		headSha: review.pr.headSha,
+		path: review.files[0]?.path,
+		paused: false,
+	};
+	await h.coordinator.updateScreen({ sessionId: "session", screen });
+	const request = { prId: review.pr.id, sessionId: "session", screen, includeSource: true };
+	return { ...h, review, screen, request };
+}
+
+describe("operation-scoped review context", () => {
+	it("production coordinator reduces first guided-request head reads from four to two, without reusing freshness", async (t) => {
+		const h = await snapshotHarness(t);
+		const order: string[] = [];
+		h.ports.readPR = async () => {
+			order.push("readPR");
+			return pr();
+		};
+		h.ports.readFile = async (input) => {
+			order.push("readFile");
+			assert.deepEqual(input, {
+				prId: h.review.pr.id,
+				baseSha: base,
+				headSha: head,
+				path: h.screen.path,
+			});
+			return file(input);
+		};
+		const ports: ConversationReviewPorts = {
+			getReady: (id, active) => h.coordinator.getReady(id, active),
+			getProgress: (id, active) => h.coordinator.getProgress(id, active),
+			getScreen: (id, initial) => h.coordinator.getScreen(id, initial),
+			getFile: (prId, reviewId, path, active) =>
+				h.coordinator.file({ prId, reviewId, path }, active),
+			navigate: (id, request, active) => h.coordinator.navigate(id, request, active),
+		};
+		const client: AgentModelClient = {
+			async *stream(request) {
+				order.push("model");
+				const packet = request.input.find(
+					(item) => item["role"] === "user" && Array.isArray(item["content"])
+				);
+				const parts = packet?.["content"] as { text: string }[];
+				const context = JSON.parse(parts[0]?.text ?? "{}");
+				assert.equal(context.currentFileSource.head.excerpt.text, "new\nline two\n");
+				assert.equal(context.currentFileSource.base.commitSha, base);
+				assert.equal(context.currentFileSource.head.commitSha, head);
+				yield { type: "text", delta: "The pinned file changed." };
+				yield {
+					type: "completed",
+					response: { id: "test", model: "muse-spark-1.3", output: [] },
+				};
+			},
+		};
+		const input: ConversationTurnInput = {
+			requestId: "request",
+			sessionId: "session",
+			turnId: "turn",
+			generation: 1,
+			text: "Explain this file",
+			prId: h.review.pr.id,
+			screen: h.screen,
+		};
+		const run = () =>
+			runGuidedReview(
+				client,
+				ports,
+				input,
+				[{ role: "user", content: input.text }],
+				signal(),
+				async () => {
+					throw new Error("No navigation expected");
+				}
+			);
+		await run();
+		assert.deepEqual(order, ["readPR", "readPR", "readPR", "readFile", "readPR", "model"]);
+		ports.readSnapshot = (request, active) => h.coordinator.readSnapshot(request, active);
+		for (let attempt = 0; attempt < 2; attempt++) {
+			order.length = 0;
+			await run();
+			assert.deepEqual(order, ["readPR", "readFile", "readPR", "model"]);
+		}
+		order.length = 0;
+		const metadata = await h.coordinator.readSnapshot(
+			{ ...h.request, includeSource: false },
+			signal()
+		);
+		assert.deepEqual(order, ["readPR"]);
+		assert.equal(metadata.file, null);
+		assert.deepEqual(metadata.review, h.review);
+		const fresh = await h.coordinator.readSnapshot(h.request, signal());
+		assert(fresh.file);
+		fresh.file.head.content = "modified caller copy";
+		fresh.review?.files.splice(0);
+		assert.deepEqual(
+			(await h.coordinator.readSnapshot(h.request, signal())).file?.head.content,
+			"new\nline two\n"
+		);
+	});
+
+	it("rejects a changed remote head after the pinned source read", async (t) => {
+		const h = await snapshotHarness(t);
+		const source = deferred<ReviewFile>();
+		let input: PinnedReviewFileRequest | undefined;
+		h.ports.readFile = (value) => {
+			input = value;
+			return source.promise;
+		};
+		const operation = h.coordinator.readSnapshot(h.request, signal());
+		const rejected = assert.rejects(operation, /changed|cancelled/i);
+		await until(() => Boolean(input));
+		h.state.current.set(pr().id, pr(1, nextHead));
+		source.resolve(file(input as PinnedReviewFileRequest));
+		await rejected;
+		await until(async () => (await h.coordinator.get(pr().id)).pr.headSha === nextHead);
+		assert((await h.coordinator.inbox()).items.every((item) => item.prepared?.pr.headSha !== head));
+	});
+
+	it("disconnect, replacement, cancellation and shutdown fence every awaited snapshot stage", async (t) => {
+		for (const stage of ["pre", "source", "post"] as const) {
+			for (const interruption of ["disconnect", "replace", "cancel", "dispose"] as const) {
+				const h = await snapshotHarness(t);
+				const held = deferred<void>();
+				let entered = false;
+				let active: AbortSignal | undefined;
+				let reads = 0;
+				const pause = async (value: AbortSignal) => {
+					entered = true;
+					active = value;
+					await held.promise; // Deliberately ignores the provider cancellation.
+				};
+				h.ports.readPR = async (_id, signal) => {
+					reads++;
+					if ((stage === "pre" && reads === 1) || (stage === "post" && reads === 2))
+						await pause(signal);
+					return pr();
+				};
+				h.ports.readFile = async (input, _local, signal) => {
+					if (stage === "source") await pause(signal);
+					return file(input);
+				};
+				const controller = new AbortController();
+				const operation = h.coordinator.readSnapshot(h.request, controller.signal);
+				const rejected = assert.rejects(operation, /changed|cancelled/i);
+				await until(() => entered);
+				if (interruption === "cancel") controller.abort();
+				if (interruption === "disconnect") await h.coordinator.disconnect();
+				if (interruption === "dispose") await h.coordinator.dispose();
+				if (interruption === "replace") await h.coordinator.prepareReview(pr().id, true);
+				await rejected;
+				assert(active?.aborted, `${stage}/${interruption}`);
+				held.resolve();
+				await tick();
+				await h.coordinator.dispose();
+			}
+		}
+	});
+
+	it("rejects exact-screen drift, including same-path sequence changes during source or post verification", async (t) => {
+		for (const stage of ["source", "post"] as const) {
+			for (const samePath of [true, false]) {
+				const h = await snapshotHarness(t);
+				const held = deferred<void>();
+				let entered = false;
+				let reads = 0;
+				h.ports.readPR = async () => {
+					if (++reads === 2 && stage === "post") {
+						entered = true;
+						await held.promise;
+					}
+					return pr();
+				};
+				h.ports.readFile = async (input) => {
+					if (stage === "source") {
+						entered = true;
+						await held.promise;
+					}
+					return file(input);
+				};
+				const operation = h.coordinator.readSnapshot(h.request, signal());
+				const rejected = assert.rejects(operation, /changed/i);
+				await until(() => entered);
+				await h.coordinator.updateScreen({
+					sessionId: "session",
+					screen: samePath
+						? { ...h.screen, sequence: 2 }
+						: { sequence: 2, mode: "conversation", prId: pr().id },
+				});
+				held.resolve();
+				await rejected;
+				const before = reads;
+				await assert.rejects(h.coordinator.readSnapshot(h.request, signal()), /changed/i);
+				assert.equal(reads, before, "stale selection is rejected before a provider call");
+			}
+		}
+	});
+
+	it("pending metadata remains unavailable and conversation-only context reads no source", async (t) => {
+		const h = await snapshotHarness(t);
+		const screen: ReviewScreen = { sequence: 2, mode: "conversation", prId: pr().id };
+		await h.coordinator.updateScreen({ sessionId: "session", screen });
+		let sources = 0;
+		h.ports.readFile = async (input) => {
+			sources++;
+			return file(input);
+		};
+		const request = { ...h.request, screen };
+		assert.equal((await h.coordinator.readSnapshot(request, signal())).file, null);
+		const held = deferred<PreparedReview>();
+		h.ports.prepare = () => held.promise;
+		await h.coordinator.prepareReview(pr().id, true);
+		assert.deepEqual(await h.coordinator.readSnapshot(request, signal()), {
+			review: null,
+			progress: null,
+			file: null,
+		});
+		assert.equal(sources, 0);
+		held.resolve(h.review);
+	});
+});
 
 describe("prepared review queue and durable cache", () => {
 	it("starts with ordinary conversation and no repository, model or GitHub calls", async (t) => {

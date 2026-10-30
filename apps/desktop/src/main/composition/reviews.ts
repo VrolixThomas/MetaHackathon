@@ -48,6 +48,10 @@ export const UpdateReviewScreenSchema = z.strictObject({
 	sessionId: IdSchema,
 	screen: ReviewScreenSchema,
 });
+const ReadReviewSnapshotSchema = UpdateReviewScreenSchema.extend({
+	prId: IdSchema,
+	includeSource: z.boolean(),
+});
 const NavigateSchema = z.strictObject({
 	direction: z.enum(["start", "next", "previous", "resume", "pause"]).optional(),
 	path: RepositoryPathSchema.optional(),
@@ -683,6 +687,45 @@ export class ReviewCoordinator {
 			async (active) => clone((await this.ready(prId, active)).entry.progress),
 			signal
 		);
+	}
+	/** Fresh operation-local context; source reads retain both authoritative revision checks. */
+	readSnapshot(
+		raw: z.infer<typeof ReadReviewSnapshotSchema>,
+		caller: AbortSignal
+	): Promise<{
+		review: PreparedReview | null;
+		progress: ReviewProgress | null;
+		file: ReviewFile | null;
+	}> {
+		return this.request(async (active) => {
+			const input = ReadReviewSnapshotSchema.parse(raw);
+			const entry = this.entry(input.prId);
+			const signal = AbortSignal.any([active, this.connection.signal, entry.abort.signal]);
+			const valid = () => {
+				this.current(entry, signal);
+				if (
+					input.screen.prId !== input.prId ||
+					!isDeepStrictEqual(this.screens.get(input.sessionId), input.screen)
+				)
+					fail("The selected review or file changed. Continue from the current file.");
+				this.checkScreen(input.sessionId, input.screen, true);
+			};
+			valid();
+			await this.revalidate(entry, signal);
+			valid();
+			const review = entry.prepared;
+			if (entry.status !== "ready" || !review) return { review: null, progress: null, file: null };
+			const file =
+				input.includeSource && input.screen.mode === "review" && input.screen.path
+					? await this.readFile(entry, review, input.screen.path, signal)
+					: null;
+			// readFile verifies the exact source pins and the PR again after the provider read.
+			// A replaced plan, connection or acknowledged screen cannot reuse this operation.
+			valid();
+			if (entry.prepared !== review) fail("Prepared review changed. Reopen it.");
+			if (entry.progress) this.validateProgress(entry.progress, review);
+			return clone({ review, progress: entry.progress, file });
+		}, caller);
 	}
 	private assertPath(review: PreparedReview, reviewId: string, path: string | null) {
 		if (
