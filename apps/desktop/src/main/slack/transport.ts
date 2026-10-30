@@ -1,17 +1,19 @@
 import { z } from "zod";
 import { SlackError, abortable, parsed } from "./types";
 
-export type SlackMethod =
-	| "oauth.v2.access"
-	| "auth.test"
-	| "users.info"
-	| "users.conversations"
-	| "conversations.info"
-	| "conversations.members"
-	| "conversations.history"
-	| "conversations.replies"
-	| "chat.postMessage"
-	| "apps.connections.open";
+const MethodSchema = z.enum([
+	"oauth.v2.access",
+	"auth.test",
+	"users.info",
+	"users.conversations",
+	"conversations.info",
+	"conversations.members",
+	"conversations.history",
+	"conversations.replies",
+	"chat.postMessage",
+	"apps.connections.open",
+]);
+export type SlackMethod = z.infer<typeof MethodSchema>;
 const EnvelopeSchema = z.object({ ok: z.boolean(), error: z.string().max(100).optional() });
 const authErrors = new Set([
 	"invalid_auth",
@@ -63,6 +65,7 @@ export class SlackTransport {
 			maxBytes?: number;
 		}
 	): Promise<unknown> {
+		parsed(MethodSchema, method);
 		const signal = AbortSignal.any([
 			...(options.signal ? [options.signal] : []),
 			AbortSignal.timeout(15_000),

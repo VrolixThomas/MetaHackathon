@@ -19,6 +19,7 @@ import {
 	SlackError,
 	SlackIdSchema,
 	SlackTsSchema,
+	abortable,
 	parsed,
 } from "./types";
 
@@ -116,6 +117,9 @@ function visibility(row: z.infer<typeof ChannelSchema>): SourceAudience["visibil
 	if (row.is_channel && row.is_private === false) return "public_channel";
 	throw new SlackError("invalid-data");
 }
+function operationSignal(signal?: AbortSignal): AbortSignal {
+	return AbortSignal.any([...(signal ? [signal] : []), AbortSignal.timeout(30_000)]);
+}
 export function slackMessage(raw: RawSlackMessage, audience: SourceAudience): ChatMessage {
 	const authorId = raw.user ?? raw.bot_id;
 	if (!authorId) throw new SlackError("invalid-data");
@@ -153,17 +157,17 @@ export class SlackClient {
 		this.transport = new SlackTransport(options);
 		this.now = options.now ?? Date.now;
 	}
-	async credential(): Promise<SlackCredential> {
+	async credential(signal?: AbortSignal): Promise<SlackCredential> {
 		try {
-			const value = await this.options.getCredential();
+			const value = await abortable(this.options.getCredential(), operationSignal(signal));
 			if (!value) throw new SlackError("connection-required");
 			return parsed(SlackCredentialSchema, value);
 		} catch (error) {
 			throw error instanceof SlackError ? error : new SlackError("connection-required");
 		}
 	}
-	async assertCurrent(credential: SlackCredential): Promise<void> {
-		const current = await this.credential();
+	async assertCurrent(credential: SlackCredential, signal?: AbortSignal): Promise<void> {
+		const current = await this.credential(signal);
 		if (
 			current.connectionId !== credential.connectionId ||
 			current.workspaceId !== credential.workspaceId ||
@@ -176,22 +180,24 @@ export class SlackClient {
 		credential: SlackCredential,
 		method: Parameters<SlackTransport["call"]>[0],
 		fields: Record<string, string | number | boolean>,
-		signal?: AbortSignal
+		parentSignal?: AbortSignal
 	): Promise<unknown> {
+		const signal = operationSignal(parentSignal);
 		if (signal?.aborted) throw new SlackError("cancelled");
-		await this.assertCurrent(credential);
+		await this.assertCurrent(credential, signal);
 		const result = await this.transport.call(method, {
 			token: credential.accessToken,
 			fields,
 			signal,
 			bucket: `${credential.appId}:${credential.workspaceId}`,
 		});
-		await this.assertCurrent(credential);
+		await this.assertCurrent(credential, signal);
 		if (signal?.aborted) throw new SlackError("cancelled");
 		return result;
 	}
-	async capabilities(signal?: AbortSignal) {
-		const credential = await this.credential();
+	async capabilities(parentSignal?: AbortSignal) {
+		const signal = operationSignal(parentSignal);
+		const credential = await this.credential(signal);
 		const identity = parsed(
 			z.object({
 				team_id: SlackIdSchema,
@@ -227,10 +233,11 @@ export class SlackClient {
 	}
 	async listConversations(
 		input: z.infer<typeof PagingSchema> = {},
-		signal?: AbortSignal
+		parentSignal?: AbortSignal
 	): Promise<SlackPage<ChatConversation>> {
+		const signal = operationSignal(parentSignal);
 		const paging = parsed(PagingSchema, input);
-		const credential = await this.credential();
+		const credential = await this.credential(signal);
 		const types = Object.entries(visibilityScopes)
 			.filter(([, scopes]) => credential.scopes.includes(scopes[0]))
 			.map(
@@ -274,11 +281,12 @@ export class SlackClient {
 	/** Fresh metadata + full bounded membership; a partial audience never becomes an access grant. */
 	async audience(
 		conversationId: string,
-		signal?: AbortSignal,
+		parentSignal?: AbortSignal,
 		expected?: SlackCredential
 	): Promise<SourceAudience> {
+		const signal = operationSignal(parentSignal);
 		parsed(SlackIdSchema, conversationId);
-		const credential = expected ?? (await this.credential());
+		const credential = expected ?? (await this.credential(signal));
 		const value = parsed(
 			z.object({ channel: ChannelSchema }),
 			await this.call(credential, "conversations.info", { channel: conversationId }, signal)
@@ -325,10 +333,11 @@ export class SlackClient {
 		return this.read(parsed(ThreadSchema, input), signal);
 	}
 	/** Re-read exact source text/revision with current membership for day/knowledge authorization. */
-	async sourceMessage(source: ChatSource, signal?: AbortSignal): Promise<ChatMessage> {
+	async sourceMessage(source: ChatSource, parentSignal?: AbortSignal): Promise<ChatMessage> {
+		const signal = operationSignal(parentSignal);
 		parsed(ChatSourceSchema, source);
 		parsed(SlackTsSchema, source.messageId);
-		const credential = await this.credential();
+		const credential = await this.credential(signal);
 		if (source.workspaceId !== credential.workspaceId) throw new SlackError("access-denied");
 		const input = {
 			conversationId: source.conversationId,
@@ -341,15 +350,19 @@ export class SlackClient {
 			: await this.history(input, signal);
 		const message = page.items.find((row) => row.citation.source.messageId === source.messageId);
 		if (!message) throw new SlackError("access-denied");
-		if (message.citation.source.revisionId !== source.revisionId)
-			throw new SlackError("stale-connection");
+		if (
+			message.citation.source.revisionId !== source.revisionId ||
+			message.citation.source.threadId !== source.threadId
+		)
+			throw new SlackError("stale-source");
 		return message;
 	}
 	private async read(
 		input: SlackReadInput & { threadTs?: string },
-		signal?: AbortSignal
+		parentSignal?: AbortSignal
 	): Promise<SlackMessagePage> {
-		const credential = await this.credential();
+		const signal = operationSignal(parentSignal);
+		const credential = await this.credential(signal);
 		const audience = await this.audience(input.conversationId, signal, credential);
 		const value = parsed(
 			z.object({
@@ -414,15 +427,21 @@ export class SlackClient {
 	private async sendOnce(
 		input: SlackReplyRequest,
 		binding: string,
-		signal?: AbortSignal
+		parentSignal?: AbortSignal
 	): Promise<ChatReplyReceipt> {
-		const credential = await this.credential();
+		const signal = operationSignal(parentSignal);
+		const credential = await this.credential(signal);
 		if (input.source.workspaceId !== credential.workspaceId) throw new SlackError("access-denied");
 		if (!credential.scopes.includes("chat:write")) throw new SlackError("missing-scope");
 		if (!this.options.replyLedger) throw new SlackError("capacity");
 		await this.sourceMessage(input.source, signal);
 		const key = `${credential.connectionId}:${input.requestId}`;
-		const reservation = await this.options.replyLedger.reserve(key, binding);
+		let reservation: Awaited<ReturnType<SlackReplyLedger["reserve"]>>;
+		try {
+			reservation = await abortable(this.options.replyLedger.reserve(key, binding), signal);
+		} catch (error) {
+			throw error instanceof SlackError ? error : new SlackError("provider");
+		}
 		if (reservation.state === "delivered") {
 			const receipt = parsed(ChatReplyReceiptSchema, reservation.receipt);
 			if (
@@ -489,7 +508,7 @@ export class SlackClient {
 			deliveredAt: new Date(this.now()).toISOString(),
 		});
 		try {
-			await this.options.replyLedger.delivered(key, binding, receipt);
+			await abortable(this.options.replyLedger.delivered(key, binding, receipt), signal);
 		} catch {
 			throw new SlackError("uncertain-delivery");
 		}

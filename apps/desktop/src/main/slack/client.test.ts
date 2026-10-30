@@ -113,6 +113,17 @@ test("account changes fence late provider responses", async () => {
 	);
 });
 
+test("cancellation also bounds an injected credential lookup that never settles", async () => {
+	const { client } = harness(undefined, () => new Promise(() => {}));
+	const controller = new AbortController();
+	const pending = client.history({ conversationId: "D123" }, controller.signal);
+	controller.abort();
+	await assert.rejects(
+		pending,
+		(error: unknown) => error instanceof SlackError && error.code === "cancelled"
+	);
+});
+
 test("explicit public reads support user visibility beyond membership; C-prefixed private channels stay private", async () => {
 	const publicClient = harness((method) =>
 		method === "conversations.info"

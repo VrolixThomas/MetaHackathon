@@ -108,10 +108,18 @@ export class SlackIntake {
 		if (this.waiting >= 64) return Promise.reject(new SlackError("capacity"));
 		this.waiting++;
 		const bounded = AbortSignal.any([...(signal ? [signal] : []), AbortSignal.timeout(30_000)]);
-		const result = this.tail.then(() => {
-			if (bounded.aborted) throw new SlackError("cancelled");
-			return work(bounded);
-		});
+		const result = this.tail
+			.then(() => {
+				if (bounded.aborted) throw new SlackError("cancelled");
+				return work(bounded);
+			})
+			.catch((error) => {
+				throw bounded.aborted
+					? new SlackError("cancelled")
+					: error instanceof SlackError
+						? error
+						: new SlackError("provider");
+			});
 		this.tail = result
 			.catch(() => {})
 			.finally(() => {
@@ -240,7 +248,10 @@ export class SlackIntake {
 						workspaceId: credential.workspaceId,
 						conversationId: event.channel,
 						messageId: event.deleted_ts,
-						threadId: raw?.thread_ts ?? previous?.threadId ?? null,
+						threadId:
+							raw?.thread_ts && raw.thread_ts !== event.deleted_ts
+								? raw.thread_ts
+								: (previous?.threadId ?? null),
 						revisionId: event.event_ts,
 						permalink: null,
 					};

@@ -44,6 +44,7 @@ export type SlackErrorCode =
 	| "missing-scope"
 	| "rate-limited"
 	| "stale-connection"
+	| "stale-source"
 	| "uncertain-delivery"
 	| "request-conflict"
 	| "capacity";
@@ -56,6 +57,7 @@ const messages: Record<SlackErrorCode, string> = {
 	"missing-scope": "Reconnect Slack with the required permissions.",
 	"rate-limited": "Slack is rate limited; retry after the indicated delay.",
 	"stale-connection": "The Slack account changed during this operation.",
+	"stale-source": "The Slack source changed; review the current message before replying.",
 	"uncertain-delivery": "Slack delivery is uncertain; reconcile before attempting another send.",
 	"request-conflict": "This Slack request ID already identifies another reply.",
 	capacity: "The bounded Slack operation capacity was reached.",
