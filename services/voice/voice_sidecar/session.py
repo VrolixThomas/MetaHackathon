@@ -171,7 +171,8 @@ class Session:
 
         @self.worker.event_handler("on_pipeline_started")
         async def on_started(worker, frame):
-            self.ready.set()
+            if self.active:
+                self.ready.set()
 
         @self.worker.event_handler("on_pipeline_error")
         async def on_error(worker, frame):
@@ -179,7 +180,8 @@ class Session:
 
         @transport.event_handler("on_client_connected")
         async def on_connected(transport, client):
-            self.connected.set()
+            if self.active:
+                self.connected.set()
 
         @transport.event_handler("on_client_disconnected")
         async def on_disconnected(transport, client):
@@ -195,11 +197,26 @@ class Session:
         )
         async with asyncio.timeout(12):
             self.start_stage = "meta"
-            await self.meta.open()
-            self.start_stage = "media"
-            await self.peer.initialize(self.offer.sdp, self.offer.type)
+            setup = [
+                self.spawn(self._prepare(self.meta.open, self.meta.close, "meta")),
+                self.spawn(self._prepare(
+                    lambda: self.peer.initialize(self.offer.sdp, self.offer.type),
+                    self.peer.disconnect, "media",
+                )),
+            ]
+            # Unlike gather, wait lets the request unwind promptly if a setup
+            # operation suppresses cancellation. Teardown owns both child tasks.
+            await asyncio.wait(setup)
+            if not self.active:
+                raise HTTPException(409, "Generation cancelled")
+            for task in setup:
+                task.result()
+            # Preparing the peer cannot consume input. Start the pipeline only
+            # after Meta has acknowledged its stream and installed its sender.
             runner = WorkerRunner(handle_sigint=False, handle_sigterm=False)
             await runner.add_workers(self.worker)
+            if not self.active:
+                raise HTTPException(409, "Generation cancelled")
             self.run_task = asyncio.create_task(runner.run(), name="voice-pipeline")
             await self.ready.wait()
         if not self.active:
@@ -210,6 +227,28 @@ class Session:
         self.start_task = None
         answer = self.peer.get_answer()
         return Answer(sdp=answer["sdp"], type=answer["type"])
+
+    async def _prepare(self, operation, close, stage):
+        try:
+            await operation()
+        except asyncio.CancelledError:
+            raise
+        except Exception as error:
+            # Record the first failure at its source, before teardown cancels
+            # the offer or its sibling. No aggregate exception crosses HTTP.
+            failure = classify(error, stage)
+            self.fail(str(failure), failure.diagnostic)
+        else:
+            if stage == "meta" and self.active:
+                self.start_stage = "media"
+        finally:
+            if not self.active:
+                # A noncooperating operation may acquire resources after teardown
+                # already closed them. Compensate even if it then raises cancel.
+                try:
+                    await close()
+                except Exception:
+                    pass  # A late close failure must not replace the first failure.
 
     async def _watch_capture(self):
         await asyncio.sleep(max(0, self.capture_deadline - time.monotonic()))
