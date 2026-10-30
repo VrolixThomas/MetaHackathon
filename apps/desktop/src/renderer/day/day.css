@@ -1,0 +1,184 @@
+.day-queue,
+.day-item {
+	min-width: 0;
+	color: #c8cad0;
+}
+.day-queue-heading,
+.day-item-meta,
+.day-actions {
+	display: flex;
+	align-items: center;
+	flex-wrap: wrap;
+	gap: 8px;
+}
+.day-queue-heading {
+	justify-content: space-between;
+	padding: 8px 12px;
+	color: var(--muted);
+	font-size: 11px;
+}
+.day-queue-list {
+	list-style: none;
+	padding: 0;
+	margin: 0;
+}
+.day-queue .command-item-meta {
+	white-space: normal;
+}
+.day-feedback {
+	padding: 18px 12px;
+	color: var(--muted);
+	font-size: 12px;
+}
+.day-feedback strong {
+	color: #c8cad0;
+	font-weight: 500;
+}
+.day-feedback p {
+	margin: 6px 0 10px;
+}
+.day-queue [role="alert"],
+.day-item [role="alert"] {
+	color: #d3ab73;
+}
+.day-item {
+	width: min(100%, 860px);
+	margin-inline: auto;
+	padding: clamp(20px, 4vw, 48px);
+	overflow-wrap: anywhere;
+}
+.day-item h1 {
+	margin: 16px 0 10px;
+	color: #e6e6e6;
+	font-size: clamp(22px, 3vw, 30px);
+	font-weight: 500;
+	line-height: 1.3;
+	letter-spacing: -0.5px;
+}
+.day-item h2 {
+	margin: 0 0 10px;
+	font-size: 13px;
+	font-weight: 500;
+	color: #e6e6e6;
+}
+.day-item-meta {
+	font-size: 11px;
+	color: var(--muted);
+}
+.day-status,
+.day-visibility {
+	padding: 3px 7px;
+	border: 1px solid var(--line);
+	border-radius: 5px;
+	font-size: 10px;
+}
+.day-status[data-tone="attention"] {
+	color: #d3ab73;
+}
+.day-status[data-tone="active"] {
+	color: #a5bddc;
+}
+.day-status[data-tone="ready"] {
+	color: #9bbca4;
+}
+.day-focus,
+.day-checkpoint,
+.day-section {
+	margin-top: 24px;
+	padding-top: 20px;
+	border-top: 1px solid var(--line);
+}
+.day-focus p,
+.day-checkpoint p,
+.day-section p {
+	margin: 6px 0 12px;
+}
+.day-hint,
+.day-priority {
+	color: var(--muted);
+	font-size: 12px;
+}
+.day-priority {
+	margin-block: 12px 18px;
+}
+.day-actions {
+	margin-block: 14px;
+}
+.day-item details,
+.day-queue details {
+	margin-top: 16px;
+	font-size: 12px;
+}
+.day-item summary,
+.day-queue summary {
+	cursor: pointer;
+	color: var(--muted);
+}
+.day-item summary:focus-visible,
+.day-queue summary:focus-visible,
+.day-item input:focus-visible,
+.day-item textarea:focus-visible,
+.day-queue input:focus-visible,
+.day-queue textarea:focus-visible {
+	outline: 2px solid var(--blue);
+	outline-offset: 3px;
+}
+.day-source-message {
+	margin: 16px 0;
+	padding-left: 14px;
+	border-left: 2px solid var(--line);
+}
+.day-source-message p,
+.day-exact-text {
+	white-space: pre-wrap;
+}
+.day-source-message footer {
+	font-size: 11px;
+	color: var(--muted);
+}
+.day-form {
+	display: grid;
+	gap: 10px;
+	margin-top: 14px;
+}
+.day-form label {
+	display: grid;
+	gap: 6px;
+	font-size: 12px;
+	color: var(--muted);
+}
+.day-form input,
+.day-form textarea,
+.day-form select {
+	width: 100%;
+	padding: 9px 10px;
+	border: 1px solid var(--line);
+	border-radius: 6px;
+	color: #e6e6e6;
+	background: #131416;
+	font: inherit;
+}
+.day-form textarea {
+	min-height: 84px;
+	resize: vertical;
+}
+.day-form button {
+	justify-self: start;
+}
+.day-queue .day-capture {
+	padding: 12px;
+	border-top: 1px solid var(--line);
+}
+.day-source-identity {
+	display: grid;
+	grid-template-columns: max-content 1fr;
+	gap: 5px 12px;
+	color: var(--muted);
+	font-size: 11px;
+}
+.day-source-identity dd {
+	margin: 0;
+}
+.day-question + .day-question {
+	margin-top: 20px;
+}
