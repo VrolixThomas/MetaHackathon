@@ -1,4 +1,5 @@
-import { expect, test } from "bun:test";
+import assert from "node:assert/strict";
+import { test } from "node:test";
 import {
 	AttentionClaimSchema,
 	ConversationAttentionInputSchema,
@@ -14,11 +15,11 @@ test("assistant initiative carries a claim and cannot masquerade as a user utter
 		requestId: "request",
 		claimId: "claim",
 	};
-	expect(ConversationAttentionInputSchema.safeParse(input).success).toBe(true);
-	expect(ConversationAttentionInputSchema.safeParse({ ...input, text: "fake user" }).success).toBe(
-		false
-	);
-	expect(ConversationTurnInputSchema.safeParse(input).success).toBe(false);
+	assert.equal(ConversationAttentionInputSchema.safeParse(input).success, true);
+	assert
+		.equal(ConversationAttentionInputSchema.safeParse({ ...input, text: "fake user" }).success)
+		.toBe(false);
+	expect(ConversationTurnInputSchema.safeParse(input).success, false);
 });
 test("delivery claims have bounded unique job identity and old hub snapshots remain readable", () => {
 	const item = {
@@ -40,9 +41,9 @@ test("delivery claims have bounded unique job identity and old hub snapshots rem
 		createdAt: "2026-10-30T15:00:00Z",
 		expiresAt: "2026-10-30T15:02:00Z",
 	};
-	expect(AttentionClaimSchema.safeParse(claim).success).toBe(true);
-	expect(AttentionClaimSchema.safeParse({ ...claim, items: [item, item] }).success).toBe(false);
-	expect(
+	assert.equal(AttentionClaimSchema.safeParse(claim).success, true);
+	assert.equal(AttentionClaimSchema.safeParse({ ...claim, items: [item, item] }).success, false);
+	assert.equal(
 		HubPersistenceSchema.safeParse({
 			version: 1,
 			repositories: [],
@@ -55,6 +56,7 @@ test("delivery claims have bounded unique job identity and old hub snapshots rem
 				maxWorkers: 2,
 				autoApplySuggestions: true,
 			},
-		}).success
-	).toBe(true);
+		}).success,
+		true
+	);
 });
