@@ -33,6 +33,7 @@ it("stores exact recorded facts with source attribution and serves current works
 		containerId: "C1",
 		authorUserId: "alice",
 		observedAt: source().observedAt,
+		citation: null,
 	});
 	assert.equal(h.requests.at(-1)?.userIds[0], "bob");
 });
@@ -145,6 +146,20 @@ it("revalidates membership and actual agent ownership on every read and write", 
 	await assert.rejects(h.service.searchExact(alice, companySearch), KnowledgeAccessError);
 	await assert.rejects(h.service.recordFact(alice, fact({ id: "f3" })), KnowledgeAccessError);
 	assert.equal(h.read().facts.length, 1);
+});
+
+it("public visibility and workspace membership do not bypass actual current source read permission", async () => {
+	const h = harness();
+	await h.ingest();
+	await h.service.recordFact(alice, fact());
+	h.denySourceReader("bob", source().sourceId);
+	assert.deepEqual(await h.service.searchExact(bob, companySearch), []);
+	assert.equal((await h.service.searchExact(alice, companySearch)).length, 1);
+	assert.equal((await h.service.admitDirectMessage(alice, message())).status, "rejected");
+	await assert.rejects(
+		h.service.recordFact(bob, fact({ id: "not-readable" })),
+		KnowledgeAccessError
+	);
 });
 
 it("checks the intersection of every source for a private fact and direct message", async () => {
@@ -486,7 +501,7 @@ it("recipient ownership changes fence historical inbox and idempotent admission"
 	await h.ingest();
 	await h.service.admitDirectMessage(alice, message());
 	h.setOwner("bob-agent", "eve");
-	await assert.rejects(h.service.readInbox({ ...eve, agentId: "bob-agent" }), KnowledgeAccessError);
+	assert.deepEqual(await h.service.readInbox({ ...eve, agentId: "bob-agent" }), []);
 	assert.equal((await h.service.admitDirectMessage(alice, message())).status, "rejected");
 	assert.equal(h.read().messages.length, 1);
 });

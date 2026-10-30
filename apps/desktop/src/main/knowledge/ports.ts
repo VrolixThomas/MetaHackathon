@@ -19,7 +19,10 @@ export interface AuthorizationSnapshot {
 	workspaceId: string;
 	memberUserIds: string[];
 	agentOwners: { agentId: string; userId: string }[];
-	sources: Omit<KnowledgeSource, "text" | "observedAt">[];
+	sources: (Omit<KnowledgeSource, "text" | "observedAt"> & {
+		// Actual current per-user read checks, including guests in public channels.
+		readableUserIds: string[];
+	})[];
 	// Opaque fence tied to account, membership, ownership and source/ACL generations.
 	fence: string;
 }
@@ -27,7 +30,8 @@ export interface AuthorizationSnapshot {
 export interface KnowledgeAuthorizationPort {
 	/**
 	 * Revalidate actual current membership/owner/source ACL, not old grants. Include
-	 * membership for the current owners of requested agentIds, even if not in userIds.
+	 * membership AND source read grants for current requested agent owners, even if
+	 * not in userIds. A public channel does not imply every member/guest can read it.
 	 */
 	resolve(request: AuthorizationRequest): Promise<AuthorizationSnapshot>;
 	/** Synchronous final fence check inside the store transaction; false on uncertainty. */
@@ -49,6 +53,8 @@ export interface KnowledgeTransaction {
 	getFact(id: string): KnowledgeFact | null;
 	insertFact(fact: KnowledgeFact): void;
 	queryFacts(query: FactQuery): KnowledgeFact[];
+	/** Reverse immutable edges. Throw rather than truncate if either set exceeds 256. */
+	getRelatedFactIds(id: string): { supersededBy: string[]; contradictedBy: string[] };
 	getMessageByRequest(senderAgentId: string, requestId: string): DirectAgentMessage | null;
 	insertMessage(message: DirectAgentMessage): void;
 	listMessages(recipientAgentId: string, limit: number): DirectAgentMessage[];

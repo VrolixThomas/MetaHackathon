@@ -1,5 +1,6 @@
 import { createHash, randomUUID } from "node:crypto";
 import { z } from "zod";
+import { communicationDto, factDto } from "./dto";
 import {
 	KnowledgeAccessError,
 	actorAllowed,
@@ -19,6 +20,7 @@ import {
 	FactInputSchema,
 	FactSchema,
 	type KnowledgeActor,
+	type KnowledgeCitation,
 	type KnowledgeFact,
 	type KnowledgeFactView,
 	type KnowledgeScope,
@@ -36,7 +38,11 @@ const AuthorizationSchema = z
 		agentOwners: z.array(
 			z.object({ agentId: z.string().min(1), userId: z.string().min(1) }).strict()
 		),
-		sources: z.array(SourceSchema.omit({ text: true, observedAt: true })),
+		sources: z.array(
+			SourceSchema.omit({ text: true, observedAt: true })
+				.extend({ readableUserIds: z.array(z.string().min(1)) })
+				.strict()
+		),
 		fence: z.string().min(1),
 	})
 	.strict();
@@ -193,24 +199,85 @@ export class KnowledgeService {
 	}
 
 	async searchExact(actorValue: unknown, value: unknown): Promise<KnowledgeFactView[]> {
+		return this.readFactViews(actorValue, value, (view) => view);
+	}
+
+	async searchSharedExact(actorValue: unknown, value: unknown) {
+		return this.readFactViews(actorValue, value, factDto);
+	}
+
+	private citations(tx: KnowledgeTransaction, refs: SourceRef[]): KnowledgeCitation[] {
+		return refs.map((ref) => {
+			const source = SourceSchema.parse(tx.getSource(ref.sourceId));
+			return {
+				...ref,
+				kind: source.kind,
+				containerId: source.containerId,
+				authorUserId: source.authorUserId,
+				observedAt: source.observedAt,
+				citation: source.citation,
+			};
+		});
+	}
+
+	private relatedIds(tx: KnowledgeTransaction, id: string) {
+		const relation = z
+			.object({
+				supersededBy: z.array(z.string().min(1)).max(256),
+				contradictedBy: z.array(z.string().min(1)).max(256),
+			})
+			.strict()
+			.parse(tx.getRelatedFactIds(id));
+		return {
+			supersededBy: unique(relation.supersededBy).sort(),
+			contradictedBy: unique(relation.contradictedBy).sort(),
+		};
+	}
+
+	private async readFactViews<T>(
+		actorValue: unknown,
+		value: unknown,
+		project: (view: KnowledgeFactView) => T
+	): Promise<T[]> {
 		const actor = ActorSchema.parse(actorValue);
 		const input = SearchInputSchema.parse(value);
 		requireAccess(scopeAllowed(input.scope, [actor.userId]));
-		const candidates = await this.ports.store.transaction(actor.workspaceId, (tx) =>
-			tx
+		const snapshot = await this.ports.store.transaction(actor.workspaceId, (tx) => {
+			const candidates = tx
 				.queryFacts({ ...input, limit: 50 })
 				.slice(0, 50)
-				.map((fact) => FactSchema.parse(fact))
-		);
+				.map((fact) => FactSchema.parse(fact));
+			const relations = candidates.map((fact) => ({
+				id: fact.id,
+				...this.relatedIds(tx, fact.id),
+			}));
+			const ids = unique(
+				relations.flatMap((relation) => [...relation.supersededBy, ...relation.contradictedBy])
+			);
+			requireAccess(ids.length <= 256);
+			const related = this.parents(tx, actor.workspaceId, ids, input.scope);
+			return { candidates, relations, related };
+		});
+		const { candidates, relations, related } = snapshot;
 		requireAccess(
 			candidates.every(
 				(fact) => fact.workspaceId === actor.workspaceId && sameScope(fact.scope, input.scope)
 			)
 		);
-		const refs = this.requestRefs(candidates.map((fact) => fact.sources));
+		const refs = this.requestRefs([...candidates, ...related].map((fact) => fact.sources));
 		const auth = await this.authorize(actor.workspaceId, [actor], refs);
 		return this.fenced(actor.workspaceId, auth, (tx) => {
-			const result: KnowledgeFactView[] = [];
+			const result: T[] = [];
+			const visibleRelated = related
+				.filter((fact) => {
+					const current = tx.getFact(fact.id);
+					return (
+						current &&
+						digest(FactSchema.parse(current)) === digest(fact) &&
+						this.readable(tx, fact.sources, [actor.userId], auth, input.scope)
+					);
+				})
+				.sort((a, b) => b.createdAt.localeCompare(a.createdAt) || a.id.localeCompare(b.id));
 			for (const candidate of candidates) {
 				const value = tx.getFact(candidate.id);
 				if (!value || digest(FactSchema.parse(value)) !== digest(candidate)) continue;
@@ -219,17 +286,37 @@ export class KnowledgeService {
 					!this.readable(tx, candidate.sources, [actor.userId], auth, input.scope)
 				)
 					continue;
-				const citations = candidate.sources.map((ref) => {
-					const source = SourceSchema.parse(tx.getSource(ref.sourceId));
-					return {
-						...ref,
-						kind: source.kind,
-						containerId: source.containerId,
-						authorUserId: source.authorUserId,
-						observedAt: source.observedAt,
-					};
-				});
-				result.push({ fact: candidate, citations });
+				const relation = relations.find((row) => row.id === candidate.id);
+				requireAccess(
+					relation &&
+						digest(this.relatedIds(tx, candidate.id)) ===
+							digest({
+								supersededBy: relation.supersededBy,
+								contradictedBy: relation.contradictedBy,
+							})
+				);
+				const superseding = visibleRelated.filter(
+					(fact) =>
+						relation.supersededBy.includes(fact.id) && fact.supersedes.includes(candidate.id)
+				);
+				result.push(
+					project({
+						fact: candidate,
+						citations: this.citations(tx, candidate.sources),
+						supersededByIds: superseding.map((fact) => fact.id),
+						contradictedByIds: visibleRelated
+							.filter(
+								(fact) =>
+									relation.contradictedBy.includes(fact.id) &&
+									fact.contradicts.includes(candidate.id)
+							)
+							.map((fact) => fact.id),
+						updatedAt: superseding.reduce(
+							(time, fact) => (fact.createdAt > time ? fact.createdAt : time),
+							candidate.createdAt
+						),
+					})
+				);
 				if (result.length === input.limit) break;
 			}
 			return result;
@@ -324,6 +411,18 @@ export class KnowledgeService {
 	}
 
 	async readInbox(actorValue: unknown, limit = 20): Promise<DirectAgentMessage[]> {
+		return this.readMessages(actorValue, limit, (message) => message);
+	}
+
+	async readSharedInbox(actorValue: unknown, limit = 20) {
+		return this.readMessages(actorValue, limit, communicationDto);
+	}
+
+	private async readMessages<T>(
+		actorValue: unknown,
+		limit: number,
+		project: (message: DirectAgentMessage, sources: KnowledgeCitation[]) => T
+	): Promise<T[]> {
 		const actor = ActorSchema.parse(actorValue);
 		z.number().int().min(1).max(50).parse(limit);
 		const messages = await this.ports.store.transaction(actor.workspaceId, (tx) =>
@@ -335,9 +434,7 @@ export class KnowledgeService {
 		requireAccess(
 			messages.every(
 				(message) =>
-					message.workspaceId === actor.workspaceId &&
-					message.recipientAgentId === actor.agentId &&
-					message.recipientUserId === actor.userId
+					message.workspaceId === actor.workspaceId && message.recipientAgentId === actor.agentId
 			)
 		);
 		const auth = await this.authorize(
@@ -349,6 +446,7 @@ export class KnowledgeService {
 		return this.fenced(actor.workspaceId, auth, (tx) =>
 			messages
 				.filter((message) => {
+					if (message.recipientUserId !== actor.userId) return false;
 					if (!actorAllowed(message.sender, auth)) return false;
 					const stored = tx.getMessageByRequest(message.sender.agentId, message.requestId);
 					if (!stored || digest(MessageSchema.parse(stored)) !== digest(message)) return false;
@@ -360,6 +458,7 @@ export class KnowledgeService {
 					);
 				})
 				.slice(0, limit)
+				.map((message) => project(message, this.citations(tx, message.sources)))
 		);
 	}
 }

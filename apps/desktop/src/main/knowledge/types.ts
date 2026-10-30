@@ -1,8 +1,10 @@
 import { z } from "zod";
+import { type ChatCitation, ChatCitationSchema } from "../../shared/contracts/chat";
+import { KnowledgeFactSchema as PublicFactSchema } from "../../shared/contracts/knowledge";
 
 // Provisional main-only schemas. Root owns migration to shared IPC contracts.
 const Id = z.string().trim().min(1).max(256);
-const Text = z.string().min(1).max(16_384);
+const Text = PublicFactSchema.shape.text;
 const Time = z.iso.datetime();
 export const SourceRefSchema = z.object({ sourceId: Id, revision: Id }).strict();
 export type SourceRef = z.infer<typeof SourceRefSchema>;
@@ -37,20 +39,28 @@ export const SourceSchema = z
 		audience: AudienceSchema,
 		observedAt: Time,
 		state: z.enum(["active", "deleted", "revoked"]),
-		text: Text.nullable(),
+		text: z.string().min(1).max(40_000).nullable(),
+		// Exact connector-supplied Slack identity/captured audience, never fresh authority.
+		citation: ChatCitationSchema.nullable().default(null),
 	})
 	.strict();
 export type KnowledgeSource = z.infer<typeof SourceSchema>;
-const Refs = z.array(SourceRefSchema).min(1).max(32);
+const Refs = z.array(SourceRefSchema).min(1).max(30);
 export const FactInputSchema = z
 	.object({
 		id: Id,
 		scope: ScopeSchema,
-		category: z.enum(["decision", "intent", "convention", "ownership", "commitment", "other"]),
+		category: PublicFactSchema.shape.kind,
+		title: PublicFactSchema.shape.title,
 		text: Text,
 		basis: z.discriminatedUnion("kind", [
 			z.object({ kind: z.literal("recorded"), source: SourceRefSchema }).strict(),
-			z.object({ kind: z.literal("inferred"), explanation: Text }).strict(),
+			z
+				.object({
+					kind: z.literal("inferred"),
+					explanation: PublicFactSchema.shape.explanation.refine((text) => text.trim().length > 0),
+				})
+				.strict(),
 		]),
 		sources: Refs,
 		parentFactIds: z.array(Id).max(32),
@@ -114,9 +124,13 @@ export interface KnowledgeCitation extends SourceRef {
 	containerId: string;
 	authorUserId: string;
 	observedAt: string;
+	citation: ChatCitation | null;
 }
 
 export interface KnowledgeFactView {
 	fact: KnowledgeFact;
 	citations: KnowledgeCitation[];
+	supersededByIds: string[];
+	contradictedByIds: string[];
+	updatedAt: string;
 }

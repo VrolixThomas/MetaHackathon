@@ -1,3 +1,4 @@
+import { chatSourceId } from "./chat-source";
 import type { AuthorizationSnapshot } from "./ports";
 import type { KnowledgeActor, KnowledgeScope, KnowledgeSource, SourceRef } from "./types";
 
@@ -35,6 +36,26 @@ export function scopeAllowed(scope: KnowledgeScope, userIds: string[]): boolean 
 
 export function sourceShapeAllowed(source: KnowledgeSource): boolean {
 	if ((source.state === "active") !== (source.text !== null)) return false;
+	if (source.citation) {
+		const { source: identity, audience } = source.citation;
+		if (
+			source.kind === "private-note" ||
+			source.sourceId !== chatSourceId(identity) ||
+			source.workspaceId !== identity.workspaceId ||
+			source.containerId !== identity.conversationId ||
+			source.revision !== identity.revisionId ||
+			source.observedAt !== audience.observedAt ||
+			(source.kind === "slack-public-channel" && audience.visibility !== "public_channel") ||
+			(source.kind === "slack-private-channel" && audience.visibility !== "private_channel") ||
+			(source.kind === "slack-dm" &&
+				audience.visibility !== "direct_message" &&
+				audience.visibility !== "group_direct_message") ||
+			(source.audience.kind === "users" &&
+				JSON.stringify([...new Set(source.audience.userIds)].sort()) !==
+					JSON.stringify([...new Set(audience.readerIds)].sort()))
+		)
+			return false;
+	}
 	if (source.kind === "slack-public-channel")
 		return source.audience.kind === "workspace" && source.ownerUserId === null;
 	if (source.audience.kind !== "users") return false;
@@ -77,6 +98,7 @@ export function sourceAllowed(
 		live.length !== 1 ||
 		!live[0] ||
 		!sameSourceAuthority(source, live[0]) ||
+		!userIds.every((userId) => live[0]?.readableUserIds.includes(userId)) ||
 		source.workspaceId !== auth.workspaceId ||
 		source.sourceId !== ref.sourceId ||
 		source.revision !== ref.revision ||
@@ -104,6 +126,6 @@ export function unionSources(...groups: SourceRef[][]): SourceRef[] {
 			refs.set(ref.sourceId, { ...ref });
 		}
 	}
-	requireAccess(refs.size > 0 && refs.size <= 32);
+	requireAccess(refs.size > 0 && refs.size <= 30);
 	return [...refs.values()].sort((a, b) => a.sourceId.localeCompare(b.sourceId));
 }
