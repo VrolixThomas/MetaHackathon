@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { createHash } from "node:crypto";
 import { test } from "node:test";
 import { setImmediate } from "node:timers/promises";
 import {
@@ -6,6 +7,7 @@ import {
 	MetaClient,
 	type MetaRequest,
 	type MetaStreamEvent,
+	type ModelTimingRecord,
 	type UsageRecord,
 } from "./meta-client";
 import { assertStandardModel, estimateCostUsd, routeModel } from "./models";
@@ -49,6 +51,229 @@ async function collect(client: MetaClient, input = request, signal = new AbortCo
 	for await (const e of client.stream(input, signal)) events.push(e);
 	return events;
 }
+
+test("optional timings separate credentials, headers, SSE text and terminal without recording content", async () => {
+	let now = 0;
+	const timings: ModelTimingRecord[] = [];
+	const usage: UsageRecord[] = [];
+	let controller!: ReadableStreamDefaultController<Uint8Array>;
+	let sentBytes = 0;
+	const response = new Response(
+		new ReadableStream<Uint8Array>({
+			start(value) {
+				controller = value;
+			},
+		}),
+		{ headers: { "Content-Type": "text/event-stream" } }
+	);
+	const emit = (event: unknown) =>
+		controller.enqueue(new TextEncoder().encode(`data: ${JSON.stringify(event)}\n\n`));
+	const input: MetaRequest = {
+		...request,
+		requestId: "PRIVATE-REQUEST-ID",
+		instructions: "PRIVATE-INSTRUCTIONS é",
+		input: [{ role: "user", content: "PRIVATE-TRANSCRIPT" }],
+		tools: [
+			{
+				type: "function",
+				name: "private_tool",
+				description: "PRIVATE-TOOL-DESCRIPTION",
+				parameters: { type: "object", properties: {} },
+			},
+		],
+		maxOutputTokens: 2048,
+	};
+	const client = new MetaClient({
+		now: () => now,
+		getApiKey: async () => {
+			now = 12;
+			return "PRIVATE-KEY";
+		},
+		recordUsage: (record) => usage.push(record),
+		recordTiming: (record) => timings.push(record),
+		fetch: async (_url, init) => {
+			sentBytes = Buffer.byteLength(String(init?.body));
+			now = 30;
+			return response;
+		},
+	});
+	const iterator = client.stream(input, new AbortController().signal);
+	const first = iterator.next();
+	await setImmediate();
+	now = 50;
+	emit({ type: "response.created", response: { id: "PRIVATE-RESPONSE-ID" } });
+	await setImmediate();
+	now = 80;
+	emit({ type: "response.output_text.delta", delta: "PRIVATE-REPLY" });
+	assert.equal((await first).value?.type, "text");
+	assert.equal(timings.length, 0);
+	const terminal = iterator.next();
+	now = 200;
+	emit(responseEvent());
+	assert.equal((await terminal).value?.type, "completed");
+	now = 210;
+	await iterator.next();
+	assert.equal(timings.length, 1);
+	assert.equal(usage.length, 1);
+	const hash = (value: string) => createHash("sha256").update(value).digest("hex");
+	assert.deepEqual(timings[0], {
+		requestHash: hash(input.requestId),
+		attemptHash: hash(usage[0]?.attemptId ?? ""),
+		workload: "quick",
+		status: "completed",
+		inputBytes: Buffer.byteLength(JSON.stringify(input.input)),
+		instructionBytes: Buffer.byteLength(input.instructions),
+		toolBytes: Buffer.byteLength(JSON.stringify(input.tools)),
+		inputItems: 1,
+		toolCount: 1,
+		maxOutputTokens: 2048,
+		requestBytes: sentBytes,
+		credentialMs: 12,
+		headersMs: 18,
+		firstEventMs: 38,
+		firstTextMs: 68,
+		terminalMs: 188,
+		durationMs: 210,
+		streamedTextChars: 13,
+		functionCalls: 0,
+		httpStatus: 200,
+		inputTokens: 100,
+		cachedInputTokens: 20,
+		outputTokens: 10,
+	});
+	assert(!JSON.stringify(timings).includes("PRIVATE"));
+	assert(!JSON.stringify(timings).includes("private_tool"));
+});
+
+test("timings retain unknown stages and separate HTTP, incomplete and non-streamed tool attempts", async () => {
+	const cases = [
+		{ response: () => new Response("PRIVATE-ERROR", { status: 429 }), status: "failed" },
+		{
+			response: () =>
+				sseResponse([
+					{
+						...responseEvent(),
+						type: "response.incomplete",
+						response: {
+							...responseEvent().response,
+							status: "incomplete",
+							incomplete_details: { reason: "max_output_tokens" },
+						},
+					},
+				]),
+			status: "incomplete",
+		},
+		{
+			response: () =>
+				sseResponse([
+					responseEvent([
+						{ type: "function_call", name: "private_tool", arguments: "PRIVATE-ARGUMENTS" },
+					]),
+				]),
+			status: "completed",
+		},
+	];
+	for (const item of cases) {
+		const timings: ModelTimingRecord[] = [];
+		const client = new MetaClient({
+			getApiKey: async () => "key",
+			recordUsage: () => {},
+			recordTiming: (record) => timings.push(record),
+			fetch: async () => item.response(),
+		});
+		if (item.status === "completed") await collect(client);
+		else await assert.rejects(collect(client), MetaApiError);
+		assert.equal(timings.length, 1);
+		assert.equal(timings[0]?.status, item.status);
+		assert.equal(timings[0]?.firstTextMs, null);
+		assert.equal(timings[0]?.streamedTextChars, 0);
+		assert.equal(
+			timings[0]?.functionCalls,
+			item.status === "completed" ? 1 : item.status === "failed" ? null : 0
+		);
+		assert.equal(timings[0]?.httpStatus, item.status === "failed" ? 429 : 200);
+		assert(!JSON.stringify(timings).includes("PRIVATE"));
+		assert(!JSON.stringify(timings).includes("private_tool"));
+	}
+});
+
+test("timings record a cancelled pending read once and survive a failing observer", async () => {
+	const timings: ModelTimingRecord[] = [];
+	const usage: UsageRecord[] = [];
+	const caller = new AbortController();
+	let cancelled = 0;
+	const client = new MetaClient({
+		getApiKey: async () => "key",
+		recordUsage: (record) => usage.push(record),
+		recordTiming: (record) => {
+			timings.push(record);
+			throw new Error("Diagnostic sink failed");
+		},
+		fetch: async () =>
+			new Response(
+				new ReadableStream({
+					cancel() {
+						cancelled++;
+					},
+				}),
+				{ headers: { "Content-Type": "text/event-stream" } }
+			),
+	});
+	const result = collect(client, request, caller.signal);
+	await setImmediate();
+	caller.abort();
+	await assert.rejects(result, { name: "AbortError" });
+	assert.equal(cancelled, 1);
+	assert.equal(timings.length, 1);
+	assert.equal(timings[0]?.status, "cancelled");
+	assert.equal(timings[0]?.firstEventMs, null);
+	assert.equal(timings[0]?.terminalMs, null);
+	assert.equal(usage.length, 1);
+	assert.equal(usage[0]?.status, "cancelled");
+
+	const complete = new MetaClient({
+		getApiKey: async () => "key",
+		recordUsage: () => {},
+		recordTiming: () => {
+			throw new Error("Diagnostic sink failed");
+		},
+		fetch: async () => sseResponse([responseEvent()]),
+	});
+	assert.equal((await collect(complete)).at(-1)?.type, "completed");
+});
+
+test("timings expose missing credentials and consumer interruption without inventing terminal samples", async () => {
+	const timings: ModelTimingRecord[] = [];
+	const missing = new MetaClient({
+		getApiKey: async () => null,
+		recordUsage: () => {
+			throw new Error("No provider request expected");
+		},
+		recordTiming: (record) => timings.push(record),
+		fetch: async () => {
+			throw new Error("No provider request expected");
+		},
+	});
+	await assert.rejects(collect(missing), /credential unavailable/);
+	assert.equal(timings[0]?.status, "failed");
+	assert.equal(timings[0]?.requestBytes, null);
+	assert.equal(timings[0]?.headersMs, null);
+	assert.equal(timings[0]?.firstTextMs, null);
+	assert.equal(timings[0]?.terminalMs, null);
+	const client = new MetaClient({
+		getApiKey: async () => "key",
+		recordUsage: () => {},
+		recordTiming: (record) => timings.push(record),
+		fetch: async () => sseResponse([{ type: "response.output_text.delta", delta: "Hello" }]),
+	});
+	const iterator = client.stream(request, new AbortController().signal);
+	assert.equal((await iterator.next()).value?.type, "text");
+	await iterator.return(undefined);
+	assert.equal(timings.length, 2);
+	assert.equal(timings[1]?.status, "interrupted");
+	assert.equal(timings[1]?.terminalMs, null);
+	assert.equal(timings[1]?.streamedTextChars, 5);
+});
 
 test("routes only allowlisted standard models and prices cached input separately", () => {
 	assert.equal(routeModel("quick"), "muse-spark-1.3");

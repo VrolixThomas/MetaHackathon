@@ -1,4 +1,4 @@
-import { randomUUID } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import { z } from "zod";
 import { abortable, throwIfAborted } from "./cancellation";
 import {
@@ -65,6 +65,34 @@ export interface UsageRecord {
 	estimatedUsd: number | null;
 	pricingVerifiedAt: string;
 }
+/** Optional local timing metadata. No request/response text, tool arguments or raw identities. */
+export interface ModelTimingRecord {
+	requestHash: string;
+	attemptHash: string;
+	workload: Workload;
+	status: UsageRecord["status"];
+	inputBytes: number;
+	instructionBytes: number;
+	toolBytes: number;
+	inputItems: number;
+	toolCount: number;
+	maxOutputTokens: number;
+	requestBytes: number | null;
+	credentialMs: number | null;
+	/** Relative to fetch submission; includes transport, parser and consumer backpressure. */
+	headersMs: number | null;
+	firstEventMs: number | null;
+	firstTextMs: number | null;
+	terminalMs: number | null;
+	/** Full iterator lifetime, including credential lookup and consumer/cleanup time. */
+	durationMs: number;
+	streamedTextChars: number;
+	functionCalls: number | null;
+	httpStatus: number | null;
+	inputTokens: number | null;
+	cachedInputTokens: number | null;
+	outputTokens: number | null;
+}
 export class MetaApiError extends Error {
 	constructor(
 		message: string,
@@ -83,6 +111,9 @@ export class MetaClient implements AgentModelClient {
 		private readonly options: {
 			getApiKey: () => Promise<string | null>;
 			recordUsage: (record: UsageRecord) => void;
+			/** Best-effort synchronous observer; persistence and build/turn correlation belong to main. */
+			recordTiming?: (record: ModelTimingRecord) => void;
+			now?: () => number;
 			fetch?: typeof fetch;
 			timeoutMs?: number;
 		}
@@ -101,9 +132,25 @@ export class MetaClient implements AgentModelClient {
 		let estimatedUsd: number | null = null;
 		let responseId: string | null = null;
 		let requested = false;
+		const timing = this.options.recordTiming;
+		const now = this.options.now ?? (() => performance.now());
+		const startedAt = timing ? now() : 0;
+		const elapsed = (from: number) => Math.max(0, Math.round(now() - from));
+		let submittedAt: number | null = null;
+		let credentialMs: number | null = null;
+		let requestBytes: number | null = null;
+		let headersMs: number | null = null;
+		let firstEventMs: number | null = null;
+		let firstTextMs: number | null = null;
+		let terminalMs: number | null = null;
+		let httpStatus: number | null = null;
+		let functionCalls: number | null = null;
+		let streamedTextChars = 0;
+		let timingFailure = false;
 		try {
 			throwIfAborted(signal);
 			const key = await abortable(this.options.getApiKey(), signal);
+			if (timing) credentialMs = elapsed(startedAt);
 			if (!key?.trim())
 				throw new MetaApiError("Meta credential unavailable: configure MODEL_API_KEY");
 			const maxOutputTokens = request.maxOutputTokens ?? 4096;
@@ -114,6 +161,25 @@ export class MetaClient implements AgentModelClient {
 			) {
 				throw new MetaApiError("maxOutputTokens must be between 16 and 32768");
 			}
+			const body = JSON.stringify({
+				model,
+				input: request.input,
+				instructions: request.instructions,
+				tools: request.tools ?? [],
+				parallel_tool_calls: false,
+				// Meta rejects "none" with HTTP 400. An empty tools list plus the
+				// caller's unsolicited-call guard keeps answer-only phases bounded.
+				tool_choice: "auto",
+				stream: true,
+				store: false,
+				include: ["reasoning.encrypted_content"],
+				reasoning: { effort: request.workload === "quick" ? "minimal" : "high" },
+				max_output_tokens: maxOutputTokens,
+			});
+			if (timing) {
+				requestBytes = Buffer.byteLength(body, "utf8");
+				submittedAt = now();
+			}
 			requested = true;
 			const pendingResponse = (this.options.fetch ?? fetch)(MODEL_API_URL, {
 				method: "POST",
@@ -122,21 +188,7 @@ export class MetaClient implements AgentModelClient {
 					"Content-Type": "application/json",
 					Accept: "text/event-stream",
 				},
-				body: JSON.stringify({
-					model,
-					input: request.input,
-					instructions: request.instructions,
-					tools: request.tools ?? [],
-					parallel_tool_calls: false,
-					// Meta rejects "none" with HTTP 400. An empty tools list plus the
-					// caller's unsolicited-call guard keeps answer-only phases bounded.
-					tool_choice: "auto",
-					stream: true,
-					store: false,
-					include: ["reasoning.encrypted_content"],
-					reasoning: { effort: request.workload === "quick" ? "minimal" : "high" },
-					max_output_tokens: maxOutputTokens,
-				}),
+				body,
 				signal,
 			});
 			const response = await abortable(pendingResponse, signal).catch((error: unknown) => {
@@ -145,6 +197,10 @@ export class MetaClient implements AgentModelClient {
 				void pendingResponse.then((late) => cancelBody(late.body, signal)).catch(() => {});
 				throw error;
 			});
+			if (timing && submittedAt !== null) {
+				headersMs = elapsed(submittedAt);
+				httpStatus = response.status;
+			}
 			if (!response.ok) {
 				status = "failed";
 				await cancelBody(response.body, signal);
@@ -161,6 +217,7 @@ export class MetaClient implements AgentModelClient {
 			}
 			for await (const payload of readSse(response.body, signal)) {
 				throwIfAborted(signal);
+				if (timing && submittedAt !== null) firstEventMs ??= elapsed(submittedAt);
 				if (payload === "[DONE]") break;
 				let event: Record<string, unknown>;
 				try {
@@ -179,6 +236,10 @@ export class MetaClient implements AgentModelClient {
 				}
 				if (event["type"] === "response.output_text.delta") {
 					if (typeof event["delta"] !== "string") throw new MetaApiError("Invalid text delta");
+					if (timing && submittedAt !== null && event["delta"].length) {
+						firstTextMs ??= elapsed(submittedAt);
+						streamedTextChars += event["delta"].length;
+					}
 					yield { type: "text", delta: event["delta"] };
 				}
 				if (
@@ -186,10 +247,13 @@ export class MetaClient implements AgentModelClient {
 						String(event["type"])
 					)
 				) {
+					if (timing && submittedAt !== null) terminalMs = elapsed(submittedAt);
 					status = "failed";
 					const parsed = responseSchema.safeParse(event["response"]);
 					if (!parsed.success) throw new MetaApiError("Invalid Meta terminal response");
 					const final = parsed.data;
+					if (timing)
+						functionCalls = final.output.filter((item) => item["type"] === "function_call").length;
 					assertStandardModel(final.model);
 					if (final.model !== model) throw new MetaApiError("Meta returned an unexpected model");
 					responseId = final.id;
@@ -241,8 +305,48 @@ export class MetaClient implements AgentModelClient {
 				null,
 				"stream-interrupted"
 			);
+		} catch (error) {
+			timingFailure = true;
+			throw error;
 		} finally {
 			if (signal.aborted) status = "cancelled";
+			if (timing) {
+				try {
+					const hash = (value: string) => createHash("sha256").update(value).digest("hex");
+					timing({
+						requestHash: hash(request.requestId),
+						attemptHash: hash(attemptId),
+						workload: request.workload,
+						status:
+							status === "cancelled" || status === "incomplete"
+								? status
+								: timingFailure
+									? "failed"
+									: status,
+						inputBytes: Buffer.byteLength(JSON.stringify(request.input), "utf8"),
+						instructionBytes: Buffer.byteLength(request.instructions, "utf8"),
+						toolBytes: Buffer.byteLength(JSON.stringify(request.tools ?? []), "utf8"),
+						inputItems: request.input.length,
+						toolCount: request.tools?.length ?? 0,
+						maxOutputTokens: request.maxOutputTokens ?? 4096,
+						requestBytes,
+						credentialMs,
+						headersMs,
+						firstEventMs,
+						firstTextMs,
+						terminalMs,
+						durationMs: elapsed(startedAt),
+						streamedTextChars,
+						functionCalls,
+						httpStatus,
+						inputTokens: usage?.inputTokens ?? null,
+						cachedInputTokens: usage?.cachedInputTokens ?? null,
+						outputTokens: usage?.outputTokens ?? null,
+					});
+				} catch {
+					/* Diagnostics must not change output, cancellation, cleanup or usage accounting. */
+				}
+			}
 			if (requested) {
 				this.options.recordUsage({
 					attemptId,
