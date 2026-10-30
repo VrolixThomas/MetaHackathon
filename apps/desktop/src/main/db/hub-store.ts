@@ -40,6 +40,7 @@ function validateState(state: HubPersistence) {
 	unique(state.jobs.map((row) => row.id));
 	unique(state.tickets.map((row) => row.id));
 	unique(state.notices.map((row) => row.id));
+	unique((state.attentionRecords ?? []).map((row) => row.key));
 	for (const job of state.jobs) {
 		unique(job.decisions.map((row) => row.id));
 		unique(job.checks.map((row) => row.id));

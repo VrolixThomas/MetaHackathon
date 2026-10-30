@@ -424,3 +424,36 @@ test("oversized raw input and stored JSON are rejected without deleting prior ro
 		sqlite.close();
 	}
 });
+
+test("attention delivery and retry budgets survive SQLite reopen and duplicate ledger keys never replace them", async () => {
+	const directory = await mkdtemp(join(tmpdir(), "hub-attention-test-"));
+	const path = join(directory, "hub.db");
+	const saved = state();
+	saved.attentionRecords = [
+		{
+			key: "head-bound-notice",
+			noticeIds: ["notice-1"],
+			attempts: 2,
+			lastAttemptAt: timestamp,
+			deliveredAt: timestamp,
+		},
+	];
+	try {
+		const first = new Database(path);
+		await new HubStore(first).saveState(saved);
+		first.close();
+		const reopened = new Database(path);
+		try {
+			const store = new HubStore(reopened);
+			assert.deepEqual((await store.loadState())?.attentionRecords, saved.attentionRecords);
+			const duplicate = structuredClone(saved);
+			duplicate.attentionRecords?.push(...saved.attentionRecords);
+			await assert.rejects(store.saveState(duplicate), /invalid.*preserved/);
+			assert.deepEqual((await store.loadState())?.attentionRecords, saved.attentionRecords);
+		} finally {
+			reopened.close();
+		}
+	} finally {
+		await rm(directory, { recursive: true, force: true });
+	}
+});
