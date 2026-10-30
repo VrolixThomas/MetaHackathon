@@ -8,6 +8,7 @@ import { type TestContext, test } from "node:test";
 import {
 	type HubPersistence,
 	type LinearTicket,
+	type WatchedRepository,
 	type WorkJob,
 	WorkJobSchema,
 	type WorkReview,
@@ -134,9 +135,9 @@ type Internals = {
 	running: Map<string, Running>;
 	runChild(job: WorkJob, run: Running, input: CodingTaskInput): Promise<CodingTaskResult>;
 };
-async function harness(t: TestContext, initial = job()) {
+async function harness(t: TestContext, initial = job(), persisted?: HubPersistence) {
 	const directory = await mkdtemp(join(tmpdir(), "muse-coordinator-test-"));
-	let stored: HubPersistence = {
+	let stored: HubPersistence = persisted ?? {
 		version: 1,
 		repositories: [repository],
 		preferences: {
@@ -192,6 +193,13 @@ async function harness(t: TestContext, initial = job()) {
 	const pushes: Array<{ job: WorkJob; signal: AbortSignal; target?: string }> = [];
 	const drafts: AbortSignal[] = [];
 	const completions: AbortSignal[] = [];
+	const linearCalls: string[] = [];
+	const preparations: Array<{
+		repository: WatchedRepository;
+		job: Pick<WorkJob, "id" | "branch">;
+		signal: AbortSignal;
+		options?: { baseCommit?: string };
+	}> = [];
 	const checks = [
 		{
 			id: "check",
@@ -205,11 +213,19 @@ async function harness(t: TestContext, initial = job()) {
 		},
 	];
 	const runtime = {
-		prepare: async () => ({
-			worktreePath: "/controlled/worktree",
-			branch: initial.branch,
-			baseSha: initial.baseSha as string,
-		}),
+		prepare: async (
+			repository: WatchedRepository,
+			job: Pick<WorkJob, "id" | "branch">,
+			signal: AbortSignal,
+			options?: { baseCommit?: string }
+		) => {
+			preparations.push({ repository, job: structuredClone(job), signal, options });
+			return {
+				worktreePath: "/controlled/worktree",
+				branch: job.branch,
+				baseSha: initial.baseSha as string,
+			};
+		},
 		finalize: async () => ({
 			headSha: initial.headSha as string,
 			changedFiles: initial.changedFiles,
@@ -246,12 +262,16 @@ async function harness(t: TestContext, initial = job()) {
 		},
 	};
 	const linear = {
-		ticket: async (_id: string, _signal?: AbortSignal) => ticket,
+		ticket: async (_id: string, _signal?: AbortSignal) => {
+			linearCalls.push("ticket");
+			return ticket;
+		},
 		updateState: async (
 			_id: string,
 			state: "started" | "completed" | "unstarted",
 			signal?: AbortSignal
 		): Promise<LinearTicket> => {
+			linearCalls.push(state);
 			assert(signal);
 			if (state === "completed") completions.push(signal);
 			return { ...ticket, state: { id: state, name: state, type: state } };
@@ -295,6 +315,8 @@ async function harness(t: TestContext, initial = job()) {
 		pushes,
 		drafts,
 		completions,
+		linearCalls,
+		preparations,
 		initial,
 		checks,
 		snapshot: () => hub.snapshot(),
@@ -303,6 +325,412 @@ async function harness(t: TestContext, initial = job()) {
 		start: () => internal.pump(),
 	};
 }
+
+const actor = { workspaceId: "workspace", userId: "owner" };
+const internalRequest = {
+	actor,
+	itemId: "day-item",
+	requestId: "prepare-request",
+	repository,
+	brief: "Implement the accepted source-bound request; source revision: 7",
+};
+const executeRequest = (jobId: string) => ({ actor, jobId, requestId: "start-work-request" });
+function assertNoPublication(h: Awaited<ReturnType<typeof harness>>) {
+	assert.deepEqual(h.linearCalls, []);
+	assert.deepEqual(h.pushes, []);
+	assert.deepEqual(h.drafts, []);
+}
+
+test("internal preparation coalesces, persists its binding before the isolated prepare and starts no child", async (t) => {
+	const h = await harness(t);
+	const gate = deferred<{ worktreePath: string; branch: string; baseSha: string }>();
+	let preparing: WorkJob | undefined;
+	let calls = 0;
+	h.runtime.prepare = async (actualRepository, actualJob) => {
+		calls++;
+		assert.deepEqual(actualRepository, repository);
+		preparing = WorkJobSchema.parse(actualJob);
+		assert.equal(preparing.ticket, null);
+		assert.equal(preparing.internal?.stage, "preparing");
+		assert.deepEqual(await h.hub.job(preparing.id), preparing);
+		return gate.promise;
+	};
+	const first = h.jobs.prepareInternal(internalRequest);
+	const second = h.jobs.prepareInternal(structuredClone(internalRequest));
+	await eventually(() => !!preparing);
+	assert(preparing);
+	assert.equal(preparing.state, "paused");
+	assert.match(preparing.branch, /^muse\/internal-[a-f0-9]{8}$/);
+	assert.deepEqual(h.inputs, []);
+	await assert.rejects(
+		h.jobs.prepareInternal({
+			...internalRequest,
+			brief: `${internalRequest.brief}\nDifferent body`,
+		}),
+		/binding mismatch/
+	);
+	gate.resolve({
+		worktreePath: "/controlled/internal-worktree",
+		branch: preparing.branch,
+		baseSha: "e".repeat(40),
+	});
+	const [id, replay] = await Promise.all([first, second]);
+	assert.equal(id, replay);
+	assert.equal(calls, 1);
+	const prepared = await h.hub.job(id);
+	assert.equal(prepared.ticket, null);
+	assert.equal(prepared.feedback, null);
+	assert.equal(prepared.state, "paused");
+	assert.equal(prepared.worktreePath, "/controlled/internal-worktree");
+	assert.equal(prepared.baseSha, "e".repeat(40));
+	assert.equal(prepared.headSha, null);
+	assert.deepEqual(prepared.internal, {
+		workspaceId: actor.workspaceId,
+		ownerUserId: actor.userId,
+		itemId: internalRequest.itemId,
+		requestId: internalRequest.requestId,
+		bindingDigest: prepared.internal?.bindingDigest,
+		stage: "prepared",
+	});
+	assert.match(prepared.internal?.bindingDigest ?? "", /^[a-f0-9]{64}$/);
+	await h.start();
+	assert.deepEqual(h.inputs, []);
+	assertNoPublication(h);
+});
+
+test("prepared internal work replays after restart and rejects a reused request's changed body, actor or repository", async (t) => {
+	const first = await harness(t);
+	const id = await first.jobs.prepareInternal(internalRequest);
+	const saved = first.stored();
+	const restarted = await harness(t, job(), saved);
+	await restarted.jobs.restore();
+	assert.equal(await restarted.jobs.prepareInternal(structuredClone(internalRequest)), id);
+	assert.deepEqual(restarted.preparations, []);
+	assert.deepEqual(restarted.inputs, []);
+	for (const changed of [
+		{ brief: `${internalRequest.brief} ` },
+		{ itemId: "other-item" },
+		{ actor: { ...actor, userId: "other-user" } },
+		{ actor: { ...actor, workspaceId: "other-workspace" } },
+		{ repository: { ...repository, localPath: "/other-checkout" } },
+	])
+		await assert.rejects(
+			restarted.jobs.prepareInternal({ ...internalRequest, ...changed }),
+			/binding mismatch/
+		);
+	assert.deepEqual(restarted.stored(), saved);
+	assertNoPublication(restarted);
+});
+
+test("only scoped admission runs the existing internal worker; its caller cannot cancel admitted work or complete Linear", async (t) => {
+	const h = await harness(t);
+	const id = await h.jobs.prepareInternal(internalRequest);
+	for (const invalidActor of [
+		{ ...actor, userId: "other-user" },
+		{ ...actor, workspaceId: "other-workspace" },
+	])
+		await assert.rejects(
+			h.jobs.executeInternal({ ...executeRequest(id), actor: invalidActor }),
+			/origin or scope mismatch/
+		);
+	await assert.rejects(h.jobs.executeInternal(executeRequest("job")), /origin or scope mismatch/);
+	const gate = deferred<CodingTaskResult>();
+	let workerSignal: AbortSignal | undefined;
+	h.internal.runChild = async (value, run, input) => {
+		assert.equal(value.internal?.stage, "admitted");
+		workerSignal = run.controller.signal;
+		h.inputs.push(input);
+		return gate.promise;
+	};
+	const lifetime = new AbortController();
+	await Promise.all([
+		h.jobs.executeInternal(executeRequest(id), lifetime.signal),
+		h.jobs.executeInternal(executeRequest(id), lifetime.signal),
+	]);
+	await eventually(() => !!workerSignal);
+	assert.equal(h.preparations[1]?.options?.baseCommit, "a".repeat(40));
+	assert.equal(h.inputs.length, 1);
+	assert.equal(h.inputs[0]?.ticket, null);
+	lifetime.abort();
+	assert.equal(workerSignal?.aborted, false);
+	gate.resolve({ status: "completed", summary: "Controlled internal implementation" });
+	await eventually(async () => (await h.hub.job(id)).state === "ready");
+	await eventually(() => h.internal.running.size === 0);
+	await h.jobs.executeInternal(executeRequest(id));
+	assert.equal(h.inputs.length, 1, "Repeated admission never reruns a ready job");
+	await h.jobs.approve(id, (await h.hub.job(id)).headSha as string);
+	assert((await h.hub.job(id)).reviewedAt);
+	assert.equal((await h.hub.job(id)).internal?.stage, "admitted");
+	assertNoPublication(h);
+	const restarted = await harness(t, job(), h.stored());
+	await restarted.jobs.restore();
+	await restarted.jobs.executeInternal(executeRequest(id));
+	assert.equal(restarted.inputs.length, 0, "Durable admission replay never reruns completed work");
+	assertNoPublication(restarted);
+});
+
+test("admitted internal work reuses decisions, pause/resume, review and shutdown restore without Linear writes", async (t) => {
+	const h = await harness(t);
+	const id = await h.jobs.prepareInternal(internalRequest);
+	h.internal.runChild = async (_job, run, input) => {
+		h.inputs.push(input);
+		run.done = true;
+		return h.inputs.length === 1
+			? { status: "needs-input", summary: "Needs choice", question: "Which behavior?" }
+			: { status: "completed", summary: "User choice applied" };
+	};
+	await h.jobs.executeInternal(executeRequest(id));
+	await eventually(async () => (await h.hub.job(id)).state === "needs-input");
+	const decision = (await h.hub.job(id)).decisions[0];
+	assert(decision);
+	await h.jobs.answer(id, decision.id, "Keep the existing behavior");
+	await eventually(async () => (await h.hub.job(id)).state === "ready");
+	await eventually(() => h.internal.running.size === 0);
+	assert(h.inputs[1]?.decisionContext?.includes("User decision: Keep the existing behavior"));
+	assert.equal((await h.jobs.review(id)).job.ticket, null);
+	await h.jobs.revise(id, "Add the requested check");
+	await h.jobs.pause(id);
+	await eventually(() => h.internal.running.size === 0);
+	assert.equal((await h.hub.job(id)).state, "paused");
+	await h.jobs.restore();
+	assert.equal((await h.hub.job(id)).state, "paused");
+	await h.jobs.resume(id);
+	await eventually(async () => (await h.hub.job(id)).state === "ready");
+	await eventually(() => h.internal.running.size === 0);
+	assert(
+		h.inputs.at(-1)?.decisionContext?.includes("User review instruction: Add the requested check")
+	);
+	await h.hub.update((state) => {
+		const value = state.jobs.find((item) => item.id === id);
+		assert(value);
+		value.state = "paused";
+		value.pauseReason = "shutdown";
+	});
+	const restarted = await harness(t, job(), h.stored());
+	await restarted.jobs.restore();
+	await eventually(() => restarted.inputs.length === 1);
+	await eventually(() => restarted.internal.running.size === 0);
+	assert.equal((await restarted.hub.job(id)).internal?.stage, "admitted");
+	assert.equal(restarted.inputs[0]?.worktreePath, "/controlled/worktree");
+	assertNoPublication(h);
+	assertNoPublication(restarted);
+});
+
+test("changed preparation records and repository scope cannot publish late preparation pins", async (t) => {
+	for (const changed of ["record", "scope"] as const) {
+		const h = await harness(t);
+		const gate = deferred<{ worktreePath: string; branch: string; baseSha: string }>();
+		let preparing: Pick<WorkJob, "id" | "branch"> | undefined;
+		h.runtime.prepare = async (_repository, value) => {
+			preparing = value;
+			return gate.promise;
+		};
+		const preparation = h.jobs.prepareInternal(internalRequest);
+		const rejected = assert.rejects(preparation, /changed|scope mismatch/i);
+		await eventually(() => !!preparing);
+		assert(preparing);
+		const id = preparing.id;
+		await h.hub.update((state) => {
+			if (changed === "scope") state.repositories[0] = { ...repository, localPath: "/other" };
+			else {
+				const value = state.jobs.find((item) => item.id === id);
+				assert(value);
+				value.brief += " Changed source";
+			}
+		});
+		gate.resolve({
+			worktreePath: "/controlled/worktree",
+			branch: preparing.branch,
+			baseSha: "a".repeat(40),
+		});
+		await rejected;
+		assert.equal((await h.hub.job(id)).internal?.stage, "preparing");
+		assert.equal((await h.hub.job(id)).worktreePath, null);
+		assert.deepEqual(h.inputs, []);
+		assertNoPublication(h);
+	}
+});
+
+test("internal preparation source cancellation returns promptly and discards a provider's late worktree", async (t) => {
+	for (const interruption of ["source", "pause", "cancel", "shutdown"] as const) {
+		const h = await harness(t);
+		const gate = deferred<{ worktreePath: string; branch: string; baseSha: string }>();
+		let current: Pick<WorkJob, "id" | "branch"> | undefined;
+		let runtimeSignal: AbortSignal | undefined;
+		h.runtime.prepare = async (_repository, value, signal) => {
+			current = value;
+			runtimeSignal = signal;
+			return gate.promise;
+		};
+		const source = new AbortController();
+		const preparation = h.jobs.prepareInternal(internalRequest, source.signal);
+		const rejected = aborted(preparation);
+		await eventually(() => !!runtimeSignal);
+		assert(current);
+		const id = current.id;
+		if (interruption === "source") source.abort();
+		else if (interruption === "shutdown") await prompt(h.jobs.dispose());
+		else await prompt(h.jobs[interruption](id));
+		await prompt(rejected);
+		assert(runtimeSignal?.aborted);
+		const retained = await h.hub.job(id);
+		gate.resolve({
+			worktreePath: "/retained/owned/partial-worktree",
+			branch: current.branch,
+			baseSha: "a".repeat(40),
+		});
+		await Promise.resolve();
+		await Promise.resolve();
+		assert.deepEqual(await h.hub.job(id), retained);
+		assert.equal(retained.internal?.stage, "preparing");
+		assert.equal(retained.worktreePath, null);
+		assert.deepEqual(h.inputs, []);
+		assertNoPublication(h);
+		if (interruption === "source") {
+			const restarted = await harness(t, job(), h.stored());
+			await restarted.jobs.restore();
+			assert.deepEqual(restarted.inputs, []);
+			assert.equal(await restarted.jobs.prepareInternal(internalRequest), id);
+			assert.equal((await restarted.hub.job(id)).internal?.stage, "prepared");
+		}
+	}
+});
+
+test("a coalesced source signal aborts preparation and an already-aborted signal creates no job", async (t) => {
+	const h = await harness(t);
+	const dead = new AbortController();
+	dead.abort();
+	await aborted(h.jobs.prepareInternal(internalRequest, dead.signal));
+	assert.equal((await h.hub.allJobs()).length, 1);
+	const gate = deferred<{ worktreePath: string; branch: string; baseSha: string }>();
+	let signal: AbortSignal | undefined;
+	h.runtime.prepare = async (_repository, _job, current) => {
+		signal = current;
+		return gate.promise;
+	};
+	const first = aborted(h.jobs.prepareInternal(internalRequest));
+	await eventually(() => !!signal);
+	const source = new AbortController();
+	const second = aborted(h.jobs.prepareInternal(internalRequest, source.signal));
+	source.abort();
+	await prompt(Promise.all([first, second]));
+	assert(signal?.aborted);
+	assert.equal((await h.hub.allJobs()).length, 2);
+	gate.reject(Error("Late controlled failure"));
+	assert.deepEqual(h.inputs, []);
+});
+
+test("pending internal jobs cannot enter the worker through resume, revise, answer, restore or pump", async (t) => {
+	for (const stage of ["preparing", "prepared"] as const) {
+		for (const state of [
+			"paused",
+			"queued",
+			"running",
+			"validating",
+			"needs-input",
+			"ready",
+			"failed",
+		] as const) {
+			const h = await harness(t);
+			const id = await h.jobs.prepareInternal(internalRequest);
+			await h.hub.update((store) => {
+				const value = store.jobs.find((row) => row.id === id);
+				assert(value?.internal);
+				value.internal.stage = stage;
+				value.state = state;
+				value.headSha = "b".repeat(40);
+				value.changedFiles = ["caller.ts"];
+				value.pauseReason = "shutdown";
+				value.decisions = [
+					{
+						id: "decision",
+						question: "Controlled pending question",
+						reason: "Controlled",
+						createdAt: time,
+						answer: null,
+						answeredAt: null,
+					},
+				];
+			});
+			const retained = await h.hub.job(id);
+			await aborted(h.jobs.resume(id));
+			await aborted(h.jobs.revise(id, "Try to bypass admission"));
+			await aborted(h.jobs.answer(id, "decision", "Try to bypass admission"));
+			await assert.rejects(h.jobs.publish(id), /Review the ready work/);
+			await assert.rejects(h.jobs.approve(id, "b".repeat(40)), /Review the current work/);
+			await h.jobs.restore();
+			await h.start();
+			assert.deepEqual(await h.hub.job(id), retained);
+			assert.deepEqual(h.inputs, []);
+			assertNoPublication(h);
+		}
+	}
+});
+
+test("admission rejects preparation without pins, cancelled jobs and altered internal origins or current repository scope", async (t) => {
+	for (const alteration of ["stage", "cancel", "brief", "ticket", "repository", "pins"] as const) {
+		const h = await harness(t);
+		const id = await h.jobs.prepareInternal(internalRequest);
+		await h.hub.update((store) => {
+			const value = store.jobs.find((row) => row.id === id);
+			assert(value?.internal);
+			if (alteration === "stage") value.internal.stage = "preparing";
+			if (alteration === "cancel") value.state = "cancelled";
+			if (alteration === "brief") value.brief += " altered source binding";
+			if (alteration === "ticket") value.ticket = ticket;
+			if (alteration === "repository")
+				store.repositories[0] = { ...repository, localPath: "/other" };
+			if (alteration === "pins") value.baseSha = null;
+		});
+		await assert.rejects(h.jobs.executeInternal(executeRequest(id)));
+		assert.deepEqual(h.inputs, []);
+		assertNoPublication(h);
+	}
+});
+
+test("admission revalidates the current record after owned worktree verification and rejects late cancellation", async (t) => {
+	for (const interruption of ["source", "cancel", "pause", "record", "scope", "pins"] as const) {
+		const h = await harness(t);
+		const id = await h.jobs.prepareInternal(internalRequest);
+		const initial = await h.hub.job(id);
+		const gate = deferred<{ worktreePath: string; branch: string; baseSha: string }>();
+		let signal: AbortSignal | undefined;
+		h.runtime.prepare = async (_repository, _job, current) => {
+			signal = current;
+			return gate.promise;
+		};
+		const source = new AbortController();
+		const execution = h.jobs.executeInternal(executeRequest(id), source.signal);
+		const rejected = assert.rejects(execution, /cancel|interrupt|changed|scope mismatch/i);
+		await eventually(() => !!signal);
+		if (interruption === "source") source.abort();
+		else if (interruption === "cancel" || interruption === "pause")
+			await prompt(h.jobs[interruption](id));
+		else if (interruption !== "pins")
+			await h.hub.update((store) => {
+				if (interruption === "scope")
+					store.repositories[0] = { ...repository, localPath: "/other" };
+				else {
+					const value = store.jobs.find((row) => row.id === id);
+					assert(value);
+					value.brief += " Changed during preparation";
+				}
+			});
+		if (["source", "cancel", "pause"].includes(interruption)) {
+			await prompt(rejected);
+			assert(signal?.aborted);
+		}
+		gate.resolve({
+			worktreePath: initial.worktreePath as string,
+			branch: initial.branch,
+			baseSha: interruption === "pins" ? "f".repeat(40) : (initial.baseSha as string),
+		});
+		await rejected;
+		assert.equal((await h.hub.job(id)).internal?.stage, "prepared");
+		assert.deepEqual(h.inputs, []);
+		assertNoPublication(h);
+	}
+});
 
 test("late repository metadata cannot resurrect paused or cancelled work and interruption returns before the provider", async (t) => {
 	for (const action of ["pause", "cancel"] as const) {

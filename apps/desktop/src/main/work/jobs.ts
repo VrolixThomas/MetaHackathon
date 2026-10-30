@@ -1,18 +1,22 @@
 import { type ChildProcess, fork } from "node:child_process";
-import { randomUUID } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import { appendFile, mkdir, readFile, stat } from "node:fs/promises";
 import { join } from "node:path";
+import { isDeepStrictEqual } from "node:util";
 import { z } from "zod";
 import {
+	IdSchema,
 	type LinearTicket,
 	type PullRequest,
 	type PullRequestFeedback,
 	type WatchedRepository,
+	WatchedRepositorySchema,
 	type WorkJob,
 	WorkJobSchema,
 	WorkLogPageSchema,
 	type WorkReview,
 } from "../../shared/contracts";
+import { DayActorSchema } from "../../shared/contracts/day";
 import { abortable, throwIfAborted } from "../agent/cancellation";
 import { type CodingTaskInput, CodingTaskResultSchema } from "../agent/coding-worker";
 import type { HubGitHubClient } from "../runtime/hub-github";
@@ -39,6 +43,24 @@ class WorkChanged extends Error {
 	}
 }
 const inProgress = new Set(["queued", "running", "validating", "needs-input", "paused"]);
+const InternalPreparationSchema = z.strictObject({
+	actor: DayActorSchema,
+	itemId: IdSchema,
+	requestId: IdSchema,
+	repository: WatchedRepositorySchema,
+	brief: WorkJobSchema.shape.brief,
+});
+const InternalExecutionSchema = z.strictObject({
+	actor: DayActorSchema,
+	jobId: IdSchema,
+	requestId: IdSchema,
+});
+function internalDigest(input: z.infer<typeof InternalPreparationSchema>) {
+	return createHash("sha256")
+		.update(JSON.stringify(InternalPreparationSchema.parse(input)))
+		.digest("hex");
+}
+const admitted = (job: WorkJob) => !job.internal || job.internal.stage === "admitted";
 interface JobOptions {
 	hub: CommandCenterService;
 	runtime: WorkJobRuntime;
@@ -65,11 +87,16 @@ export class WorkJobCoordinator implements HubJobs {
 	private feedback = new Map<string, string>();
 	private publications = new Map<string, Promise<void>>();
 	private operations = new Map<string, Set<AbortController>>();
+	private preparations = new Map<
+		string,
+		{ bindingDigest: string; controller: AbortController; promise: Promise<string> }
+	>();
 	constructor(private readonly options: JobOptions) {}
 	async restore() {
 		await this.options.hub.initialize();
 		await this.options.hub.update((state) => {
 			for (const job of state.jobs) {
+				if (!admitted(job)) continue;
 				if (
 					job.state === "running" ||
 					job.state === "validating" ||
@@ -129,6 +156,179 @@ export class WorkJobCoordinator implements HubJobs {
 		);
 		return job.id;
 	}
+	/** Root owns source authorization/acceptance. This signal belongs to Day, never a voice turn. */
+	async prepareInternal(
+		input: z.infer<typeof InternalPreparationSchema>,
+		signal?: AbortSignal
+	): Promise<string> {
+		const request = InternalPreparationSchema.parse(input);
+		if (signal) throwIfAborted(signal);
+		const bindingDigest = internalDigest(request);
+		let pending = this.preparations.get(request.requestId);
+		if (pending && pending.bindingDigest !== bindingDigest)
+			throw new Error("Internal work request binding mismatch");
+		if (!pending) {
+			const controller = new AbortController();
+			const promise = Promise.resolve()
+				.then(() => this.prepareInternalOnce(request, bindingDigest, controller.signal))
+				.finally(() => {
+					if (this.preparations.get(request.requestId)?.promise === promise)
+						this.preparations.delete(request.requestId);
+				});
+			pending = { bindingDigest, controller, promise };
+			this.preparations.set(request.requestId, pending);
+		}
+		const controller = pending.controller;
+		const abort = () => controller.abort();
+		signal?.addEventListener("abort", abort, { once: true });
+		try {
+			return await pending.promise;
+		} finally {
+			signal?.removeEventListener("abort", abort);
+		}
+	}
+	private async prepareInternalOnce(
+		request: z.infer<typeof InternalPreparationSchema>,
+		bindingDigest: string,
+		signal: AbortSignal
+	) {
+		const candidate = this.make(request.repository, null, null, request.brief);
+		candidate.state = "paused";
+		candidate.pauseReason = "user";
+		candidate.internal = {
+			workspaceId: request.actor.workspaceId,
+			ownerUserId: request.actor.userId,
+			itemId: request.itemId,
+			requestId: request.requestId,
+			bindingDigest,
+			stage: "preparing",
+		};
+		let job = candidate;
+		await this.options.hub.update((state) => {
+			throwIfAborted(signal);
+			if (this.stopping) throw new WorkChanged();
+			const existing = state.jobs.find((item) => item.internal?.requestId === request.requestId);
+			if (existing) {
+				if (existing.internal?.bindingDigest !== bindingDigest)
+					throw new Error("Internal work request binding mismatch");
+				job = structuredClone(existing);
+			} else state.jobs.push(candidate);
+			this.assertInternal(job, request.actor, state.repositories);
+			if (job.state === "cancelled") throw new WorkChanged();
+		});
+		throwIfAborted(signal);
+		if (job.internal?.stage !== "preparing") return job.id;
+		return this.operation(
+			job.id,
+			async (operationSignal) => {
+				if (job.state !== "paused") throw new WorkChanged();
+				const prepared = await this.call(operationSignal, () =>
+					this.options.runtime.prepare(request.repository, job, operationSignal)
+				);
+				await this.options.hub.update((state) => {
+					throwIfAborted(operationSignal);
+					const current = state.jobs.find((item) => item.id === job.id);
+					if (
+						!current ||
+						!isDeepStrictEqual(current, job) ||
+						current.internal?.stage !== "preparing"
+					)
+						throw new WorkChanged();
+					this.assertInternal(current, request.actor, state.repositories);
+					const value = WorkJobSchema.parse({
+						...current,
+						...prepared,
+						internal: { ...current.internal, stage: "prepared" },
+					});
+					if (!value.worktreePath || !value.baseSha || value.branch !== job.branch)
+						throw new Error("Internal work preparation pins unavailable");
+					Object.assign(current, value, { updatedAt: new Date().toISOString() });
+				});
+				throwIfAborted(operationSignal);
+				return job.id;
+			},
+			signal
+		);
+	}
+	private assertInternal(
+		job: WorkJob,
+		actor: z.infer<typeof DayActorSchema>,
+		repositories: WatchedRepository[]
+	): WatchedRepository {
+		const origin = job.internal;
+		const repository = repositories.find((item) => item.id === job.repositoryId);
+		if (
+			!origin ||
+			origin.workspaceId !== actor.workspaceId ||
+			origin.ownerUserId !== actor.userId ||
+			job.ticket !== null ||
+			job.feedback ||
+			!repository ||
+			job.repository !== repository.repository ||
+			origin.bindingDigest !==
+				internalDigest({
+					actor,
+					itemId: origin.itemId,
+					requestId: origin.requestId,
+					repository,
+					brief: job.brief,
+				})
+		)
+			throw new Error("Internal work origin or scope mismatch");
+		return repository;
+	}
+	/** Only root's accepted start_work outbox calls this. Admission outlives its caller's signal. */
+	async executeInternal(
+		input: z.infer<typeof InternalExecutionSchema>,
+		signal?: AbortSignal
+	): Promise<void> {
+		const request = InternalExecutionSchema.parse(input);
+		await this.operation(
+			request.jobId,
+			async (operationSignal) => {
+				const job = await this.call(operationSignal, () => this.options.hub.job(request.jobId));
+				const repository = this.assertInternal(job, request.actor, [
+					this.options.hub.repository(job.repositoryId),
+				]);
+				if (job.state === "cancelled") throw new WorkChanged();
+				if (job.internal?.stage === "admitted") return;
+				if (
+					job.internal?.stage !== "prepared" ||
+					job.state !== "paused" ||
+					!job.worktreePath ||
+					!job.baseSha ||
+					job.headSha !== null
+				)
+					throw new Error("Internal work must be prepared before admission");
+				// Reopening the owned preparation verifies its original worktree and base pin.
+				const prepared = await this.call(operationSignal, () =>
+					this.options.runtime.prepare(repository, job, operationSignal, {
+						baseCommit: job.baseSha as string,
+					})
+				);
+				if (
+					prepared.worktreePath !== job.worktreePath ||
+					prepared.branch !== job.branch ||
+					prepared.baseSha !== job.baseSha
+				)
+					throw new WorkChanged();
+				await this.options.hub.update((state) => {
+					throwIfAborted(operationSignal);
+					const current = state.jobs.find((item) => item.id === job.id);
+					if (!current) throw new WorkChanged();
+					this.assertInternal(current, request.actor, state.repositories);
+					if (current.internal?.stage === "admitted" && current.state !== "cancelled") return;
+					if (!isDeepStrictEqual(current, job) || !current.internal) throw new WorkChanged();
+					current.internal.stage = "admitted";
+					current.state = "queued";
+					current.pauseReason = null;
+					current.updatedAt = new Date().toISOString();
+				});
+			},
+			signal
+		);
+		this.schedule();
+	}
 	async startFeedback(
 		pr: PullRequest,
 		feedback: PullRequestFeedback,
@@ -174,7 +374,7 @@ export class WorkJobCoordinator implements HubJobs {
 			repositoryId: repository.id,
 			repository: repository.repository,
 			state: "queued",
-			branch: `muse/${(ticket?.identifier ?? "feedback").toLowerCase().replace(/[^a-z0-9-]/g, "-")}-${id.slice(0, 8)}`,
+			branch: `muse/${(ticket?.identifier ?? (feedback ? "feedback" : "internal")).toLowerCase().replace(/[^a-z0-9-]/g, "-")}-${id.slice(0, 8)}`,
 			worktreePath: null,
 			baseSha: null,
 			headSha: null,
@@ -207,15 +407,23 @@ export class WorkJobCoordinator implements HubJobs {
 		});
 	}
 	/** A lease never holds the durable state queue while a provider is pending. */
-	private async operation<T>(jobId: string, work: (signal: AbortSignal) => Promise<T>): Promise<T> {
+	private async operation<T>(
+		jobId: string,
+		work: (signal: AbortSignal) => Promise<T>,
+		parentSignal?: AbortSignal
+	): Promise<T> {
 		if (this.stopping) throw new WorkChanged();
+		if (parentSignal) throwIfAborted(parentSignal);
 		const controller = new AbortController();
+		const abort = () => controller.abort();
+		parentSignal?.addEventListener("abort", abort, { once: true });
 		const set = this.operations.get(jobId) ?? new Set<AbortController>();
 		this.operations.set(jobId, set);
 		set.add(controller);
 		try {
 			return await work(controller.signal);
 		} finally {
+			parentSignal?.removeEventListener("abort", abort);
 			set.delete(controller);
 			if (!set.size && this.operations.get(jobId) === set) this.operations.delete(jobId);
 		}
@@ -245,6 +453,8 @@ export class WorkJobCoordinator implements HubJobs {
 	}
 	private matches(current: WorkJob, expected: WorkJob, states: WorkJob["state"][]) {
 		return (
+			admitted(current) &&
+			admitted(expected) &&
 			states.includes(current.state) &&
 			current.headSha === expected.headSha &&
 			current.baseSha === expected.baseSha &&
@@ -270,7 +480,7 @@ export class WorkJobCoordinator implements HubJobs {
 			id,
 			update,
 			run.controller.signal,
-			(current) => this.live(id, run) && states.includes(current.state)
+			(current) => this.live(id, run) && admitted(current) && states.includes(current.state)
 		);
 	}
 	private notify(
@@ -330,7 +540,7 @@ export class WorkJobCoordinator implements HubJobs {
 				const snapshot = await this.options.hub.snapshot();
 				if (this.running.size >= snapshot.preferences.maxWorkers) return;
 				const job = (await this.options.hub.allJobs()).find(
-					(item) => item.state === "queued" && !this.running.has(item.id)
+					(item) => item.state === "queued" && admitted(item) && !this.running.has(item.id)
 				);
 				if (!job) return;
 				const run: Running = {
@@ -621,6 +831,7 @@ export class WorkJobCoordinator implements HubJobs {
 			await this.patch(
 				jobId,
 				(current) => {
+					if (!admitted(current)) throw new WorkChanged();
 					const target = current.decisions.find(
 						(item) => item.id === decisionId && item.answer === null
 					);
@@ -641,7 +852,8 @@ export class WorkJobCoordinator implements HubJobs {
 			await this.patch(
 				jobId,
 				(current) => {
-					if (!["paused", "failed"].includes(current.state)) throw new WorkChanged();
+					if (!admitted(current) || !["paused", "failed"].includes(current.state))
+						throw new WorkChanged();
 					this.interrupt(jobId, signal);
 					current.state = "queued";
 					current.pauseReason = null;
@@ -696,7 +908,7 @@ export class WorkJobCoordinator implements HubJobs {
 	}
 	private async publishOnce(jobId: string, signal: AbortSignal) {
 		const job = await this.call(signal, () => this.options.hub.job(jobId));
-		if (job.state !== "ready" || !job.headSha || !job.changedFiles.length)
+		if (!admitted(job) || job.state !== "ready" || !job.headSha || !job.changedFiles.length)
 			throw new Error("Review the ready work before publishing");
 		const repository = await this.call(signal, () =>
 			this.options.hub.readyRepository(job.repositoryId)
@@ -760,6 +972,7 @@ export class WorkJobCoordinator implements HubJobs {
 		await this.operation(jobId, async (signal) => {
 			const job = await this.call(signal, () => this.options.hub.job(jobId));
 			const states: WorkJob["state"][] = ["ready", "paused", "failed"];
+			if (!admitted(job)) throw new WorkChanged();
 			if (!states.includes(job.state))
 				throw new Error("Pause or review this work before requesting changes");
 			this.interrupt(jobId, signal);
@@ -801,7 +1014,7 @@ export class WorkJobCoordinator implements HubJobs {
 	async approve(jobId: string, headSha: string) {
 		await this.operation(jobId, async (signal) => {
 			const job = await this.call(signal, () => this.options.hub.job(jobId));
-			if (job.state !== "ready" || job.headSha !== headSha)
+			if (!admitted(job) || job.state !== "ready" || job.headSha !== headSha)
 				throw new Error("Review the current work revision before accepting it");
 			const actual = await this.call(signal, () => this.options.runtime.review(job, signal));
 			if (actual.job.headSha !== headSha) throw new Error("Work revision changed");
