@@ -3,6 +3,7 @@ import { mkdtempSync, readFileSync, rmSync, statSync, writeFileSync } from "node
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { test } from "node:test";
+import type { ModelTimingRecord } from "../agent/meta-client";
 import { ConversationDiagnostics, createDiagnosticsRouter } from "./diagnostics";
 
 test("local diagnostics retain timings but reject content and hash identities", async () => {
@@ -50,6 +51,52 @@ test("diagnostic rotation is bounded and disk failures do not interrupt callers"
 		const blocker = join(dir, "not-a-directory");
 		writeFileSync(blocker, "x");
 		assert.doesNotThrow(() => new ConversationDiagnostics(blocker).record({ stage: "app-start" }));
+	} finally {
+		rmSync(dir, { recursive: true, force: true });
+	}
+});
+
+test("main-only model timings retain numeric stages and reject content or raw request identities", async () => {
+	const dir = mkdtempSync(join(tmpdir(), "muse-model-diagnostics-"));
+	const log = new ConversationDiagnostics(dir);
+	const record: ModelTimingRecord = {
+		requestHash: "a".repeat(64),
+		attemptHash: "b".repeat(64),
+		workload: "quick",
+		status: "completed",
+		inputBytes: 200,
+		instructionBytes: 100,
+		toolBytes: 400,
+		inputItems: 2,
+		toolCount: 3,
+		maxOutputTokens: 2048,
+		requestBytes: 900,
+		credentialMs: 1,
+		headersMs: 300,
+		firstEventMs: 310,
+		firstTextMs: 900,
+		terminalMs: 1200,
+		durationMs: 1201,
+		streamedTextChars: 40,
+		functionCalls: 0,
+		httpStatus: 200,
+		inputTokens: 100,
+		cachedInputTokens: null,
+		outputTokens: 20,
+	};
+	try {
+		log.recordModelTiming(record);
+		for (const key of ["prompt", "apiKey", "requestId", "instructions", "text"])
+			log.recordModelTiming({ ...record, [key]: "private-content" } as ModelTimingRecord);
+		log.recordModelTiming({ ...record, requestHash: "raw-private-request" });
+		log.recordModelTiming({ ...record, durationMs: Number.NaN });
+		const rows = readFileSync(log.path, "utf8").trim().split("\n");
+		assert.equal(rows.length, 1);
+		assert.equal(JSON.parse(rows[0] ?? "{}").firstTextMs, 900);
+		assert.doesNotMatch(rows[0] ?? "", /private-content|raw-private/);
+		assert.equal(statSync(log.path).mode & 0o777, 0o600);
+		const caller = createDiagnosticsRouter(() => log).createCaller({});
+		await assert.rejects(caller.record({ ...record, stage: "model-timing" } as never));
 	} finally {
 		rmSync(dir, { recursive: true, force: true });
 	}

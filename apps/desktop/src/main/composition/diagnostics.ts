@@ -11,6 +11,7 @@ import {
 import { join } from "node:path";
 import { z } from "zod";
 import { ConversationDiagnosticSchema } from "../../shared/contracts";
+import type { ModelTimingRecord } from "../agent/meta-client";
 import { publicProcedure, router } from "../trpc";
 
 const lifecycle = z.strictObject({
@@ -37,7 +38,35 @@ const lifecycle = z.strictObject({
 		.optional(),
 	exitCode: z.int().optional(),
 });
-const eventSchema = z.union([ConversationDiagnosticSchema, lifecycle]);
+const count = z.int().nonnegative().max(2_147_483_647);
+const milliseconds = z.number().nonnegative().max(3_600_000);
+const modelTiming = z.strictObject({
+	stage: z.literal("model-timing"),
+	requestHash: z.string().regex(/^[a-f0-9]{64}$/),
+	attemptHash: z.string().regex(/^[a-f0-9]{64}$/),
+	workload: z.enum(["quick", "deep"]),
+	status: z.enum(["completed", "failed", "incomplete", "cancelled", "interrupted"]),
+	inputBytes: count,
+	instructionBytes: count,
+	toolBytes: count,
+	inputItems: count,
+	toolCount: count,
+	maxOutputTokens: count,
+	requestBytes: count.nullable(),
+	credentialMs: milliseconds.nullable(),
+	headersMs: milliseconds.nullable(),
+	firstEventMs: milliseconds.nullable(),
+	firstTextMs: milliseconds.nullable(),
+	terminalMs: milliseconds.nullable(),
+	durationMs: milliseconds,
+	streamedTextChars: count,
+	functionCalls: count.nullable(),
+	httpStatus: z.int().min(100).max(599).nullable(),
+	inputTokens: count.nullable(),
+	cachedInputTokens: count.nullable(),
+	outputTokens: count.nullable(),
+});
+const eventSchema = z.union([ConversationDiagnosticSchema, lifecycle, modelTiming]);
 
 /** Bounded private local log. Logging must never fail or delay a voice turn on disk errors. */
 export class ConversationDiagnostics {
@@ -51,6 +80,9 @@ export class ConversationDiagnostics {
 	) {
 		this.directory = join(userDataPath, "diagnostics");
 		this.path = join(this.directory, "conversation.jsonl");
+	}
+	recordModelTiming(record: ModelTimingRecord): void {
+		this.record({ ...record, stage: "model-timing" });
 	}
 	record(raw: unknown): void {
 		try {

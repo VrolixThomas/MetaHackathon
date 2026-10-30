@@ -78,6 +78,7 @@ export const agentComposition = createAgentComposition({
 const conversationClient = new MetaClient({
 	getApiKey: async () => (await getConfiguration().get("meta")) ?? null,
 	recordUsage: (record) => agentComposition.usage.record("conversation", record),
+	recordTiming: (record) => diagnostics?.recordModelTiming(record),
 });
 export const conversationService = new ConversationService(conversationClient, {
 	narrationCheckpoints: true,
