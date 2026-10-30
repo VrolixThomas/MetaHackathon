@@ -4,6 +4,7 @@ import type {
 	ReviewProgress,
 	ReviewScreen,
 } from "../../shared/contracts";
+import { dropOldestConversationRecord } from "./conversation-history";
 import type { MetaItem } from "./meta-client";
 import type { workspaceModelContext } from "./workspace-tools";
 
@@ -39,12 +40,13 @@ export function reviewModelInput(
 			item["role"] === "user" && typeof item["content"] === "string" ? index : latest,
 		-1
 	);
-	while (
-		encodedSize(retained) > 32_000 &&
-		dropped + 2 <= Math.min(questionIndex, retainedQuestion)
-	) {
-		retained.splice(0, 2);
-		dropped += 2;
+	while (encodedSize(retained) > 32_000 && dropped < Math.min(questionIndex, retainedQuestion)) {
+		const count = dropOldestConversationRecord(
+			retained,
+			Math.min(questionIndex, retainedQuestion) - dropped
+		);
+		if (!count) break;
+		dropped += count;
 	}
 	const current = snapshot.review?.files.find((file) => file.path === snapshot.screen.path);
 	let planTextTruncated = false;
@@ -154,12 +156,13 @@ export function reviewModelInput(
 		preparedReview.files.pop();
 		packet.readingOrderTruncated = true;
 	}
-	while (
-		encodedSize(input()) > 48_000 &&
-		dropped + 2 <= Math.min(questionIndex, retainedQuestion)
-	) {
-		retained.splice(0, 2);
-		dropped += 2;
+	while (encodedSize(input()) > 48_000 && dropped < Math.min(questionIndex, retainedQuestion)) {
+		const count = dropOldestConversationRecord(
+			retained,
+			Math.min(questionIndex, retainedQuestion) - dropped
+		);
+		if (!count) break;
+		dropped += count;
 		packet.historyTruncated = true;
 	}
 	if (encodedSize(input()) > MAX_INPUT_BYTES)

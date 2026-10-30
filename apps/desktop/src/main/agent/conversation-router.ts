@@ -4,6 +4,7 @@ import {
 	CancelTurnInputSchema,
 	CancelTurnResultSchema,
 	ConversationActionReceiptSchema,
+	ConversationAttentionInputSchema,
 	ConversationTurnInputSchema,
 	IdSchema,
 	NarrationReceiptSchema,
@@ -17,6 +18,10 @@ import { StartTurnResultSchema } from "./events";
 /** Root registers this separate from the legacy screen-bound review agent. */
 export function createConversationRouter(service: ConversationService) {
 	return router({
+		attend: publicProcedure
+			.input(ConversationAttentionInputSchema)
+			.output(StartTurnResultSchema)
+			.mutation(({ input }) => service.attend(input)),
 		narrationApplied: publicProcedure
 			.input(NarrationReceiptSchema)
 			.output(AgentActionReceiptResultSchema)

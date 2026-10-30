@@ -1,6 +1,7 @@
 import { z } from "zod";
 import type { ConversationTurnInput, WorkspaceObservation } from "../../shared/contracts";
 import { throwIfAborted } from "./cancellation";
+import { dropOldestConversationRecord } from "./conversation-history";
 import { GuidedReviewError, modelRound } from "./guided-review";
 import type { ConversationHubTools } from "./hub-tools";
 import { type AgentModelClient, MetaApiError, type MetaItem } from "./meta-client";
@@ -74,10 +75,14 @@ export async function runWorkspaceConversation(
 		];
 		while (
 			Buffer.byteLength(JSON.stringify(modelInput()), "utf8") > 96_000 &&
-			dropped + 2 <= Math.min(questionIndex, retainedQuestion)
+			dropped < Math.min(questionIndex, retainedQuestion)
 		) {
-			retained.splice(0, 2);
-			dropped += 2;
+			const count = dropOldestConversationRecord(
+				retained,
+				Math.min(questionIndex, retainedQuestion) - dropped
+			);
+			if (!count) break;
+			dropped += count;
 			context.historyTruncated = true;
 		}
 		if (Buffer.byteLength(JSON.stringify(modelInput()), "utf8") > 96_000)
