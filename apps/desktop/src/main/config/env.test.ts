@@ -271,3 +271,33 @@ it("keeps the real Linear key main-only and upgrades a preexisting template with
 	assert.ok(!JSON.stringify(await env.status()).includes("lin_api_test_value"));
 	assert.equal(await env.get("meta"), "retained-test-key");
 });
+
+it("OAuth setup preserves existing credentials and keeps registration secrets main-only", async (t) => {
+	const original =
+		"# Existing\nMODEL_API_KEY=retained-model\nGITHUB_OAUTH_CLIENT_ID=registered-client\nGITHUB_OAUTH_CLIENT_SECRET=registered-secret\n";
+	const { env, path } = await fixture(t, original);
+	await env.ensureOAuthTemplate();
+	assert.ok((await readFile(path, "utf8")).startsWith(original));
+	assert.deepEqual(await env.oauthClient("github"), {
+		clientId: "registered-client",
+		clientSecret: "registered-secret",
+	});
+	assert.equal(await env.oauthClient("linear"), undefined);
+	assert.equal((await stat(path)).mode & 0o777, 0o600);
+	assert.ok(!JSON.stringify(await env.status()).includes("registered-secret"));
+	await env.setLinearToken("lin_api_controlled");
+	await env.setLinearToken("");
+	assert.equal(await env.linearToken(), undefined);
+	assert.equal((await env.oauthClient("github"))?.clientId, "registered-client");
+});
+it("malformed OAuth registration values reject without exposing their contents", async (t) => {
+	const { env } = await fixture(
+		t,
+		"LINEAR_OAUTH_CLIENT_ID=client\nLINEAR_OAUTH_CLIENT_SECRET='private\nsecret'\n"
+	);
+	await assert.rejects(
+		env.oauthClient("linear"),
+		(e: unknown) =>
+			e instanceof Error && !e.message.includes("private") && !e.message.includes("secret")
+	);
+});

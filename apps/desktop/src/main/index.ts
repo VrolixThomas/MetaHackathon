@@ -14,9 +14,11 @@ import { createElectronBrowserPage } from "./runtime/browser-electron";
 import { browserPreviewOpener } from "./runtime/browser-preview";
 import { createElectronPreviewPage } from "./runtime/preview-electron";
 import {
+	authenticatedCredentials,
 	disposeRuntime,
 	getConfiguration,
 	getDiagnostics,
+	getOAuth,
 	getRuntime,
 	getVoice,
 	initializeBrowser,
@@ -25,6 +27,7 @@ import {
 	initializeDiagnostics,
 	initializeHub,
 	initializeLocalBrowser,
+	initializeOAuth,
 	initializeReviews,
 	initializeRuntime,
 	initializeVoice,
@@ -139,13 +142,14 @@ app
 			return new EnvConfiguration(envPath);
 		});
 		initializeConfiguration(config);
+		initializeOAuth(app.getPath("userData"), safeStorage, (url) => shell.openExternal(url));
 		initializeRuntime({
 			userDataPath: app.getPath("userData"),
 			fixturesPath: app.isPackaged
 				? join(process.resourcesPath, "demo")
 				: join(mainDirectory, "../../../../fixtures/demo"),
 			encryption: safeStorage,
-			credentialStore: config,
+			credentialStore: authenticatedCredentials(),
 			createPreviewPage: createElectronPreviewPage,
 			submissionLedger: database.runtime,
 		});
@@ -199,6 +203,7 @@ app
 		});
 		initializeConfigurationPorts({
 			configuration: getConfiguration,
+			githubConnected: () => getOAuth().hasCredentials("github"),
 			microphone: () =>
 				process.platform === "darwin"
 					? MicrophoneStatusSchema.parse(systemPreferences.getMediaAccessStatus("microphone"))

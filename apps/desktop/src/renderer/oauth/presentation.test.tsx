@@ -101,7 +101,7 @@ it("connected rows use actual public profiles and distinguish a local token from
 	assert.match(button(html, "oauth-linear-connect"), /Reconnect Linear \(replace account\)/);
 	assert.match(button(html, "oauth-github-disconnect"), />Disconnect<\/button>/);
 	assert.match(button(html, "oauth-linear-disconnect"), />Disconnect<\/button>/);
-	assert.match(html, /A local token stays configured in .env until you remove it there/);
+	assert.match(html, /Disconnect removes the local token/);
 	assert.doesNotMatch(html, /Last account:/);
 });
 

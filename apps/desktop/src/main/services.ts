@@ -17,7 +17,9 @@ import { createWorkspaceStore } from "./composition/workspace-store";
 import type { EnvConfiguration } from "./config/env";
 import type { AppConfigurationPorts } from "./config/router";
 import type { HubStore } from "./db/hub-store";
+import { OAuthService } from "./oauth/service";
 import { type BrowserPage, BrowserService, type BrowserServiceOptions } from "./runtime/browser";
+import type { CredentialAccess, SecretEncryption } from "./runtime/credentials";
 import { HubGitHubClient } from "./runtime/hub-github";
 import { HubLinearClient } from "./runtime/hub-linear";
 import type { RuntimeOptions, RuntimeService } from "./runtime/service";
@@ -43,6 +45,7 @@ let browserOptions: BrowserServiceOptions | undefined;
 let localBrowser: LocalBrowserSurface | undefined;
 let voice: ReturnType<typeof createVoiceComposition> | undefined;
 let configuration: EnvConfiguration | undefined;
+let oauth: OAuthService | undefined;
 let configurationPorts: AppConfigurationPorts | undefined;
 let reviews: ReviewCoordinator | undefined;
 let workspace: WorkspaceCoordinator | undefined;
@@ -158,8 +161,8 @@ export async function initializeHub(
 ) {
 	if (!reviews) throw new Error("Review foundation unavailable");
 	hubReviewStore = store;
-	const github = new HubGitHubClient({ getToken: () => getConfiguration().get("github") });
-	const linear = new HubLinearClient({ getKey: () => getConfiguration().linearToken() });
+	const github = new HubGitHubClient({ getToken: getGitHubToken });
+	const linear = new HubLinearClient({ getKey: getLinearAuthorization });
 	reviewRegistry = new ReviewRegistry(
 		reviews,
 		(repository) =>
@@ -198,12 +201,14 @@ export async function initializeHub(
 		registry: reviewRegistry,
 		legacyCache: () => Promise.resolve(legacyStore.load()),
 		connections: async () => ({
-			github: !!(await getConfiguration()
-				.get("github")
-				.catch(() => undefined)),
-			linear: !!(await getConfiguration()
-				.linearToken()
-				.catch(() => undefined)),
+			github: !!(await (oauth
+				? oauth.hasCredentials("github")
+				: getConfiguration().get("github")
+			).catch(() => false)),
+			linear: !!(await (oauth
+				? oauth.hasCredentials("linear")
+				: getConfiguration().linearToken()
+			).catch(() => false)),
 			model: !!(await getConfiguration()
 				.get("meta")
 				.catch(() => undefined)),
@@ -230,7 +235,7 @@ export async function initializeHub(
 		values.reduce((clean, value) => clean.split(value).join("[redacted]"), text);
 	const runtime = new WorkJobRuntime({
 		directory: join(userDataPath, "work", "git"),
-		getToken: () => getConfiguration().get("github"),
+		getToken: getGitHubToken,
 	});
 	workJobs = new WorkJobCoordinator({
 		hub,
@@ -322,6 +327,67 @@ export function getConfiguration(): EnvConfiguration {
 	if (closing || !configuration) throw new Error("App configuration is unavailable");
 	return configuration;
 }
+
+export function initializeOAuth(
+	userDataPath: string,
+	encryption: SecretEncryption,
+	openExternal: (url: string) => Promise<unknown>
+) {
+	if (oauth) throw new Error("OAuth has already been initialized");
+	oauth = new OAuthService({
+		directory: join(userDataPath, "oauth"),
+		encryption,
+		openExternal,
+		getClient: (provider) => getConfiguration().oauthClient(provider),
+		getManualToken: (provider) =>
+			provider === "github" ? getConfiguration().get("github") : getConfiguration().linearToken(),
+		clearManualToken: (provider) =>
+			provider === "github"
+				? getConfiguration().delete("github")
+				: getConfiguration().setLinearToken(""),
+		onChange: async (provider) => {
+			await hub?.connectionChanged(provider);
+		},
+	});
+}
+export function getOAuth() {
+	if (closing || !oauth) throw new Error("Account connections are unavailable");
+	return oauth;
+}
+export function getGitHubToken() {
+	return oauth ? oauth.token("github") : getConfiguration().get("github");
+}
+export function getLinearAuthorization() {
+	return oauth ? oauth.authorization("linear") : getConfiguration().linearToken();
+}
+/** All existing GitHub/runtime consumers share the same authenticated account. */
+export function authenticatedCredentials(): CredentialAccess {
+	return {
+		get: (provider) =>
+			provider === "github" ? getGitHubToken() : getConfiguration().get(provider),
+		set: async (provider, secret) => {
+			await getConfiguration().set(provider, secret);
+			if (provider === "github") await oauth?.clearSession("github");
+		},
+		delete: async (provider) => {
+			await getConfiguration().delete(provider);
+			if (provider === "github") await oauth?.clearSession("github");
+		},
+		status: async () => {
+			const rows = await getConfiguration().status();
+			const account = (await oauth?.status())?.find((row) => row.provider === "github");
+			return rows.map((row) =>
+				row.provider === "github" && account
+					? {
+							...row,
+							configured: account.source !== null,
+							storage: account.source === "oauth" ? "os-encrypted" : "env-file",
+						}
+					: row
+			);
+		},
+	};
+}
 export function initializeConfigurationPorts(value: AppConfigurationPorts): void {
 	configurationPorts = value;
 }
@@ -408,6 +474,9 @@ export async function disposeRuntime(): Promise<void> {
 		console.warn("Attention delivery state could not be saved during shutdown.");
 	});
 	closing = true;
+	const stoppingOAuth = oauth?.dispose().catch(() => {
+		console.warn("Account connection cleanup could not complete.");
+	});
 	try {
 		try {
 			await voice?.dispose();
@@ -416,6 +485,7 @@ export async function disposeRuntime(): Promise<void> {
 			await workspace?.dispose();
 			await workJobs?.dispose();
 			await hub?.dispose();
+			await stoppingOAuth;
 			if (reviewRegistry) await reviewRegistry.dispose();
 			else await reviews?.dispose();
 			// Drain provider, confirmation and source jobs while runtime/ledger remain available.

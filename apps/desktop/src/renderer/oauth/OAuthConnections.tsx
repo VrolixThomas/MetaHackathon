@@ -119,7 +119,9 @@ function OAuthRows({ controller }: { controller: OAuthController }) {
 									account.
 								</p>
 								{row.source === "env" && (
-									<p>A local token stays configured in .env until you remove it there.</p>
+									<p>
+										Disconnect removes the local token. Application login settings are retained.
+									</p>
 								)}
 							</details>
 						)}

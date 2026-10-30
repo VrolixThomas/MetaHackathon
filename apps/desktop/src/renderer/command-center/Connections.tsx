@@ -5,6 +5,7 @@ import {
 	type LinearScope,
 	type RepositoryChoice,
 } from "../../shared/contracts";
+import { OAuthConnections, useOAuth } from "../oauth";
 import type { HubController } from "./controller";
 
 export function HubConnections({ hub, onSettings }: { hub: HubController; onSettings?(): void }) {
@@ -28,6 +29,7 @@ export function HubConnections({ hub, onSettings }: { hub: HubController; onSett
 }
 
 export function Connections({ hub, onSettings }: { hub: HubController; onSettings?(): void }) {
+	const oauth = useOAuth();
 	const { snapshot, busy } = useStore(hub.store);
 	const repositoryChoicesId = useId();
 	const [choices, setChoices] = useState<RepositoryChoice[]>([]);
@@ -88,7 +90,8 @@ export function Connections({ hub, onSettings }: { hub: HubController; onSetting
 			<p className="hub-muted">
 				Choose repositories and the Linear teams or projects you want to follow.
 			</p>
-			<HubConnections hub={hub} onSettings={onSettings} />
+			{!oauth && <HubConnections hub={hub} onSettings={onSettings} />}
+			<OAuthConnections />
 			<form
 				onSubmit={(event) => {
 					event.preventDefault();
@@ -245,7 +248,9 @@ export function Connections({ hub, onSettings }: { hub: HubController; onSetting
 							<p className="hub-muted">
 								{snapshot.connections.linear
 									? "No teams or projects are available."
-									: "Configure LINEAR_API_KEY in Settings, then reload connections."}
+									: oauth
+										? "Sign in with Linear above, then reload connections."
+										: "Configure LINEAR_API_KEY in Settings, then reload connections."}
 							</p>
 						)}
 					</fieldset>

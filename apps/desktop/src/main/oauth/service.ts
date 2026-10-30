@@ -509,7 +509,7 @@ export class OAuthService {
 			const controller = new AbortController();
 			const timer = setTimeout(
 				() => controller.abort(new OAuthError("refresh")),
-				this.options.timeoutMs ?? 300000
+				Math.min(this.options.timeoutMs ?? 15000, 15000)
 			);
 			timer.unref?.();
 			const promise = this.refresh(provider, session, epoch, controller.signal).finally(() => {

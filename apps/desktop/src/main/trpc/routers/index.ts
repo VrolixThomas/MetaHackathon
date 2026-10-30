@@ -17,6 +17,10 @@ import {
 	IdSchema,
 	LinearScopeSchema,
 	LinearTicketSchema,
+	OAuthProviderInputSchema,
+	OAuthStartInputSchema,
+	OAuthStatusListSchema,
+	OAuthStatusSchema,
 	PinnedSourceSchema,
 	PullRequestFeedbackSchema,
 	RepositoryChoiceSchema,
@@ -48,8 +52,10 @@ import {
 	getConfiguration,
 	getConfigurationPorts,
 	getDiagnostics,
+	getGitHubToken,
 	getHub,
 	getLocalBrowser,
+	getOAuth,
 	getReviews,
 	getRuntime,
 	getVoice,
@@ -73,6 +79,32 @@ const hubCall = async <T>(work: () => Promise<T>): Promise<T> => {
 };
 // Register feature routers here as the application grows.
 export const appRouter = router({
+	oauth: router({
+		status: publicProcedure
+			.input(z.strictObject({}).optional())
+			.output(OAuthStatusListSchema)
+			.query(() => hubCall(() => getOAuth().status())),
+		start: publicProcedure
+			.input(OAuthStartInputSchema)
+			.output(OAuthStatusSchema)
+			.mutation(({ input }) => hubCall(() => getOAuth().start(input))),
+		cancel: publicProcedure
+			.input(OAuthProviderInputSchema)
+			.output(OAuthStatusSchema)
+			.mutation(({ input }) => hubCall(() => getOAuth().cancel(input.provider))),
+		disconnect: publicProcedure
+			.input(OAuthProviderInputSchema)
+			.output(OAuthStatusSchema)
+			.mutation(({ input }) => hubCall(() => getOAuth().disconnect(input.provider))),
+		openSetup: publicProcedure
+			.input(z.strictObject({}).optional())
+			.output(z.void())
+			.mutation(async () => {
+				const config = getConfiguration();
+				await config.ensureOAuthTemplate();
+				await getConfigurationPorts().openEnv(config.path);
+			}),
+	}),
 	attention: router({
 		poll: publicProcedure
 			.input(AttentionPresenceSchema)
@@ -157,8 +189,13 @@ export const appRouter = router({
 			)
 			.output(AgentActionSchema)
 			.mutation(async ({ input }) => {
-				if (input.command.kind === "show-review" && !(await getConfiguration().get("github")))
-					throw new TRPCError({ code: "UNAUTHORIZED", message: WORKSPACE_GITHUB_REQUIRED });
+				if (input.command.kind === "show-review") {
+					const connected = await getGitHubToken()
+						.then(Boolean)
+						.catch(() => false);
+					if (!connected)
+						throw new TRPCError({ code: "UNAUTHORIZED", message: WORKSPACE_GITHUB_REQUIRED });
+				}
 				return getWorkspace().prepare(input);
 			}),
 		applied: publicProcedure

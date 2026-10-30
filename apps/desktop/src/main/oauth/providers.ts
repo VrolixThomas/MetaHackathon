@@ -53,7 +53,7 @@ export function authorizationUrl(
 		scope: endpoints[provider].scope,
 		code_challenge: challenge,
 		code_challenge_method: "S256",
-		...(provider === "linear" ? { response_type: "code", actor: "user" } : {}),
+		...(provider === "linear" ? { response_type: "code", actor: "user", prompt: "consent" } : {}),
 	}).toString();
 	return url.href;
 }
@@ -63,8 +63,9 @@ async function json(
 	fetcher: typeof fetch,
 	url: string,
 	init: RequestInit,
-	signal: AbortSignal
+	parentSignal: AbortSignal
 ): Promise<unknown> {
+	const signal = AbortSignal.any([parentSignal, AbortSignal.timeout(15_000)]);
 	try {
 		const response = await abortable(fetcher(url, { ...init, redirect: "error", signal }), signal);
 		if (

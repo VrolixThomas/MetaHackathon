@@ -7,6 +7,7 @@ import { createAttentionSafety } from "./conversation/attention-safety";
 import { createConversationController } from "./conversation/controller";
 import { connectShortcuts } from "./conversation/shortcuts";
 import { connectConversationVoice } from "./conversation/voice";
+import { OAuthProvider, createOAuthController } from "./oauth";
 import { createPreparedApi } from "./prepared/api";
 import { createPreparedController } from "./prepared/controller";
 import { createWorkspaceController } from "./workspace/controller";
@@ -24,10 +25,26 @@ export function App() {
 		});
 		controller.attachWorkspace(workspace);
 		const hub = createHubController(api.call);
-		return { api, controller, reviews, browser, workspace, hub };
+		const oauth = createOAuthController(api.call);
+		return { api, controller, reviews, browser, workspace, hub, oauth };
 	});
 	useEffect(() => {
 		const disconnectVoice = connectConversationVoice(runtime.api, runtime.controller);
+		let accountIdentity: string | undefined;
+		const disconnectAuth = runtime.oauth.store.subscribe((state) => {
+			if (state.rows.length !== 2) return;
+			const next = state.rows
+				.map((row) => `${row.provider}:${row.source ?? "none"}:${row.account?.id ?? ""}`)
+				.join("|");
+			if (accountIdentity !== undefined && accountIdentity !== next) {
+				runtime.controller.interruptReply();
+				void runtime.controller.configure();
+				void runtime.hub.refresh();
+				runtime.reviews.poll();
+			}
+			accountIdentity = next;
+		});
+		void runtime.oauth.start();
 		const attentionSafety = createAttentionSafety(
 			runtime.controller,
 			window.electron?.attentionActivity
@@ -56,6 +73,8 @@ export function App() {
 		window.addEventListener("error", recordError);
 		window.addEventListener("unhandledrejection", recordError);
 		return () => {
+			disconnectAuth();
+			runtime.oauth.dispose();
 			clearInterval(attentionTimer);
 			attention.dispose();
 			attentionSafety.dispose();
@@ -75,12 +94,14 @@ export function App() {
 		};
 	}, [runtime]);
 	return (
-		<ConversationApp
-			controller={runtime.controller}
-			reviews={runtime.reviews}
-			browser={runtime.browser}
-			workspace={runtime.workspace}
-			hub={runtime.hub}
-		/>
+		<OAuthProvider controller={runtime.oauth}>
+			<ConversationApp
+				controller={runtime.controller}
+				reviews={runtime.reviews}
+				browser={runtime.browser}
+				workspace={runtime.workspace}
+				hub={runtime.hub}
+			/>
+		</OAuthProvider>
 	);
 }

@@ -58,6 +58,15 @@ function harness(
 	let saved: HubPersistence | null = null;
 	const caches = new Map<string, ReviewCache>();
 	let failing = false;
+	const controls = {
+		account: async () => ({ login: "me" }),
+		viewer: async () => ({ id: "me", name: "Me" }),
+		tickets: async () => [
+			ticket("1", "team-a", null),
+			ticket("2", "team-b", "project-b"),
+			ticket("3", "team-a", null, "someone-else"),
+		],
+	};
 	const hub = new CommandCenterService({
 		store: {
 			loadState: async () => saved,
@@ -79,7 +88,7 @@ function harness(
 		connections: async () => ({ github: true, linear: true, model: true }),
 		legacyCache: async () => legacy,
 		github: {
-			account: async () => ({ login: "me" }),
+			account: () => controls.account(),
 			repository: async (repository) => ({ repository, defaultBranch: "main", private: false }),
 			repositories: async () => [],
 			reviews: async (repository) => {
@@ -95,12 +104,8 @@ function harness(
 			}),
 		},
 		linear: {
-			viewer: async () => ({ id: "me", name: "Me" }),
-			tickets: async () => [
-				ticket("1", "team-a", null),
-				ticket("2", "team-b", "project-b"),
-				ticket("3", "team-a", null, "someone-else"),
-			],
+			viewer: () => controls.viewer(),
+			tickets: () => controls.tickets(),
 			ticket: async () => ticket("1", "team-a", null),
 			scopes: async () => [],
 		},
@@ -108,6 +113,7 @@ function harness(
 	t.after(() => hub.dispose());
 	return {
 		hub,
+		controls,
 		caches,
 		saved: () => saved,
 		fail: () => {
@@ -177,4 +183,66 @@ it("pinned non-PR source preserves exact lines and admits no model-supplied sour
 		HubFailure
 	);
 	assert.ok(HubPersistenceSchema.safeParse(h.saved()).success);
+});
+
+function deferred<T>() {
+	let resolve!: (value: T) => void;
+	const promise = new Promise<T>((done) => {
+		resolve = done;
+	});
+	return { promise, resolve };
+}
+async function eventually(check: () => Promise<boolean>) {
+	for (let i = 0; i < 100; i++) {
+		if (await check()) return;
+		await new Promise<void>((r) => setImmediate(r));
+	}
+	assert.fail("Expected refreshed account");
+}
+it("a changed GitHub login clears fetched queues and ignores a late old-account profile", async (t) => {
+	const h = harness(t, { repository: "test/repo", localPath: null, prepared: [], progress: [] });
+	await h.hub.refresh();
+	const profile = deferred<{ login: string }>();
+	const entered = deferred<void>();
+	h.controls.account = async () => {
+		entered.resolve();
+		return profile.promise;
+	};
+	const old = h.hub.refresh();
+	await entered.promise;
+	await h.hub.connectionChanged("github");
+	assert.equal((await h.hub.snapshot()).viewer.githubLogin, null);
+	assert.deepEqual((await h.hub.snapshot()).reviews, []);
+	h.controls.account = async () => ({ login: "new-viewer" });
+	profile.resolve({ login: "old-viewer" });
+	await old;
+	await eventually(async () => (await h.hub.snapshot()).viewer.githubLogin === "new-viewer");
+	assert.equal(
+		(await h.hub.snapshot()).repositories.length,
+		1,
+		"User-selected repositories stay registered"
+	);
+});
+it("a changed Linear account cannot restore held tickets from the previous workspace", async (t) => {
+	const h = harness(t);
+	await h.hub.refresh();
+	const held = deferred<LinearTicket[]>();
+	const entered = deferred<void>();
+	h.controls.tickets = async () => {
+		entered.resolve();
+		return held.promise;
+	};
+	const old = h.hub.refresh();
+	await entered.promise;
+	await h.hub.connectionChanged("linear");
+	assert.deepEqual((await h.hub.snapshot()).tickets, []);
+	h.controls.viewer = async () => ({ id: "new", name: "New account" });
+	h.controls.tickets = async () => [ticket("new", "team-a", null, "new")];
+	held.resolve([ticket("old", "team-a", null)]);
+	await old;
+	await eventually(async () => (await h.hub.snapshot()).tickets.some((t) => t.id === "new"));
+	assert.deepEqual(
+		(await h.hub.snapshot()).tickets.map((t) => t.id),
+		["new"]
+	);
 });

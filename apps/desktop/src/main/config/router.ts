@@ -9,6 +9,7 @@ export interface AppConfigurationPorts {
 	requestMicrophone: () => Promise<z.infer<typeof MicrophoneStatusSchema>>;
 	openEnv: (path: string) => Promise<void>;
 	reloadVoice: () => Promise<unknown>;
+	githubConnected?: () => Promise<boolean>;
 }
 
 export function createAppConfigurationRouter(getPorts: () => AppConfigurationPorts) {
@@ -26,9 +27,14 @@ export function createAppConfigurationRouter(getPorts: () => AppConfigurationPor
 		}
 		return AppConfigurationSchema.parse({
 			envPath: configuration.path,
-			configured: rows
-				? Object.fromEntries(rows.map((row) => [row.provider, row.configured]))
-				: { meta: false, elevenlabs: false, github: false },
+			configured: {
+				...(rows
+					? Object.fromEntries(rows.map((row) => [row.provider, row.configured]))
+					: { meta: false, elevenlabs: false, github: false }),
+				...(ports.githubConnected
+					? { github: await ports.githubConnected().catch(() => false) }
+					: {}),
+			},
 			voiceId,
 			microphone: ports.microphone(),
 			...(error ? { error } : {}),

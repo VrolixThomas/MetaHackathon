@@ -92,10 +92,13 @@ export class CommandCenterService {
 	private timer?: ReturnType<typeof setInterval>;
 	private sequence = 0;
 	private refreshing?: Promise<void>;
+	private refreshController?: AbortController;
+	private connectionEpoch = 0;
 	private refreshedAt: string | null = null;
 	private reviews: ReviewQueueItem[] = [];
 	private githubLogin: string | null = null;
 	private linearName: string | null = null;
+	private linearViewerId: string | null = null;
 	private errors: HubSnapshot["errors"] = [];
 	private jobs?: HubJobs;
 	private requests = new Map<string, Promise<HubOperationResult>>();
@@ -184,6 +187,8 @@ export class CommandCenterService {
 		const tickets = this.state.tickets
 			.filter(
 				(ticket) =>
+					this.linearViewerId !== null &&
+					ticket.assigneeId === this.linearViewerId &&
 					!["completed", "canceled"].includes(ticket.state.type) &&
 					((!preferences.linearTeamIds.length && !preferences.linearProjectIds.length) ||
 						preferences.linearTeamIds.includes(ticket.teamId) ||
@@ -218,30 +223,42 @@ export class CommandCenterService {
 	async refresh(): Promise<HubSnapshot> {
 		await this.initialize();
 		if (!this.refreshing) {
-			const work = this.refreshSources().finally(() => {
-				if (this.refreshing === work) this.refreshing = undefined;
+			const controller = new AbortController();
+			this.refreshController = controller;
+			const work = this.refreshSources(
+				AbortSignal.any([this.lifetime.signal, controller.signal])
+			).finally(() => {
+				if (this.refreshing === work) {
+					this.refreshing = undefined;
+					this.refreshController = undefined;
+				}
 			});
 			this.refreshing = work;
 		}
 		await this.refreshing;
 		return this.snapshot();
 	}
-	private async refreshSources() {
-		const signal = this.lifetime.signal;
+	private async refreshSources(signal: AbortSignal) {
+		const epoch = this.connectionEpoch;
+		const current = () => !signal.aborted && epoch === this.connectionEpoch;
 		const connections = await this.ports.connections();
+		if (!current()) return;
 		const errors: HubSnapshot["errors"] = [];
 		if (connections.github) {
 			try {
 				const account = await this.ports.github.account(signal);
+				if (!current()) return;
 				this.githubLogin = account.login;
 				const reviews: ReviewQueueItem[] = [];
 				for (const repository of [...this.state.repositories]) {
 					try {
 						const actual = await this.ports.github.repository(repository.repository, signal);
 						const rows = await this.ports.github.reviews(actual.repository, signal);
+						if (!current()) return;
 						reviews.push(...rows);
 						if (repository.defaultBranch !== actual.defaultBranch)
 							await this.update((state) => {
+								if (!current()) return;
 								const stored = state.repositories.find((item) => item.id === repository.id);
 								if (stored) stored.defaultBranch = actual.defaultBranch;
 							});
@@ -261,6 +278,7 @@ export class CommandCenterService {
 						);
 						for (const row of changed) await this.discoverFeedback(row, signal);
 					} catch {
+						if (!current()) return;
 						errors.push({
 							source: "github",
 							repositoryId: repository.id,
@@ -269,15 +287,19 @@ export class CommandCenterService {
 						reviews.push(...this.reviews.filter((item) => item.repositoryId === repository.id));
 					}
 				}
+				if (!current()) return;
 				this.reviews = reviews.slice(0, 1000);
 			} catch {
+				if (!current()) return;
 				errors.push({ source: "github", message: HUB_FAILURES.github });
 			}
 		}
 		if (connections.linear) {
 			try {
 				const viewer = await this.ports.linear.viewer(signal);
+				if (!current()) return;
 				this.linearName = viewer.name;
+				this.linearViewerId = viewer.id;
 				const tickets = await this.ports.linear.tickets(
 					{
 						teamIds: this.state.preferences.linearTeamIds,
@@ -286,9 +308,11 @@ export class CommandCenterService {
 					signal
 				);
 				await this.update((state) => {
+					if (!current()) return;
 					state.tickets = tickets.filter((ticket) => ticket.assigneeId === viewer.id);
 				});
 			} catch {
+				if (!current()) return;
 				errors.push({
 					source: "linear",
 					message:
@@ -296,17 +320,45 @@ export class CommandCenterService {
 				});
 			}
 		}
+		if (!current()) return;
 		this.errors = errors;
 		this.refreshedAt = new Date().toISOString();
 		this.sequence++;
 	}
+	/** Account changes discard fetched queues while retaining local jobs, source and user work. */
+	async connectionChanged(provider: "github" | "linear") {
+		await this.initialize();
+		this.connectionEpoch++;
+		this.refreshController?.abort();
+		const previous = this.refreshing;
+		if (provider === "github") {
+			this.githubLogin = null;
+			this.reviews = [];
+		} else {
+			this.linearName = null;
+			this.linearViewerId = null;
+			await this.update((state) => {
+				state.tickets = [];
+			});
+		}
+		this.errors = this.errors.filter((error) => error.source !== provider);
+		this.refreshedAt = null;
+		this.sequence++;
+		this.changed();
+		void (previous ?? Promise.resolve())
+			.catch(() => {})
+			.then(() => this.refresh())
+			.catch(() => {});
+	}
 	private async discoverFeedback(row: ReviewQueueItem, signal: AbortSignal) {
 		const feedback = await this.ports.github.feedback(row.pr.id, signal);
+		signal.throwIfAborted();
 		for (const item of feedback) {
 			if (item.author.toLowerCase() === this.githubLogin?.toLowerCase()) continue;
 			const noticeId = `feedback-${item.id}`;
 			if (this.state.notices.some((notice) => notice.id === noticeId)) continue;
 			await this.update((state) => {
+				signal.throwIfAborted();
 				state.notices.push({
 					id: noticeId,
 					kind: "feedback",
