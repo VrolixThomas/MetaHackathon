@@ -814,9 +814,16 @@ function selfCheck() {
 		"HANDS_FREE_SELF_CHECK_PASS: controlled PCM, identity sanitization, Home/hub request guards, renderer fixture syntax; no media/app/network launched"
 	);
 }
-if (process.argv.includes("--self-check")) selfCheck();
-else if (process.versions.electron || require.main === module)
-	native().catch((error) => {
-		console.error(error.message);
-		process.exitCode = 1;
-	});
+exports.installControlledMedia = installMedia;
+exports.measureControlledPcm = measure;
+if (
+	require.main === module ||
+	(process.versions.electron && process.argv[1] && resolve(process.argv[1]) === resolve(__filename))
+) {
+	if (process.argv.includes("--self-check")) selfCheck();
+	else
+		native().catch((error) => {
+			console.error(error.message);
+			process.exitCode = 1;
+		});
+}
