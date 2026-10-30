@@ -3,6 +3,9 @@ import { test } from "node:test";
 import type {
 	AgentAction,
 	ConversationTurnInput,
+	DayOperation,
+	DaySnapshot,
+	DayWorkItem,
 	HubOperation,
 	HubSnapshot,
 	LinearTicket,
@@ -1671,5 +1674,339 @@ test("sidebar-only revisions preserve an in-flight agent tool, while changed dis
 			assert.equal(w.observation.workspace.sequence, 2);
 			assert.equal(w.observation.workspace.centerSection, "tickets");
 		}
+	}
+});
+
+function attachDay(d: ReturnType<typeof data>) {
+	const item: DayWorkItem = {
+		id: "day-item",
+		revision: 1,
+		workspaceId: "workspace",
+		ownerUserId: "user",
+		requestedById: null,
+		kind: "coding",
+		title: "TEST ONLY internal work",
+		summary: "Actual user work; no Linear required.",
+		source: null,
+		acceptance: "accepted",
+		acceptanceBasis: "user_action",
+		acceptedAt: time,
+		phase: "ready_review",
+		priority: { rank: 50, reason: "Inferred", provenance: "inferred" },
+		questions: [],
+		jobId: d.job.id,
+		repositoryId: d.job.repositoryId,
+		linearIssueId: null,
+		nextCheckAt: null,
+		reviewedAt: null,
+		reviewedHeadSha: null,
+		replyDraft: null,
+		answerReceipt: null,
+		createdAt: time,
+		updatedAt: time,
+	};
+	const snapshot: DaySnapshot = {
+		sequence: 1,
+		actor: { workspaceId: "workspace", userId: "user" },
+		items: [item],
+		currentItemId: item.id,
+		supervisor: "running",
+		errors: [],
+	};
+	const operations: { operation: DayOperation; requestId: string }[] = [];
+	d.ports.day = {
+		snapshot: async () => structuredClone(snapshot),
+		operate: async (operation, requestId) => {
+			operations.push({ operation, requestId });
+			item.revision++;
+			snapshot.sequence++;
+			if (operation.kind === "cover") snapshot.currentItemId = item.id;
+			if (operation.kind === "mark_reviewed") {
+				item.reviewedAt = time;
+				item.reviewedHeadSha = operation.headSha;
+			}
+			return { requestId, itemId: item.id, snapshot: structuredClone(snapshot) };
+		},
+	};
+	return { item, snapshot, operations };
+}
+
+test("Day ports are optional and preserve every existing hub tool without a product fallback", async () => {
+	const d = data();
+	const before = new ConversationHubTools(d.ports, input, new AbortController().signal);
+	const originalNames = before.tools.map((tool) => tool.name);
+	assert(!originalNames.some((name) => name.startsWith("day_")));
+	assert.equal(before.has("day_cover"), false);
+	assert.equal(Object.hasOwn(await before.observe(), "day"), false);
+	attachDay(d);
+	const tools = new ConversationHubTools(d.ports, input, new AbortController().signal);
+	assert.deepEqual(
+		tools.tools.filter((tool) => !tool.name.startsWith("day_")).map((tool) => tool.name),
+		originalNames
+	);
+	assert.equal(new Set(tools.tools.map((tool) => tool.name)).size, tools.tools.length);
+	assert.equal(tools.has("day_cover"), true);
+	const context = await tools.observe();
+	assert.equal(context.day?.items[0]?.id, "day-item");
+	assert.equal(context.day?.display.status, "not-established");
+});
+
+test("general workspace and selected-review conversations receive the same Day context/tools and no display effect", async () => {
+	for (const selectedReview of [false, true]) {
+		const d = data();
+		const day = attachDay(d);
+		const requests: MetaRequest[] = [];
+		const pr = d.hub.reviews[0]?.pr;
+		assert(pr);
+		const prepared: PreparedReview = {
+			id: "day-review",
+			version: 1,
+			pr,
+			createdAt: time,
+			summary: "Inferred",
+			orderRationale: "Inferred",
+			coverage: "complete",
+			evidence: "inferred-from-github",
+			files: [
+				{ path: "changed.ts", reason: "Inferred", summary: "Inferred", suggestedComments: [] },
+			],
+		};
+		const turn = {
+			...input,
+			text: "Cover my Day item.",
+			...(selectedReview ? { prId: pr.id } : {}),
+		};
+		let navigations = 0;
+		const service = new ConversationService(
+			client(
+				[
+					[call("day_cover", { itemId: day.item.id, expectedRevision: 1, userCommand: turn.text })],
+					answer("This item has no queued questions."),
+				],
+				requests
+			),
+			{
+				hub: d.ports,
+				...(selectedReview
+					? {
+							review: {
+								getReady: async () => prepared,
+								getProgress: async () => null,
+								getScreen: async (): Promise<ReviewScreen> => ({
+									sequence: 0,
+									mode: "conversation",
+									prId: pr.id,
+								}),
+								navigate: async () => {
+									navigations++;
+									throw new Error("No review navigation requested");
+								},
+							},
+						}
+					: {}),
+			}
+		);
+		try {
+			service.start(turn);
+			await eventually(() => service.poll(identity(turn)).status !== "running");
+			const result = service.poll(identity(turn));
+			assert.equal(result.status, "completed");
+			assert.equal(result.text, "This item has no queued questions.");
+			assert.equal(result.actions.length, 0);
+			assert.equal(navigations, 0);
+			assert.equal(requests.length, 2);
+			assert(requests.every((request) => request.tools?.some((tool) => tool.name === "day_cover")));
+			assert(requests[0]?.tools?.some((tool) => tool.name === "start_work"));
+			assert(requests[0]?.tools?.some((tool) => tool.name === "day_start_work"));
+			const packet = requests[0]?.input.at(-1)?.["content"] as { text: string }[];
+			const context = JSON.parse(packet[0]?.text ?? "{}");
+			assert.equal(context.actualHub.day.items[0].id, day.item.id);
+			assert.equal(context.actualHub.day.display.status, "not-established");
+			assert.deepEqual(
+				day.operations.map((row) => row.operation.kind),
+				["cover"]
+			);
+		} finally {
+			await service.dispose();
+		}
+	}
+});
+
+test("Day coding review revalidates inspected actual head/checks rather than job readiness", async () => {
+	for (const failure of [
+		"uninspected",
+		"job-only",
+		"no-checks",
+		"failed-check",
+		"head",
+		"checks",
+		"foreign-job",
+		"pending-decision",
+		"success",
+	] as const) {
+		const d = data();
+		const day = attachDay(d);
+		d.job.ticket = null;
+		const saved = d.hub.jobs[0];
+		assert(saved);
+		saved.ticket = null;
+		if (failure !== "pending-decision") d.job.decisions = [];
+		d.job.checks =
+			failure === "no-checks"
+				? []
+				: [
+						{
+							id: "check",
+							command: "bun",
+							args: ["test"],
+							commitSha: d.job.headSha as string,
+							startedAt: time,
+							finishedAt: time,
+							exitCode: failure === "failed-check" ? 1 : 0,
+							logId: "log",
+						},
+					];
+		const turn = { ...input, text: "I reviewed this exact job head. Mark it reviewed." };
+		const tools = new ConversationHubTools(d.ports, turn, new AbortController().signal);
+		await tools.observe();
+		if (failure === "job-only")
+			await tools.execute("inspect_work_job", JSON.stringify({ id: d.job.id }));
+		else if (failure !== "uninspected")
+			await tools.execute("inspect_work_review", JSON.stringify({ jobId: d.job.id }));
+		const headSha = d.job.headSha;
+		if (failure === "head") {
+			d.job.headSha = "c".repeat(40);
+			saved.headSha = d.job.headSha;
+		}
+		if (failure === "checks") {
+			const check = d.job.checks[0];
+			assert(check);
+			check.logId = "changed-log";
+		}
+		if (failure === "foreign-job") d.ports.job = async () => ({ ...d.job, id: "foreign-job" });
+		const operation = tools.execute(
+			"day_mark_reviewed",
+			JSON.stringify({
+				itemId: day.item.id,
+				expectedRevision: 1,
+				headSha,
+				confirmed: true,
+				userCommand: turn.text,
+			})
+		);
+		if (failure === "success") {
+			await operation;
+			assert.equal(day.item.reviewedHeadSha, headSha);
+			assert.equal(day.operations.length, 1);
+		} else {
+			await assert.rejects(
+				operation,
+				/Inspect the actual saved work review|head or checks changed/
+			);
+			assert.equal(day.operations.length, 0);
+		}
+		assert.equal(d.operations.length, 0);
+		assert.equal(day.item.linearIssueId, null);
+	}
+});
+
+test("Day work and Linear links use exposed hub IDs and reject IDs arriving only during revalidation", async () => {
+	for (const kind of ["start_work", "link_linear"] as const) {
+		const d = data();
+		const day = attachDay(d);
+		day.item.jobId = null;
+		const tools = new ConversationHubTools(d.ports, input, new AbortController().signal);
+		await tools.observe();
+		const repository = d.hub.repositories[0];
+		const ticket = d.hub.tickets[0];
+		assert(repository && ticket);
+		d.hub.repositories.push({ ...repository, id: "not-exposed" });
+		d.hub.tickets.push({ ...ticket, id: "not-exposed" });
+		await assert.rejects(
+			tools.execute(
+				`day_${kind}`,
+				JSON.stringify({
+					itemId: day.item.id,
+					expectedRevision: 1,
+					userCommand: input.text,
+					...(kind === "start_work" ? { repositoryId: "not-exposed" } : { issueId: "not-exposed" }),
+				})
+			),
+			/actual observed/
+		);
+		assert.equal(day.operations.length, 0);
+	}
+});
+
+test("cancelled selected-review Day operations cannot resume inference or emit a canvas effect", async () => {
+	const d = data();
+	const day = attachDay(d);
+	const requests: MetaRequest[] = [];
+	const pr = d.hub.reviews[0]?.pr;
+	assert(pr);
+	let entered: (() => void) | undefined;
+	const started = new Promise<void>((resolve) => {
+		entered = resolve;
+	});
+	let release: (() => void) | undefined;
+	const wait = new Promise<void>((resolve) => {
+		release = resolve;
+	});
+	assert(d.ports.day);
+	const operate = d.ports.day.operate;
+	d.ports.day.operate = async (...args) => {
+		const result = await operate(...args);
+		entered?.();
+		await wait;
+		return result;
+	};
+	const turn = { ...input, prId: pr.id, text: "Cover my Day item." };
+	const service = new ConversationService(
+		client(
+			[
+				[call("day_cover", { itemId: day.item.id, expectedRevision: 1, userCommand: turn.text })],
+				answer("Must never publish"),
+			],
+			requests
+		),
+		{
+			hub: d.ports,
+			review: {
+				getReady: async () => ({
+					id: "day-review",
+					version: 1,
+					pr,
+					createdAt: time,
+					summary: "Inferred",
+					orderRationale: "Inferred",
+					coverage: "complete",
+					evidence: "inferred-from-github",
+					files: [
+						{ path: "changed.ts", reason: "Inferred", summary: "Inferred", suggestedComments: [] },
+					],
+				}),
+				getProgress: async () => null,
+				getScreen: async () => ({ sequence: 0, mode: "conversation", prId: pr.id }),
+				navigate: async () => {
+					throw new Error("No navigation requested");
+				},
+			},
+		}
+	);
+	try {
+		service.start(turn);
+		await started;
+		service.cancel({ ...identity(turn), requestId: "cancel", reason: "user" });
+		release?.();
+		await eventually(() => service.poll(identity(turn)).status === "cancelled");
+		assert.equal(service.poll(identity(turn)).actions.length, 0);
+		assert.equal(requests.length, 1);
+		assert.deepEqual(
+			day.operations.map((row) => row.operation.kind),
+			["cover"]
+		);
+	} finally {
+		release?.();
+		await service.dispose();
 	}
 });

@@ -3,6 +3,7 @@ import { z } from "zod";
 import {
 	CommitShaSchema,
 	type ConversationTurnInput,
+	type DayWorkItem,
 	type HubOperation,
 	type HubOperationResult,
 	HubOperationResultSchema,
@@ -24,11 +25,14 @@ import {
 	WorkReviewSchema,
 } from "../../shared/contracts";
 import { abortable, throwIfAborted } from "./cancellation";
+import { type ConversationDayPorts, ConversationDayTools } from "./day-tools";
 import { GuidedReviewError } from "./guided-review";
 import type { FunctionTool } from "./meta-client";
 import { WorkspaceArgumentError } from "./workspace-tools";
 
 export interface ConversationHubPorts {
+	/** Optional authenticated Day service; no product fallback when it is absent. */
+	day?: ConversationDayPorts;
 	snapshot(signal?: AbortSignal): Promise<HubSnapshot>;
 	/** Persist an operation before returning; the caller signal must never own an admitted worker. */
 	operate(
@@ -278,28 +282,57 @@ export class ConversationHubTools {
 	private readonly reviewedHeads = new Map<string, string>();
 	private readonly pins = new Set<string>();
 	private readonly announcements = new Set<string>();
+	private readonly observedRepositories = new Set<string>();
+	private readonly observedIssues = new Set<string>();
+	private readonly dayReviewChecks = new Map<string, WorkJob["checks"]>();
+	private readonly day?: ConversationDayTools;
 	private sequence = 0;
 	constructor(
 		private readonly ports: ConversationHubPorts,
 		private readonly turn: ConversationTurnInput,
 		private readonly signal: AbortSignal,
 		private readonly onSource?: (source: PinnedSource) => void
-	) {}
+	) {
+		if (ports.day)
+			this.day = new ConversationDayTools(ports.day, turn, signal, {
+				identifiers: async () => {
+					throwIfAborted(this.signal);
+					this.acceptSnapshot(await abortable(this.ports.snapshot(this.signal), this.signal));
+					return {
+						repositoryIds: (this.latest?.repositories ?? [])
+							.filter((row) => this.observedRepositories.has(row.id))
+							.map((row) => row.id),
+						issueIds: [...this.observedIssues],
+					};
+				},
+				review: (item, headSha) => this.validateDayReview(item, headSha),
+			});
+	}
 	get context() {
-		return this.latest ? hubModelContext(this.latest) : undefined;
+		if (!this.latest) return undefined;
+		const context = hubModelContext(this.latest);
+		for (const row of context.repositories) this.observedRepositories.add(row.id);
+		for (const row of context.tickets) this.observedIssues.add(row.id);
+		return { ...context, ...(this.day?.context ? { day: this.day.context } : {}) };
 	}
 	get tools(): FunctionTool[] {
-		return Object.entries(schemas)
-			.filter(([name]) => name !== "inspect_work_log" || !!this.ports.jobLog)
-			.map(([name, schema]) => ({
-				type: "function",
-				name,
-				description: descriptions[name as keyof typeof schemas],
-				parameters: z.toJSONSchema(schema),
-			}));
+		return [
+			...Object.entries(schemas)
+				.filter(([name]) => name !== "inspect_work_log" || !!this.ports.jobLog)
+				.map(([name, schema]) => ({
+					type: "function" as const,
+					name,
+					description: descriptions[name as keyof typeof schemas],
+					parameters: z.toJSONSchema(schema),
+				})),
+			...(this.day?.tools ?? []),
+		];
 	}
 	has(name: string) {
-		return Object.hasOwn(schemas, name) && (name !== "inspect_work_log" || !!this.ports.jobLog);
+		return (
+			!!this.day?.has(name) ||
+			(Object.hasOwn(schemas, name) && (name !== "inspect_work_log" || !!this.ports.jobLog))
+		);
 	}
 	acceptSnapshot(raw: HubSnapshot, selectedPrId = this.turn.prId) {
 		this.latest = HubSnapshotSchema.parse(raw);
@@ -314,11 +347,50 @@ export class ConversationHubTools {
 		this.pin(pr.repository, pr.headSha, "head");
 	}
 	async observe(selectedPrId?: string) {
+		throwIfAborted(this.signal);
 		this.acceptSnapshot(
 			await abortable(this.ports.snapshot(this.signal), this.signal),
 			selectedPrId ?? this.turn.prId
 		);
-		return hubModelContext(this.latest as HubSnapshot);
+		await this.day?.observe();
+		return this.context as NonNullable<ConversationHubTools["context"]>;
+	}
+	private async validateDayReview(item: DayWorkItem, headSha: string) {
+		const inspected = item.jobId ? this.jobs.get(item.jobId) : undefined;
+		const checks = item.jobId ? this.dayReviewChecks.get(item.jobId) : undefined;
+		if (
+			!inspected ||
+			!checks?.length ||
+			this.reviewedHeads.get(inspected.id) !== headSha ||
+			inspected.headSha !== headSha ||
+			inspected.repositoryId !== item.repositoryId
+		)
+			throw new GuidedReviewError(
+				"Inspect the actual saved work review, current head and execution checks before marking Day work reviewed."
+			);
+		throwIfAborted(this.signal);
+		const current = WorkJobSchema.parse(
+			await abortable(this.ports.job(inspected.id, this.signal), this.signal)
+		);
+		this.acceptSnapshot(await abortable(this.ports.snapshot(this.signal), this.signal));
+		const saved = this.latest?.jobs.find((row) => row.id === inspected.id);
+		const currentChecks = current.checks.filter((check) => check.commitSha === headSha);
+		if (
+			!saved ||
+			saved.headSha !== headSha ||
+			saved.state !== "ready" ||
+			current.id !== inspected.id ||
+			current.headSha !== headSha ||
+			current.state !== "ready" ||
+			current.repositoryId !== item.repositoryId ||
+			current.repository !== inspected.repository ||
+			current.decisions.some((decision) => decision.answer === null) ||
+			currentChecks.some((check) => check.exitCode !== 0) ||
+			JSON.stringify(currentChecks) !== JSON.stringify(checks)
+		)
+			throw new GuidedReviewError(
+				"The saved job head or checks changed. Inspect its current work review before accepting it."
+			);
 	}
 	private pin(repository: string, sha: string, revision: string) {
 		this.pins.add(JSON.stringify([repository, sha, revision]));
@@ -441,6 +513,7 @@ export class ConversationHubTools {
 	}
 	async execute(name: string, rawArguments: string): Promise<unknown> {
 		if (!this.has(name)) throw new GuidedReviewError("That hub operation is unavailable.");
+		if (this.day?.has(name)) return this.day.execute(name, rawArguments);
 		let args: Record<string, unknown>;
 		try {
 			args = schemas[name as keyof typeof schemas].parse(JSON.parse(rawArguments));
@@ -487,6 +560,7 @@ export class ConversationHubTools {
 			);
 			if (ticket.id !== args["id"] && ticket.identifier !== args["id"])
 				throw new GuidedReviewError("The ticket response did not match the requested ticket.");
+			this.observedIssues.add(ticket.id);
 			return {
 				ticket: { ...ticket, description: clipBytes(ticket.description, 12000) },
 				descriptionTruncated: size(ticket.description) > 12000,
@@ -569,12 +643,18 @@ export class ConversationHubTools {
 					"Ticket description, answered decisions and original file contents are omitted; inspect the ticket or read pinned source explicitly.",
 				evidencePolicy: policy,
 			};
-			return boundedDetails(packet, [
+			const bounded = boundedDetails(packet, [
 				packet.job.decisions,
 				packet.job.checks,
 				packet.job.changedFiles,
 				packet.files ?? [],
 			]);
+			if (review && job.headSha && job.state === "ready")
+				this.dayReviewChecks.set(
+					job.id,
+					bounded.job.checks.filter((check) => check.commitSha === job.headSha)
+				);
+			return bounded;
 		}
 		if (name === "inspect_pr_feedback") {
 			if (!hub.reviews.some((r) => r.kind === "own" && r.pr.id === args["prId"]))
