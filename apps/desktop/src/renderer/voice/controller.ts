@@ -366,8 +366,6 @@ export function createVoiceController(options: VoiceControllerOptions): VoiceCon
 		if (turn.actions.size >= MAX_ACTIONS)
 			throw new VoiceFailure("agent", new Error("Agent action limit exceeded"));
 		turn.actions.add(value.requestId);
-		if (turn.claimId)
-			throw new VoiceFailure("agent", new Error("Attention cannot change the workspace"));
 		if (value.kind === "narration-checkpoint") {
 			if (turn.text.length !== value.throughTextLength || !sourceText.startsWith(turn.text))
 				throw new VoiceFailure("agent", new Error("Narration checkpoint text prefix mismatch"));
@@ -387,6 +385,8 @@ export function createVoiceController(options: VoiceControllerOptions): VoiceCon
 			);
 			return;
 		}
+		if (turn.claimId)
+			throw new VoiceFailure("agent", new Error("Attention cannot change the workspace"));
 		if (options.getConversationContext) {
 			if (options.onConversationAction)
 				await fromOrigin("agent", async () =>

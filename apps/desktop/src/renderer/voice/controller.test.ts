@@ -1743,18 +1743,56 @@ test("external start interruption prevents media and failed turns notify their s
 	assert.equal(ends.length, 2);
 });
 
-test("reply-only initiative uses attend without a user turn and completes only after PCM, speech-ended and drain", async () => {
+function attentionCheckpointPoll(
+	turn: TurnIdentity,
+	text: string,
+	completed = false
+): PollTurnResult {
+	const checkpoint = {
+		...narrationCheckpoint(turn, "attention-narration-claim", text.length),
+		screenSequence: 0,
+	};
+	return {
+		...identity(turn),
+		status: completed ? "completed" : "running",
+		sequence: completed ? 3 : 2,
+		text,
+		actions: [checkpoint],
+		events: [
+			{ ...identity(turn), sequence: 1, kind: "text-delta", delta: text },
+			{ ...identity(turn), sequence: 2, kind: "action", action: checkpoint },
+			...(completed ? [{ ...identity(turn), sequence: 3, kind: "completed" as const }] : []),
+		],
+	};
+}
+
+test("reply-only initiative uses attend without a user turn and acknowledges the mandatory main checkpoint only after PCM, speech-ended and drain", async () => {
 	const ends: VoiceTurnEnd[] = [];
 	const sources: string[] = [];
 	const attends: unknown[] = [];
 	const speak = deferred<void>();
 	const drain = deferred<void>();
+	const receipt = deferred<void>();
 	let draining = false;
+	let drained = false;
+	let checkpointCalls = 0;
+	let accepted = false;
+	let observed = false;
+	let speechEnded = false;
 	const h = harness({
 		getConversationContext: () => {
 			throw new Error("Reply must not read renderer context");
 		},
 		onTurnStart: (_turn, source) => sources.push(source),
+		onNarrationCheckpoint: async (action, signal) => {
+			assert.equal(action.screenSequence, 0);
+			assert.equal(speechEnded && observed && drained, true);
+			assert.equal(signal.aborted, false);
+			checkpointCalls++;
+			await receipt.promise;
+			signal.throwIfAborted();
+			accepted = true;
+		},
 		onTurnEnd: (_turn, result) => ends.push(result),
 	});
 	h.options.agent.attend = async (input) => {
@@ -1767,20 +1805,16 @@ test("reply-only initiative uses attend without a user turn and completes only a
 		drain: async () => {
 			draining = true;
 			await drain.promise;
+			drained = true;
 		},
 	});
 	h.options.voice.speak = async (input) => {
 		h.speaks.push(input);
 		await speak.promise;
 	};
-	h.setPoll(async (input) => ({
-		...identity(input),
-		status: "completed",
-		sequence: 1,
-		text: "The requested work is ready.",
-		actions: [],
-		events: [],
-	}));
+	h.setPoll(async (input) =>
+		attentionCheckpointPoll(input, "The requested work is ready", accepted)
+	);
 	const reply = h.controller.beginReply("claim-1");
 	assert.equal(reply.status, "started");
 	assert.deepEqual(h.controller.beginReply("claim-1"), { status: "unavailable" });
@@ -1794,15 +1828,21 @@ test("reply-only initiative uses attend without a user turn and completes only a
 		},
 	]);
 	h.emit({ kind: "transcript", final: true, text: "Must never appear as user speech" });
+	speechEnded = true;
 	h.emit({ kind: "speech-ended", speechId: h.speaks[0]?.speechId ?? "" });
 	await wait();
 	assert.equal(draining, false);
 	assert.deepEqual(ends, []);
+	observed = true;
 	h.media[0]?.observer.pcm({ rms: 0.1, observedAt: 101, basis: "webaudio-output-analyser" });
 	speak.resolve();
 	await until(() => draining);
 	assert.deepEqual(ends, []);
+	assert.equal(checkpointCalls, 0);
 	drain.resolve();
+	await until(() => checkpointCalls === 1);
+	assert.deepEqual(ends, [], "Main remains running until narration receipt is accepted");
+	receipt.resolve();
 	await until(() => ends.length === 1);
 	assert.deepEqual(ends, [{ status: "completed" }]);
 	assert.deepEqual(h.starts, []);
@@ -1817,21 +1857,21 @@ test("reply-only initiative uses attend without a user turn and completes only a
 
 test("an attention answer without observed output PCM fails instead of claiming delivery", async () => {
 	const ends: VoiceTurnEnd[] = [];
-	const h = harness({ onTurnEnd: (_turn, result) => ends.push(result) });
+	let checkpoints = 0;
+	const h = harness({
+		onTurnEnd: (_turn, result) => ends.push(result),
+		onNarrationCheckpoint: () => {
+			checkpoints++;
+		},
+	});
 	h.options.agent.attend = async (input) => ({ ...identity(input), status: "running" });
-	h.setPoll(async (input) => ({
-		...identity(input),
-		status: "completed",
-		sequence: 1,
-		text: "Ready.",
-		actions: [],
-		events: [],
-	}));
+	h.setPoll(async (input) => attentionCheckpointPoll(input, "Ready"));
 	h.controller.beginReply("claim-silent");
 	await until(() => h.speaks.length === 1);
 	h.emit({ kind: "speech-ended", speechId: h.speaks[0]?.speechId ?? "" });
 	await until(() => ends.length === 1);
 	assert.equal(ends[0]?.status, "failed");
+	assert.equal(checkpoints, 0);
 	assert.equal(h.cancels.voice.length, 1);
 	assert.equal(h.cancels.agent.length, 1);
 });
@@ -1850,17 +1890,7 @@ test("attention refuses pane actions and an empty response never becomes complet
 			sequence: 1,
 			text: "",
 			events: [],
-			actions: withAction
-				? [
-						{
-							...identity(input),
-							requestId: "navigation",
-							kind: "narration-checkpoint",
-							screenSequence: 2,
-							throughTextLength: 0,
-						},
-					]
-				: [],
+			actions: withAction ? [reviewNavigation(input, "forbidden-attention-navigation")] : [],
 		}));
 		h.controller.beginReply(`claim-${withAction}`);
 		await until(() => ends.length === 1);
@@ -1949,5 +1979,74 @@ for (const stage of ["connect", "speech", "drain"] as const) {
 		assert.ok(h.speaks.length <= 1, "No queued second notice after cancellation");
 		assert.equal(h.media[0]?.closed, true);
 		assert.equal(h.releases.length, 0);
+	});
+}
+
+for (const stage of ["speech-ended", "drain", "receipt"] as const) {
+	test(`cancelling attention with the mandatory checkpoint pending at ${stage} fences late receipts and completion`, async () => {
+		const drain = deferred<void>();
+		const receipt = deferred<void>();
+		let draining = false;
+		let checkpointCalls = 0;
+		let receipts = 0;
+		let completed = false;
+		let checkpointSignal: AbortSignal | undefined;
+		const ends: VoiceTurnEnd[] = [];
+		const h = harness({
+			onNarrationCheckpoint: async (_action, signal) => {
+				checkpointCalls++;
+				checkpointSignal = signal;
+				await receipt.promise;
+				if (!signal.aborted) receipts++;
+			},
+			onTurnEnd: (_turn, result) => ends.push(result),
+		});
+		h.options.agent.attend = async (input) => ({ ...identity(input), status: "running" });
+		const factory = h.options.media;
+		h.options.media = (observer) => ({
+			...factory(observer),
+			drain: async () => {
+				draining = true;
+				await drain.promise;
+			},
+		});
+		h.setPoll(async (input) =>
+			attentionCheckpointPoll(input, "The work needs a real decision", completed)
+		);
+		h.controller.beginReply(`checkpoint-${stage}`);
+		await until(() => h.speaks.length === 1);
+		const old = h.current();
+		h.media[0]?.observer.pcm({ rms: 0.1, observedAt: 101, basis: "webaudio-output-analyser" });
+		if (stage !== "speech-ended") {
+			h.emit({ kind: "speech-ended", speechId: h.speaks[0]?.speechId ?? "missing" });
+			await until(() => draining);
+		}
+		if (stage === "receipt") {
+			drain.resolve();
+			await until(() => checkpointCalls === 1);
+		}
+		h.controller.interrupt("push-to-talk");
+		if (checkpointSignal) assert.equal(checkpointSignal.aborted, true);
+		h.controller.beginCapture();
+		const next = h.current();
+		completed = true;
+		drain.resolve();
+		receipt.resolve();
+		h.voiceEvents.push({
+			...old,
+			sequence: 99,
+			kind: "speech-ended",
+			speechId: h.speaks[0]?.speechId ?? "missing",
+		});
+		await until(() => h.controller.getPhase() === "listening");
+		await wait();
+		assert.deepEqual(ends, [{ status: "cancelled", reason: "push-to-talk" }]);
+		assert.equal(checkpointCalls, stage === "receipt" ? 1 : 0);
+		assert.equal(receipts, 0);
+		assert.deepEqual(h.controller.getIdentity(), next);
+		assert.equal(h.media[0]?.closed, true);
+		assert.equal(h.speaks.length, 1);
+		assert.deepEqual(h.actions, []);
+		assert.deepEqual(h.errors, []);
 	});
 }
