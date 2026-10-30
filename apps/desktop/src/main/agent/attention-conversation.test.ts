@@ -240,10 +240,11 @@ test("attention request retries deduplicate, conflict with user IDs and cannot r
 });
 
 test("user preemption cancels resolver, validation or model work and rejects ignored-abort late output", async () => {
-	for (const phase of ["resolve", "validate", "model"] as const) {
+	for (const phase of ["resolve", "validate", "model", "after-model"] as const) {
 		const held = deferred<void>();
 		let entered = false;
 		let signal: AbortSignal | undefined;
+		let validations = 0;
 		const pause = async (active: AbortSignal) => {
 			entered = true;
 			signal = active;
@@ -257,7 +258,9 @@ test("user preemption cancels resolver, validation or model work and rejects ign
 						return claim(input);
 					},
 					validate: async (_input, active) => {
-						if (phase === "validate") await pause(active);
+						validations++;
+						if (phase === "validate" || (phase === "after-model" && validations === 2))
+							await pause(active);
 					},
 				},
 			},

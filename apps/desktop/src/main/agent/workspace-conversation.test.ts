@@ -643,6 +643,115 @@ test("a ready PR opened without initial PR context can walk three files in the s
 	}
 });
 
+test("assistant attention preserves the displayed workspace and paused walkthrough for the next real continuation", async () => {
+	const h = harness(
+		[
+			[call("start_walkthrough", { sectionPaths: ["service.ts"] }, "start")],
+			answer("Service explanation. Ask to continue."),
+			answer("MET-50 needs your decision."),
+			[call("continue_walkthrough", { sectionPaths: ["caller.ts"] }, "continue")],
+			answer("Caller explanation."),
+		],
+		true
+	);
+	h.options.attention = {
+		resolve: async (input) => ({
+			id: input.claimId,
+			sessionId: input.sessionId,
+			createdAt: new Date(Date.now() - 1000).toISOString(),
+			expiresAt: new Date(Date.now() + 60_000).toISOString(),
+			items: [
+				{
+					noticeId: "notice",
+					jobId: "job",
+					kind: "decision",
+					repository: "test/repo",
+					label: "MET-50",
+					headSha: "b".repeat(40),
+					decisionId: "decision",
+					question: "Which option?",
+					changedFileCount: 1,
+					applied: false,
+				},
+			],
+		}),
+	};
+	const acknowledge = async (input: { sessionId: string; turnId: string; generation: number }) => {
+		const turn = { sessionId: input.sessionId, turnId: input.turnId, generation: input.generation };
+		await eventually(() =>
+			h.service.poll(turn).actions.some((action) => action.kind === "narration-checkpoint")
+		);
+		const checkpoint = h.service
+			.poll(turn)
+			.actions.find((action) => action.kind === "narration-checkpoint");
+		assert(checkpoint);
+		h.service.narrationApplied({
+			sessionId: checkpoint.sessionId,
+			turnId: checkpoint.turnId,
+			generation: checkpoint.generation,
+			requestId: checkpoint.requestId,
+			status: "spoken",
+		});
+		await eventually(() => h.service.poll(turn).status !== "running");
+		assert.equal(h.service.poll(turn).status, "completed");
+	};
+	try {
+		h.service.start({ ...h.input, text: "Start with the service file" });
+		await effect(h, 0);
+		await acknowledge(h.identity);
+		const before = structuredClone(h.observation);
+		const attention = {
+			sessionId: h.input.sessionId,
+			turnId: "attention",
+			generation: 2,
+			requestId: "attention-request",
+			claimId: "claim",
+		};
+		h.service.attend(attention);
+		await acknowledge(attention);
+		assert.deepEqual(h.observation, before);
+		assert.equal(h.commands.length, 1);
+		assert.equal(h.cancelled, 0);
+		assert.deepEqual(h.requests[2]?.tools, []);
+		const next = {
+			...h.input,
+			turnId: "followup",
+			generation: 3,
+			requestId: "followup-request",
+			text: "Continue the walkthrough",
+		};
+		h.service.start(next);
+		await eventually(() => h.pending.length === 2);
+		assert.equal(h.pending[1]?.result.workspace.review.path, "caller.ts");
+		h.pending[1]?.settle();
+		await acknowledge({
+			sessionId: next.sessionId,
+			turnId: next.turnId,
+			generation: next.generation,
+		});
+		assert.equal(h.observation.workspace.review.path, "caller.ts");
+		assert.deepEqual(
+			h.commands.map((command) =>
+				command.kind === "navigate-review" ? command.path : command.kind
+			),
+			["service.ts", "caller.ts"]
+		);
+		assert(
+			h.requests[3]?.input.some(
+				(item) => item["role"] === "assistant" && item["content"] === "MET-50 needs your decision."
+			)
+		);
+		assert.equal(
+			h.requests[3]?.input.filter(
+				(item) => item["role"] === "user" && typeof item["content"] === "string"
+			).length,
+			2
+		);
+	} finally {
+		await h.service.dispose();
+	}
+});
+
 test("invalid visual markup, unknown review identities and fabricated source citations never reach workspace execution", async () => {
 	for (const operation of [
 		call("create_visual_mock", {
