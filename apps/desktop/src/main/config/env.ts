@@ -7,6 +7,8 @@ import {
 	CredentialProviderSchema,
 	type CredentialStatusList,
 	CredentialStatusListSchema,
+	type OAuthProvider,
+	OAuthProviderSchema,
 	SetCredentialInputSchema,
 	VoiceSetupInputSchema,
 } from "../../shared/contracts";
@@ -239,6 +241,45 @@ export class EnvConfiguration {
 			if (raw.length > 16384 || /[\r\n\0]/.test(raw))
 				throw new Error("Invalid Linear configuration");
 			return raw;
+		});
+	}
+	setLinearToken(token: string): Promise<void> {
+		return this.serialize(async () => {
+			if (token.length > 16384 || /[\r\n\0]/.test(token))
+				throw new Error("Invalid Linear configuration");
+			await this.write(
+				update((await this.read()) ?? document(""), new Map([["LINEAR_API_KEY", token.trim()]]))
+			);
+		});
+	}
+	/** Main-only registration credentials; never return this through a renderer procedure. */
+	oauthClient(
+		provider: OAuthProvider
+	): Promise<{ clientId: string; clientSecret?: string } | undefined> {
+		return this.serialize(async () => {
+			const selected = OAuthProviderSchema.parse(provider);
+			const values = (await this.read())?.values ?? {};
+			const prefix = selected === "github" ? "GITHUB_OAUTH" : "LINEAR_OAUTH";
+			const clientId = values[`${prefix}_CLIENT_ID`]?.trim();
+			const clientSecret = values[`${prefix}_CLIENT_SECRET`]?.trim();
+			for (const text of [clientId, clientSecret])
+				if (text && (text.length > 16384 || /[\r\n\0]/.test(text)))
+					throw new Error("Invalid OAuth configuration");
+			if (!clientId) return undefined;
+			return { clientId, ...(clientSecret ? { clientSecret } : {}) };
+		});
+	}
+	ensureOAuthTemplate(): Promise<void> {
+		return this.serialize(async () => {
+			const source = (await this.read()) ?? document(template);
+			const missing = [
+				"GITHUB_OAUTH_CLIENT_ID",
+				"GITHUB_OAUTH_CLIENT_SECRET",
+				"LINEAR_OAUTH_CLIENT_ID",
+				"LINEAR_OAUTH_CLIENT_SECRET",
+			].filter((key) => source.values[key] === undefined);
+			if (missing.length)
+				await this.write(update(source, new Map(missing.map((key) => [key, ""]))));
 		});
 	}
 	setVoiceId(voiceId: string): Promise<void> {

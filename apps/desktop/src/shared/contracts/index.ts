@@ -14,3 +14,4 @@ export * from "./voice-setup";
 export * from "./voice-diagnostics";
 export * from "./command-center";
 export * from "./attention";
+export * from "./oauth";
