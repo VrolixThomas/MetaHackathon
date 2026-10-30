@@ -55,6 +55,21 @@ The registration's homepage points to MetaHackathon; it does not limit the OAuth
 
 ![Actual app after live GitHub OAuth authorization](screenshots/github-oauth-connected.png)
 
-Pending: Linear client registration and live user consent. MET-53 stays In Progress for that step.
+Live Linear OAuth was also verified on 2026-10-30. The user approved creating a publicly
+installable Muse — MetaHackathon application in the MetaHackathon workspace (application
+`e6faf9f8-e7a3-4edf-85b3-bbbf44fa25ef`). Its callback is the documented local Linear callback;
+client-credentials grants and webhooks remain disabled. Registration credentials were saved only
+in the main private `.env`. The user completed the real read/write consent in Safari. Actual
+integration Settings then showed **Connected — Thomas Vrolix**, and My tickets loaded **12 real
+assigned Linear issues**. Browsing that sidebar retained the open pinned GitHub review.
+
+Both provider sessions are present in the actual OS-encrypted store with mode `0600`; the `.env`
+is also `0600` and Git-ignored. No issue mutation or GitHub write was performed as a test.
+
+![Actual app with GitHub and Linear OAuth connected](screenshots/github-linear-oauth-connected.png)
+
+MET-53's live connection acceptance is complete for both providers. Expiry/refresh and cancellation
+race coverage remains the controlled native/unit coverage above; expiry was not forced against
+these live user sessions.
 Physical microphone/speaker latency and Apple signing are not established by these checks.
 MET-51 still tracks the separately identified voice latency contributors.

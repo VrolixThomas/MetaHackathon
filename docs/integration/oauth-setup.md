@@ -11,6 +11,8 @@ Settings shows the exact path; **Configure login** opens that file.
 | Linear | Workspace settings → API → OAuth applications | `http://127.0.0.1:43187/oauth/linear/callback` | `LINEAR_OAUTH_CLIENT_ID` |
 
 `LINEAR_OAUTH_CLIENT_SECRET` is optional: the authorization-code flow uses S256 PKCE.
+When registering Linear, enable **Public** to allow users in other workspaces to install Muse.
+Use the per-user authorization flow; client-credentials grants and webhooks are not required.
 GitHub requires the client secret for this flow even with PKCE. GitHub scopes are `repo`,
 `read:user`, `read:org` and `offline_access`; Linear uses `read,write` with `actor=user`.
 Write scopes support existing explicitly initiated PR and ticket actions; signing in itself does
