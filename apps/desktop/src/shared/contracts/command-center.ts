@@ -148,7 +148,18 @@ export const WorkNoticeSchema = z.strictObject({
 	createdAt: z.iso.datetime(),
 	announcedAt: z.iso.datetime().nullable(),
 	seenAt: z.iso.datetime().nullable(),
+	headSha: CommitShaSchema.nullable().optional(),
+	decisionId: IdSchema.nullable().optional(),
 });
+/** Durable automatic delivery budget; pending/interrupted notices remain visible in the hub. */
+export const AttentionRecordSchema = z.strictObject({
+	key: z.string().min(1).max(128),
+	noticeIds: z.array(IdSchema).min(1).max(2),
+	attempts: z.int().min(1).max(3),
+	lastAttemptAt: z.iso.datetime(),
+	deliveredAt: z.iso.datetime().nullable(),
+});
+export type AttentionRecord = z.infer<typeof AttentionRecordSchema>;
 export const LinearTicketSummarySchema = LinearTicketSchema.omit({ description: true });
 export const WorkJobSummarySchema = WorkJobSchema.omit({
 	brief: true,
@@ -173,6 +184,7 @@ export const HubPersistenceSchema = z.strictObject({
 	tickets: z.array(LinearTicketSchema).max(500),
 	jobs: z.array(WorkJobSchema).max(200),
 	notices: z.array(WorkNoticeSchema).max(500),
+	attentionRecords: z.array(AttentionRecordSchema).max(500).optional(),
 });
 export const HubSnapshotSchema = z.strictObject({
 	sequence: z.int().nonnegative(),
