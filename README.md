@@ -230,3 +230,5 @@ Executive center acceptance and live GitHub screenshots: [executive center accep
 Proactive supervision and voice latency evidence: [attention acceptance](docs/integration/attention-acceptance.md).
 
 Sidebar stability and GitHub/Linear login: [sidebar and OAuth acceptance](docs/integration/sidebar-oauth-acceptance.md).
+
+Current latency diagnosis and measured provider stages: [voice latency deep dive](docs/integration/voice-latency-deep-dive.md).

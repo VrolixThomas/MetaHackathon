@@ -1,0 +1,414 @@
+{
+	"revision": "22b462be82f8172bfbb922f229a9893dc0c93a15",
+	"date": "2026-10-30",
+	"voiceRuns": [
+		{
+			"status": "passed",
+			"sourceRevision": "22b462b",
+			"liveASR": true,
+			"liveTTS": true,
+			"liveModel": false,
+			"physicalMicrophone": false,
+			"physicalSpeakerMuted": true,
+			"syntheticPhrase": true,
+			"events": [
+				{
+					"stage": "speech-start",
+					"atMs": 2616,
+					"elapsedMs": 0
+				},
+				{
+					"stage": "speech-ended",
+					"atMs": 5254,
+					"elapsedMs": 2638
+				},
+				{
+					"stage": "transcript-final",
+					"atMs": 9827,
+					"elapsedMs": 7212
+				},
+				{
+					"stage": "agent-start",
+					"atMs": 9830,
+					"elapsedMs": 7214
+				},
+				{
+					"stage": "first-answer",
+					"atMs": 9893,
+					"elapsedMs": 7278
+				},
+				{
+					"stage": "first-audio",
+					"atMs": 10352,
+					"elapsedMs": 7737,
+					"releaseToAudioMs": 964.6999999880791
+				},
+				{
+					"stage": "turn-completed",
+					"atMs": 11535,
+					"elapsedMs": 8916
+				}
+			],
+			"transport": [
+				{
+					"stage": "voice.offer:start",
+					"atMs": 2848
+				},
+				{
+					"stage": "voice.offer:end",
+					"atMs": 6019,
+					"failed": false
+				},
+				{
+					"stage": "voice.release:start",
+					"atMs": 9388
+				},
+				{
+					"stage": "voice.release:end",
+					"atMs": 9391,
+					"failed": false
+				},
+				{
+					"stage": "controlled-model",
+					"atMs": 9857
+				},
+				{
+					"stage": "voice.speak:start",
+					"atMs": 9894
+				},
+				{
+					"stage": "voice.speak:end",
+					"atMs": 9897,
+					"failed": false
+				}
+			],
+			"marker": {
+				"startMs": 2476,
+				"endMs": 4660,
+				"durationMs": 2184
+			},
+			"worklet": [
+				{
+					"stage": "worklet:begin",
+					"atMs": 2617
+				},
+				{
+					"stage": "worklet:end",
+					"atMs": 5254
+				},
+				{
+					"stage": "worklet:play",
+					"atMs": 6043
+				},
+				{
+					"stage": "worklet:drained",
+					"atMs": 9387
+				},
+				{
+					"stage": "worklet:cancel",
+					"atMs": 11529
+				}
+			],
+			"intervals": {
+				"physicalMarkerToEndpointMs": 594,
+				"endpointToReleaseMs": 4134,
+				"releaseToTranscriptMs": 439,
+				"endpointToPCMms": 5098,
+				"markerEndToPCMms": 5692
+			},
+			"shutdown": true
+		},
+		{
+			"status": "passed",
+			"sourceRevision": "22b462b",
+			"liveASR": true,
+			"liveTTS": true,
+			"liveModel": false,
+			"physicalMicrophone": false,
+			"physicalSpeakerMuted": true,
+			"syntheticPhrase": true,
+			"events": [
+				{
+					"stage": "speech-start",
+					"atMs": 2634,
+					"elapsedMs": 0
+				},
+				{
+					"stage": "speech-ended",
+					"atMs": 5273,
+					"elapsedMs": 2639
+				},
+				{
+					"stage": "transcript-final",
+					"atMs": 9881,
+					"elapsedMs": 7247
+				},
+				{
+					"stage": "agent-start",
+					"atMs": 9882,
+					"elapsedMs": 7248
+				},
+				{
+					"stage": "first-answer",
+					"atMs": 9948,
+					"elapsedMs": 7314
+				},
+				{
+					"stage": "first-audio",
+					"atMs": 10307,
+					"elapsedMs": 7673,
+					"releaseToAudioMs": 869
+				},
+				{
+					"stage": "turn-completed",
+					"atMs": 11527,
+					"elapsedMs": 8889
+				}
+			],
+			"transport": [
+				{
+					"stage": "voice.offer:start",
+					"atMs": 2878
+				},
+				{
+					"stage": "voice.offer:end",
+					"atMs": 6071,
+					"failed": false
+				},
+				{
+					"stage": "voice.release:start",
+					"atMs": 9438
+				},
+				{
+					"stage": "voice.release:end",
+					"atMs": 9443,
+					"failed": false
+				},
+				{
+					"stage": "controlled-model",
+					"atMs": 9905
+				},
+				{
+					"stage": "voice.speak:start",
+					"atMs": 9949
+				},
+				{
+					"stage": "voice.speak:end",
+					"atMs": 9951,
+					"failed": false
+				}
+			],
+			"marker": {
+				"startMs": 2492,
+				"endMs": 4676,
+				"durationMs": 2184
+			},
+			"worklet": [
+				{
+					"stage": "worklet:begin",
+					"atMs": 2634
+				},
+				{
+					"stage": "worklet:end",
+					"atMs": 5273
+				},
+				{
+					"stage": "worklet:play",
+					"atMs": 6098
+				},
+				{
+					"stage": "worklet:drained",
+					"atMs": 9437
+				},
+				{
+					"stage": "worklet:cancel",
+					"atMs": 11521
+				}
+			],
+			"intervals": {
+				"physicalMarkerToEndpointMs": 597,
+				"endpointToReleaseMs": 4165,
+				"releaseToTranscriptMs": 443,
+				"endpointToPCMms": 5034,
+				"markerEndToPCMms": 5631
+			},
+			"shutdown": true
+		}
+	],
+	"sidecarTrace": [
+		{
+			"stage": "asr-open-start",
+			"atMs": 221225882
+		},
+		{
+			"stage": "rtc-start",
+			"atMs": 221225887
+		},
+		{
+			"stage": "rtc-end",
+			"atMs": 221225889,
+			"durationMs": 3
+		},
+		{
+			"stage": "asr-open-end",
+			"atMs": 221229035,
+			"durationMs": 3153
+		},
+		{
+			"stage": "asr-finish-start",
+			"atMs": 221232627,
+			"queueItems": 0
+		},
+		{
+			"stage": "asr-finish-end",
+			"atMs": 221232852,
+			"durationMs": 225,
+			"audioMs": 3259,
+			"sendAwaitMs": 53,
+			"sendCount": 164
+		}
+	],
+	"modelBaseline": {
+		"revision": "22b462be82f8172bfbb922f229a9893dc0c93a15",
+		"scope": "actual live Meta model through production workspace loop and tool schemas; controlled empty workspace, no microphone/STT/TTS, no external reads or effects",
+		"rows": [
+			{
+				"index": 0,
+				"case": "short",
+				"controlledWorkspace": true,
+				"liveMeta": true,
+				"requests": [
+					{
+						"startMs": 6,
+						"toolCount": 33,
+						"inputBytes": 2223,
+						"schemaBytes": 22483,
+						"firstTextMs": 1287,
+						"completedMs": 1323,
+						"functionCalls": 0,
+						"inputTokens": 7942,
+						"outputTokens": 74,
+						"status": "completed"
+					}
+				],
+				"observations": 1,
+				"hubReads": 1,
+				"toolCalls": 0,
+				"firstPublishedMs": 1323,
+				"answerCharacters": 144,
+				"endMs": 1324,
+				"status": "passed"
+			},
+			{
+				"index": 1,
+				"case": "six-sentences",
+				"controlledWorkspace": true,
+				"liveMeta": true,
+				"requests": [
+					{
+						"startMs": 5,
+						"toolCount": 33,
+						"inputBytes": 2239,
+						"schemaBytes": 22483,
+						"firstTextMs": 1115,
+						"completedMs": 1482,
+						"functionCalls": 0,
+						"inputTokens": 7946,
+						"outputTokens": 135,
+						"status": "completed"
+					}
+				],
+				"observations": 1,
+				"hubReads": 1,
+				"toolCalls": 0,
+				"firstPublishedMs": 1482,
+				"answerCharacters": 307,
+				"endMs": 1482,
+				"status": "passed"
+			},
+			{
+				"index": 2,
+				"case": "short",
+				"controlledWorkspace": true,
+				"liveMeta": true,
+				"requests": [
+					{
+						"startMs": 6,
+						"toolCount": 33,
+						"inputBytes": 2223,
+						"schemaBytes": 22483,
+						"firstTextMs": 1433,
+						"completedMs": 1542,
+						"functionCalls": 0,
+						"inputTokens": 7942,
+						"outputTokens": 52,
+						"status": "completed"
+					}
+				],
+				"observations": 1,
+				"hubReads": 1,
+				"toolCalls": 0,
+				"firstPublishedMs": 1542,
+				"answerCharacters": 135,
+				"endMs": 1542,
+				"status": "passed"
+			},
+			{
+				"index": 3,
+				"case": "six-sentences",
+				"controlledWorkspace": true,
+				"liveMeta": true,
+				"requests": [
+					{
+						"startMs": 4,
+						"toolCount": 33,
+						"inputBytes": 2239,
+						"schemaBytes": 22483,
+						"firstTextMs": 607,
+						"completedMs": 1095,
+						"functionCalls": 0
+					}
+				],
+				"observations": 1,
+				"hubReads": 1,
+				"toolCalls": 0,
+				"firstPublishedMs": 1095,
+				"answerCharacters": 410,
+				"endMs": 1095,
+				"status": "passed"
+			}
+		]
+	},
+	"guidedModelBaseline": {
+		"passed": true,
+		"liveProvider": true,
+		"syntheticSource": true,
+		"simulatedUIReceipt": true,
+		"attempts": [
+			{
+				"tools": 6,
+				"budget": 2048,
+				"atMs": 3,
+				"firstTextMs": 993,
+				"completedMs": 1152
+			},
+			{
+				"tools": 0,
+				"budget": 2048,
+				"atMs": 1155,
+				"firstTextMs": 3234,
+				"completedMs": 3543
+			}
+		],
+		"receiptAtMs": 1154,
+		"firstPublishedAtMs": 3234,
+		"answerCharacters": 194,
+		"firstAnswerBeforeFinal": true
+	},
+	"limitations": [
+		"Synthetic known spoken phrase; no ambient microphone and physical speaker muted.",
+		"ASR/TTS are live; model controlled in voice runs. Separate model runs use controlled source/workspace and live provider.",
+		"No comparative speedup is established. One failed instrumentation-wrapper launch is excluded from successful runs.",
+		"Source revalidation repeated-read probe is deterministic; its injected network delay is not a live measurement."
+	]
+}

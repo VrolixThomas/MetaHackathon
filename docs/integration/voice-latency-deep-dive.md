@@ -425,3 +425,22 @@ integration must publish its migration and bound/rate-limit/rotate persistence.
 MET-51 remains In Progress. The timing seam is ready for root review; the materially
 useful input fix has a concrete reservation/design and unresolved provider idle-hold
 acceptance, not a claimed deployment or measured speedup.
+
+## Integrated follow-up
+
+Root accepted the timing hook and this report. `main/services.ts` now supplies its optional
+observer to the foreground conversation client; `ConversationDiagnostics.recordModelTiming`
+persists only a strict main-only numeric/hash schema in the existing private, rotated log.
+Renderer IPC cannot submit these model records. Tests reject added content fields, raw request
+identities and invalid timings; callback and disk failures remain best effort.
+
+The numeric-only successful native runs, sidecar stages and separate live model experiments
+are archived in [versioned evidence](evidence/voice-latency-2026-10-30.json). This is diagnostic
+instrumentation and an investigation result. ASR preconnection and operation-scoped review reads
+remain implementation work; no reply-speed improvement is claimed.
+
+Integrated validation passed: 984 TypeScript tests across 115 files, type-check, lint and build;
+five built-app native checks (V1, prepared reviews, workspace, hands-free and proactive attention).
+The final suite ran serially with a 30-second per-test budget. An earlier concurrent native/unit
+run exceeded an existing five-second Git publication test deadline and caused cascading Bun
+runner errors; that run is not counted as successful. No runtime Git code was changed to pass it.
