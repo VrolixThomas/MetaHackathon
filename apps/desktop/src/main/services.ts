@@ -105,6 +105,7 @@ export const conversationService = new ConversationService(conversationClient, {
 	},
 	getContext: (prId, signal) => getRuntime().github.prContext(prId, signal),
 	review: {
+		readSnapshot: (request, signal) => getReviews().readSnapshot(request, signal),
 		getReady: (prId, signal) => getReviews().getReady(prId, signal),
 		getProgress: (prId, signal) => getReviews().getProgress(prId, signal),
 		getScreen: (sessionId, initial) => getReviews().getScreen(sessionId, initial),

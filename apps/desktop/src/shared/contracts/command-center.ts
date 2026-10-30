@@ -115,6 +115,17 @@ export const WorkJobSchema = z.strictObject({
 		"cancelled",
 	]),
 	pauseReason: z.enum(["user", "shutdown"]).nullable().optional(),
+	/** Internal Muse work uses the existing isolated harness without fabricating a Linear issue. */
+	internal: z
+		.strictObject({
+			workspaceId: IdSchema,
+			ownerUserId: IdSchema,
+			itemId: IdSchema,
+			requestId: IdSchema,
+			bindingDigest: z.string().regex(/^[a-f0-9]{64}$/),
+			stage: z.enum(["preparing", "prepared", "admitted"]),
+		})
+		.optional(),
 	reviewedAt: z.iso.datetime().nullable().optional(),
 	publishedHeadSha: CommitShaSchema.nullable().optional(),
 	feedbackAppliedAt: z.iso.datetime().nullable().optional(),
