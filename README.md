@@ -31,6 +31,10 @@ ELEVENLABS_API_KEY=
 ELEVENLABS_VOICE_ID=
 GITHUB_TOKEN=
 LINEAR_API_KEY=
+GITHUB_OAUTH_CLIENT_ID=
+GITHUB_OAUTH_CLIENT_SECRET=
+LINEAR_OAUTH_CLIENT_ID=
+LINEAR_OAUTH_CLIENT_SECRET=
 ```
 
 Configuration shows the active path and whether values are present. **Open configuration**
@@ -69,19 +73,24 @@ check the app's status before changing unrelated system settings.
 
 ## Real GitHub context
 
-Open **More → Settings**, then **Connect GitHub**. The app imports your existing `gh` login
-into the configured `.env`; if necessary, first run `gh auth login --hostname github.com`.
-You can also set `GITHUB_TOKEN` directly. Use the sidebar **+** or **Home → Manage connections**
+Open **More → Settings** or **Manage connections**, then **Sign in with GitHub** to authorize
+in your system browser. Register the app once using the [OAuth setup guide](docs/integration/oauth-setup.md).
+The app saves the resulting account tokens encrypted in its private user-data directory.
+For development, `GITHUB_TOKEN` and **Other connection methods → Import GitHub CLI sign-in**
+remain available. Use the sidebar **+** or **Home → Manage connections**
 to add `owner/repository` or choose a local clone. Multiple repositories stay connected together.
 Incoming requested reviews and your own PR feedback appear separately.
+The icon rail selects a sidebar list. Browsing another list leaves your open review, browser or
+document in place; selecting a specific item opens it. Recent canvases are available from Home.
 There is no sample PR fallback. Ordinary conversation works without GitHub or a selected PR.
 Cached ready reviews still require GitHub access to verify their current revisions before opening.
 If GitHub is unconfigured, the workspace offers **Connect GitHub** directly.
 
 ## Tickets and background work
 
-Set your personal `LINEAR_API_KEY` in the same `.env`, reload Settings, then select teams or projects
-under **Manage connections**. Muse fetches tickets assigned to your Linear user; selected team and
+Choose **Sign in with Linear** in Settings or Manage connections, authorize your workspace in the
+browser, then select teams or projects. A personal `LINEAR_API_KEY` in `.env` is also supported.
+Muse fetches tickets assigned to your Linear user; selected team and
 project scopes form a union. With no selected scopes, all of your assigned active tickets are shown.
 
 Say **“What needs my attention?”**, **“Start work on MET-123 in owner/repo”**, or open a ticket and
@@ -183,6 +192,7 @@ bun run test:local-browser
 bun run test:workspace
 bun run test:executive
 bun run test:attention
+bun run test:oauth
 bun test apps/desktop/src/shared apps/desktop/src/main apps/desktop/src/renderer
 services/voice/.venv/bin/python -m unittest discover -s services/voice/tests
 ```
@@ -218,3 +228,5 @@ Browser layout and sizing follow-up: [browser pane acceptance](docs/integration/
 Executive center acceptance and live GitHub screenshots: [executive center acceptance](docs/integration/executive-center-acceptance.md).
 
 Proactive supervision and voice latency evidence: [attention acceptance](docs/integration/attention-acceptance.md).
+
+Sidebar stability and GitHub/Linear login: [sidebar and OAuth acceptance](docs/integration/sidebar-oauth-acceptance.md).

@@ -228,3 +228,26 @@ ledger bytes. It does not prove physical microphone/speaker acoustics or full pr
 alone runs it. `MET-51` tracks remaining voice latency: ASR/RTC startup overlap is implemented, while
 input FIFO/realtime replay and tool-capable reply buffering remain separate contributors. Never
 claim end-to-end speedup from a component-only or unversioned historical timing sample.
+
+## Sidebar and OAuth (MET-52/MET-53, 2026-10-30)
+
+`browse-center` changes the sidebar category without replacing, hiding or interrupting displayed
+work. Selecting an actual item uses `open-center` or its review/canvas command. Optional snapshot
+`contentSequence` and effect `baseContentSequence` distinguish sidebar-only revisions from content
+changes: queued agent operations may tolerate the former only when the acknowledged content still
+matches. Preserve old payload compatibility and reject stale content receipts. Recent sidebar entries
+are actual canvases; generic category tabs and a second main-pane item list are not navigation.
+
+`shared/contracts/oauth.ts` exposes only profile/presence/status metadata and fixed error codes.
+`main/oauth/` owns browser authorization-code login, state, PKCE, the temporary loopback listener,
+OS-encrypted persistence and refresh. `renderer/oauth/` owns login controls and bounded read-only
+status polling. Integration composes these in the root app, router and `main/services.ts`; existing
+GitHub/Linear clients and workers consume that one credential source. OAuth takes precedence over
+manual `.env` tokens. Refresh failure must not switch silently to another account's manual token.
+Disconnect clears the selected OAuth session and manual token, while retaining registered app
+credentials. Account changes fence old requests and clear fetched provider queues before refresh.
+
+Registration uses the active `.env`; callbacks are `http://127.0.0.1:43187/oauth/github/callback`
+and `http://127.0.0.1:43187/oauth/linear/callback`. See `docs/integration/oauth-setup.md`.
+`bun run test:oauth` uses the actual built Electron UI/preload/IPC, HTTP callback and OS encryption
+with controlled provider transport. Root alone runs it. It is not live provider consent verification.
