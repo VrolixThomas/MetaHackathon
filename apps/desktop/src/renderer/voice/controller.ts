@@ -195,6 +195,7 @@ export function createVoiceController(options: VoiceControllerOptions): VoiceCon
 		const turn = active;
 		if (!turn) return;
 		if (error) turn.failure ??= error;
+		const recoverable = origin === "agent" || turn.claimId !== null;
 		detach(turn);
 		cancelRemote(turn, reason);
 		publish({
@@ -208,7 +209,7 @@ export function createVoiceController(options: VoiceControllerOptions): VoiceCon
 						status: "failed",
 						error: error.message || "Voice failed",
 						origin,
-						recoverable: origin === "agent",
+						recoverable,
 					}
 				: {
 						status: "cancelled",
@@ -216,9 +217,7 @@ export function createVoiceController(options: VoiceControllerOptions): VoiceCon
 					}
 		);
 		if (error)
-			reportTurnFailure(error, { ...turn.identity, origin, recoverable: origin === "agent" }, () =>
-				report(error)
-			);
+			reportTurnFailure(error, { ...turn.identity, origin, recoverable }, () => report(error));
 	}
 	function end(turn: Turn, result: VoiceTurnEnd) {
 		try {

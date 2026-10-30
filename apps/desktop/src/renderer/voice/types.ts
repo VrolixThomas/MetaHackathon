@@ -88,7 +88,7 @@ export type VoiceTurnEnd =
 			status: "failed";
 			error: string;
 			origin: "agent" | "voice" | "media" | "controller";
-			/** Only agent failures preserve a healthy, explicitly opened hands-free session. */
+			/** Agent and reply-only peer failures preserve a healthy, explicitly opened hands-free session. */
 			recoverable: boolean;
 	  };
 export type VoiceControllerOptions = {

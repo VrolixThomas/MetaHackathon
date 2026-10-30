@@ -1007,3 +1007,40 @@ test("real barge-in cancels attention and captures actual onset PCM in the same 
 	await until(() => h.starts.length === 1);
 	assert.equal(h.starts[0]?.text, "Hello", "Only real microphone release creates a user message");
 });
+
+for (const stage of ["poll", "synthesis", "hardware"] as const) {
+	test(`attention ${stage} failure only closes the hardware session for actual hardware failure`, async () => {
+		const h = harness();
+		h.options.agent.attend = async (input) => ({ ...identity(input), status: "running" });
+		const originalSpeak = h.options.voice.speak;
+		const originalPoll = h.options.voice.poll;
+		if (stage === "synthesis")
+			h.options.voice.speak = async () => {
+				throw new Error("Peer request cancelled");
+			};
+		if (stage === "poll")
+			h.options.voice.poll = async () => {
+				throw new Error("Peer request cancelled");
+			};
+		if (stage === "hardware") h.keepSpeaking();
+		await h.voice.startListening();
+		h.feed();
+		assert.equal(h.voice.startAttention(`failed-${stage}`).status, "started");
+		if (stage === "hardware") {
+			await until(() => h.speaks.length === 1);
+			h.sessions[0]?.observer.failed(new Error("Hardware disconnected"));
+		}
+		await until(() => h.ends.length === 1 && h.errors.length === 1);
+		assert.equal(h.ends[0]?.result.status, "failed");
+		assert.equal(h.sessions[0]?.closed, stage === "hardware");
+		assert.equal(h.voice.getSessionSnapshot().phase, stage === "hardware" ? "error" : "listening");
+		if (stage !== "hardware") {
+			h.options.voice.speak = originalSpeak;
+			h.options.voice.poll = originalPoll;
+			h.feed(tone(), undefined, 15);
+			h.feed(undefined, undefined, 35);
+			await until(() => h.starts.length === 1);
+			assert.equal(h.sessions.length, 1);
+		}
+	});
+}

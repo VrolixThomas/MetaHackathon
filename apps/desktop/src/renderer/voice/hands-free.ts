@@ -103,6 +103,7 @@ export function createHandsFreeVoiceController(
 	}
 	function fail(current: Session, error: Error) {
 		if (session !== current) return;
+		current.failure ??= error.message;
 		if (voice.getIdentity() && turnObserver) {
 			// Route through the existing first-failure/cancel path whenever a turn exists.
 			turnObserver.disconnected(error);
@@ -133,7 +134,11 @@ export function createHandsFreeVoiceController(
 			if (session.capture) session.capture.media = media;
 			return media;
 		},
-		onTurnEnd: (identity, result) => {
+		onTurnEnd: (identity, rawResult) => {
+			const result =
+				rawResult.status === "failed" && session === turnSession && session?.failure
+					? { ...rawResult, recoverable: false }
+					: rawResult;
 			if (session && session === turnSession) {
 				if (session.capture?.identity && sameTurn(identity, session.capture.identity))
 					session.capture = null;
@@ -166,7 +171,7 @@ export function createHandsFreeVoiceController(
 				return;
 			// The original report follows onTurnEnd. It must not undo recovery or poison
 			// this hardware session's fatal-error fence for a later utterance.
-			if (failure?.recoverable) {
+			if (failure?.recoverable && !owner.failure) {
 				if (session === owner) report(error);
 				return;
 			}
