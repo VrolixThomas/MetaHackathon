@@ -195,11 +195,24 @@ export function parseDayState(raw: unknown): DayState {
 				(preparation.job && preparation.job.id !== item.jobId))
 		)
 			throw new Error("Day worker mismatch");
+		if (preparation?.job) {
+			const internal = preparation.job.internal;
+			if (
+				!internal ||
+				internal.workspaceId !== item.workspaceId ||
+				internal.ownerUserId !== item.ownerUserId ||
+				internal.itemId !== item.id ||
+				internal.requestId !== preparation.requestId
+			)
+				throw new Error("Day worker origin mismatch");
+		}
 		if (
 			item.reviewedAt &&
 			(item.acceptance !== "accepted" ||
 				(preparation?.job &&
-					(preparation.job.state !== "ready" || item.reviewedHeadSha !== preparation.job.headSha)))
+					(preparation.job.state !== "ready" ||
+						preparation.job.internal?.stage !== "admitted" ||
+						item.reviewedHeadSha !== preparation.job.headSha)))
 		)
 			throw new Error("Day review mismatch");
 		if (record.linear?.id !== (item.linearIssueId ?? undefined))
