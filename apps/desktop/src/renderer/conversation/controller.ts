@@ -12,6 +12,7 @@ import type {
 } from "../../shared/contracts";
 import type { PreparedController } from "../prepared/controller";
 import { bounded, delay } from "../voice/async";
+import type { ReplyStartResult } from "../voice/types";
 import type { ConversationApi } from "./api";
 import { conversationErrorMessage } from "./errors";
 
@@ -36,14 +37,20 @@ export type VoiceHandle = {
 	interrupt(reason?: CancelTurnInput["reason"]): void;
 	dispose(): void;
 };
+export type AttentionDelivery = "spoken" | "interrupted" | "failed";
+export type AttentionStartResult =
+	| { status: "started"; identity: TurnIdentity; completion: Promise<AttentionDelivery> }
+	| { status: "unavailable" };
 export type HandsFreeHandle = {
+	canStartAttention?(): boolean;
+	startAttention?(claimId: string): ReplyStartResult;
 	start(): Promise<void>;
 	stop(): void;
 	interrupt(): void;
 };
 type Active = TurnIdentity & {
 	abort: AbortController;
-	source: Exchange["source"];
+	source: Exchange["source"] | "attention";
 	context: Pick<ConversationTurnInput, "prId" | "screen" | "workspace">;
 };
 type WorkspacePort = {
@@ -56,6 +63,9 @@ type WorkspacePort = {
 };
 export type ConversationState = {
 	exchanges: Exchange[];
+	/** Assistant initiative is ephemeral and never becomes an invented user exchange. */
+	attention: (TurnIdentity & { source: "attention"; answer: string }) | null;
+	attentionReady: boolean;
 	active: TurnIdentity | null;
 	phase: Phase | "idle" | "connecting";
 	config: AppConfiguration | null;
@@ -91,6 +101,10 @@ export function createConversationController(
 	let voice: VoiceHandle | null = null;
 	let handsFree: HandsFreeHandle | null = null;
 	let handsFreeEpoch = 0;
+	let attentionCompletion: {
+		turn: TurnIdentity | null;
+		resolve(result: AttentionDelivery): void;
+	} | null = null;
 	let review: Pick<PreparedController, "getContext" | "applyAction"> | null = null;
 	let workspace: WorkspacePort | null = null;
 	let disposed = false;
@@ -102,6 +116,8 @@ export function createConversationController(
 	let voiceTimer: ReturnType<typeof setTimeout> | undefined;
 	const store = createStore<ConversationState>(() => ({
 		exchanges: [],
+		attention: null,
+		attentionReady: false,
 		active: null,
 		phase: "idle",
 		config: null,
@@ -125,23 +141,82 @@ export function createConversationController(
 			exchanges: state.exchanges.map((entry) =>
 				same(entry, turn) ? { ...entry, ...patch } : entry
 			),
+			...(state.attention && same(state.attention, turn) && patch.answer !== undefined
+				? { attention: { ...state.attention, answer: patch.answer } }
+				: {}),
 		}));
 	};
 	const cancelRemote = (turn: TurnIdentity, reason: CancelTurnInput["reason"]) => {
 		void api.cancel({ ...identity(turn), requestId: id(), reason }).catch(() => {});
 	};
-	function cancelActive(reason: CancelTurnInput["reason"] = "user", keepListening = false) {
+	function resolveAttention(turn: TurnIdentity, result: AttentionDelivery) {
+		const pending = attentionCompletion;
+		if (!pending?.turn || !same(pending.turn, turn)) return;
+		attentionCompletion = null;
+		pending.resolve(result);
+	}
+	function canStartAttention() {
+		const state = store.getState();
+		return (
+			!disposed &&
+			!active &&
+			!attentionCompletion &&
+			!captureMode &&
+			state.phase === "idle" &&
+			state.handsFree &&
+			!state.handsFreeStarting &&
+			!state.configBusy &&
+			state.voice?.phase === "ready" &&
+			!!handsFree?.canStartAttention?.() &&
+			!!handsFree.startAttention
+		);
+	}
+	function startAttention(claimId: string): AttentionStartResult {
+		if (!canStartAttention()) return { status: "unavailable" };
+		let resolve!: (result: AttentionDelivery) => void;
+		const completion = new Promise<AttentionDelivery>((done) => {
+			resolve = done;
+		});
+		const pending = { turn: null as TurnIdentity | null, resolve };
+		attentionCompletion = pending;
+		try {
+			const result = handsFree?.startAttention?.(claimId);
+			if (result?.status === "started") {
+				if (
+					!pending.turn ||
+					!same(pending.turn, result.identity) ||
+					(attentionCompletion === pending && (!active || !same(active, result.identity)))
+				) {
+					if (active?.source === "attention") cancelActive("user", true);
+					if (attentionCompletion === pending) attentionCompletion = null;
+					resolve("failed");
+				}
+				return { ...result, completion };
+			}
+		} catch {
+			resolve("failed");
+		}
+		if (attentionCompletion === pending) attentionCompletion = null;
+		return { status: "unavailable" };
+	}
+	function cancelActive(
+		reason: CancelTurnInput["reason"] = "user",
+		keepListening = false,
+		attentionResult: AttentionDelivery = "interrupted"
+	) {
 		captureMode = null;
 		captureEpoch++;
 		const old = active;
 		active = null;
 		if (old) {
+			resolveAttention(old, attentionResult);
 			old.abort.abort();
 			store.setState((state) => ({
 				exchanges: state.exchanges.map((entry) =>
 					same(entry, old) ? { ...entry, phase: "cancelled" } : entry
 				),
 				active: null,
+				attention: null,
 				phase: "idle",
 			}));
 			if (old.source === "typed") cancelRemote(old, reason);
@@ -190,30 +265,36 @@ export function createConversationController(
 		turnId: id(),
 		generation: ++generation,
 	});
-	function begin(turn: TurnIdentity, source: Exchange["source"], question: string) {
+	function begin(turn: TurnIdentity, source: Active["source"], question: string) {
 		if (disposed || turn.sessionId !== sessionId || turn.generation !== generation) return false;
 		if (active && same(active, turn)) return true;
 		if (turn.generation <= lastStartedGeneration) return false;
 		lastStartedGeneration = turn.generation;
 		if (active) {
+			resolveAttention(active, "interrupted");
 			active.abort.abort();
 			if (active.source === "typed") cancelRemote(active, "push-to-talk");
 		}
+		if (source === "attention" && attentionCompletion) attentionCompletion.turn = identity(turn);
 		active = { ...turn, source, abort: new AbortController(), context: getConversationContext() };
 		store.setState((state) => ({
 			active: identity(turn),
 			phase: source === "voice" ? "connecting" : "thinking",
 			error: "",
-			exchanges: [
-				...state.exchanges,
-				{
-					...turn,
-					source,
-					question,
-					answer: "",
-					phase: source === "voice" ? ("listening" as const) : ("thinking" as const),
-				},
-			].slice(-100),
+			attention: source === "attention" ? { ...turn, source, answer: "" } : null,
+			exchanges:
+				source === "attention"
+					? state.exchanges
+					: [
+							...state.exchanges,
+							{
+								...turn,
+								source,
+								question,
+								answer: "",
+								phase: source === "voice" ? ("listening" as const) : ("thinking" as const),
+							},
+						].slice(-100),
 		}));
 		return true;
 	}
@@ -224,11 +305,15 @@ export function createConversationController(
 		preserveListening = false
 	) {
 		if (!live(turn)) return;
+		resolveAttention(
+			turn,
+			phase === "complete" ? "spoken" : phase === "cancelled" ? "interrupted" : "failed"
+		);
 		updateExchange(turn, { phase });
 		active?.abort.abort();
 		active = null;
 		captureMode = null;
-		store.setState({ active: null, phase: "idle", error });
+		store.setState({ active: null, attention: null, phase: "idle", error });
 		if (phase === "error" && !preserveListening) {
 			handsFreeEpoch++;
 			store.setState({ handsFree: false, handsFreeStarting: false });
@@ -549,6 +634,14 @@ export function createConversationController(
 		submit,
 		stop,
 		startConversation,
+		canStartAttention,
+		startAttention,
+		interruptAttention: () => {
+			if (active?.source === "attention") cancelActive("user", store.getState().handsFree);
+		},
+		attentionEligibilityChanged: () => {
+			if (!disposed) store.setState({ attentionReady: !!handsFree?.canStartAttention?.() });
+		},
 		endConversation: () => stop(),
 		toggleConversation: () => {
 			if (store.getState().handsFree || store.getState().handsFreeStarting) stop();
@@ -578,7 +671,7 @@ export function createConversationController(
 			if (disposed) return;
 			handsFreeEpoch++;
 			store.setState({ handsFree: false, handsFreeStarting: false });
-			cancelActive();
+			cancelActive("user", false, error ? "failed" : "interrupted");
 			if (error)
 				store.setState({
 					error: conversationErrorMessage(error, store.getState().config?.microphone),
@@ -589,15 +682,18 @@ export function createConversationController(
 				active.context = { prId: input.prId, screen: input.screen, workspace: input.workspace };
 			updateExchange(input, { requestId: input.requestId });
 		},
+		beginAttention: (turn: TurnIdentity) => begin(turn, "attention", ""),
 		beginVoice: (turn: TurnIdentity) => begin(turn, "voice", ""),
-		transcript: (turn: TurnIdentity, text: string) => updateExchange(turn, { question: text }),
+		transcript: (turn: TurnIdentity, text: string) => {
+			if (active?.source === "voice") updateExchange(turn, { question: text });
+		},
 		answer: (turn: TurnIdentity, text: string) => updateExchange(turn, { answer: text }),
 		finishVoice: finish,
 		voicePhase: (phase: ConversationState["phase"]) => {
-			if (active?.source === "voice") store.setState({ phase });
+			if (active && active.source !== "typed") store.setState({ phase });
 		},
 		voiceError: (error: unknown) => {
-			if (!disposed && (!active || active.source === "voice"))
+			if (!disposed && (!active || active.source !== "typed"))
 				store.setState({
 					error: conversationErrorMessage(error, store.getState().config?.microphone),
 				});

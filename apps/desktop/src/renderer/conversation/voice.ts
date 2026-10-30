@@ -6,6 +6,8 @@ import {
 	VoicePollSchema,
 } from "../../main/voice/protocol";
 import {
+	AgentTurnStatusSchema,
+	ConversationAttentionInputSchema,
 	type ConversationDiagnostic,
 	ConversationTurnInputSchema,
 	type TurnIdentity,
@@ -13,6 +15,7 @@ import {
 	VoiceDiagnosticSchema,
 } from "../../shared/contracts";
 import {
+	type HandsFreeAudioFactory,
 	type MediaFactory,
 	type VoiceControllerOptions,
 	createHandsFreeVoiceController,
@@ -26,7 +29,8 @@ import { conversationErrorMessage } from "./errors";
 export function connectConversationVoice(
 	api: ConversationApi,
 	ui: ConversationController,
-	media?: MediaFactory
+	media?: MediaFactory,
+	handsFreeAudio?: HandsFreeAudioFactory
 ) {
 	const onlyTurn = ({ sessionId, turnId, generation }: TurnIdentity): TurnIdentity => ({
 		sessionId,
@@ -35,6 +39,7 @@ export function connectConversationVoice(
 	});
 	const starts = new Map<string, { at: number; stages: Set<string> }>();
 	let lastTurn: TurnIdentity | undefined;
+	let lastSource: "voice" | "attention" = "voice";
 	const trace = (
 		stage: ConversationDiagnostic["stage"],
 		turn?: TurnIdentity,
@@ -62,6 +67,14 @@ export function connectConversationVoice(
 		allocateIdentity: ui.allocateIdentity,
 		getConversationContext: ui.getConversationContext,
 		agent: {
+			attend: async (input, signal) => {
+				signal.throwIfAborted();
+				const turn = ConversationAttentionInputSchema.parse(input);
+				trace("agent-start", onlyTurn(turn));
+				return TurnIdentitySchema.extend({ status: AgentTurnStatusSchema }).parse(
+					await api.call("mutation", "conversation.attend", turn)
+				);
+			},
 			start: (input, signal) => {
 				signal.throwIfAborted();
 				const turn = ConversationTurnInputSchema.parse(input);
@@ -97,15 +110,17 @@ export function connectConversationVoice(
 					await call(signal, "query", "voice.poll", VoicePollSchema.parse(input))
 				),
 		},
-		onTurnStart: (turn) => {
-			if (!ui.beginVoice(turn)) throw new Error("Stale conversation identity");
+		onTurnStart: (turn, source) => {
+			if (!(source === "attention" ? ui.beginAttention(turn) : ui.beginVoice(turn)))
+				throw new Error("Stale conversation identity");
 			lastTurn = turn;
+			lastSource = source;
 			starts.set(JSON.stringify(turn), { at: performance.now(), stages: new Set() });
 			if (starts.size > 128) {
 				const first = starts.keys().next().value;
 				if (first) starts.delete(first);
 			}
-			trace("speech-start", turn);
+			if (source === "voice") trace("speech-start", turn);
 		},
 		onConversationAction: async (action, signal) => {
 			await ui.applyConversationAction(action, signal);
@@ -184,7 +199,10 @@ export function connectConversationVoice(
 			voice.dispose();
 		};
 	}
-	const conversation = createHandsFreeVoiceController(options);
+	const conversation = createHandsFreeVoiceController({
+		...options,
+		...(handsFreeAudio ? { audio: handsFreeAudio } : {}),
+	});
 	ui.attachVoice({
 		beginCapture: () => {
 			void ui.startConversation();
@@ -195,12 +213,15 @@ export function connectConversationVoice(
 	});
 	ui.attachHandsFree({
 		start: () => conversation.startListening(),
+		canStartAttention: () => conversation.canStartAttention(),
+		startAttention: (claimId) => conversation.startAttention(claimId),
 		stop: () => conversation.stopListening(),
 		interrupt: () => conversation.interrupt(),
 	});
 	const unsubscribe = conversation.subscribe(() => {
 		const session = conversation.getSessionSnapshot();
-		if (session.phase === "responding" && lastTurn) trace("speech-ended", lastTurn);
+		if (session.phase === "responding" && lastTurn && lastSource === "voice")
+			trace("speech-ended", lastTurn);
 		const phase = conversation.getPhase();
 		ui.voicePhase(
 			session.phase === "capturing" && phase === "idle"
@@ -209,6 +230,7 @@ export function connectConversationVoice(
 					? "transcribing"
 					: phase
 		);
+		ui.attentionEligibilityChanged();
 		const state = ui.store.getState();
 		if (
 			(state.handsFree || state.handsFreeStarting) &&
