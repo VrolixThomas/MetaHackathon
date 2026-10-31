@@ -6,6 +6,8 @@ import type { HubController } from "../command-center/controller";
 import { SlackConnections } from "../day/SlackConnections";
 import type { DayController } from "../day/controller";
 import { OAuthConnections, useOAuth } from "../oauth";
+import { PRCommentControl } from "../pr-comments";
+import type { PRFixController } from "../pr-fixes";
 import { ReviewInbox } from "../prepared/Inbox";
 import { ReviewWorkspace } from "../prepared/ReviewWorkspace";
 import type { PreparedController } from "../prepared/controller";
@@ -16,6 +18,7 @@ import { WorkspaceDialog } from "../workspace/WorkspaceDialog";
 import type { WorkspaceController } from "../workspace/controller";
 import type { LocalBrowserController } from "../workspace/local-browser";
 import { VoiceBar } from "./VoiceBar";
+import type { ConversationApi } from "./api";
 import type { ConversationController } from "./controller";
 
 export function Configuration({
@@ -173,6 +176,9 @@ export function ConversationApp({
 	hub,
 	day,
 	slack,
+	prCommentEpoch = 0,
+	apiCall,
+	fixes,
 }: {
 	controller: ConversationController;
 	reviews: PreparedController;
@@ -181,6 +187,9 @@ export function ConversationApp({
 	hub?: HubController;
 	day?: DayController;
 	slack?: SlackBrowseController;
+	prCommentEpoch?: number;
+	apiCall?: ConversationApi["call"];
+	fixes?: PRFixController;
 }) {
 	const state = useStore(controller.store);
 	const prepared = useStore(reviews.store);
@@ -195,6 +204,7 @@ export function ConversationApp({
 		setOverlayError("Could not hide the local browser. Close it and try again.");
 	};
 	const [conversationOpen, setConversationOpen] = useState(false);
+	const [commentOpen, setCommentOpen] = useState(false);
 	const [url, setUrl] = useState("");
 	const [draft, setDraft] = useState("");
 	const scroll = useRef<HTMLDivElement>(null);
@@ -251,6 +261,16 @@ export function ConversationApp({
 					)}
 					<span aria-hidden="true">⌄</span>
 				</button>
+				{apiCall && (
+					<PRCommentControl
+						key={prCommentEpoch}
+						call={apiCall}
+						reviews={reviews}
+						beforeOpen={hideNativePage}
+						onOpenError={overlayFailed}
+						onOpenChange={setCommentOpen}
+					/>
+				)}
 				<button
 					type="button"
 					className="quiet more-toggle"
@@ -284,6 +304,7 @@ export function ConversationApp({
 						hub={hub}
 						day={day}
 						slack={slack}
+						fixes={fixes}
 						workspace={workspace}
 						conversationOpen={conversationOpen}
 						onConversation={() => setConversationOpen((current) => !current)}
@@ -292,7 +313,7 @@ export function ConversationApp({
 				)}
 				<WorkSplit
 					browser={!workspace && local.page ? browser : undefined}
-					obscured={overlay !== null}
+					obscured={overlay !== null || commentOpen}
 				>
 					<main
 						className={`conversation-main work-area ${workspace ? "canvas-conversation" : reviewOpen ? "review-open" : ""}`}
@@ -420,11 +441,12 @@ export function ConversationApp({
 									hub={hub}
 									day={day}
 									slack={slack}
+									fixes={fixes}
 									onManualInteraction={controller.interruptReply}
 									controller={workspace}
 									reviews={reviews}
 									browser={browser}
-									obscured={overlay !== null}
+									obscured={overlay !== null || commentOpen}
 									onOpenRepository={openRepository}
 									onOpenSettings={() => setOverlay("configuration")}
 								/>

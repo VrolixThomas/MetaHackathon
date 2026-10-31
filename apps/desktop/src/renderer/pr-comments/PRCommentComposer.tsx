@@ -20,12 +20,14 @@ export function PRCommentButton({
 		controller.getSnapshot,
 		controller.getSnapshot
 	);
+	const context = preparedCommentContext(review);
+	if (!context && !state.open && !state.request) return null;
 	return (
 		<button
 			type="button"
 			aria-haspopup="dialog"
 			aria-expanded={state.open}
-			disabled={!preparedCommentContext(review) && !state.request}
+			disabled={!context && !state.request}
 			onClick={controller.open}
 		>
 			{state.request ? "View PR comment" : "Add PR comment"}
@@ -192,17 +194,28 @@ export function PRCommentControl({
 	reviews,
 	beforeOpen,
 	onOpenError,
+	onOpenChange,
 }: {
 	call: PRCommentCall;
 	reviews: PreparedController;
 	beforeOpen?: () => Promise<void>;
 	onOpenError?: () => void;
+	onOpenChange?: (open: boolean) => void;
 }) {
 	const [controller] = useState(() =>
 		createPRCommentController(createPRCommentApi(call), () =>
 			preparedCommentContext(reviews.store.getState())
 		)
 	);
+	const open = useSyncExternalStore(
+		controller.subscribe,
+		() => controller.getSnapshot().open,
+		() => false
+	);
+	useEffect(() => {
+		onOpenChange?.(open);
+		return () => onOpenChange?.(false);
+	}, [open, onOpenChange]);
 	useEffect(() => {
 		const unsubscribe = reviews.store.subscribe(controller.refreshContext);
 		controller.refreshContext();

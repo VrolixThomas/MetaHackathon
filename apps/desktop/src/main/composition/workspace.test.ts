@@ -961,3 +961,72 @@ it("sidebar browsing acknowledges only the category and preserves the displayed 
 	assert.equal(h.state.openCalls.length, 1);
 	assert.equal(h.state.presented, true);
 });
+
+const emptyFixHub: NonNullable<WorkspaceCoordinatorPorts["hubSnapshot"]> = async () => ({
+	sequence: 0,
+	refreshedAt: null,
+	refreshing: false,
+	viewer: { githubLogin: null, linearName: null },
+	connections: { github: false, linear: false, model: false },
+	repositories: [],
+	reviews: [],
+	tickets: [],
+	jobs: [],
+	notices: [],
+	preferences: {
+		linearTeamIds: [],
+		linearProjectIds: [],
+		maxWorkers: 2,
+		autoApplySuggestions: false,
+	},
+	errors: [],
+});
+
+it("proposed fix file receipts pin the actual candidate and reject a changed head before narration", async (t) => {
+	let head = "c".repeat(40);
+	const h = harness(t, {
+		hubSnapshot: emptyFixHub,
+		prFixTarget: async (target) => ({
+			id: target,
+			title: "Proposed fix",
+			source: { id: "fix", baseSha: "b".repeat(40), headSha: head, path: "src/fix.ts" },
+		}),
+	});
+	const action = await h.prepare({
+		kind: "open-center",
+		section: "fixes",
+		selectedId: "fix?file=src%2Ffix.ts",
+	});
+	const canvas = action.effect.snapshot.canvases.find(
+		(row) => row.id === action.effect.snapshot.primaryId
+	);
+	assert.ok(canvas?.kind === "center");
+	assert.equal(canvas.fixSource?.headSha, head);
+	head = "d".repeat(40);
+	await assert.rejects(h.apply(action), /suggested fix changed/);
+	assert.equal((await h.coordinator.observe("session")).workspace.sequence, 0);
+});
+
+it("a current proposed fix file settles through the shared durable workspace receipt", async (t) => {
+	const source = {
+		id: "fix",
+		baseSha: "b".repeat(40),
+		headSha: "c".repeat(40),
+		path: "src/fix.ts",
+	};
+	const h = harness(t, {
+		hubSnapshot: emptyFixHub,
+		prFixTarget: async (target) => ({ id: target, title: "src/fix.ts", source }),
+	});
+	const action = await h.prepare({
+		kind: "open-center",
+		section: "fixes",
+		selectedId: "fix?file=src%2Ffix.ts",
+	});
+	await h.apply(action);
+	const actual = (await h.coordinator.observe("session")).workspace;
+	const canvas = actual.canvases.find((row) => row.id === actual.primaryId);
+	assert.ok(canvas?.kind === "center");
+	assert.deepEqual(canvas.fixSource, source);
+	assert.equal(actual.centerSection, "fixes");
+});

@@ -23,7 +23,9 @@
 		"test:attention": "bun run --filter @metahackathon/desktop test:attention",
 		"test:oauth": "bun run --filter @metahackathon/desktop test:oauth",
 		"test:day": "bun run --filter @metahackathon/desktop test:day",
-		"test:slack-oauth": "bun run --filter @metahackathon/desktop test:slack-oauth"
+		"test:slack-oauth": "bun run --filter @metahackathon/desktop test:slack-oauth",
+		"test:pr-work": "bun run --filter @metahackathon/desktop test:pr-work",
+		"test:pr-fixes": "bun run --filter @metahackathon/desktop test:pr-fixes"
 	},
 	"devDependencies": {
 		"@biomejs/biome": "1.9.4",

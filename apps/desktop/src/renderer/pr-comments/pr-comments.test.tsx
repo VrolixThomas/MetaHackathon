@@ -182,7 +182,11 @@ test("default prepared-review controller supplies exact actual-file context and 
 				reviews,
 			})
 		);
-		assert.match(empty, /disabled=""/);
+		assert.equal(
+			empty,
+			"",
+			"Startup has no comment action until an actual prepared review is loaded"
+		);
 		assert.doesNotMatch(empty, /<dialog/);
 		await reviews.open(pr.id);
 		const actual = preparedCommentContext(reviews.store.getState());

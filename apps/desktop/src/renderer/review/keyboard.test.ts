@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { it } from "node:test";
-import { isInteractiveTarget, reviewFileStep } from "./keyboard-target";
+import { isInteractiveTarget, reviewFileStep } from "../keyboard-target";
 
 function focusedElement(selector: string) {
 	const element = {

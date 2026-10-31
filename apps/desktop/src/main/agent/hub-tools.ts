@@ -13,6 +13,11 @@ import {
 	IdSchema,
 	type LinearTicket,
 	LinearTicketSchema,
+	type PRFixDetail,
+	PRFixDetailSchema,
+	type PRFixStartInput,
+	type PRFixSummary,
+	PRFixSummarySchema,
 	type PinnedSource,
 	PinnedSourceSchema,
 	type PullRequestFeedback,
@@ -23,6 +28,7 @@ import {
 	WorkJobSchema,
 	WorkLogPageSchema,
 	WorkReviewSchema,
+	encodePRFixViewTarget,
 } from "../../shared/contracts";
 import { abortable, throwIfAborted } from "./cancellation";
 import { type ConversationDayPorts, ConversationDayTools } from "./day-tools";
@@ -37,6 +43,11 @@ import { type ConversationSlackPorts, ConversationSlackTools } from "./slack-too
 import { WorkspaceArgumentError } from "./workspace-tools";
 
 export interface ConversationHubPorts {
+	fixes?: {
+		list(signal?: AbortSignal): Promise<PRFixSummary[]>;
+		detail(id: string, signal?: AbortSignal): Promise<PRFixDetail>;
+		start(input: PRFixStartInput, signal?: AbortSignal): Promise<PRFixSummary>;
+	};
 	/** Optional authenticated Day service; no product fallback when it is absent. */
 	day?: ConversationDayPorts;
 	knowledge?: ConversationKnowledgePorts;
@@ -70,6 +81,11 @@ export interface ConversationHubPorts {
 }
 const empty = z.strictObject({});
 const schemas = {
+	inspect_suggested_fixes: empty,
+	inspect_suggested_fix: z.strictObject({
+		id: IdSchema.max(200),
+		path: z.string().min(1).max(4096).optional(),
+	}),
 	inspect_hub: empty,
 	inspect_ticket: z.strictObject({ id: IdSchema }),
 	inspect_work_job: z.strictObject({ id: IdSchema }),
@@ -109,6 +125,10 @@ const schemas = {
 	queue_notice_announcement: z.strictObject({ noticeIds: z.array(IdSchema).min(1).max(20) }),
 };
 const descriptions: Record<keyof typeof schemas, string> = {
+	inspect_suggested_fixes:
+		"List actual local suggested-fix attempts, including readiness and questions. These remain local candidates; no author approval or publication is implied.",
+	inspect_suggested_fix:
+		"Inspect an actual local candidate and one exact changed file. Returns a bounded verbatim diff/source prefix, pinned base/head, original feedback and actual check receipts. Use the returned workspace command to display the exact file before narrating it as shown. Omitted text remains uninspected.",
 	inspect_hub:
 		"Inspect actual priority counts, incoming requested reviews separately from feedback on your own PRs, own tickets, saved background jobs, pending decisions and unannounced notices. Summaries are bounded; inspect details explicitly.",
 	inspect_ticket:
@@ -334,6 +354,7 @@ export class ConversationHubTools {
 	get tools(): FunctionTool[] {
 		return [
 			...Object.entries(schemas)
+				.filter(([name]) => !name.startsWith("inspect_suggested_") || !!this.ports.fixes)
 				.filter(([name]) => name !== "inspect_work_log" || !!this.ports.jobLog)
 				.map(([name, schema]) => ({
 					type: "function" as const,
@@ -347,6 +368,7 @@ export class ConversationHubTools {
 		];
 	}
 	has(name: string) {
+		if (name.startsWith("inspect_suggested_") && !this.ports.fixes) return false;
 		return (
 			!!this.slack?.has(name) ||
 			!!this.knowledge?.has(name) ||
@@ -549,6 +571,100 @@ export class ConversationHubTools {
 			);
 		}
 		throwIfAborted(this.signal);
+		if (name === "inspect_suggested_fixes" && this.ports.fixes) {
+			const rows = z
+				.array(PRFixSummarySchema)
+				.max(100)
+				.parse(await abortable(this.ports.fixes.list(this.signal), this.signal));
+			const packet = {
+				fixes: rows.slice(0, 20).map((row) => ({
+					id: row.id,
+					prId: row.pr.id,
+					phase: row.phase,
+					summary: clipBytes(row.summary, 1500),
+					question: row.question,
+					headSha: row.headSha,
+					changedFiles: row.changedFiles.slice(0, 30),
+					publication: row.publication,
+				})),
+				truncated:
+					rows.length > 20 ||
+					rows.some((row) => size(row.summary) > 1500 || row.changedFiles.length > 30),
+				display: "not-established",
+				evidencePolicy: policy,
+			};
+			return boundedDetails(packet, [packet.fixes]);
+		}
+		if (name === "inspect_suggested_fix" && this.ports.fixes) {
+			const detail = PRFixDetailSchema.parse(
+				await abortable(this.ports.fixes.detail(args["id"] as string, this.signal), this.signal)
+			);
+			const { fix, review } = detail;
+			if (
+				fix.id !== args["id"] ||
+				fix.baseSha !== fix.pr.headSha ||
+				(review &&
+					(review.job.id !== fix.jobId ||
+						review.job.baseSha !== fix.baseSha ||
+						review.job.headSha !== fix.headSha ||
+						review.job.repository !== fix.pr.repository ||
+						review.files.some(
+							(file) => file.base.commitSha !== fix.baseSha || file.head.commitSha !== fix.headSha
+						)))
+			)
+				throw new GuidedReviewError("The suggested fix did not match its actual pinned source.");
+			if (review) this.allowJob(review.job);
+			const file = args["path"]
+				? review?.files.find((file) => file.path === args["path"])
+				: review?.files[0];
+			if (args["path"] && !file)
+				throw new GuidedReviewError("Select an actual changed file from this fix.");
+			const packet = {
+				fix: {
+					id: fix.id,
+					prId: fix.pr.id,
+					phase: fix.phase,
+					baseSha: fix.baseSha,
+					headSha: fix.headSha,
+					summary: clipBytes(fix.summary, 3000),
+					question: fix.question,
+					feedback: {
+						...fix.feedback,
+						body: clipBytes(fix.feedback.body, 2000),
+						suggestion: fix.feedback.suggestion ? clipBytes(fix.feedback.suggestion, 1000) : null,
+					},
+					checks: fix.checks.slice(0, 8),
+					changedFiles: fix.changedFiles.slice(0, 60),
+					publication: fix.publication,
+				},
+				file: file
+					? {
+							path: file.path,
+							status: file.status,
+							patch: clipBytes(file.patch ?? "", 6000),
+							base: {
+								...file.base,
+								content: file.base.content === null ? null : clipBytes(file.base.content, 3000),
+							},
+							head: {
+								...file.head,
+								content: file.head.content === null ? null : clipBytes(file.head.content, 3000),
+							},
+						}
+					: null,
+				omitted:
+					"Source and diff are bounded exact prefixes; omitted ranges and unselected files remain uninspected.",
+				commandProposal: {
+					kind: "open-center",
+					section: "fixes",
+					selectedId: encodePRFixViewTarget({ id: fix.id, path: file?.path ?? null }),
+				},
+				display: "not-established",
+				truncated: true,
+				evidencePolicy: policy,
+			};
+			return boundedDetails(packet, [packet.fix.checks, packet.fix.changedFiles]);
+		}
 		if (name === "inspect_hub") return this.observe();
 		if (!this.latest) await this.observe();
 		const hub = this.latest as HubSnapshot;
@@ -809,6 +925,32 @@ export class ConversationHubTools {
 				throw new GuidedReviewError(
 					"Inspect actual feedback on your own PR before starting feedback work."
 				);
+			if (this.ports.fixes) {
+				const requestId = `pr-fix-${createHash("sha256")
+					.update(JSON.stringify([this.turn.requestId, args]))
+					.digest("hex")}`;
+				const fix = PRFixSummarySchema.parse(
+					await abortable(
+						this.ports.fixes.start(
+							{ requestId, prId: args["prId"] as string, feedbackId: args["feedbackId"] as string },
+							this.signal
+						),
+						this.signal
+					)
+				);
+				if (fix.pr.id !== args["prId"] || fix.feedback.id !== args["feedbackId"])
+					throw new GuidedReviewError("The fix admission did not match the inspected feedback.");
+				return {
+					fix: { id: fix.id, phase: fix.phase, prId: fix.pr.id, publication: fix.publication },
+					commandProposal: {
+						kind: "open-center",
+						section: "fixes",
+						selectedId: encodePRFixViewTarget({ id: fix.id, path: null }),
+					},
+					display: "not-established",
+					evidencePolicy: policy,
+				};
+			}
 		} else {
 			if (!hub.jobs.some((j) => j.id === args["jobId"]))
 				throw new GuidedReviewError("Use an actual observed saved job ID.");

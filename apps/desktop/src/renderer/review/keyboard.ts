@@ -1,7 +1,7 @@
 import { useEffect } from "react";
+import { isInteractiveTarget } from "../keyboard-target";
 import { useReview } from "./controller";
 import { cancelActiveQuestion } from "./conversation";
-import { isInteractiveTarget } from "./keyboard-target";
 import { cancelRuntimeAction } from "./runtime-actions";
 
 export { isInteractiveTarget };

@@ -2568,3 +2568,148 @@ test("cancelled Slack reader IO through ConversationService cannot narrate late 
 		await service.dispose();
 	}
 });
+
+function required<T>(value: T | null | undefined): T {
+	assert.ok(value != null);
+	return value;
+}
+
+test("suggested-fix tools retain source pins, bound evidence and never imply display", async () => {
+	const h = data();
+	const pr = { ...required(h.hub.reviews[0]).pr, headSha: required(h.job.baseSha) };
+	const feedback = { ...required((await h.ports.feedback(pr.id))[0]), commitSha: pr.headSha };
+	const fix = {
+		id: "fix",
+		jobId: h.job.id,
+		pr,
+		feedback,
+		phase: "ready" as const,
+		summary: "Proposed local correction",
+		question: null,
+		baseSha: required(h.job.baseSha),
+		headSha: h.job.headSha,
+		checks: [],
+		changedFiles: h.job.changedFiles,
+		createdAt: time,
+		updatedAt: time,
+		reviewedAt: null,
+		error: null,
+		publication: "not-published" as const,
+	};
+	const review = await h.ports.reviewWork(h.job.id);
+	review.job = { ...review.job, ticket: null, pullRequest: pr, feedback };
+	required(review.files[0]).head.content = "exact-source\n".repeat(1000);
+	let foreign = false;
+	h.ports.fixes = {
+		list: async () => [fix],
+		start: async () => fix,
+		detail: async () => ({
+			fix,
+			review: foreign ? { ...review, job: { ...review.job, headSha: "c".repeat(40) } } : review,
+		}),
+	};
+	const tools = new ConversationHubTools(h.ports, input, new AbortController().signal);
+	const packet = (await tools.execute(
+		"inspect_suggested_fix",
+		JSON.stringify({ id: fix.id, path: "changed.ts" })
+	)) as { display: string; file: { head: { content: string } }; commandProposal: WorkspaceCommand };
+	assert.equal(packet.display, "not-established");
+	assert.ok(required(required(review.files[0]).head.content).startsWith(packet.file.head.content));
+	assert.ok(Buffer.byteLength(JSON.stringify(packet)) <= 20000);
+	assert.deepEqual(packet.commandProposal, {
+		kind: "open-center",
+		section: "fixes",
+		selectedId: "fix?file=changed.ts",
+	});
+	await assert.rejects(
+		tools.execute("inspect_suggested_fix", JSON.stringify({ id: fix.id, path: "invented.ts" })),
+		/actual changed file/
+	);
+	foreign = true;
+	await assert.rejects(
+		tools.execute("inspect_suggested_fix", JSON.stringify({ id: fix.id })),
+		/pinned source/
+	);
+	assert.equal(h.operations.length, 0);
+});
+
+test("feedback work uses an inspected reviewable candidate instead of the auto-apply job path", async () => {
+	const h = data();
+	const pr = required(h.hub.reviews[0]).pr;
+	const feedback = required((await h.ports.feedback(pr.id))[0]);
+	let starts = 0;
+	const fix = {
+		id: "fix",
+		jobId: "candidate",
+		pr,
+		feedback,
+		phase: "preparing" as const,
+		summary: "",
+		question: null,
+		baseSha: pr.headSha,
+		headSha: null,
+		checks: [],
+		changedFiles: [],
+		createdAt: time,
+		updatedAt: time,
+		reviewedAt: null,
+		error: null,
+		publication: "not-published" as const,
+	};
+	h.ports.fixes = {
+		list: async () => [fix],
+		detail: async () => ({ fix, review: null }),
+		start: async () => {
+			starts++;
+			return fix;
+		},
+	};
+	const tools = new ConversationHubTools(h.ports, input, new AbortController().signal);
+	const args = JSON.stringify({ prId: pr.id, feedbackId: feedback.id });
+	await assert.rejects(tools.execute("start_feedback_work", args), /Inspect actual feedback/);
+	assert.equal(starts, 0);
+	await tools.execute("inspect_pr_feedback", JSON.stringify({ prId: pr.id }));
+	const result = (await tools.execute("start_feedback_work", args)) as {
+		fix: { id: string };
+		display: string;
+	};
+	assert.equal(result.fix.id, fix.id);
+	assert.equal(result.display, "not-established");
+	assert.equal(starts, 1);
+	assert.equal(h.operations.length, 0);
+});
+
+test("large suggested-fix lists stay bounded and absent services expose no read tools", async () => {
+	const h = data();
+	const plain = new ConversationHubTools(h.ports, input, new AbortController().signal);
+	assert.equal(plain.has("inspect_suggested_fixes"), false);
+	const pr = required(h.hub.reviews[0]).pr;
+	const feedback = required((await h.ports.feedback(pr.id))[0]);
+	const fix = {
+		id: "fix",
+		jobId: "candidate",
+		pr,
+		feedback,
+		phase: "preparing" as const,
+		summary: "x".repeat(12000),
+		question: "q".repeat(6000),
+		baseSha: pr.headSha,
+		headSha: null,
+		checks: [],
+		changedFiles: [],
+		createdAt: time,
+		updatedAt: time,
+		reviewedAt: null,
+		error: null,
+		publication: "not-published" as const,
+	};
+	h.ports.fixes = {
+		list: async () => Array.from({ length: 100 }, (_, i) => ({ ...fix, id: `fix-${i}` })),
+		detail: async () => ({ fix, review: null }),
+		start: async () => fix,
+	};
+	const tools = new ConversationHubTools(h.ports, input, new AbortController().signal);
+	const packet = (await tools.execute("inspect_suggested_fixes", "{}")) as { truncated: boolean };
+	assert.equal(packet.truncated, true);
+	assert.ok(Buffer.byteLength(JSON.stringify(packet)) <= 20000);
+});

@@ -1,11 +1,11 @@
 import { z } from "zod";
 import {
-	CodeLocationSchema,
-	CommitShaSchema,
 	type ConfirmCommentInput,
 	ConfirmCommentInputSchema,
 	DraftedCommentSchema,
 	IdSchema,
+	PRCommentCreateInputSchema,
+	PRCommentEditInputSchema,
 } from "../../shared/contracts";
 
 export type PRCommentCall = (
@@ -15,14 +15,7 @@ export type PRCommentCall = (
 ) => Promise<unknown>;
 
 // Integration owns the matching main boundary and shared-contract publication.
-const CreateSchema = z.strictObject({
-	requestId: IdSchema,
-	prId: IdSchema,
-	reviewId: IdSchema,
-	headSha: CommitShaSchema,
-	body: z.string().min(1).max(20000),
-	location: CodeLocationSchema.optional(),
-});
+const CreateSchema = PRCommentCreateInputSchema;
 export type CreatePRComment = z.infer<typeof CreateSchema>;
 
 export function createPRCommentApi(call: PRCommentCall) {
@@ -33,16 +26,7 @@ export function createPRCommentApi(call: PRCommentCall) {
 			),
 		edit: async (draftId: string, body: string) =>
 			DraftedCommentSchema.parse(
-				await call(
-					"mutation",
-					"prComments.edit",
-					z
-						.strictObject({
-							draftId: IdSchema,
-							body: z.string().min(1).max(20000),
-						})
-						.parse({ draftId, body })
-				)
+				await call("mutation", "prComments.edit", PRCommentEditInputSchema.parse({ draftId, body }))
 			),
 		confirm: async (input: ConfirmCommentInput) =>
 			z

@@ -11,6 +11,7 @@ import { CenterCanvas } from "../command-center/CenterCanvas";
 import { FlowCanvas, SourceCanvas } from "../command-center/SourceCanvas";
 import type { HubController } from "../command-center/controller";
 import type { DayController } from "../day/controller";
+import type { PRFixController } from "../pr-fixes";
 import { ReviewWorkspace } from "../prepared/ReviewWorkspace";
 import type { PreparedController } from "../prepared/controller";
 import type { SlackBrowseController } from "../slack";
@@ -51,6 +52,7 @@ export function CanvasWorkspace({
 	hub,
 	day,
 	slack,
+	fixes,
 	onManualInteraction,
 }: {
 	controller: WorkspaceController;
@@ -62,6 +64,7 @@ export function CanvasWorkspace({
 	hub?: HubController;
 	day?: DayController;
 	slack?: SlackBrowseController;
+	fixes?: PRFixController;
 	onManualInteraction?(): void;
 }) {
 	const state = useStore(controller.store);
@@ -103,23 +106,47 @@ export function CanvasWorkspace({
 		primaryCanvas?.kind === "center" && primaryCanvas.section === "slack"
 			? primaryCanvas.selectedId
 			: undefined;
+	const fixSource = primaryCanvas?.kind === "center" ? primaryCanvas.fixSource : undefined;
 	useLayoutEffect(() => {
 		controller.setObscured(blocked);
 		if (sequence === undefined) return;
 		let disposed = false;
 		let secondFrame = 0;
-		const sourceShown = () =>
-			!slackTarget ||
-			[...(host.current?.querySelectorAll<HTMLElement>("[data-slack-target]") ?? [])].some(
-				(element) => {
-					const rect = element.getBoundingClientRect();
-					return (
-						element.getAttribute("data-slack-target") === slackTarget &&
-						rect.width > 0 &&
-						rect.height > 0
-					);
-				}
+		const sourceShown = () => {
+			if (fixSource) {
+				const selector =
+					fixSource.headSha === null && fixSource.path === null
+						? "[data-pr-fix-status-id]"
+						: "[data-pr-fix-id]";
+				return [...(host.current?.querySelectorAll<HTMLElement>(selector) ?? [])].some(
+					(element) => {
+						const rect = element.getBoundingClientRect();
+						return (
+							(element.getAttribute("data-pr-fix-id") ??
+								element.getAttribute("data-pr-fix-status-id")) === fixSource.id &&
+							element.getAttribute("data-pr-fix-head") === (fixSource.headSha ?? "pending") &&
+							element.getAttribute("data-pr-fix-base") === fixSource.baseSha &&
+							element.getAttribute("data-pr-fix-path") === (fixSource.path ?? "") &&
+							rect.width > 0 &&
+							rect.height > 0
+						);
+					}
+				);
+			}
+			return (
+				!slackTarget ||
+				[...(host.current?.querySelectorAll<HTMLElement>("[data-slack-target]") ?? [])].some(
+					(element) => {
+						const rect = element.getBoundingClientRect();
+						return (
+							element.getAttribute("data-slack-target") === slackTarget &&
+							rect.width > 0 &&
+							rect.height > 0
+						);
+					}
+				)
 			);
+		};
 		const frame = requestAnimationFrame(() => {
 			if (!sourceShown()) {
 				controller.presentationFailed(sequence);
@@ -143,7 +170,7 @@ export function CanvasWorkspace({
 			cancelAnimationFrame(frame);
 			cancelAnimationFrame(secondFrame);
 		};
-	}, [controller, browser, sequence, browserShown, blocked, slackTarget]);
+	}, [controller, browser, sequence, browserShown, blocked, slackTarget, fixSource]);
 	const command = (input: WorkspaceCommand) => void controller.command(input);
 	const tabKeys = (event: KeyboardEvent<HTMLDivElement>) => {
 		if (!["ArrowLeft", "ArrowRight", "Home", "End"].includes(event.key)) return;
@@ -168,6 +195,7 @@ export function CanvasWorkspace({
 					hub={hub}
 					day={day}
 					slack={slack}
+					fixes={fixes}
 					beforeNavigate={onManualInteraction}
 					command={command}
 					onSettings={onOpenSettings}

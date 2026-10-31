@@ -13,6 +13,7 @@ import {
 	WorkspaceCommandSchema,
 	type WorkspaceObservation,
 	WorkspaceObservationSchema,
+	decodePRFixViewTarget,
 	decodeSlackViewTarget,
 } from "../../shared/contracts";
 import { abortable, throwIfAborted } from "./cancellation";
@@ -288,6 +289,12 @@ export class ConversationWorkspaceTools {
 			for (const step of command.steps) this.assertInspected(step.location);
 		if (command.kind === "open-center" && command.selectedId && command.section === "slack") {
 			decodeSlackViewTarget(command.selectedId);
+		} else if (
+			command.kind === "open-center" &&
+			command.selectedId &&
+			command.section === "fixes"
+		) {
+			decodePRFixViewTarget(command.selectedId);
 		} else if (command.kind === "open-center" && command.selectedId) {
 			const hub = expected.hub;
 			const ids = hub

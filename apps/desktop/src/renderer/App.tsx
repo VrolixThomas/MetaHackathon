@@ -11,23 +11,48 @@ import { connectConversationVoice } from "./conversation/voice";
 import { createDayApi, createDayController } from "./day";
 import "./day/day.css";
 import { OAuthProvider, createOAuthController } from "./oauth";
+import { createPRFixController } from "./pr-fixes";
 import { createPreparedApi } from "./prepared/api";
 import { createPreparedController } from "./prepared/controller";
+import { connectPreparedFileNavigation } from "./prepared/file-navigation";
 import { createSlackBrowseController } from "./slack";
-import { createWorkspaceController } from "./workspace/controller";
+import { PR_FIX_SOURCE_CHANGED, createWorkspaceController } from "./workspace/controller";
 import { createLocalBrowserController } from "./workspace/local-browser";
 
 export function App() {
+	const [githubEpoch, setGithubEpoch] = useState(0);
 	const [runtime] = useState(() => {
 		const api = createConversationApi((input) => window.electron.trpc.request(input));
 		const controller = createConversationController(api);
 		const day = createDayController(createDayApi(api.call));
 		const dayRef = { current: day };
 		const slack = createSlackBrowseController(api.call);
+		const oauth = createOAuthController(api.call);
+		const fixes = createPRFixController(api.call, {
+			actor: () => {
+				const account = oauth.store.getState().rows.find((row) => row.provider === "github");
+				return account?.phase === "connected"
+					? `${account.source}:${account.account?.id ?? controller.store.getState().account?.login ?? "manual"}`
+					: null;
+			},
+		});
 		const reviews = createPreparedController(createPreparedApi(api.call), controller.sessionId);
 		controller.attachReview(reviews);
 		const browser = createLocalBrowserController(api.call);
 		const workspace = createWorkspaceController(api.call, reviews, browser, controller.sessionId, {
+			ensurePRFixTarget: async (target, expected) => {
+				await fixes.ensureTarget(target);
+				const state = fixes.store.getState();
+				const fix = state.detail?.fix;
+				if (state.loadedTarget !== target || state.detailError || !fix || fix.id !== expected.id)
+					throw new Error("The proposed fix source is unavailable");
+				if (
+					fix.baseSha !== expected.baseSha ||
+					fix.headSha !== expected.headSha ||
+					state.selectedPath !== expected.path
+				)
+					throw new Error(PR_FIX_SOURCE_CHANGED);
+			},
 			onManualChange: controller.interruptReply,
 			ensureSlackTarget: async (target) => {
 				if (slack.store.getState().loadedTarget === target) await slack.refreshCurrent();
@@ -49,8 +74,7 @@ export function App() {
 		});
 		controller.attachWorkspace(workspace);
 		const hub = createHubController(api.call);
-		const oauth = createOAuthController(api.call);
-		return { api, controller, reviews, browser, workspace, hub, oauth, dayRef, slack };
+		return { api, controller, reviews, browser, workspace, hub, oauth, dayRef, slack, fixes };
 	});
 	const [day, setDay] = useState(runtime.dayRef.current);
 	useEffect(() => {
@@ -63,7 +87,29 @@ export function App() {
 		);
 		let accountIdentity: string | undefined;
 		let slackIdentity: string | undefined;
+		let githubIdentity: string | undefined;
 		const disconnectAuth = runtime.oauth.store.subscribe((state) => {
+			const github = state.rows.find((row) => row.provider === "github");
+			const nextGithub = `${github?.source ?? "none"}:${github?.account?.id ?? ""}`;
+			if (githubIdentity !== undefined && githubIdentity !== nextGithub) {
+				setGithubEpoch((value) => value + 1);
+				runtime.controller.interruptReply();
+				runtime.controller.store.setState({ exchanges: [], attention: null });
+				void runtime.api.release(runtime.controller.sessionId).catch(() => {});
+				runtime.fixes.reset();
+				void runtime.fixes.start();
+				const current = runtime.workspace.store.getState().workspace;
+				if (
+					current?.canvases.some(
+						(canvas) =>
+							canvas.id === current.primaryId &&
+							canvas.kind === "center" &&
+							canvas.section === "fixes"
+					)
+				)
+					void runtime.workspace.command({ kind: "open-center", section: "fixes" });
+			}
+			githubIdentity = nextGithub;
 			if (state.rows.length !== OAuthProviderSchema.options.length) return;
 			const slack = state.rows.find((row) => row.provider === "slack");
 			const nextSlack = `${slack?.source ?? "none"}:${slack?.account?.workspaceId ?? ""}:${slack?.account?.id ?? ""}`;
@@ -96,6 +142,11 @@ export function App() {
 			runtime.controller,
 			window
 		);
+		const disconnectFileNavigation = connectPreparedFileNavigation(
+			runtime.reviews,
+			runtime.workspace,
+			window
+		);
 		void runtime.controller.configure();
 		runtime.reviews.start();
 		runtime.browser.start();
@@ -103,6 +154,7 @@ export function App() {
 		runtime.hub.start();
 		runtime.dayRef.current.start();
 		void runtime.slack.start();
+		void runtime.fixes.start();
 		const resetDay = () => {
 			runtime.controller.interruptReply();
 			runtime.slack.reset();
@@ -141,12 +193,14 @@ export function App() {
 			window.removeEventListener("error", recordError);
 			window.removeEventListener("unhandledrejection", recordError);
 			disconnectShortcuts();
+			disconnectFileNavigation();
 			runtime.controller.dispose();
 			runtime.workspace.dispose();
 			runtime.hub.dispose();
 			window.removeEventListener("muse:slack-account-change", resetDay);
 			runtime.dayRef.current.dispose();
 			runtime.slack.dispose();
+			runtime.fixes.dispose();
 			runtime.reviews.dispose();
 			runtime.browser.dispose();
 			disconnectVoice();
@@ -159,12 +213,15 @@ export function App() {
 		<OAuthProvider controller={runtime.oauth}>
 			<ConversationApp
 				controller={runtime.controller}
+				prCommentEpoch={githubEpoch}
+				apiCall={runtime.api.call}
 				reviews={runtime.reviews}
 				browser={runtime.browser}
 				workspace={runtime.workspace}
 				hub={runtime.hub}
 				day={day}
 				slack={runtime.slack}
+				fixes={runtime.fixes}
 			/>
 		</OAuthProvider>
 	);

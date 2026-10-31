@@ -11,9 +11,11 @@ import {
 	AttentionSettleInputSchema,
 	ChatConversationSchema,
 	ChatMessageSchema,
+	ConfirmCommentInputSchema,
 	DayOperateInputSchema,
 	DayOperationResultSchema,
 	DaySnapshotSchema,
+	DraftedCommentSchema,
 	GitHubRepositorySchema,
 	HUB_ERROR_MESSAGES,
 	HubOperationResultSchema,
@@ -27,6 +29,12 @@ import {
 	OAuthStartInputSchema,
 	OAuthStatusListSchema,
 	OAuthStatusSchema,
+	PRCommentCreateInputSchema,
+	PRCommentEditInputSchema,
+	PRFixDetailSchema,
+	PRFixReviewInputSchema,
+	PRFixStartInputSchema,
+	PRFixSummarySchema,
 	PinnedSourceSchema,
 	PullRequestFeedbackSchema,
 	RepositoryChoiceSchema,
@@ -67,6 +75,8 @@ import {
 	getHub,
 	getLocalBrowser,
 	getOAuth,
+	getPRFixes,
+	getPreparedComments,
 	getReviews,
 	getRuntime,
 	getSlackConnection,
@@ -96,6 +106,50 @@ const hubCall = async <T>(work: () => Promise<T>): Promise<T> => {
 };
 // Register feature routers here as the application grows.
 export const appRouter = router({
+	prComments: router({
+		create: publicProcedure
+			.input(PRCommentCreateInputSchema)
+			.output(DraftedCommentSchema)
+			.mutation(({ input }) => getPreparedComments().create(input)),
+		edit: publicProcedure
+			.input(PRCommentEditInputSchema)
+			.output(DraftedCommentSchema)
+			.mutation(({ input }) => getPreparedComments().edit(input)),
+		confirm: publicProcedure
+			.input(ConfirmCommentInputSchema)
+			.output(z.strictObject({ url: z.url() }))
+			.mutation(({ input }) => getPreparedComments().confirm(input)),
+		cancel: publicProcedure
+			.input(z.strictObject({ requestId: IdSchema }))
+			.output(z.void())
+			.mutation(({ input }) => {
+				getPreparedComments().cancel(input.requestId);
+			}),
+	}),
+	prFixes: router({
+		list: publicProcedure
+			.input(z.strictObject({}).optional())
+			.output(z.array(PRFixSummarySchema).max(100))
+			.query(() => getPRFixes().list()),
+		detail: publicProcedure
+			.input(z.strictObject({ id: IdSchema.max(200) }))
+			.output(PRFixDetailSchema)
+			.query(({ input }) => getPRFixes().detail(input.id)),
+		start: publicProcedure
+			.input(PRFixStartInputSchema)
+			.output(PRFixSummarySchema)
+			.mutation(({ input }) => getPRFixes().start(input)),
+		reviewed: publicProcedure
+			.input(PRFixReviewInputSchema)
+			.output(PRFixSummarySchema)
+			.mutation(({ input }) => getPRFixes().markReviewed(input)),
+		cancel: publicProcedure
+			.input(z.strictObject({ id: IdSchema.max(200) }))
+			.output(z.void())
+			.mutation(async ({ input }) => {
+				await getPRFixes().cancel(input.id);
+			}),
+	}),
 	slack: router({
 		conversation: publicProcedure
 			.input(SlackViewTargetSchema.pick({ conversationId: true }))

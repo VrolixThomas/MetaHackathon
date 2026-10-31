@@ -77,6 +77,14 @@ export interface WorkspaceCoordinatorPorts {
 	hubSnapshot?(): Promise<HubSnapshot>;
 	dayItem?(id: string): Promise<{ id: string; title: string }>;
 	slackConversation?(target: string, signal: AbortSignal): Promise<{ id: string; title: string }>;
+	prFixTarget?(
+		target: string,
+		signal: AbortSignal
+	): Promise<{
+		id: string;
+		title: string;
+		source: import("../../shared/contracts").PRFixPresentation;
+	}>;
 	readSource?(location: CodeLocation, signal: AbortSignal): Promise<PinnedSource>;
 	activateReview?(prId: string, signal: AbortSignal): Promise<void>;
 }
@@ -356,6 +364,7 @@ export class WorkspaceCoordinator {
 			case "open-center": {
 				if (!this.ports.hubSnapshot) fail("Command center is unavailable.");
 				const titles = {
+					fixes: "Suggested fixes",
 					slack: "Slack",
 					home: "Home",
 					day: "My day",
@@ -367,11 +376,20 @@ export class WorkspaceCoordinator {
 				};
 				const previous = snapshot.canvases.find((canvas) => canvas.id === "center");
 				let title = titles[command.section];
+				let fixSource: import("../../shared/contracts").PRFixPresentation | undefined;
 				if (command.section === "day" && command.selectedId) {
 					if (!this.ports.dayItem) fail("Your day is unavailable.");
 					const item = await invoke(() => this.ports.dayItem?.(command.selectedId as string));
 					if (!item || item.id !== command.selectedId) fail("This work item is unavailable.");
 					title = item.title.slice(0, 120);
+				} else if (command.section === "fixes" && command.selectedId) {
+					if (!this.ports.prFixTarget) fail("Suggested fixes are unavailable.");
+					const fix = await invoke(() =>
+						this.ports.prFixTarget?.(command.selectedId as string, signal)
+					);
+					if (!fix || fix.id !== command.selectedId) fail("This suggested fix is unavailable.");
+					title = fix.title.slice(0, 120);
+					fixSource = fix.source;
 				} else if (command.section === "slack" && command.selectedId) {
 					if (!this.ports.slackConversation) fail("Slack is unavailable.");
 					const conversation = await invoke(() =>
@@ -406,6 +424,7 @@ export class WorkspaceCoordinator {
 						title,
 						section: command.section,
 						...(command.selectedId ? { selectedId: command.selectedId } : {}),
+						...(fixSource ? { fixSource } : {}),
 					})
 				);
 				snapshot.centerSection = command.section;
@@ -800,6 +819,18 @@ export class WorkspaceCoordinator {
 				const snapshot = clone(receipt.workspace);
 				const checkActual = async () => {
 					const primary = snapshot.canvases.find((canvas) => canvas.id === snapshot.primaryId);
+					if (primary?.kind === "center" && primary.section === "fixes" && primary.selectedId) {
+						if (!this.ports.prFixTarget) fail("Suggested fixes are unavailable.");
+						const current = await this.call(pending.signal, () =>
+							this.ports.prFixTarget?.(primary.selectedId as string, pending.signal)
+						);
+						if (
+							!current ||
+							current.id !== primary.selectedId ||
+							!equal(current.source, primary.fixSource)
+						)
+							fail("This suggested fix changed. Reopen its current revision.");
+					}
 					if (primary?.kind === "center" && primary.section === "day" && primary.selectedId) {
 						if (!this.ports.dayItem) fail("Your day is unavailable.");
 						const currentItem = await this.call(pending.signal, () =>

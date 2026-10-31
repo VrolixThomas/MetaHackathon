@@ -8,7 +8,7 @@ import type {
 import { WORKSPACE_GITHUB_REQUIRED } from "../../shared/contracts";
 import { createPreparedApi } from "../prepared/api";
 import { createPreparedController } from "../prepared/controller";
-import { createWorkspaceController } from "./controller";
+import { PR_FIX_SOURCE_CHANGED, createWorkspaceController } from "./controller";
 import { createLocalBrowserController } from "./local-browser";
 
 const initial: WorkspaceSnapshot = {
@@ -106,6 +106,9 @@ function harness(
 		present?: (input: unknown) => Promise<unknown>;
 		observe?: (workspace: WorkspaceSnapshot, count: number) => Promise<WorkspaceSnapshot>;
 		ensureDayItem?: (id: string) => Promise<void>;
+		ensurePRFixTarget?: NonNullable<
+			Parameters<typeof createWorkspaceController>[4]
+		>["ensurePRFixTarget"];
 	} = {}
 ) {
 	const receipts: WorkspaceActionReceipt[] = [];
@@ -145,6 +148,7 @@ function harness(
 		},
 		renderTimeoutMs: options.timeout ?? 500,
 		ensureDayItem: options.ensureDayItem,
+		ensurePRFixTarget: options.ensurePRFixTarget,
 	});
 	return {
 		controller,
@@ -527,6 +531,61 @@ it("category browsing waits for an active canvas effect without cancelling narra
 		assert.deepEqual(prepared, ["feedback"]);
 		assert.equal(h.interruptions(), 0);
 		assert.equal(h.controller.getContext()?.primaryId, "doc-1");
+	} finally {
+		h.dispose();
+	}
+});
+
+it("manual fix navigation retries once when preparation completes during its initial source read", async () => {
+	let reads = 0;
+	const h = harness({
+		ensurePRFixTarget: async () => {
+			if (++reads === 1) throw new Error(PR_FIX_SOURCE_CHANGED);
+		},
+		prepare: async () =>
+			action(
+				{
+					...initial,
+					sequence: 1,
+					primaryId: "center",
+					centerSection: "fixes",
+					canvases: [
+						{
+							id: "center",
+							kind: "center",
+							section: "fixes",
+							selectedId: "fix",
+							title: "Candidate",
+							revision: 1,
+							fixSource: {
+								id: "fix",
+								baseSha: "b".repeat(40),
+								headSha: reads ? "c".repeat(40) : null,
+								path: reads ? "a.ts" : null,
+							},
+						},
+					],
+				},
+				`fix-${reads}`
+			),
+	});
+	try {
+		await h.controller.start();
+		const navigating = h.controller.command({
+			kind: "open-center",
+			section: "fixes",
+			selectedId: "fix",
+		});
+		await until(() => h.controller.getContext()?.primaryId === "center");
+		h.controller.rendered(1);
+		h.controller.presented(1, null);
+		assert.equal(await navigating, "applied");
+		assert.equal(reads, 2);
+		assert.equal(h.interruptions(), 1);
+		assert.deepEqual(
+			h.receipts.map((row) => row.status),
+			["ignored", "applied"]
+		);
 	} finally {
 		h.dispose();
 	}

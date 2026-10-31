@@ -1,5 +1,5 @@
 import type { ReviewScreen } from "../../shared/contracts";
-import { reviewFileStep } from "../review/keyboard-target";
+import { reviewFileStep } from "../keyboard-target";
 import type { WorkspaceController } from "../workspace/controller";
 import type { PreparedController } from "./controller";
 

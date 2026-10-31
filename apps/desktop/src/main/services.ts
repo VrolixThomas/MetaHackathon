@@ -2,11 +2,17 @@ import { createHash } from "node:crypto";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { TRPCError } from "@trpc/server";
-import type { DayActor, ReviewCache } from "../shared/contracts";
+import {
+	type DayActor,
+	type ReviewCache,
+	SourceRangeRequestSchema,
+	decodePRFixViewTarget,
+} from "../shared/contracts";
 import { ConversationService } from "./agent/conversation";
 import { classifyDayMessage, dayIntakeSourceBinding } from "./agent/day-intake";
 import { MetaClient } from "./agent/meta-client";
 import { prepareReview } from "./agent/prepare-review";
+import { PreparedComments } from "./agent/prepared-comments";
 import { ScreenContextStore } from "./agent/screen-context";
 import { assessSuggestedFix } from "./agent/suggestion-review";
 import { createAgentComposition } from "./composition";
@@ -14,6 +20,7 @@ import { LocalBrowserSurface } from "./composition/browser-surface";
 import { readDaySource } from "./composition/day-source";
 import { ConversationDiagnostics } from "./composition/diagnostics";
 import { createKnowledgeService } from "./composition/knowledge";
+import { sourceFromPRFix } from "./composition/pr-fix-source";
 import { ReviewCoordinator } from "./composition/reviews";
 import { SlackConnection } from "./composition/slack-connection";
 import { SlackReader } from "./composition/slack-reader";
@@ -41,6 +48,7 @@ import { SlackError } from "./slack/types";
 import { AttentionScheduler } from "./work/attention";
 import { CommandCenterService } from "./work/hub";
 import { WorkJobCoordinator } from "./work/jobs";
+import { PRFixService } from "./work/pr-fixes";
 import { ReviewRegistry } from "./work/review-registry";
 
 let runtime: RuntimeService | undefined;
@@ -78,6 +86,54 @@ let attention: AttentionScheduler | undefined;
 let stopAttentionObserver: (() => void) | undefined;
 let reviewRegistry: ReviewRegistry | undefined;
 let hubReviewStore: HubStore | undefined;
+let preparedComments: PreparedComments | undefined;
+let prFixes: PRFixService | undefined;
+let prWorkEpoch = 0;
+let githubCredentialIdentity: string | undefined;
+function retirePRWork() {
+	prWorkEpoch++;
+	conversationService.resetSessions();
+	preparedComments?.invalidate();
+	void prFixes?.invalidate();
+}
+export function getPreparedComments() {
+	if (closing || !preparedComments) throw new Error("PR comments are unavailable");
+	return preparedComments;
+}
+export function getPRFixes() {
+	if (closing || !prFixes) throw new Error("Suggested fixes are unavailable");
+	return prFixes;
+}
+async function readCurrentPR(prId: string, signal: AbortSignal) {
+	const match = /^([^#]+)#([1-9][0-9]*)$/.exec(prId);
+	if (!match) throw new Error("Choose an actual GitHub pull request");
+	return getRuntime().github.readPullRequest(match[1] ?? "", Number(match[2]), signal);
+}
+async function resolvePinnedSource(raw: unknown, signal = AbortSignal.timeout(30_000)) {
+	const request = SourceRangeRequestSchema.parse(raw);
+	if (prFixes) {
+		// A disconnected fix queue must not block ordinary locally pinned repository reads.
+		const fixes = await prFixes.list().catch(() => []);
+		signal.throwIfAborted();
+		for (const fix of fixes) {
+			if (
+				fix.pr.repository === request.repository &&
+				(request.commitSha === fix.headSha || request.commitSha === fix.baseSha)
+			) {
+				const detail = await prFixes.detail(fix.id);
+				signal.throwIfAborted();
+				const revision = request.revision ?? "head";
+				if (detail.review?.files.some((file) => file[revision].path === request.path))
+					return sourceFromPRFix(detail, {
+						...request,
+						revision,
+						endLine: request.endLine ?? request.startLine + 119,
+					});
+			}
+		}
+	}
+	return getHub().source(request, signal);
+}
 let chooseRepository: (() => Promise<{ repository: string; localPath: string } | null>) | undefined;
 export const screenContexts = new ScreenContextStore();
 export const agentComposition = createAgentComposition({
@@ -110,6 +166,11 @@ export const conversationService = new ConversationService(conversationClient, {
 		validate: (input, signal) => getAttention().validate(input, signal),
 	},
 	hub: {
+		fixes: {
+			list: () => getPRFixes().list(),
+			detail: (id) => getPRFixes().detail(id),
+			start: (input) => getPRFixes().start(input),
+		},
 		slack: {
 			actor: async (signal) => {
 				signal?.throwIfAborted();
@@ -139,7 +200,7 @@ export const conversationService = new ConversationService(conversationClient, {
 		jobLog: (id, cursor, limit) => getWorkJobs().log(id, cursor, limit),
 		feedback: (id, signal) => getHub().feedback(id, signal),
 		reviewWork: (id) => getWorkJobs().review(id),
-		source: (request, signal) => getHub().source(request, signal),
+		source: (request, signal) => resolvePinnedSource(request, signal),
 		search: (request, signal) => getHub().search(request, signal),
 	},
 	workspace: {
@@ -608,6 +669,60 @@ export async function initializeHub(
 		directory: join(userDataPath, "work", "git"),
 		getToken: getGitHubToken,
 	});
+	let prAccount: { epoch: number; login: string; expires: number } | undefined;
+	const currentPRAccount = async () => {
+		if (!(await getGitHubToken())) return null;
+		const epoch = prWorkEpoch;
+		if (prAccount?.epoch === epoch && prAccount.expires > Date.now()) return prAccount.login;
+		const account = await github.account();
+		if (epoch !== prWorkEpoch) throw new Error("The GitHub account changed");
+		prAccount = { epoch, login: account.login, expires: Date.now() + 15_000 };
+		return account.login;
+	};
+	preparedComments = new PreparedComments({
+		getEpoch: () => prWorkEpoch,
+		getReview: async (prId, signal) => {
+			await getReviews().getReady(prId, signal);
+			return getReviews().get(prId);
+		},
+		readFile: (input, signal) => getReviews().file(input, signal),
+		readPR: readCurrentPR,
+		post: async (draft, input, signal) => {
+			const pr = await readCurrentPR(draft.prId, signal);
+			if (pr.headSha !== input.expectedHeadSha) throw new Error("The PR head changed");
+			return getRuntime().github.postConfirmedComment(
+				pr,
+				draft,
+				{
+					requestId: input.idempotencyKey,
+					draftId: draft.id,
+					draftRevision: draft.revision,
+					body: draft.body,
+					headSha: draft.headSha,
+					confirmed: true,
+				},
+				signal
+			);
+		},
+	});
+	prFixes = new PRFixService({
+		directory: join(userDataPath, "work", "pr-fixes"),
+		runtime,
+		workerEntry: join(dirname(fileURLToPath(import.meta.url)), "coding-worker.js"),
+		envPath: getConfiguration().path,
+		getEpoch: () => prWorkEpoch,
+		getAccount: currentPRAccount,
+		readSource: async ({ prId, feedbackId }, signal) => {
+			const pr = await readCurrentPR(prId, signal);
+			const repository = (await getHub().snapshot()).repositories.find(
+				(row) => row.repository === pr.repository
+			);
+			const feedback = (await github.feedback(prId, signal)).find((row) => row.id === feedbackId);
+			if (!repository || !feedback) throw new Error("The feedback source is unavailable");
+			return { pr, repository, feedback };
+		},
+		redact,
+	});
 	workJobs = new WorkJobCoordinator({
 		hub,
 		runtime,
@@ -669,7 +784,21 @@ export function initializeWorkspace(userDataPath: string): void {
 			return { id: item.id, title: item.title };
 		},
 		slackConversation: (target, signal) => getSlackReader().target(target, signal),
-		readSource: (location, signal) => getHub().source(location, signal),
+		prFixTarget: async (target, signal) => {
+			const { id, path } = decodePRFixViewTarget(target);
+			const fix = (await getPRFixes().list()).find((fix) => fix.id === id);
+			signal.throwIfAborted();
+			if (!fix) throw new Error("The suggested fix is unavailable");
+			const selected = path ?? fix.changedFiles[0] ?? null;
+			if (selected && !fix.changedFiles.includes(selected))
+				throw new Error("The proposed file is unavailable");
+			return {
+				id: target,
+				title: selected ?? `Fix · ${fix.pr.title}`,
+				source: { id, baseSha: fix.baseSha, headSha: fix.headSha, path: selected },
+			};
+		},
+		readSource: (location, signal) => resolvePinnedSource(location, signal),
 		activateReview: (prId, signal) => reviewRegistry?.activate(prId, signal) ?? Promise.resolve(),
 		getBrowser: () => ({
 			open: async (url, signal) => {
@@ -731,6 +860,7 @@ export function initializeOAuth(
 					? getConfiguration().setLinearToken("")
 					: getConfiguration().clearSlackToken(),
 		onChange: async (provider) => {
+			if (provider === "github") retirePRWork();
 			if (provider === "slack") {
 				conversationService.resetSessions();
 				await refreshSlackAccount?.();
@@ -742,8 +872,22 @@ export function getOAuth() {
 	if (closing || !oauth) throw new Error("Account connections are unavailable");
 	return oauth;
 }
-export function getGitHubToken() {
-	return oauth ? oauth.token("github") : getConfiguration().get("github");
+export async function getGitHubToken() {
+	const token = await (oauth ? oauth.token("github") : getConfiguration().get("github"));
+	const status = oauth
+		? (await oauth.status()).find((row) => row.provider === "github")
+		: undefined;
+	// OAuth token rotation preserves identity; manual token replacement retires its pending work.
+	const identity =
+		status?.source === "oauth"
+			? `oauth:${status.account?.id ?? "unavailable"}`
+			: `manual:${createHash("sha256")
+					.update(token ?? "")
+					.digest("hex")}`;
+	if (githubCredentialIdentity !== undefined && githubCredentialIdentity !== identity)
+		retirePRWork();
+	githubCredentialIdentity = identity;
+	return token;
 }
 export function getLinearAuthorization() {
 	return oauth ? oauth.authorization("linear") : getConfiguration().linearToken();
@@ -858,6 +1002,9 @@ function runtimeForActiveJobs(): RuntimeService {
 export async function disposeRuntime(): Promise<void> {
 	const current = runtime;
 	closing = true;
+	preparedComments?.invalidate();
+	await prFixes?.dispose();
+	await preparedComments?.dispose();
 	const stoppingOAuth = oauth?.dispose().catch(() => {
 		console.warn("Account connection cleanup could not complete.");
 	});

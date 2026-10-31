@@ -4,6 +4,7 @@ import {
 	AgentActionReceiptResultSchema,
 	AgentActionSchema,
 	type BrowserBounds,
+	type PRFixPresentation,
 	WORKSPACE_GITHUB_REQUIRED,
 	type WorkspaceActionReceipt,
 	WorkspaceActionReceiptSchema,
@@ -19,6 +20,7 @@ import type { PreparedController } from "../prepared/controller";
 import type { LocalBrowserController } from "./local-browser";
 
 type Status = "applied" | "ignored";
+export const PR_FIX_SOURCE_CHANGED = "The proposed fix completed while its view was loading.";
 type CanvasAction = Extract<AgentAction, { kind: "workspace-canvas" }>;
 type PendingRender = {
 	sequence: number;
@@ -55,6 +57,7 @@ export function createWorkspaceController(
 		renderTimeoutMs?: number;
 		ensureDayItem?: (id: string) => Promise<void>;
 		ensureSlackTarget?: (target: string) => Promise<void>;
+		ensurePRFixTarget?: (target: string, expected: PRFixPresentation) => Promise<void>;
 	} = {}
 ) {
 	const store = createStore<{
@@ -73,6 +76,7 @@ export function createWorkspaceController(
 	let pending: PendingRender | undefined;
 	let operation: AbortController | undefined;
 	let activeRequest: string | undefined;
+	let retryFixRequest: string | undefined;
 	const deliveries = new Map<string, Promise<Status>>();
 
 	const getContext = (): WorkspaceSnapshot | undefined => {
@@ -224,6 +228,15 @@ export function createWorkspaceController(
 					await Promise.race([options.ensureSlackTarget(primary.selectedId), cancelled]);
 					if (!valid()) return await acknowledge(action, status);
 				}
+				if (primary?.kind === "center" && primary.section === "fixes" && primary.selectedId) {
+					if (!options.ensurePRFixTarget || !primary.fixSource)
+						throw new Error("Suggested fix presentation is unavailable");
+					await Promise.race([
+						options.ensurePRFixTarget(primary.selectedId, primary.fixSource),
+						cancelled,
+					]);
+					if (!valid()) return await acknowledge(action, status);
+				}
 				// Hide goes ahead of native navigation/resize queues and before installing another canvas.
 				if (!samePresentedContent(before, action.effect.snapshot))
 					await Promise.race([browser.present(null), cancelled]);
@@ -250,7 +263,9 @@ export function createWorkspaceController(
 				if (status === "ignored" && valid())
 					store.setState({ error: "The canvas did not finish displaying. Try again." });
 				return await acknowledge(action, status);
-			} catch {
+			} catch (error) {
+				if (valid() && error instanceof Error && error.message === PR_FIX_SOURCE_CHANGED)
+					retryFixRequest = action.requestId;
 				if (valid())
 					store.setState({ error: "The workspace change could not complete. Try again." });
 				try {
@@ -305,9 +320,9 @@ export function createWorkspaceController(
 			.catch(() => {});
 		return work;
 	}
-	async function performCommand(command: WorkspaceCommand) {
+	async function performCommand(command: WorkspaceCommand, retryFix = true): Promise<Status> {
 		if (disposed || obscured) return "ignored" as const;
-		if (command.kind !== "browse-center") manualInteraction?.();
+		if (command.kind !== "browse-center" && retryFix) manualInteraction?.();
 		const request = ++manualEpoch;
 		invalidate();
 		const current = epoch;
@@ -327,7 +342,24 @@ export function createWorkspaceController(
 				})
 			);
 			const currentIntent = current === epoch;
-			return await applyAction(action, () => !disposed && currentIntent && request === manualEpoch);
+			const status = await applyAction(
+				action,
+				() => !disposed && currentIntent && request === manualEpoch
+			);
+			if (
+				retryFix &&
+				status === "ignored" &&
+				retryFixRequest === action.requestId &&
+				command.kind === "open-center" &&
+				command.section === "fixes" &&
+				!disposed &&
+				current + 1 === epoch &&
+				request === manualEpoch
+			) {
+				retryFixRequest = undefined;
+				return performCommand(command, false);
+			}
+			return status;
 		} catch (error) {
 			if (!disposed && current === epoch)
 				store.setState({
