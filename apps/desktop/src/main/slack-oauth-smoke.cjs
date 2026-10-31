@@ -64,11 +64,15 @@ const EXCLUDED = [CHANNELS[2].id];
 // Test-only provider response records. Never seeded into the app's stores or renderer.
 const READER_CHANNEL = CHANNELS[0].id;
 const ROOT_MESSAGE = {
-	ts: "1793448000.000001", user: DM_PROFILE.id,
-	text: "Controlled native Slack source", reply_count: 1,
+	ts: "1793448000.000001",
+	user: DM_PROFILE.id,
+	text: "Controlled native Slack source",
+	reply_count: 1,
 };
 const REPLY_MESSAGE = {
-	ts: "1793448000.000002", thread_ts: ROOT_MESSAGE.ts, user: ACTOR.userId,
+	ts: "1793448000.000002",
+	thread_ts: ROOT_MESSAGE.ts,
+	user: ACTOR.userId,
 	text: "Controlled native Slack thread reply",
 };
 const THREAD_TARGET = `${READER_CHANNEL}/${ROOT_MESSAGE.ts}`;
@@ -95,18 +99,26 @@ function assertReaderPage(page, threadTs) {
 	assert.equal(page.nextCursor, null);
 	assert.equal(page.hasMore, false);
 	const raw = threadTs ? [ROOT_MESSAGE, REPLY_MESSAGE] : [ROOT_MESSAGE];
-	assert.deepEqual(page.items.map((message) => ({
-		id: message.citation.source.messageId, text: message.text, authorId: message.authorId,
-	})), raw.map((message) => ({ id: message.ts, text: message.text, authorId: message.user })));
+	assert.deepEqual(
+		page.items.map((message) => ({
+			id: message.citation.source.messageId,
+			text: message.text,
+			authorId: message.authorId,
+		})),
+		raw.map((message) => ({ id: message.ts, text: message.text, authorId: message.user }))
+	);
 	for (const message of page.items) {
 		assert.equal(message.citation.source.workspaceId, ACTOR.workspaceId);
 		assert.equal(message.citation.source.conversationId, READER_CHANNEL);
 		assert.equal(message.citation.source.revisionId, message.citation.source.messageId);
 	}
-	assert.deepEqual([...page.authors].sort((a, b) => a.id.localeCompare(b.id)),
+	assert.deepEqual(
+		[...page.authors].sort((a, b) => a.id.localeCompare(b.id)),
 		[...new Set(raw.map((message) => message.user))].sort().map((id) => ({
-			id, name: id === ACTOR.userId ? PROFILE.displayName : DM_PROFILE.displayName,
-		})));
+			id,
+			name: id === ACTOR.userId ? PROFILE.displayName : DM_PROFILE.displayName,
+		}))
+	);
 }
 function assertReaderReceipt(receipt, target) {
 	assert.ok([READER_CHANNEL, THREAD_TARGET].includes(target));
@@ -118,17 +130,30 @@ function assertReaderReceipt(receipt, target) {
 	assert.equal(canvas.section, "slack");
 	assert.equal(canvas.selectedId, target);
 	const raw = target === THREAD_TARGET ? [ROOT_MESSAGE, REPLY_MESSAGE] : [ROOT_MESSAGE];
-	const messages = raw.map((row) => ({ id: row.ts, text: row.text,
-		author: row.user === ACTOR.userId ? PROFILE.displayName : DM_PROFILE.displayName }));
-	const matches = (state) => state?.visible && state.sequence === workspace.sequence &&
-		state.primaryId === workspace.primaryId && state.target === target &&
-		state.title === CHANNELS[0].name && JSON.stringify(state.messages) === JSON.stringify(messages);
+	const messages = raw.map((row) => ({
+		id: row.ts,
+		text: row.text,
+		author: row.user === ACTOR.userId ? PROFILE.displayName : DM_PROFILE.displayName,
+	}));
+	const matches = (state) =>
+		state?.visible &&
+		state.sequence === workspace.sequence &&
+		state.primaryId === workspace.primaryId &&
+		state.target === target &&
+		state.title === CHANNELS[0].name &&
+		JSON.stringify(state.messages) === JSON.stringify(messages);
 	assert.ok(matches(receipt.ui?.state), "Receipt preceded the exact visible Slack source/author");
-	const frames = receipt.ui.frames.filter((frame) => matches(frame) &&
-		frame.at <= receipt.receivedAt && frame.scheduledSequence === workspace.sequence &&
-		frame.scheduledTarget === target);
-	assert.ok(new Set(frames.map((frame) => frame.timestamp)).size >= 2,
-		"Receipt preceded two distinct matching app animation frames");
+	const frames = receipt.ui.frames.filter(
+		(frame) =>
+			matches(frame) &&
+			frame.at <= receipt.receivedAt &&
+			frame.scheduledSequence === workspace.sequence &&
+			frame.scheduledTarget === target
+	);
+	assert.ok(
+		new Set(frames.map((frame) => frame.timestamp)).size >= 2,
+		"Receipt preceded two distinct matching app animation frames"
+	);
 }
 // Observe existing app callbacks only: no injected frames, DOM edits or rendered/ack calls.
 const readerFrameObserver = `(() => {
@@ -322,7 +347,9 @@ async function native() {
 	const storePath = join(profile, "oauth/oauth.sessions.encrypted.json");
 	fs.writeFileSync(ownerPath, owner, { mode: 0o600 });
 	fs.mkdirSync(profile, { mode: 0o700 });
-	fs.writeFileSync(envPath, `SLACK_OAUTH_CLIENT_ID=${CLIENT}\nSLACK_INTERNAL_APP=1\n`, { mode: 0o600 });
+	fs.writeFileSync(envPath, `SLACK_OAUTH_CLIENT_ID=${CLIENT}\nSLACK_INTERNAL_APP=1\n`, {
+		mode: 0o600,
+	});
 	scrubEnvironment(process.env);
 	process.env.METAHACKATHON_ENV_FILE = envPath;
 	app.setPath("userData", profile);
@@ -471,10 +498,16 @@ async function native() {
 						excludedConversationIds: EXCLUDED,
 					});
 				const input = request.input?.json;
-				const primary = input?.workspace?.canvases.find((row) => row.id === input.workspace.primaryId);
-				const receipt = request.path === "workspace.applied" && primary?.kind === "center" &&
-					primary.section === "slack" && primary.selectedId
-					? { input, receivedAt: Date.now(), ui: await readReaderUI() } : null;
+				const primary = input?.workspace?.canvases.find(
+					(row) => row.id === input.workspace.primaryId
+				);
+				const receipt =
+					request.path === "workspace.applied" &&
+					primary?.kind === "center" &&
+					primary.section === "slack" &&
+					primary.selectedId
+						? { input, receivedAt: Date.now(), ui: await readReaderUI() }
+						: null;
 				const result = await handler(sender, request); // Observe only; never supply success.
 				publicSafe(result, markers);
 				if (["slack.history", "slack.thread"].includes(request.path)) {
@@ -599,7 +632,8 @@ async function native() {
 					"Excluded conversation history must stop after actual follow acknowledgement"
 				);
 				const messages = readerMessages(method, fields);
-				observedRead.boundedIntake = Object.hasOwn(fields, "oldest") || Object.hasOwn(fields, "latest");
+				observedRead.boundedIntake =
+					Object.hasOwn(fields, "oldest") || Object.hasOwn(fields, "latest");
 				observedRead.messageCount = messages.length;
 				return response({ messages, has_more: false, response_metadata: { next_cursor: "" } });
 			}
@@ -720,7 +754,10 @@ async function native() {
 			assert.equal(env.SLACK_INTERNAL_APP, "1");
 			assert.deepEqual(
 				Object.entries(env).filter(([, value]) => value !== ""),
-				[["SLACK_OAUTH_CLIENT_ID", CLIENT], ["SLACK_INTERNAL_APP", "1"]]
+				[
+					["SLACK_OAUTH_CLIENT_ID", CLIENT],
+					["SLACK_INTERNAL_APP", "1"],
+				]
 			);
 		};
 		const envelope = () => {
@@ -942,39 +979,70 @@ async function native() {
 		);
 		assert.equal(report.readerPages.length, 0);
 		assert.equal(report.readerReceipts.length, 0);
-		assert.ok(await js("!document.querySelector('[data-slack-target]')"),
-			"Catalog/source metadata alone must not establish displayed Slack messages");
+		assert.ok(
+			await js("!document.querySelector('[data-slack-target]')"),
+			"Catalog/source metadata alone must not establish displayed Slack messages"
+		);
 		// The earlier Settings screenshot used its own frames. Install only now, so every recorded
 		// reader frame below comes from the app's existing callbacks, not a test-generated rAF.
 		await js(readerFrameObserver);
-		readReaderUI = () => js("({state:window.__slackReaderSmoke.read(),frames:window.__slackReaderSmoke.frames.slice()})");
-		const acceptedReader = (target, after) => wait(`accepted displayed Slack source ${target}`, () =>
-			report.readerReceipts.slice(after).find((row) => row.input.status === "applied" &&
-				row.result?.status === "accepted" && row.input.workspace.canvases.some((canvas) =>
-					canvas.id === row.input.workspace.primaryId && canvas.selectedId === target)));
+		readReaderUI = () =>
+			js(
+				"({state:window.__slackReaderSmoke.read(),frames:window.__slackReaderSmoke.frames.slice()})"
+			);
+		const acceptedReader = (target, after) =>
+			wait(`accepted displayed Slack source ${target}`, () =>
+				report.readerReceipts
+					.slice(after)
+					.find(
+						(row) =>
+							row.input.status === "applied" &&
+							row.result?.status === "accepted" &&
+							row.input.workspace.canvases.some(
+								(canvas) =>
+									canvas.id === row.input.workspace.primaryId && canvas.selectedId === target
+							)
+					)
+			);
 		await click('#configuration button[aria-label="Close settings"]');
-		await wait("Settings closed before reader navigation", () => js("!document.querySelector('#configuration')?.open"));
+		await wait("Settings closed before reader navigation", () =>
+			js("!document.querySelector('#configuration')?.open")
+		);
 		await click('.command-rail button[aria-label^="Slack"]');
 		const channelButton = `.slack-list button.slack-conversation-row[title$=" · ${READER_CHANNEL}"]`;
-		await wait("actual channel name in Slack sidebar", () => js(
-			`document.querySelector(${JSON.stringify(`${channelButton} .slack-conversation-name`)})?.textContent===${JSON.stringify(CHANNELS[0].name)}`));
+		await wait("actual channel name in Slack sidebar", () =>
+			js(
+				`document.querySelector(${JSON.stringify(`${channelButton} .slack-conversation-name`)})?.textContent===${JSON.stringify(CHANNELS[0].name)}`
+			)
+		);
 		let after = report.readerReceipts.length;
 		await click(channelButton);
 		await acceptedReader(READER_CHANNEL, after);
 		after = report.readerReceipts.length;
-		await click(`[data-slack-target="${READER_CHANNEL}"] [data-slack-message="${ROOT_MESSAGE.ts}"] .slack-thread-link`);
+		await click(
+			`[data-slack-target="${READER_CHANNEL}"] [data-slack-message="${ROOT_MESSAGE.ts}"] .slack-thread-link`
+		);
 		await acceptedReader(THREAD_TARGET, after);
 		after = report.readerReceipts.length;
 		await buttonText(`[data-slack-target="${THREAD_TARGET}"]`, "← Back to conversation");
 		await acceptedReader(READER_CHANNEL, after);
 		assert.ok(report.readerPages.some((row) => row.path === "slack.history"));
 		assert.ok(report.readerPages.some((row) => row.path === "slack.thread"));
-		assert.ok(report.reads.some((row) => row.boundedIntake), "Automatic bounded polling must remain exercised");
-		assert.ok(report.reads.filter((row) => row.boundedIntake).every((row) => row.messageCount === 0));
+		assert.ok(
+			report.reads.some((row) => row.boundedIntake),
+			"Automatic bounded polling must remain exercised"
+		);
+		assert.ok(
+			report.reads.filter((row) => row.boundedIntake).every((row) => row.messageCount === 0)
+		);
 		await uiSafe();
-		report.checks.push("controlled populated channel/thread/back through actual UI + source RPCs; exact target/text/observed authors and two distinct app rAF frames precede each real accepted workspace.applied; bounded intake empty, no model/worker/media");
+		report.checks.push(
+			"controlled populated channel/thread/back through actual UI + source RPCs; exact target/text/observed authors and two distinct app rAF frames precede each real accepted workspace.applied; bounded intake empty, no model/worker/media"
+		);
 		await click('.command-rail button[aria-label="Settings"]');
-		await wait("Settings reopened for OAuth cleanup", () => js("document.querySelector('#configuration')?.open"));
+		await wait("Settings reopened for OAuth cleanup", () =>
+			js("document.querySelector('#configuration')?.open")
+		);
 		await begin();
 		await click(action("cancel"));
 		await wait(
@@ -1150,33 +1218,80 @@ function selfCheck() {
 			labels
 		)
 	);
-	assert.deepEqual(readerMessages("conversations.history", { channel: READER_CHANNEL }), [ROOT_MESSAGE]);
-	assert.deepEqual(readerMessages("conversations.replies", { channel: READER_CHANNEL, ts: ROOT_MESSAGE.ts }), [ROOT_MESSAGE, REPLY_MESSAGE]);
+	assert.deepEqual(readerMessages("conversations.history", { channel: READER_CHANNEL }), [
+		ROOT_MESSAGE,
+	]);
+	assert.deepEqual(
+		readerMessages("conversations.replies", { channel: READER_CHANNEL, ts: ROOT_MESSAGE.ts }),
+		[ROOT_MESSAGE, REPLY_MESSAGE]
+	);
 	for (const method of ["conversations.history", "conversations.replies"])
 		for (const bound of ["oldest", "latest"])
-			assert.deepEqual(readerMessages(method, { channel: READER_CHANNEL, [bound]: ROOT_MESSAGE.ts }), []);
-	assert.throws(() => readerMessages("conversations.replies", { channel: READER_CHANNEL, ts: "wrong" }));
+			assert.deepEqual(
+				readerMessages(method, { channel: READER_CHANNEL, [bound]: ROOT_MESSAGE.ts }),
+				[]
+			);
+	assert.throws(() =>
+		readerMessages("conversations.replies", { channel: READER_CHANNEL, ts: "wrong" })
+	);
 	// Pure assertion probes only; none of these values are installed in the app or returned by IPC.
 	for (const target of [READER_CHANNEL, THREAD_TARGET]) {
 		const raw = target === THREAD_TARGET ? [ROOT_MESSAGE, REPLY_MESSAGE] : [ROOT_MESSAGE];
-		const state = { sequence: 7, primaryId: "slack-canvas", target, title: CHANNELS[0].name,
-			visible: true, messages: raw.map((row) => ({ id: row.ts, text: row.text,
-				author: row.user === ACTOR.userId ? PROFILE.displayName : DM_PROFILE.displayName })) };
-		const frames = [1, 2].map((timestamp) => ({ ...state, at: timestamp, timestamp,
-			scheduledSequence: 7, scheduledTarget: target }));
-		const receipt = { input: { status: "applied", workspace: { sequence: 7, primaryId: "slack-canvas",
-			canvases: [{ id: "slack-canvas", kind: "center", section: "slack", selectedId: target }] } },
-			result: { status: "accepted" }, receivedAt: 3, ui: { state, frames } };
+		const state = {
+			sequence: 7,
+			primaryId: "slack-canvas",
+			target,
+			title: CHANNELS[0].name,
+			visible: true,
+			messages: raw.map((row) => ({
+				id: row.ts,
+				text: row.text,
+				author: row.user === ACTOR.userId ? PROFILE.displayName : DM_PROFILE.displayName,
+			})),
+		};
+		const frames = [1, 2].map((timestamp) => ({
+			...state,
+			at: timestamp,
+			timestamp,
+			scheduledSequence: 7,
+			scheduledTarget: target,
+		}));
+		const receipt = {
+			input: {
+				status: "applied",
+				workspace: {
+					sequence: 7,
+					primaryId: "slack-canvas",
+					canvases: [{ id: "slack-canvas", kind: "center", section: "slack", selectedId: target }],
+				},
+			},
+			result: { status: "accepted" },
+			receivedAt: 3,
+			ui: { state, frames },
+		};
 		assertReaderReceipt(receipt, target);
 		for (const invalid of [
 			{ ...receipt, result: { status: "ignored" } },
 			{ ...receipt, ui: { state: { ...state, target: "different-source" }, frames } },
-			{ ...receipt, ui: { state: { ...state, messages: [{ ...state.messages[0], text: "wrong" }] }, frames } },
-			{ ...receipt, ui: { state: { ...state, messages: [{ ...state.messages[0], author: DM_PROFILE.id }] }, frames } },
+			{
+				...receipt,
+				ui: { state: { ...state, messages: [{ ...state.messages[0], text: "wrong" }] }, frames },
+			},
+			{
+				...receipt,
+				ui: {
+					state: { ...state, messages: [{ ...state.messages[0], author: DM_PROFILE.id }] },
+					frames,
+				},
+			},
 			{ ...receipt, ui: { state, frames: [frames[0], frames[0]] } },
 			{ ...receipt, ui: { state, frames: [frames[0], { ...frames[1], at: 4 }] } },
-			{ ...receipt, ui: { state, frames: [frames[0], { ...frames[1], scheduledTarget: "other" }] } },
-		]) assert.throws(() => assertReaderReceipt(invalid, target));
+			{
+				...receipt,
+				ui: { state, frames: [frames[0], { ...frames[1], scheduledTarget: "other" }] },
+			},
+		])
+			assert.throws(() => assertReaderReceipt(invalid, target));
 	}
 	new Script(readerFrameObserver, { filename: "slack-reader-frame-observer.js" });
 	console.log(
