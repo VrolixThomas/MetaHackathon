@@ -97,8 +97,17 @@ Muse fetches tickets assigned to your Linear user; selected team and
 project scopes form a union. With no selected scopes, all of your assigned active tickets are shown.
 
 Say **“What needs my attention?”**, **“Start work on MET-123 in owner/repo”**, or open a ticket and
-start work. Muse uses the Meta model configured by `MODEL_API_KEY`; it does not require SuperiorSwarm,
-Claude, or Codex to be installed. Each job has a separate app-owned Git copy/worktree and child process.
+start work. By default, coding uses the Meta model configured by `MODEL_API_KEY`. You can instead
+choose **Settings → Background coding → Muse Code subscription**, save the selection, open the
+official CLI sign-in and refresh status. Install the official `muse` CLI separately; its account must
+have an active subscription and available allowance. The app uses the vendor's signed-in session,
+never copies its credentials into `.env`, and never falls back to API billing automatically.
+`CODING_PROVIDER=meta-api|muse-code` and optional absolute `MUSE_CODE_PATH` persist this device's
+selection in `.env`. New jobs use it; existing jobs retain their pinned provider. Foreground
+conversation and speech still use the configured API/voice providers.
+
+The app does not require SuperiorSwarm, Claude, or Codex to be installed.
+Each job has a separate app-owned Git copy/worktree and child process.
 The original clone's branch, index and dirty files stay intact. Product questions and departures from
 repository conventions become saved decisions; answer by voice or in the job view. Ordinary changes
 and actual check results come back for review.
@@ -116,10 +125,17 @@ real draft; this does not accept or merge it. Supported direct feedback suggesti
 to your own PR branch after actual successful checks and a separate inferred assessment. Product
 ambiguity asks for a decision. Disable automatic suggestions in **Manage connections** if desired.
 
-Workers run with your OS permissions, not inside a security sandbox. Declared JavaScript package
+The default API worker runs with your OS permissions. The Muse Code worker requires the vendor's
+sandboxed human-review permission profile and a restricted coding toolset; unsupported configurations
+block execution. Approval requests become saved decisions rather than automatic approvals.
+Declared JavaScript package
 checks and standard package managers are supported. Detected custom commit hooks stop the commit;
 the repository convention must be resolved rather than silently bypassed. No checks are invented for repositories
 without configured validation commands.
+
+Coding runs on this Mac. SQLite and local private files hold prepared review plans and proposed
+fixes; published comments and branches are shared through GitHub. A shared organization backend
+is planned in [the team backend proposal](docs/integration/team-backend-plan.md), and is not deployed.
 
 ## My day and Slack
 
