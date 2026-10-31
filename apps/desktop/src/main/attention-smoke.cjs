@@ -3,6 +3,8 @@
 // Author validation: node --check this-file; node this-file --self-check.
 // No positive spoken receipt is manufactured: the default voice controller must
 // decode real Chromium RTC tone PCM, observe speech-ended, drain, and acknowledge.
+// The package script explicitly builds VITE_MUSE_VOICE_PRECONNECT=0 for this controlled
+// media transport. Actual-provider warm admission/fallback/barge-in is separate evidence.
 const assert = require("node:assert/strict");
 const fs = require("node:fs");
 const net = require("node:net");

@@ -4,6 +4,7 @@
 	"tasks": {
 		"build": {
 			"dependsOn": ["^build"],
+			"env": ["VITE_MUSE_VOICE_PRECONNECT"],
 			"outputs": ["out/**"]
 		},
 		"dev": {

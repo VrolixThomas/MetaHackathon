@@ -1,6 +1,8 @@
 // ROOT ONLY after default hands-free binding is built. Worker: --check / --self-check only.
 // env -u ELECTRON_RUN_AS_NODE electron src/main/hands-free-smoke.cjs [built-main]
 // Optional HANDS_FREE_STOP=escape and HANDS_FREE_MODAL_CHECKS=1 extend the same bounded run.
+// This legacy controlled media transport tests the cold path; the package script explicitly
+// builds VITE_MUSE_VOICE_PRECONNECT=0. Warm-path actual-provider evidence is recorded separately.
 const assert = require("node:assert/strict");
 const fs = require("node:fs");
 const net = require("node:net");

@@ -1,0 +1,199 @@
+{
+	"date": "2026-10-31",
+	"ticket": "MET-51",
+	"implementationCommits": ["e955063", "b10a892", "5d720ec", "efc3705"],
+	"method": "Actual native Electron default renderer and real Meta/ElevenLabs speech providers. Known generated English phrase supplied as microphone input; zero-delay controlled model; physical speaker muted. Five seconds between Start and input for A/B, 25 seconds for expiry, zero for immediate. Cases were serial. App build flag explicitly 0 for cold and 1 for warm.",
+	"limits": [
+		"Two matched pairs; not a percentile or population benchmark.",
+		"Not physical microphone/acoustic output verification, nor fully live model response latency.",
+		"Preconnection is bounded to an explicit active conversation and expires after 20 seconds; subsequent speech can be cold.",
+		"The sourceRevision field is a harness label/base checkpoint, not a claim that the entire working tree was clean.",
+		"Transient safety case injected only a pre-onset structured media/network offer failure; remaining input/output used actual providers."
+	],
+	"results": [
+		{
+			"case": "ab-cold-1",
+			"status": "passed",
+			"sourceRevision": "integration-glue",
+			"preconnect": "cold",
+			"liveASR": true,
+			"liveTTS": true,
+			"liveModel": false,
+			"physicalMicrophone": false,
+			"physicalSpeakerMuted": true,
+			"syntheticPhrase": true,
+			"transcriptMatches": true,
+			"intervals": {
+				"physicalMarkerToEndpointMs": 689,
+				"endpointToReleaseMs": 3154,
+				"releaseToTranscriptMs": 451,
+				"endpointToPCMms": 4367,
+				"markerEndToPCMms": 5056
+			},
+			"shutdown": true,
+			"speechStarts": 1,
+			"cancelledTurns": 0
+		},
+		{
+			"case": "ab-warm-1",
+			"status": "passed",
+			"sourceRevision": "efc3705",
+			"preconnect": "warm",
+			"liveASR": true,
+			"liveTTS": true,
+			"liveModel": false,
+			"physicalMicrophone": false,
+			"physicalSpeakerMuted": true,
+			"syntheticPhrase": true,
+			"transcriptMatches": true,
+			"intervals": {
+				"physicalMarkerToEndpointMs": 680,
+				"endpointToReleaseMs": 704,
+				"releaseToTranscriptMs": 515,
+				"endpointToPCMms": 1616,
+				"markerEndToPCMms": 2296
+			},
+			"shutdown": true,
+			"speechStarts": 1,
+			"cancelledTurns": 0
+		},
+		{
+			"case": "ab-cold-2",
+			"status": "passed",
+			"sourceRevision": "efc3705",
+			"preconnect": "cold",
+			"liveASR": true,
+			"liveTTS": true,
+			"liveModel": false,
+			"physicalMicrophone": false,
+			"physicalSpeakerMuted": true,
+			"syntheticPhrase": true,
+			"transcriptMatches": true,
+			"intervals": {
+				"physicalMarkerToEndpointMs": 681,
+				"endpointToReleaseMs": 3195,
+				"releaseToTranscriptMs": 426,
+				"endpointToPCMms": 4054,
+				"markerEndToPCMms": 4735
+			},
+			"shutdown": true,
+			"speechStarts": 1,
+			"cancelledTurns": 0
+		},
+		{
+			"case": "ab-warm-2",
+			"status": "passed",
+			"sourceRevision": "efc3705",
+			"preconnect": "warm",
+			"liveASR": true,
+			"liveTTS": true,
+			"liveModel": false,
+			"physicalMicrophone": false,
+			"physicalSpeakerMuted": true,
+			"syntheticPhrase": true,
+			"transcriptMatches": true,
+			"intervals": {
+				"physicalMarkerToEndpointMs": 691,
+				"endpointToReleaseMs": 704,
+				"releaseToTranscriptMs": 577,
+				"endpointToPCMms": 1679,
+				"markerEndToPCMms": 2370
+			},
+			"shutdown": true,
+			"speechStarts": 1,
+			"cancelledTurns": 0
+		},
+		{
+			"case": "preconnect-immediate",
+			"status": "passed",
+			"sourceRevision": "efc3705",
+			"preconnect": "warm",
+			"liveASR": true,
+			"liveTTS": true,
+			"liveModel": false,
+			"physicalMicrophone": false,
+			"physicalSpeakerMuted": true,
+			"syntheticPhrase": true,
+			"transcriptMatches": true,
+			"intervals": {
+				"physicalMarkerToEndpointMs": 685,
+				"endpointToReleaseMs": 2032,
+				"releaseToTranscriptMs": 398,
+				"endpointToPCMms": 2824,
+				"markerEndToPCMms": 3509
+			},
+			"shutdown": true,
+			"speechStarts": 1,
+			"cancelledTurns": 0
+		},
+		{
+			"case": "preconnect-transient",
+			"status": "passed",
+			"sourceRevision": "efc3705",
+			"preconnect": "warm",
+			"liveASR": true,
+			"liveTTS": true,
+			"liveModel": false,
+			"physicalMicrophone": false,
+			"physicalSpeakerMuted": true,
+			"syntheticPhrase": true,
+			"transcriptMatches": true,
+			"intervals": {
+				"physicalMarkerToEndpointMs": 679,
+				"endpointToReleaseMs": 2576,
+				"releaseToTranscriptMs": 427,
+				"endpointToPCMms": 3396,
+				"markerEndToPCMms": 4075
+			},
+			"shutdown": true,
+			"speechStarts": 1,
+			"cancelledTurns": 0
+		},
+		{
+			"case": "preconnect-expiry",
+			"status": "passed",
+			"sourceRevision": "efc3705",
+			"preconnect": "warm",
+			"liveASR": true,
+			"liveTTS": true,
+			"liveModel": false,
+			"physicalMicrophone": false,
+			"physicalSpeakerMuted": true,
+			"syntheticPhrase": true,
+			"transcriptMatches": true,
+			"intervals": {
+				"physicalMarkerToEndpointMs": 684,
+				"endpointToReleaseMs": 2283,
+				"releaseToTranscriptMs": 619,
+				"endpointToPCMms": 3295,
+				"markerEndToPCMms": 3979
+			},
+			"shutdown": true,
+			"speechStarts": 1,
+			"cancelledTurns": 0
+		},
+		{
+			"case": "preconnect-barge",
+			"status": "passed",
+			"sourceRevision": "efc3705",
+			"preconnect": "warm",
+			"liveASR": true,
+			"liveTTS": true,
+			"liveModel": false,
+			"physicalMicrophone": false,
+			"physicalSpeakerMuted": true,
+			"syntheticPhrase": true,
+			"transcriptMatches": true,
+			"intervals": {
+				"physicalMarkerToEndpointMs": 696,
+				"endpointToReleaseMs": 704,
+				"releaseToTranscriptMs": 584,
+				"endpointToPCMms": 1696,
+				"markerEndToPCMms": 2392
+			},
+			"shutdown": true,
+			"speechStarts": 2,
+			"cancelledTurns": 1
+		}
+	]
+}
