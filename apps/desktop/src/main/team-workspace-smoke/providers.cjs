@@ -89,6 +89,18 @@ function makeBundle(fixture, key) {
 function createProvider(fixture) {
 	const report = { auth: [], github: [], team: [], decisions: [], modelCalls: 0 };
 	const review = prepared(fixture);
+	const expectedContext = {
+		pr: review.pr,
+		description: "Test fixture; never live review data.",
+		files: fixture.filesAt[fixture.headSha].map((file) => ({
+			path: file.filename,
+			status: file.status,
+			additions: file.additions,
+			deletions: file.deletions,
+			...(file.patch === undefined ? {} : { patch: file.patch }),
+		})),
+		truncated: false,
+	};
 	let key;
 	let proposal;
 	let decision = null;
@@ -107,6 +119,11 @@ function createProvider(fixture) {
 		assert.equal(raw.headSha, fixture.headSha);
 		assert.equal(raw.analysisVersion, VERSION);
 		assert.match(raw.contextDigest, /^[a-f0-9]{64}$/);
+		assert.equal(
+			raw.contextDigest,
+			digest(expectedContext),
+			"Shared key must hash the actual controlled GitHub context"
+		);
 		if (key) assert.deepEqual(raw, key);
 		else key = structuredClone(raw);
 		const bundle = makeBundle(fixture, key);
@@ -127,6 +144,7 @@ function createProvider(fixture) {
 	return {
 		report,
 		review,
+		expectedContext,
 		get proposal() {
 			return proposal;
 		},
@@ -199,6 +217,7 @@ function createProvider(fixture) {
 			if (url.pathname === "/v1/progress/write")
 				return { ...body.progress, revision: body.expectedRevision + 1 };
 			if (url.pathname === "/v1/proposals/browse") {
+				if (!key) return { items: [], nextOffset: null };
 				scopeKey();
 				assert.equal(body.orgId, ORG);
 				assert.equal(body.repositoryId, "42");
@@ -239,7 +258,20 @@ function createProvider(fixture) {
 	};
 }
 function selfCheck() {
-	const fixture = { baseSha: "a".repeat(40), headSha: "b".repeat(40), movedSha: "c".repeat(40) };
+	const fixture = {
+		baseSha: "a".repeat(40),
+		headSha: "b".repeat(40),
+		movedSha: "c".repeat(40),
+		filesAt: {
+			["b".repeat(40)]: source.order.map((filename) => ({
+				filename,
+				status: "modified",
+				additions: 1,
+				deletions: 1,
+				patch: "@@ -1 +1 @@\n-old\n+new",
+			})),
+		},
+	};
 	const provider = createProvider(fixture);
 	const key = {
 		orgId: ORG,
@@ -247,7 +279,7 @@ function selfCheck() {
 		prNumber: 7,
 		baseSha: fixture.baseSha,
 		headSha: fixture.headSha,
-		contextDigest: "d".repeat(64),
+		contextDigest: digest(provider.expectedContext),
 		analysisVersion: VERSION,
 	};
 	const h = { authorization: `Bearer ${SECRET.access}`, "x-github-token": SECRET.github };
