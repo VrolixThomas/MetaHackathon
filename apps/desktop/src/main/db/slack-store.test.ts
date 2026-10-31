@@ -141,6 +141,12 @@ test("checkpoint per-connection sequence CAS preserves current bytes and termina
 		lease = await store.activate(identity, other.epoch);
 		assert.equal((await store.checkpoint(lease))?.sequence, 3);
 		assert.equal((await store.checkpoint(lease))?.data.revisions[0]?.deleted, true);
+		// Invalid counters cannot turn the equality CAS into a non-advancing floating point write.
+		sqlite
+			.prepare("UPDATE slack_workspace_connections SET sequence=1e100 WHERE connection_id=?")
+			.run(identity.connectionId);
+		await assert.rejects(store.checkpoint(lease), SlackStoreError);
+		await assert.rejects(store.saveCheckpoint(lease, second, 1e100), SlackStoreError);
 	} finally {
 		sqlite.close();
 	}

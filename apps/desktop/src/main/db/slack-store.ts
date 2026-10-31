@@ -243,6 +243,7 @@ export class SlackWorkspaceStore implements SlackWorkspaceStorePort {
 	async release(lease: SlackLease): Promise<void> {
 		this.run(() => {
 			this.assertLease(lease);
+			requireValid(Number.isSafeInteger(lease.epoch + 1), "capacity");
 			this.sqlite
 				.prepare("UPDATE slack_workspace_head SET epoch=epoch+1,identity_json=NULL WHERE id=1")
 				.run();
@@ -256,7 +257,12 @@ export class SlackWorkspaceStore implements SlackWorkspaceStorePort {
 					"SELECT sequence,checkpoint_json FROM slack_workspace_connections WHERE connection_id=?"
 				)
 				.get(lease.connectionId) as { sequence: number; checkpoint_json: string | null };
-			if (!row.checkpoint_json) return null;
+			requireValid(Number.isSafeInteger(row.sequence) && row.sequence >= 0);
+			if (!row.checkpoint_json) {
+				requireValid(row.sequence === 0);
+				return null;
+			}
+			requireValid(row.sequence > 0);
 			const data = decode(SlackCheckpointSchema, row.checkpoint_json, 8 * 1024 * 1024);
 			requireValid(
 				data.connectionId === lease.connectionId &&
@@ -274,6 +280,12 @@ export class SlackWorkspaceStore implements SlackWorkspaceStorePort {
 		const { value: next, json } = encode(SlackCheckpointSchema, input, 8 * 1024 * 1024);
 		this.run(() => {
 			this.assertLease(lease);
+			requireValid(
+				Number.isSafeInteger(expectedSequence) &&
+					expectedSequence >= 0 &&
+					Number.isSafeInteger(expectedSequence + 1),
+				"conflict"
+			);
 			requireValid(
 				next.connectionId === lease.connectionId &&
 					next.workspaceId === lease.workspaceId &&
