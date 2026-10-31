@@ -83,8 +83,12 @@ async function boundedJSON(response: Response, signal: AbortSignal) {
 		return JSON.parse(Buffer.concat(chunks).toString("utf8"));
 	} finally {
 		signal.removeEventListener("abort", cancel);
-		await reader.cancel().catch(() => {});
-		reader.releaseLock();
+		void reader.cancel().catch(() => {});
+		try {
+			reader.releaseLock();
+		} catch {
+			/* A misbehaving transport must not hold cancellation open. */
+		}
 	}
 }
 /** Fixed official endpoint; no arbitrary image download, redirects, fallback key or SDK. */
@@ -118,7 +122,7 @@ export function createGeminiImageProvider(
 					boundedSignal
 				);
 				if (!response.ok) {
-					await response.body?.cancel().catch(() => {});
+					void response.body?.cancel().catch(() => {});
 					throw new ImageError("image-generation-failed");
 				}
 				const result = resultSchema.parse(await boundedJSON(response, boundedSignal));

@@ -260,3 +260,52 @@ test("private store rejects path traversal and symlinked binary reads", async ()
 		await rm(directory, { recursive: true, force: true });
 	}
 });
+
+test("hanging controlled response reads cancel promptly even when stream cancellation never resolves", async () => {
+	const reading = deferred<void>();
+	const stream = new ReadableStream<Uint8Array>({
+		pull() {
+			reading.resolve();
+			return new Promise<void>(() => {});
+		},
+		cancel() {
+			return new Promise<void>(() => {});
+		},
+	});
+	const provider = createGeminiImageProvider(
+		{ IMAGE_PROVIDER: "gemini", GEMINI_API_KEY: "controlled" },
+		async () => new Response(stream)
+	);
+	const abort = new AbortController();
+	const pending = provider.generate(input.prompt, abort.signal);
+	await reading.promise;
+	abort.abort();
+	await assert.rejects(pending, /cancelled/);
+});
+
+test("streamed response bytes and concurrent private admission are bounded", async () => {
+	const oversized = new ReadableStream<Uint8Array>({
+		start(controller) {
+			controller.enqueue(new Uint8Array(18 * 1024 * 1024 + 1));
+			controller.close();
+		},
+	});
+	const provider = createGeminiImageProvider(
+		{ IMAGE_PROVIDER: "gemini", GEMINI_API_KEY: "controlled" },
+		async () => new Response(oversized)
+	);
+	await assert.rejects(provider.generate(input.prompt, signal()), /bounded raster/);
+	const directory = await mkdtemp(join(tmpdir(), "muse-image-unit-"));
+	try {
+		const store = new PrivateImageStore(directory, 1);
+		const outcomes = await Promise.allSettled([
+			store.admit("one", "a".repeat(64), signal()),
+			store.admit("two", "b".repeat(64), signal()),
+		]);
+		assert.equal(outcomes.filter((outcome) => outcome.status === "fulfilled").length, 1);
+		assert.equal(outcomes.filter((outcome) => outcome.status === "rejected").length, 1);
+		assert.equal((await readdir(directory)).filter((file) => file.endsWith(".json")).length, 1);
+	} finally {
+		await rm(directory, { recursive: true, force: true });
+	}
+});
