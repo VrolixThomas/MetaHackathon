@@ -1,8 +1,10 @@
 import { randomUUID } from "node:crypto";
 import { type FileHandle, link, mkdir, open, rename, rm, writeFile } from "node:fs/promises";
-import { dirname } from "node:path";
+import { dirname, isAbsolute, resolve } from "node:path";
 import { parseEnv } from "node:util";
 import {
+	type CodingProviderSettings,
+	CodingProviderSettingsSchema,
 	type CredentialProvider,
 	CredentialProviderSchema,
 	type CredentialStatusList,
@@ -199,6 +201,40 @@ export class EnvConfiguration {
 		return this.serialize(async () =>
 			credential((await this.read())?.values ?? {}, CredentialProviderSchema.parse(provider))
 		);
+	}
+	codingProviderSettings(): Promise<CodingProviderSettings> {
+		return this.serialize(async () => {
+			const raw = (await this.read())?.values ?? {};
+			return this.validateCodingSettings({
+				provider: raw["CODING_PROVIDER"]?.trim() || "meta-api",
+				musePath: raw["MUSE_CODE_PATH"]?.trim() || null,
+			});
+		});
+	}
+	setCodingProviderSettings(input: CodingProviderSettings): Promise<void> {
+		return this.serialize(async () => {
+			const settings = this.validateCodingSettings(input);
+			await this.write(
+				update(
+					(await this.read()) ?? document(""),
+					new Map([
+						["CODING_PROVIDER", settings.provider],
+						["MUSE_CODE_PATH", settings.musePath ?? ""],
+					])
+				)
+			);
+		});
+	}
+	private validateCodingSettings(raw: unknown): CodingProviderSettings {
+		const settings = CodingProviderSettingsSchema.parse(raw);
+		if (
+			settings.musePath !== null &&
+			(!isAbsolute(settings.musePath) ||
+				resolve(settings.musePath) !== settings.musePath ||
+				/[\r\n\0]/.test(settings.musePath))
+		)
+			throw new Error("Invalid coding provider configuration");
+		return settings;
 	}
 	/** Main-only Slack setup. These values never enter AppConfiguration/renderer metadata. */
 	slackSettings(): Promise<{

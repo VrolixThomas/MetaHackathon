@@ -334,3 +334,39 @@ it("internal Slack pacing is an explicit owner flag, never inferred from token p
 		/Invalid or inaccessible local environment configuration/
 	);
 });
+
+it("coding provider selection defaults to the API and preserves all unrelated credentials during explicit changes", async (t) => {
+	const { env, path } = await fixture(
+		t,
+		"MODEL_API_KEY=fake-key\nELEVENLABS_VOICE_ID=voice-a\n# keep this\nOTHER=kept\n"
+	);
+	assert.deepEqual(await env.codingProviderSettings(), { provider: "meta-api", musePath: null });
+	await env.setCodingProviderSettings({
+		provider: "muse-code",
+		musePath: "/Users/test/Code CLI/muse",
+	});
+	assert.deepEqual(await env.codingProviderSettings(), {
+		provider: "muse-code",
+		musePath: "/Users/test/Code CLI/muse",
+	});
+	const values = parseEnv(await readFile(path, "utf8"));
+	assert.equal(values["MODEL_API_KEY"], "fake-key");
+	assert.equal(values["ELEVENLABS_VOICE_ID"], "voice-a");
+	assert.equal(values["OTHER"], "kept");
+	assert.equal((await stat(path)).mode & 0o777, 0o600);
+	await env.setCodingProviderSettings({ provider: "meta-api", musePath: null });
+	assert.deepEqual(await env.codingProviderSettings(), { provider: "meta-api", musePath: null });
+});
+
+it("invalid coding provider and noncanonical executable paths never overwrite existing configuration", async (t) => {
+	const { env, path } = await fixture(t, "MODEL_API_KEY=fake-key\n");
+	const before = await readFile(path, "utf8");
+	for (const musePath of ["relative/muse", "/tmp/../muse", "/tmp/muse\ncommand", "/tmp/muse\0"])
+		await assert.rejects(env.setCodingProviderSettings({ provider: "muse-code", musePath }));
+	assert.equal(await readFile(path, "utf8"), before);
+	await writeFile(path, "CODING_PROVIDER=not-a-provider\nMODEL_API_KEY=fake-key\n");
+	await assert.rejects(
+		env.codingProviderSettings(),
+		(error) => error instanceof Error && !error.message.includes("fake-key")
+	);
+});
