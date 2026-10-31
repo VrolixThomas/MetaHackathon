@@ -349,6 +349,11 @@ export class ConversationService {
 		this.sessions.delete(sessionId);
 	}
 
+	/** Authentication changes retire prior source-bearing context without stopping the reusable service. */
+	resetSessions(): void {
+		for (const sessionId of this.sessions.keys()) this.releaseSession(sessionId);
+	}
+
 	async dispose(): Promise<void> {
 		this.disposed = true;
 		for (const sessionId of this.sessions.keys()) this.releaseSession(sessionId);

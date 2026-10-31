@@ -69,6 +69,31 @@ it("source metadata cannot authenticate Slack or enable reading/watching without
 	assert.deepEqual(calls, ["slack.status"]);
 });
 
+it("same-user workspace replacement invalidates pending pages before source polling catches up", async () => {
+	const pendingPage = deferred<unknown>();
+	let loads = 0;
+	const { sources, oauth, changes } = setup(async (_type, path) =>
+		path === "slack.status" ? source() : ++loads === 1 ? page("old", "cursor") : pendingPage.promise
+	);
+	await sources.refresh();
+	await sources.load();
+	const pending = sources.load();
+	const row = connected("slack", "member");
+	assert.ok(row.account);
+	oauth.store.setState({
+		rows: statuses(undefined, undefined, {
+			...row,
+			account: { ...row.account, workspaceId: "replacement-workspace" },
+		}),
+	});
+	assert.deepEqual(sources.store.getState().conversations, []);
+	assert.equal(sources.store.getState().cursor, null);
+	assert.equal(changes(), 1);
+	pendingPage.resolve(page("stale", "stale-cursor"));
+	await pending;
+	assert.deepEqual(sources.store.getState().conversations, []);
+});
+
 it("watch selection preserves unsaved choices during polling and saves an exact deduplicated set", async () => {
 	let watching: string[] = [];
 	const calls: unknown[] = [];

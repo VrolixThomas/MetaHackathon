@@ -57,7 +57,7 @@ export function Configuration({
 			onOpenError={onOpenError}
 			returnFocus={returnFocus}
 		>
-			<p>Credentials stay in your local configuration file.</p>
+			<p>Manage connected accounts and your local API keys.</p>
 			{oauth ? <OAuthConnections /> : hub && <HubConnections hub={hub} />}
 			<SlackConnections />
 			<code className="env-path" data-testid="env-path">

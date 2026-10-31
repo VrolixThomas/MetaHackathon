@@ -235,14 +235,19 @@ export class EnvConfiguration {
 				"SLACK_APP_ID",
 				"SLACK_APP_TOKEN",
 				"SLACK_OAUTH_CLIENT_ID",
-				"SLACK_OAUTH_CLIENT_SECRET",
-				"SLACK_OAUTH_REDIRECT_URI",
 			];
 			const missing = fields.filter((key) => source.values[key] === undefined);
 			if (missing.length)
 				await this.write(
 					`${source.text}\n# Slack user connection and optional app registration. Keep private.\n${missing.map((key) => `${key}=\n`).join("")}`
 				);
+		});
+	}
+	/** Explicit disconnect clears the manual user grant, preserving app registration and other keys. */
+	clearSlackToken(): Promise<void> {
+		return this.serialize(async () => {
+			const source = await this.read();
+			if (source) await this.write(update(source, new Map([["SLACK_USER_TOKEN", ""]])));
 		});
 	}
 	set(provider: CredentialProvider, secret: string): Promise<void> {
@@ -304,9 +309,12 @@ export class EnvConfiguration {
 		return this.serialize(async () => {
 			const selected = OAuthProviderSchema.parse(provider);
 			const values = (await this.read())?.values ?? {};
-			const prefix = selected === "github" ? "GITHUB_OAUTH" : "LINEAR_OAUTH";
+			const prefix = { github: "GITHUB_OAUTH", linear: "LINEAR_OAUTH", slack: "SLACK_OAUTH" }[
+				selected
+			];
 			const clientId = values[`${prefix}_CLIENT_ID`]?.trim();
-			const clientSecret = values[`${prefix}_CLIENT_SECRET`]?.trim();
+			const clientSecret =
+				selected === "slack" ? undefined : values[`${prefix}_CLIENT_SECRET`]?.trim();
 			for (const text of [clientId, clientSecret])
 				if (text && (text.length > 16384 || /[\r\n\0]/.test(text)))
 					throw new Error("Invalid OAuth configuration");
@@ -322,6 +330,7 @@ export class EnvConfiguration {
 				"GITHUB_OAUTH_CLIENT_SECRET",
 				"LINEAR_OAUTH_CLIENT_ID",
 				"LINEAR_OAUTH_CLIENT_SECRET",
+				"SLACK_OAUTH_CLIENT_ID",
 			].filter((key) => source.values[key] === undefined);
 			if (missing.length)
 				await this.write(update(source, new Map(missing.map((key) => [key, ""]))));

@@ -22,3 +22,33 @@
 .oauth-connections .inline-error {
 	margin: 5px 0;
 }
+.slack-watch-controls {
+	display: flex;
+	flex-direction: column;
+	align-items: flex-start;
+	gap: 12px;
+}
+
+.slack-watch-controls output {
+	display: block;
+	font-size: 13px;
+	line-height: 1.5;
+}
+
+.slack-watch-options {
+	display: grid;
+	gap: 8px;
+	width: 100%;
+}
+
+.slack-watch-option {
+	display: flex;
+	align-items: center;
+	gap: 8px;
+	margin: 0;
+	padding: 8px 0;
+}
+
+.slack-watch-option input {
+	flex: 0 0 auto;
+}

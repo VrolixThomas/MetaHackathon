@@ -85,7 +85,9 @@ export function createSlackSourcesController(
 		if (store.getState().loginPending !== loginPending) store.setState({ loginPending });
 		const row = state?.rows.find((item) => item.provider === "slack");
 		if (!row) return;
-		const next = row.account?.id ?? null;
+		const next = row.account
+			? `${row.source}:${row.account.workspaceId ?? ""}:${row.account.id}`
+			: null;
 		const settled = !state?.pending.slack && row.phase !== "connecting";
 		const changed = settled && oauthIdentity !== undefined && oauthIdentity !== next;
 		if (settled) oauthIdentity = next;

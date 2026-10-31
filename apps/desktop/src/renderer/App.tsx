@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { OAuthProviderSchema } from "../shared/contracts/oauth";
 import { createHubController } from "./command-center/controller";
 import { ConversationApp } from "./conversation/ConversationApp";
 import { createConversationApi } from "./conversation/api";
@@ -53,9 +54,16 @@ export function App() {
 			{ preconnect: import.meta.env["VITE_MUSE_VOICE_PRECONNECT"] !== "0" }
 		);
 		let accountIdentity: string | undefined;
+		let slackIdentity: string | undefined;
 		const disconnectAuth = runtime.oauth.store.subscribe((state) => {
-			if (state.rows.length !== 2) return;
+			if (state.rows.length !== OAuthProviderSchema.options.length) return;
+			const slack = state.rows.find((row) => row.provider === "slack");
+			const nextSlack = `${slack?.source ?? "none"}:${slack?.account?.workspaceId ?? ""}:${slack?.account?.id ?? ""}`;
+			if (slackIdentity !== undefined && slackIdentity !== nextSlack)
+				window.dispatchEvent(new Event("muse:slack-account-change"));
+			slackIdentity = nextSlack;
 			const next = state.rows
+				.filter((row) => row.provider !== "slack")
 				.map((row) => `${row.provider}:${row.source ?? "none"}:${row.account?.id ?? ""}`)
 				.join("|");
 			if (accountIdentity !== undefined && accountIdentity !== next) {
@@ -88,11 +96,17 @@ export function App() {
 		runtime.dayRef.current.start();
 		const resetDay = () => {
 			runtime.controller.interruptReply();
+			runtime.controller.store.setState({ exchanges: [], attention: null });
+			void runtime.api.release(runtime.controller.sessionId).catch(() => {});
 			runtime.dayRef.current.dispose();
 			const next = createDayController(createDayApi(runtime.api.call));
 			runtime.dayRef.current = next;
 			setDay(next);
 			void next.start();
+			const view = runtime.workspace.store.getState().workspace;
+			const primary = view?.canvases.find((canvas) => canvas.id === view.primaryId);
+			if (primary?.kind === "center" && primary.section === "day")
+				void runtime.workspace.command({ kind: "open-center", section: "day" });
 		};
 		window.addEventListener("muse:slack-account-change", resetDay);
 		const release = () => runtime.controller.release();

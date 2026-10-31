@@ -301,3 +301,24 @@ it("malformed OAuth registration values reject without exposing their contents",
 			e instanceof Error && !e.message.includes("private") && !e.message.includes("secret")
 	);
 });
+
+it("Slack PKCE reads only its client ID and disconnect clears only the manual Slack user grant", async (t) => {
+	const { env, path } = await fixture(
+		t,
+		"MODEL_API_KEY=keep-model\nGITHUB_TOKEN=keep-github\nLINEAR_API_KEY=keep-linear\nSLACK_OAUTH_CLIENT_ID=123.456\nSLACK_OAUTH_CLIENT_SECRET=unused-secret\nSLACK_USER_TOKEN=old-user-grant\nSLACK_APP_ID=AKEEP\nSLACK_APP_TOKEN=keep-app-token\n"
+	);
+	await env.ensureOAuthTemplate();
+	assert.deepEqual(await env.oauthClient("slack"), { clientId: "123.456" });
+	await env.clearSlackToken();
+	assert.equal((await env.slackSettings()).userToken, undefined);
+	assert.equal((await env.slackSettings()).appId, "AKEEP");
+	assert.equal((await env.slackSettings()).appToken, "keep-app-token");
+	assert.equal(await env.get("github"), "keep-github");
+	assert.equal(await env.linearToken(), "keep-linear");
+	assert.equal(await env.get("meta"), "keep-model");
+	assert.match(await readFile(path, "utf8"), /SLACK_OAUTH_CLIENT_SECRET=unused-secret/);
+	assert.doesNotMatch(
+		JSON.stringify(await env.status()),
+		/old-user-grant|unused-secret|keep-app-token/
+	);
+});

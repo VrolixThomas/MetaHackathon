@@ -62,6 +62,8 @@ let day: DayService | undefined;
 let dayAwake = true;
 let slackConnection: SlackConnection | undefined;
 let slackWorkspace: SlackWorkspaceCoordinator | undefined;
+let refreshSlackAccount: (() => Promise<void>) | undefined;
+let slackAccountTransition: Promise<unknown> = Promise.resolve();
 let knowledge: KnowledgeService | undefined;
 let knowledgeEpoch = 0;
 let configurationPorts: AppConfigurationPorts | undefined;
@@ -276,7 +278,10 @@ export async function initializeSlack(
 	stores: { day: DayStore; slack: SlackWorkspaceStore; knowledge: KnowledgeStore },
 	availability: () => { online: boolean }
 ) {
-	slackConnection = new SlackConnection({ readSettings: () => getConfiguration().slackSettings() });
+	slackConnection = new SlackConnection({
+		readSettings: () => getConfiguration().slackSettings(),
+		getOAuthCredential: () => oauth?.slackCredential() ?? Promise.resolve(undefined),
+	});
 	const ownPromises = new Set<string>();
 	const binding = (
 		actor: DayActor,
@@ -415,7 +420,28 @@ export async function initializeSlack(
 			},
 		},
 	});
+	refreshSlackAccount = () => {
+		const work = slackAccountTransition
+			.catch(() => {})
+			.then(async () => {
+				if (closing) return;
+				await slackWorkspace?.stop();
+				if (closing) return;
+				// Hide the previous actor's private queue before any network/token work.
+				await initializeDay(stores.day, availability);
+				if (closing) return;
+				await slackConnection?.refresh();
+				if (!closing) await slackWorkspace?.start();
+			});
+		slackAccountTransition = work;
+		return work;
+	};
 	await slackWorkspace.start();
+}
+export async function reconnectSlackSources() {
+	if (!refreshSlackAccount) throw new Error("Slack sources are unavailable");
+	conversationService.resetSessions();
+	await refreshSlackAccount();
 }
 export function getSlackConnection() {
 	if (!slackConnection) throw new Error("Slack setup is unavailable");
@@ -661,13 +687,24 @@ export function initializeOAuth(
 		openExternal,
 		getClient: (provider) => getConfiguration().oauthClient(provider),
 		getManualToken: (provider) =>
-			provider === "github" ? getConfiguration().get("github") : getConfiguration().linearToken(),
+			provider === "github"
+				? getConfiguration().get("github")
+				: provider === "linear"
+					? getConfiguration().linearToken()
+					: getConfiguration()
+							.slackSettings()
+							.then((settings) => settings.userToken),
 		clearManualToken: (provider) =>
 			provider === "github"
 				? getConfiguration().delete("github")
-				: getConfiguration().setLinearToken(""),
+				: provider === "linear"
+					? getConfiguration().setLinearToken("")
+					: getConfiguration().clearSlackToken(),
 		onChange: async (provider) => {
-			await hub?.connectionChanged(provider);
+			if (provider === "slack") {
+				conversationService.resetSessions();
+				await refreshSlackAccount?.();
+			} else await hub?.connectionChanged(provider);
 		},
 	});
 }
@@ -790,16 +827,17 @@ function runtimeForActiveJobs(): RuntimeService {
 
 export async function disposeRuntime(): Promise<void> {
 	const current = runtime;
+	closing = true;
+	const stoppingOAuth = oauth?.dispose().catch(() => {
+		console.warn("Account connection cleanup could not complete.");
+	});
 	await slackWorkspace?.dispose().catch(() => {});
 	slackConnection?.dispose();
+	await slackAccountTransition.catch(() => {});
 	await day?.dispose().catch(() => console.warn("Day supervision could not finish cleanup."));
 	stopAttentionObserver?.();
 	await attention?.dispose().catch(() => {
 		console.warn("Attention delivery state could not be saved during shutdown.");
-	});
-	closing = true;
-	const stoppingOAuth = oauth?.dispose().catch(() => {
-		console.warn("Account connection cleanup could not complete.");
 	});
 	try {
 		try {

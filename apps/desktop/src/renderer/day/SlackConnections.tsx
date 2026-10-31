@@ -27,7 +27,7 @@ export function SlackConnections() {
 			<OAuthConnections providers={["slack"]} />
 			{error && <p role="alert">{error}</p>}
 			{status?.phase === "connected" && (
-				<div aria-label="Slack watched conversations">
+				<div className="slack-watch-controls" aria-label="Slack watched conversations">
 					<h3>Watched conversations</h3>
 					<output data-testid="slack-source-status" aria-live="polite">
 						{status.account?.workspaceName} / {status.account?.userName} ·{" "}
@@ -47,17 +47,19 @@ export function SlackConnections() {
 					>
 						{conversations.length && cursor ? "More conversations" : "Choose conversations"}
 					</button>
-					{conversations.map((row) => (
-						<label className="day-hint" key={row.id}>
-							<input
-								type="checkbox"
-								checked={selected.includes(row.id)}
-								disabled={busy || !row.canRead}
-								onChange={(event) => controller.select(row.id, event.currentTarget.checked)}
-							/>
-							{row.name} · {row.visibility.replaceAll("_", " ")}
-						</label>
-					))}
+					<div className="slack-watch-options">
+						{conversations.map((row) => (
+							<label className="day-hint slack-watch-option" key={row.id}>
+								<input
+									type="checkbox"
+									checked={selected.includes(row.id)}
+									disabled={busy || !row.canRead}
+									onChange={(event) => controller.select(row.id, event.currentTarget.checked)}
+								/>
+								{row.name} · {row.visibility.replaceAll("_", " ")}
+							</label>
+						))}
+					</div>
 					{!!conversations.length && (
 						<button
 							type="button"

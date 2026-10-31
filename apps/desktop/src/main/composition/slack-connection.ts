@@ -24,7 +24,16 @@ interface Verified {
 	account: NonNullable<SlackConnectionStatus["account"]>;
 }
 
-/** Main-only development-token import. Browser OAuth awaits an app-owned HTTPS callback service. */
+const oauthIdentity = (credential: SlackCredential) =>
+	JSON.stringify([
+		credential.connectionId,
+		credential.workspaceId,
+		credential.userId,
+		credential.appId,
+		[...credential.scopes].sort(),
+	]);
+
+/** Main-only selected OAuth credential, with an explicit development-token alternative. */
 export class SlackConnection {
 	private key: string | undefined;
 	private value: Verified | undefined;
@@ -36,23 +45,46 @@ export class SlackConnection {
 	private disposed = false;
 	private retryAfter = 0;
 	constructor(
-		private readonly options: { readSettings(): Promise<Settings>; fetch?: typeof fetch }
+		private readonly options: {
+			readSettings(): Promise<Settings>;
+			/** Undefined means absent; an OAuth refresh/auth failure must reject, never fall back. */
+			getOAuthCredential?(): Promise<SlackCredential | undefined>;
+			fetch?: typeof fetch;
+		}
 	) {}
 	get epoch() {
 		return this.generation;
 	}
 	async credential(): Promise<SlackCredential | undefined> {
 		if (this.disposed) return undefined;
+		const observedGeneration = this.generation;
+		let oauth: SlackCredential | undefined;
+		try {
+			const selected = await this.options.getOAuthCredential?.();
+			oauth = selected ? SlackCredentialSchema.parse(selected) : undefined;
+		} catch {
+			if (observedGeneration === this.generation && !this.disposed) {
+				this.reset();
+				this.phase = "error";
+				this.error = "authentication";
+			}
+			throw new Error("Slack user connection could not be verified");
+		}
+		if (this.disposed) return undefined;
 		let settings: Settings;
 		try {
-			settings = await this.options.readSettings();
+			settings = oauth
+				? { userToken: oauth.accessToken, appId: oauth.appId }
+				: await this.options.readSettings();
 		} catch {
 			this.reset();
 			this.phase = "error";
 			this.error = "configuration";
 			throw new Error("Slack configuration is unavailable");
 		}
-		const key = fingerprint(settings);
+		const key = oauth ? `oauth:${oauthIdentity(oauth)}` : fingerprint(settings);
+		if (observedGeneration !== this.generation && key !== this.key)
+			throw new Error("Slack account changed");
 		if (this.key !== key) {
 			this.reset();
 			this.key = key;
@@ -61,7 +93,11 @@ export class SlackConnection {
 			this.phase = "disconnected";
 			return undefined;
 		}
-		if (this.value) return this.value.credential;
+		if (this.value) {
+			// Rotation keeps the same connection/ledger identity and refreshes only the secret.
+			if (oauth) this.value.credential = oauth;
+			return this.value.credential;
+		}
 		if (!this.loading && Date.now() < this.retryAfter)
 			throw new Error("Slack user connection could not be verified");
 		if (!this.loading) {
@@ -70,7 +106,7 @@ export class SlackConnection {
 			this.abort = controller;
 			this.phase = "checking";
 			this.error = null;
-			const work = this.verify(settings, key, controller.signal)
+			const work = this.verify(settings, key, controller.signal, oauth)
 				.then((value) => {
 					if (this.disposed || generation !== this.generation || this.key !== key)
 						throw new Error("Slack account changed");
@@ -93,7 +129,12 @@ export class SlackConnection {
 		}
 		return (await this.loading).credential;
 	}
-	private async verify(settings: Settings, key: string, signal: AbortSignal): Promise<Verified> {
+	private async verify(
+		settings: Settings,
+		key: string,
+		signal: AbortSignal,
+		oauth?: SlackCredential
+	): Promise<Verified> {
 		const appId = SlackIdSchema.parse(settings.appId);
 		const token = settings.userToken as string;
 		let scopes: string[] = [];
@@ -115,6 +156,8 @@ export class SlackConnection {
 			})
 			.parse(await transport.call("auth.test", { token, signal }));
 		if (identity.bot_id) throw new Error("A Slack user connection is required");
+		if (oauth && (identity.team_id !== oauth.workspaceId || identity.user_id !== oauth.userId))
+			throw new Error("Slack account changed");
 		const profile = await slackProfile({
 			grant: {
 				accessToken: token,
@@ -128,18 +171,28 @@ export class SlackConnection {
 			fetch: fetcher,
 			signal,
 		});
-		if (fingerprint(await this.options.readSettings()) !== key)
+		if (oauth) {
+			const current = await this.options.getOAuthCredential?.();
+			if (
+				!current ||
+				oauthIdentity(current) !== oauthIdentity(oauth) ||
+				current.accessToken !== oauth.accessToken
+			)
+				throw new Error("Slack account changed");
+		} else if (fingerprint(await this.options.readSettings()) !== key)
 			throw new Error("Slack configuration changed");
 		return {
-			credential: SlackCredentialSchema.parse({
-				connectionId: `slack-${key.slice(0, 32)}`,
-				accessToken: token,
-				tokenKind: "user",
-				workspaceId: identity.team_id,
-				userId: identity.user_id,
-				appId,
-				scopes,
-			}),
+			credential:
+				oauth ??
+				SlackCredentialSchema.parse({
+					connectionId: `slack-${key.slice(0, 32)}`,
+					accessToken: token,
+					tokenKind: "user",
+					workspaceId: identity.team_id,
+					userId: identity.user_id,
+					appId,
+					scopes,
+				}),
 			account: {
 				workspaceId: identity.team_id,
 				workspaceName: identity.team ?? identity.team_id,
@@ -154,10 +207,13 @@ export class SlackConnection {
 		return SlackConnectionStatusSchema.parse({
 			phase: this.phase,
 			account: this.value?.account ?? null,
-			missing: [
-				...(!settings.userToken ? ["SLACK_USER_TOKEN"] : []),
-				...(!settings.appId ? ["SLACK_APP_ID"] : []),
-			],
+			missing:
+				this.value && this.key?.startsWith("oauth:")
+					? []
+					: [
+							...(!settings.userToken ? ["SLACK_USER_TOKEN"] : []),
+							...(!settings.appId ? ["SLACK_APP_ID"] : []),
+						],
 			coverage: this.value ? "paused" : "disconnected",
 			watching: [],
 			error: this.error,

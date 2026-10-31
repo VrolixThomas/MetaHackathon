@@ -73,6 +73,7 @@ import {
 	getWorkspace,
 	pickReviewRepository,
 	readCurrentDaySource,
+	reconnectSlackSources,
 	screenContexts,
 	searchCurrentKnowledge,
 } from "../../services";
@@ -118,9 +119,7 @@ export const appRouter = router({
 			.input(z.strictObject({}).optional())
 			.output(z.void())
 			.mutation(async () => {
-				await getSlackConnection().refresh();
-				await getSlackWorkspace().start();
-				await getSlackWorkspace().tick();
+				await reconnectSlackSources();
 			}),
 		openSetup: publicProcedure
 			.input(z.strictObject({}).optional())
