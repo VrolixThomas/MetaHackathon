@@ -167,12 +167,17 @@ export function TicketView({
 						placeholder="Describe the change, acceptance criteria, constraints, and checks the worker should run."
 					/>
 				</label>
-				{snapshot && !snapshot.connections.model && (
-					<p className="hub-muted">Configure Muse / Meta in Settings to run a worker.</p>
+				{snapshot && !(snapshot.connections.coding ?? snapshot.connections.model) && (
+					<p className="hub-muted">Connect your coding provider in Settings to run a worker.</p>
 				)}
 				<button
 					type="submit"
-					disabled={busy || !repository?.localPath || !brief.trim() || !snapshot?.connections.model}
+					disabled={
+						busy ||
+						!repository?.localPath ||
+						!brief.trim() ||
+						!(snapshot?.connections.coding ?? snapshot?.connections.model)
+					}
 				>
 					{busy ? "Starting…" : "Start work"}
 				</button>

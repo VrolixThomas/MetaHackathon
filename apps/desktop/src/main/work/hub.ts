@@ -65,7 +65,7 @@ interface HubPorts {
 	linear: Pick<HubLinearClient, "viewer" | "tickets" | "ticket" | "scopes">;
 	registry: Pick<ReviewRegistry, "register" | "ensure" | "remove"> &
 		Partial<Pick<ReviewRegistry, "statuses" | "retry">>;
-	connections(): Promise<{ github: boolean; linear: boolean; model: boolean }>;
+	connections(): Promise<{ github: boolean; linear: boolean; model: boolean; coding?: boolean }>;
 	legacyCache(): Promise<ReviewCache>;
 }
 const empty = (): HubPersistence => ({

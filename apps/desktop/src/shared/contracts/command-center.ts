@@ -208,7 +208,12 @@ export const HubSnapshotSchema = z.strictObject({
 		githubLogin: z.string().max(100).nullable(),
 		linearName: z.string().max(200).nullable(),
 	}),
-	connections: z.strictObject({ github: z.boolean(), linear: z.boolean(), model: z.boolean() }),
+	connections: z.strictObject({
+		github: z.boolean(),
+		linear: z.boolean(),
+		model: z.boolean(),
+		coding: z.boolean().optional(),
+	}),
 	repositories: z.array(WatchedRepositorySchema).max(30),
 	reviews: z.array(ReviewQueueItemSchema).max(1000),
 	tickets: z.array(LinearTicketSummarySchema).max(500),
