@@ -33,6 +33,7 @@ import {
 	type DaySourceReader,
 } from "./knowledge-tools";
 import type { FunctionTool } from "./meta-client";
+import { type ConversationSlackPorts, ConversationSlackTools } from "./slack-tools";
 import { WorkspaceArgumentError } from "./workspace-tools";
 
 export interface ConversationHubPorts {
@@ -40,6 +41,7 @@ export interface ConversationHubPorts {
 	day?: ConversationDayPorts;
 	knowledge?: ConversationKnowledgePorts;
 	daySource?: DaySourceReader;
+	slack?: ConversationSlackPorts;
 	snapshot(signal?: AbortSignal): Promise<HubSnapshot>;
 	/** Persist an operation before returning; the caller signal must never own an admitted worker. */
 	operate(
@@ -294,6 +296,7 @@ export class ConversationHubTools {
 	private readonly dayReviewChecks = new Map<string, WorkJob["checks"]>();
 	private readonly day?: ConversationDayTools;
 	private readonly knowledge?: ConversationKnowledgeTools;
+	private readonly slack?: ConversationSlackTools;
 	private sequence = 0;
 	constructor(
 		private readonly ports: ConversationHubPorts,
@@ -301,6 +304,7 @@ export class ConversationHubTools {
 		private readonly signal: AbortSignal,
 		private readonly onSource?: (source: PinnedSource) => void
 	) {
+		if (ports.slack) this.slack = new ConversationSlackTools(ports.slack, signal);
 		if (ports.knowledge || (ports.day && ports.daySource))
 			this.knowledge = new ConversationKnowledgeTools(ports, signal);
 		if (ports.day)
@@ -339,10 +343,12 @@ export class ConversationHubTools {
 				})),
 			...(this.day?.tools ?? []),
 			...(this.knowledge?.tools ?? []),
+			...(this.slack?.tools ?? []),
 		];
 	}
 	has(name: string) {
 		return (
+			!!this.slack?.has(name) ||
 			!!this.knowledge?.has(name) ||
 			!!this.day?.has(name) ||
 			(Object.hasOwn(schemas, name) && (name !== "inspect_work_log" || !!this.ports.jobLog))
@@ -527,6 +533,7 @@ export class ConversationHubTools {
 	}
 	async execute(name: string, rawArguments: string): Promise<unknown> {
 		if (!this.has(name)) throw new GuidedReviewError("That hub operation is unavailable.");
+		if (this.slack?.has(name)) return this.slack.execute(name, rawArguments);
 		if (this.knowledge?.has(name)) return this.knowledge.execute(name, rawArguments);
 		if (this.day?.has(name)) {
 			const result = await this.day.execute(name, rawArguments);
