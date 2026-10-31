@@ -36,7 +36,7 @@ export const SlackCheckpointSchema = z
 		userId: SlackIdSchema,
 		eventIds: z.array(z.string().min(1).max(200)).max(2048),
 		revisions: z.array(RevisionSchema).max(10000),
-		polls: z.array(PollSchema).max(128),
+		polls: z.array(PollSchema).max(4096),
 	})
 	.refine(
 		(value) =>
@@ -294,25 +294,32 @@ export class SlackIntake {
 	}
 	/** Real API poll fallback: one bounded page; callers schedule fairly and honor rate-limit errors. */
 	poll(
-		input: { conversationId: string; threadTs?: string; lookbackSeconds?: number },
+		input: {
+			conversationId: string;
+			threadTs?: string;
+			lookbackSeconds?: number;
+			initialOldest?: string;
+		},
 		signal?: AbortSignal
 	) {
 		return this.serial(signal, async (bounded) => {
 			const conversationId = parsed(SlackIdSchema, input.conversationId);
 			const threadTs = input.threadTs ? parsed(SlackTsSchema, input.threadTs) : null;
 			const lookback = parsed(z.int().min(1).max(86400), input.lookbackSeconds ?? 600);
+			const initialOldest =
+				input.initialOldest === undefined ? undefined : parsed(SlackTsSchema, input.initialOldest);
 			const credential = await abortable(this.options.client.credential(), bounded);
 			const checkpoint = await this.checkpoint(credential, bounded);
 			const key = `${conversationId}:${threadTs ?? "history"}`;
 			let poll = checkpoint.polls.find((row) => row.key === key);
 			if (!poll) {
-				if (checkpoint.polls.length >= 128) throw new SlackError("capacity");
+				if (checkpoint.polls.length >= 4096) throw new SlackError("capacity");
 				const latest = clockTs(this.now());
 				poll = {
 					key,
 					conversationId,
 					threadTs,
-					oldest: clockTs(this.now() - lookback * 1000),
+					oldest: initialOldest ?? clockTs(this.now() - lookback * 1000),
 					latest,
 					through: latest,
 					cursor: null,

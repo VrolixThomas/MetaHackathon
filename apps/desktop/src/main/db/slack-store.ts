@@ -6,6 +6,7 @@ import {
 	ChatMessageSchema,
 	type ChatSource,
 	ChatSourceSchema,
+	SlackMembershipSyncSchema,
 } from "../../shared/contracts/chat";
 import { DayActorSchema } from "../../shared/contracts/day";
 import { type SlackCheckpoint, SlackCheckpointSchema } from "../slack/intake";
@@ -61,13 +62,28 @@ export const SlackSourceRecordSchema = z
 			invalid();
 	});
 export type SlackSourceRecord = z.infer<typeof SlackSourceRecordSchema>;
-export const SlackPreferencesSchema = z
+const PreferencesSchema = z
 	.strictObject({
 		sequence: z.int().nonnegative(),
-		conversationIds: z.array(SlackIdSchema).max(32),
+		followMode: z.enum(["all_joined", "selected"]),
+		excludedConversationIds: z.array(SlackIdSchema).max(1000),
+		selectedConversationIds: z.array(SlackIdSchema).max(1000),
+		conversationIds: z.array(SlackIdSchema).max(1000),
+		watchOrigins: z
+			.array(z.strictObject({ conversationId: SlackIdSchema, oldest: SlackTsSchema }))
+			.max(1000)
+			.default([]),
+		membershipSync: SlackMembershipSyncSchema.default({
+			phase: "pending",
+			discoveredCount: 0,
+			completedAt: null,
+		}),
+		membershipStartedAt: z.number().finite().nonnegative().default(0),
+		nextMembershipAt: z.number().finite().nonnegative().default(0),
+		membershipRetryAt: z.number().finite().nonnegative().default(0),
 		threads: z
 			.array(z.strictObject({ conversationId: SlackIdSchema, threadTs: SlackTsSchema }))
-			.max(96),
+			.max(4096),
 		nextStream: z.int().nonnegative(),
 		nextHistoryAt: z.number().finite().nonnegative().default(0),
 		nextRepliesAt: z.number().finite().nonnegative().default(0),
@@ -75,16 +91,48 @@ export const SlackPreferencesSchema = z
 	})
 	.refine(
 		(row) =>
+			row.conversationIds.length + row.threads.length <= 4096 &&
+			new Set(row.excludedConversationIds).size === row.excludedConversationIds.length &&
+			new Set(row.selectedConversationIds).size === row.selectedConversationIds.length &&
+			new Set(row.watchOrigins.map((o) => o.conversationId)).size === row.watchOrigins.length &&
+			row.watchOrigins.every((o) => row.conversationIds.includes(o.conversationId)) &&
 			new Set(row.conversationIds).size === row.conversationIds.length &&
 			new Set(row.threads.map((t) => `${t.conversationId}:${t.threadTs}`)).size ===
 				row.threads.length &&
 			row.threads.every((t) => row.conversationIds.includes(t.conversationId)),
 		"Unique watched stream identities required"
 	);
+// Migrate old persisted JSON without treating an empty legacy list as an explicit opt-out.
+export const SlackPreferencesSchema = z.preprocess((value) => {
+	if (!value || typeof value !== "object" || Array.isArray(value)) return value;
+	const row = value as Record<string, unknown>;
+	const ids = Array.isArray(row["conversationIds"]) ? row["conversationIds"] : [];
+	return {
+		...row,
+		followMode:
+			row["followMode"] === undefined
+				? ids.length
+					? "selected"
+					: "all_joined"
+				: row["followMode"],
+		selectedConversationIds:
+			row["selectedConversationIds"] === undefined ? ids : row["selectedConversationIds"],
+		excludedConversationIds:
+			row["excludedConversationIds"] === undefined ? [] : row["excludedConversationIds"],
+	};
+}, PreferencesSchema);
 export type SlackPreferences = z.infer<typeof SlackPreferencesSchema>;
 export const emptySlackPreferences = (): SlackPreferences => ({
 	sequence: 0,
+	followMode: "all_joined",
+	excludedConversationIds: [],
+	selectedConversationIds: [],
 	conversationIds: [],
+	watchOrigins: [],
+	membershipSync: { phase: "pending", discoveredCount: 0, completedAt: null },
+	membershipStartedAt: 0,
+	nextMembershipAt: 0,
+	membershipRetryAt: 0,
 	threads: [],
 	nextStream: 0,
 	nextHistoryAt: 0,
@@ -327,7 +375,7 @@ export class SlackWorkspaceStore implements SlackWorkspaceStorePort {
 				.prepare("SELECT sequence,data_json FROM slack_workspace_preferences WHERE actor_key=?")
 				.get(actorKey(lease)) as { sequence: number; data_json: string } | undefined;
 			if (!row) return emptySlackPreferences();
-			const result = decode(SlackPreferencesSchema, row.data_json);
+			const result = decode(SlackPreferencesSchema, row.data_json, 8 * 1024 * 1024);
 			requireValid(row.sequence === result.sequence);
 			return result;
 		});
@@ -337,7 +385,7 @@ export class SlackWorkspaceStore implements SlackWorkspaceStorePort {
 		input: SlackPreferences,
 		expectedSequence: number
 	): Promise<void> {
-		const { value, json } = encode(SlackPreferencesSchema, input);
+		const { value, json } = encode(SlackPreferencesSchema, input, 8 * 1024 * 1024);
 		this.run(() => {
 			this.assertLease(lease);
 			const row = this.sqlite

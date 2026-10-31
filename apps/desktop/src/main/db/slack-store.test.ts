@@ -267,3 +267,119 @@ test("watch, source decision and actual message identity recover after SQLite re
 		await rm(directory, { recursive: true, force: true });
 	}
 });
+
+test("legacy nonempty preferences migrate to selected; legacy empty rows opt into all_joined", async () => {
+	const { sqlite, store } = open();
+	try {
+		const lease = await store.activate(identity, 0);
+		const actorKey = JSON.stringify([identity.workspaceId, identity.userId]);
+		const legacy = { sequence: 7, conversationIds: ["D111"], threads: [], nextStream: 0 };
+		sqlite
+			.prepare(
+				"INSERT INTO slack_workspace_preferences(actor_key,sequence,data_json) VALUES(?,?,?)"
+			)
+			.run(actorKey, 7, JSON.stringify(legacy));
+		const selected = await store.preferences(lease);
+		assert.equal(selected.followMode, "selected");
+		assert.deepEqual(selected.selectedConversationIds, ["D111"]);
+		assert.deepEqual(selected.excludedConversationIds, []);
+		await store.savePreferences(
+			lease,
+			{ ...selected, sequence: 8, excludedConversationIds: ["D222"] },
+			7
+		);
+		assert.deepEqual((await store.preferences(lease)).excludedConversationIds, ["D222"]);
+		sqlite
+			.prepare("UPDATE slack_workspace_preferences SET sequence=9,data_json=? WHERE actor_key=?")
+			.run(JSON.stringify({ ...legacy, sequence: 9, conversationIds: [] }), actorKey);
+		assert.equal((await store.preferences(lease)).followMode, "all_joined");
+	} finally {
+		sqlite.close();
+	}
+});
+
+test("follow mode, exclusions, pending first-poll boundaries and membership backoff survive SQLite reopen per actor", async () => {
+	const directory = await mkdtemp(join(tmpdir(), "slack-follow-store-"));
+	const path = join(directory, "workspace.db");
+	try {
+		const first = open(path);
+		const lease = await first.store.activate(identity, 0);
+		const prefs = {
+			...emptySlackPreferences(),
+			sequence: 1,
+			conversationIds: ["D111"],
+			selectedConversationIds: ["D222"],
+			excludedConversationIds: ["D333"],
+			watchOrigins: [{ conversationId: "D111", oldest: ts() }],
+			membershipStartedAt: 1793404800000,
+			nextMembershipAt: 1793404920000,
+			membershipRetryAt: 1793404920000,
+			membershipSync: { phase: "error" as const, discoveredCount: 1, completedAt: null },
+		};
+		await first.store.savePreferences(lease, prefs, 0);
+		first.sqlite.close();
+		const second = open(path);
+		try {
+			const restored = await second.store.activate(identity, (await second.store.head()).epoch);
+			assert.deepEqual(await second.store.preferences(restored), prefs);
+			const other = await second.store.activate(
+				{ ...identity, userId: "U333", connectionId: "other-user" },
+				restored.epoch
+			);
+			assert.deepEqual(await second.store.preferences(other), emptySlackPreferences());
+			await assert.rejects(
+				second.store.savePreferences(restored, { ...prefs, sequence: 2 }, 1),
+				SlackStoreError
+			);
+		} finally {
+			second.sqlite.close();
+		}
+	} finally {
+		await rm(directory, { recursive: true, force: true });
+	}
+});
+
+test("1000 conversations and 4096 checkpoint streams persist; overflowing writes preserve existing bytes", async () => {
+	const { sqlite, store } = open();
+	try {
+		const lease = await store.activate(identity, 0);
+		const conversations = Array.from({ length: 1000 }, (_, i) => `D${1000 + i}`);
+		const prefs = { ...emptySlackPreferences(), sequence: 1, conversationIds: conversations };
+		await store.savePreferences(lease, prefs, 0);
+		await assert.rejects(
+			store.savePreferences(
+				lease,
+				{ ...prefs, sequence: 2, conversationIds: [...conversations, "D9999"] },
+				1
+			),
+			SlackStoreError
+		);
+		assert.deepEqual(await store.preferences(lease), prefs);
+		const data = checkpoint();
+		data.polls = Array.from({ length: 4096 }, (_, i) => ({
+			key: `D${10000 + i}:history`,
+			conversationId: `D${10000 + i}`,
+			threadTs: null,
+			oldest: ts(),
+			latest: ts(1),
+			through: ts(1),
+			cursor: null,
+			active: false,
+		}));
+		await store.saveCheckpoint(lease, data, 0);
+		assert.equal((await store.checkpoint(lease))?.data.polls.length, 4096);
+		const firstPoll = data.polls[0];
+		assert.ok(firstPoll);
+		await assert.rejects(
+			store.saveCheckpoint(
+				lease,
+				{ ...data, polls: [...data.polls, { ...firstPoll, key: "overflow:history" }] },
+				1
+			),
+			SlackStoreError
+		);
+		assert.equal((await store.checkpoint(lease))?.sequence, 1);
+	} finally {
+		sqlite.close();
+	}
+});

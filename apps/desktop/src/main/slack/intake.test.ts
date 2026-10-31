@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import {
 	type SlackCheckpoint,
+	SlackCheckpointSchema,
 	SlackIntake,
 	type SlackIntakeOptions,
 	type SlackPublication,
@@ -188,4 +189,46 @@ test("checkpoint identity mismatch and invalid oversized events are rejected", a
 	);
 	await assert.rejects(h.intake.receive({ ignored: "x".repeat(2 * 1024 * 1024) }), SlackError);
 	assert.equal(credential.connectionId, checkpoint.connectionId);
+});
+
+test("a queued first poll uses its durable initial boundary rather than a fresh ten-minute window", async () => {
+	const h = intakeHarness();
+	await new SlackIntake({ ...h.options, now: () => 1_700_100_000_000 }).poll({
+		conversationId: "D123",
+		initialOldest: "1700000000.000000",
+	});
+	const read = h.requests.find((row) => row.method === "conversations.history");
+	assert.equal(read?.fields["oldest"], "1700000000.000000");
+	assert.equal(h.checkpoint()?.polls[0]?.oldest, "1700000000.000000");
+	await assert.rejects(
+		h.intake.poll({ conversationId: "D123", initialOldest: "invalid" }),
+		SlackError
+	);
+});
+
+test("4096 durable stream slots are supported and the next stream fails explicitly before reading", async () => {
+	const h = intakeHarness();
+	await h.intake.poll({ conversationId: "D123" });
+	const saved = h.checkpoint();
+	assert.ok(saved);
+	const template = saved.polls[0];
+	assert.ok(template);
+	const checkpoint: SlackCheckpoint = {
+		...saved,
+		polls: Array.from({ length: 4096 }, (_, i) => ({
+			...template,
+			key: `D${10000 + i}:history`,
+			conversationId: `D${10000 + i}`,
+		})),
+	};
+	assert.equal(SlackCheckpointSchema.parse(checkpoint).polls.length, 4096);
+	const count = h.requests.length;
+	await assert.rejects(
+		new SlackIntake({ ...h.options, load: async () => checkpoint }).poll({
+			conversationId: "D999",
+		}),
+		(error) => error instanceof SlackError && error.code === "capacity"
+	);
+	assert.equal(h.requests.length, count);
+	assert.equal(h.checkpoint()?.polls.length, 1);
 });
