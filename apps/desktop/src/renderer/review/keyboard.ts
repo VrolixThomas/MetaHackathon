@@ -1,16 +1,10 @@
 import { useEffect } from "react";
 import { useReview } from "./controller";
 import { cancelActiveQuestion } from "./conversation";
+import { isInteractiveTarget } from "./keyboard-target";
 import { cancelRuntimeAction } from "./runtime-actions";
 
-export function isInteractiveTarget(target: EventTarget | null) {
-	return (
-		target instanceof Element &&
-		!!target.closest(
-			"input, textarea, select, button, a, [contenteditable='true'], [role='textbox'], [role='dialog']"
-		)
-	);
-}
+export { isInteractiveTarget };
 
 /** The only global Space listener belongs to the UI lane. */
 export function useReviewKeyboard({
