@@ -107,6 +107,27 @@ export const SlackMessagePageSchema = z
 	});
 export type SlackConversationPage = z.infer<typeof SlackConversationPageSchema>;
 export type SlackMessagePage = z.infer<typeof SlackMessagePageSchema>;
+export const SlackViewTargetSchema = z.strictObject({
+	conversationId: z
+		.string()
+		.min(2)
+		.max(100)
+		.regex(/^[A-Z][A-Z0-9]+$/),
+	threadTs: z
+		.string()
+		.regex(/^\d{1,16}\.\d{6}$/)
+		.nullable(),
+});
+/** Center canvas selection, including a thread when present; no source text or permissions encoded. */
+export function encodeSlackViewTarget(value: z.infer<typeof SlackViewTargetSchema>): string {
+	const target = SlackViewTargetSchema.parse(value);
+	return target.threadTs ? `${target.conversationId}/${target.threadTs}` : target.conversationId;
+}
+export function decodeSlackViewTarget(value: string): z.infer<typeof SlackViewTargetSchema> {
+	const parts = value.split("/");
+	if (parts.length > 2) throw new Error("Invalid Slack view target");
+	return SlackViewTargetSchema.parse({ conversationId: parts[0], threadTs: parts[1] ?? null });
+}
 
 export const SlackFollowConfigurationSchema = z.strictObject({
 	mode: z.enum(["all_joined", "selected"]),
