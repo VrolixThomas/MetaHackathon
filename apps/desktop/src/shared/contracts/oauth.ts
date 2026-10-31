@@ -33,6 +33,8 @@ export const OAuthErrorCodeSchema = z.enum([
 ]);
 export const OAuthAccountSchema = z.strictObject({
 	id: z.string().min(1).max(200),
+	/** Public workspace identity for providers whose user IDs can span multiple workspaces. */
+	workspaceId: IdSchema.optional(),
 	displayName: z.string().min(1).max(300),
 	login: z.string().min(1).max(100).optional(),
 	avatarUrl: z.url().max(2048).optional(),
