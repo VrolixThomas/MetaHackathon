@@ -26,7 +26,13 @@
 		"test:slack-oauth": "bun run --filter @metahackathon/desktop test:slack-oauth",
 		"test:pr-work": "bun run --filter @metahackathon/desktop test:pr-work",
 		"test:pr-fixes": "bun run --filter @metahackathon/desktop test:pr-fixes",
-		"test:coding-provider": "bun run --filter @metahackathon/desktop test:coding-provider"
+		"test:coding-provider": "bun run --filter @metahackathon/desktop test:coding-provider",
+		"team:serve": "bun services/team/entry.ts serve",
+		"team:consume": "bun services/team/entry.ts consume",
+		"test:team": "bun test services/team apps/desktop/src/main/team",
+		"test:team:db": "bash services/team/test-sql.sh",
+		"test:comment-conversation": "bun run --filter @metahackathon/desktop test:comment-conversation",
+		"test:image-workspace": "bun run --filter @metahackathon/desktop test:image-workspace"
 	},
 	"devDependencies": {
 		"@biomejs/biome": "1.9.4",
