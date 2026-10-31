@@ -5,6 +5,8 @@ import {
 	ChatMessageSchema,
 	type ChatSource,
 	ChatSourceSchema,
+	SlackFollowConfigurationSchema,
+	type SlackMembershipSyncSchema,
 } from "../../shared/contracts/chat";
 import { type DayActor, DayActorSchema } from "../../shared/contracts/day";
 import type { DayReplyPort, DayService } from "../day/service";
@@ -72,6 +74,9 @@ export interface SlackWorkspaceOptions {
 	cadenceMs?: number;
 }
 export interface SlackWorkspaceStatus {
+	followMode: "all_joined" | "selected";
+	excludedConversationIds: string[];
+	membershipSync?: z.infer<typeof SlackMembershipSyncSchema>;
 	mode:
 		| "stopped"
 		| "unconfigured"
@@ -113,11 +118,14 @@ interface Session {
 	socket?: { controller: AbortController; pending: Promise<void> };
 	socketAttempted: boolean;
 	checkpointSequence: number;
+	membership?: { ids: Set<string>; cursor?: string; cursors: Set<string> };
 }
 const watchSchema = z
-	.strictObject({ conversationIds: z.array(SlackIdSchema).max(32) })
+	.strictObject({ conversationIds: z.array(SlackIdSchema).max(1000) })
 	.refine((row) => new Set(row.conversationIds).size === row.conversationIds.length);
 const hash = (value: unknown) => createHash("sha256").update(JSON.stringify(value)).digest("hex");
+const clockTs = (now: number) =>
+	`${Math.floor(now / 1000)}.${String(Math.floor(now % 1000) * 1000).padStart(6, "0")}`;
 const sameActor = (a: DayActor, b: DayActor) =>
 	a.workspaceId === b.workspaceId && a.userId === b.userId;
 const actorOf = (lease: SlackLease): DayActor => ({
@@ -140,7 +148,8 @@ const identityOf = (value: {
 /**
  * Main-process service with no renderer/window/foreground-turn ownership or environment access.
  * Root registers SLACK_STORE_MIGRATION_SQL, keeps the app alive and injects actual power/network state.
- * Empty watches never crawl. An injected client must use this service's mandatory Day reply ledger;
+ * Defaults to following readable joined conversations; selected mode is an explicit manual choice.
+ * An injected client must use this service's mandatory Day reply ledger;
  * using the default actual SlackClient wires it automatically. Reconcile never searches Slack text.
  * Full source-text/closed-item invalidation requires root's invalidateSource callback; the fallback
  * only cancels active known work. Knowledge publication admits verified sources, never inferred facts.
@@ -162,6 +171,8 @@ export class SlackWorkspaceCoordinator {
 	private preferenceWrites: Promise<unknown> = Promise.resolve();
 	private readonly nextMethod = { history: 0, replies: 0 };
 	private view: SlackWorkspaceStatus = {
+		followMode: "all_joined",
+		excludedConversationIds: [],
 		mode: "stopped",
 		transport: "poll",
 		actor: null,
@@ -224,7 +235,31 @@ export class SlackWorkspaceCoordinator {
 	}
 	async watching(): Promise<string[]> {
 		const session = this.required();
-		return [...(await this.options.store.preferences(session.lease)).conversationIds];
+		await this.ensure(session);
+		const preferences = await this.options.store.preferences(session.lease);
+		this.live(session);
+		return [...preferences.conversationIds];
+	}
+	async following(): Promise<z.infer<typeof SlackFollowConfigurationSchema>> {
+		const session = this.required();
+		await this.ensure(session);
+		const preferences = await this.options.store.preferences(session.lease);
+		this.live(session);
+		return {
+			mode: preferences.followMode,
+			excludedConversationIds: [...preferences.excludedConversationIds],
+		};
+	}
+	private preferenceView(preferences: SlackPreferences): void {
+		this.view.followMode = preferences.followMode;
+		this.view.excludedConversationIds = [...preferences.excludedConversationIds];
+		this.view.watchCount = preferences.conversationIds.length;
+		if (this.view.mode === "idle" || this.view.mode === "watching")
+			this.view.mode = preferences.conversationIds.length ? "watching" : "idle";
+		this.view.membershipSync =
+			preferences.followMode === "all_joined"
+				? structuredClone(preferences.membershipSync)
+				: undefined;
 	}
 	private required(): Session {
 		if (!this.session) throw new SlackError("connection-required");
@@ -301,6 +336,9 @@ export class SlackWorkspaceCoordinator {
 			mode: "stopped",
 			actor: null,
 			watchCount: 0,
+			followMode: "all_joined",
+			excludedConversationIds: [],
+			membershipSync: undefined,
 			error: null,
 			retryAt: null,
 			transport: "poll",
@@ -356,7 +394,7 @@ export class SlackWorkspaceCoordinator {
 	}
 	private failed(error: unknown, fallback: SlackWorkspaceStatus["error"] = "provider") {
 		let code = fallback;
-		if (error instanceof SlackStoreError) code = "store";
+		if (error instanceof SlackStoreError) code = error.code === "capacity" ? "capacity" : "store";
 		if (error instanceof SlackError) {
 			if (
 				[
@@ -398,6 +436,9 @@ export class SlackWorkspaceCoordinator {
 		this.view.watchCount = 0;
 		this.view.transport = "poll";
 		this.view.lastSyncAt = null;
+		this.view.followMode = "all_joined";
+		this.view.excludedConversationIds = [];
+		this.view.membershipSync = undefined;
 		const generation = this.generation;
 		const head = await this.options.store.head();
 		const capability = await this.client.capabilities(signal);
@@ -441,21 +482,41 @@ export class SlackWorkspaceCoordinator {
 			await abortable(this.options.activateActor(actorOf(lease), this.replies), signal);
 			await this.day(session);
 			await this.ensure(session, signal);
-			const preferences = await this.options.store.preferences(lease);
+			let preferences = await this.options.store.preferences(lease);
 			this.nextMethod.history = preferences.nextHistoryAt;
 			this.nextMethod.replies = preferences.nextRepliesAt;
 			if (preferences.sequence === 0 && this.options.initialWatches?.length)
-				await this.updatePreferences(session, (current) => ({
+				preferences = await this.updatePreferences(session, (current) => ({
 					...current,
+					followMode: "selected",
+					selectedConversationIds: [...(this.options.initialWatches ?? [])],
 					conversationIds: [...(this.options.initialWatches ?? [])],
 				}));
+			// A new connection always revalidates membership. Preserve the pass start across a
+			// failed refresh/restart so channels still waiting for their first poll keep their origin.
+			preferences = await this.updatePreferences(session, (current) =>
+				this.withWatches(
+					{
+						...current,
+						membershipSync:
+							current.nextMembershipAt > this.now() &&
+							["error", "capacity"].includes(current.membershipSync.phase)
+								? current.membershipSync
+								: { ...current.membershipSync, phase: "pending", discoveredCount: 0 },
+					},
+					current.conversationIds,
+					this.now() - 600_000
+				)
+			);
+			this.preferenceView(preferences);
 			this.view.actor = actorOf(lease);
 			this.view.error = null;
 			this.view.retryAt = null;
-			if (preferences.rateLimitedUntil > this.now()) {
+			const retryAt = Math.max(preferences.rateLimitedUntil, preferences.membershipRetryAt);
+			if (retryAt > this.now()) {
 				this.view.error = "rate-limited";
 				this.view.mode = "backoff";
-				this.view.retryAt = new Date(preferences.rateLimitedUntil).toISOString();
+				this.view.retryAt = new Date(retryAt).toISOString();
 			}
 			return session;
 		} catch (error) {
@@ -476,20 +537,19 @@ export class SlackWorkspaceCoordinator {
 			await this.retire();
 			this.view.actor = null;
 			this.view.watchCount = 0;
+			this.view.followMode = "all_joined";
+			this.view.excludedConversationIds = [];
+			this.view.membershipSync = undefined;
 			throw error;
 		}
 		const preferences = await this.options.store.preferences(session.lease);
 		this.live(session, signal);
-		this.view.watchCount = preferences.conversationIds.length;
+		this.preferenceView(preferences);
 		this.socket(session, preferences);
-		if (!preferences.conversationIds.length) {
-			this.view.mode = "idle";
-			return;
-		}
 		if (!this.view.retryAt || Date.parse(this.view.retryAt) <= this.now()) {
 			this.view.error = null;
 			this.view.retryAt = null;
-			this.view.mode = "watching";
+			this.view.mode = preferences.conversationIds.length ? "watching" : "idle";
 		}
 		try {
 			await this.poll(session, preferences, signal);
@@ -501,41 +561,212 @@ export class SlackWorkspaceCoordinator {
 		} catch (error) {
 			this.failed(error, "classification");
 		}
+		// Intake always gets its turn first; one catalog page cannot consume the whole cycle.
+		if (preferences.followMode === "all_joined") await this.syncMembership(session, signal);
 	}
 	private updatePreferences(
 		session: Session,
-		mutate: (current: SlackPreferences) => SlackPreferences
+		mutate: (current: SlackPreferences) => SlackPreferences,
+		signal?: AbortSignal
 	): Promise<SlackPreferences> {
 		const work = this.preferenceWrites
 			.catch(() => {})
 			.then(async () => {
-				await this.ensure(session);
+				await this.ensure(session, signal);
 				const previous = await this.options.store.preferences(session.lease);
-				this.live(session);
+				this.live(session, signal);
 				const next = { ...mutate(structuredClone(previous)), sequence: previous.sequence + 1 };
 				await this.options.store.savePreferences(session.lease, next, previous.sequence);
-				this.live(session);
+				this.live(session, signal);
 				return next;
 			});
 		this.preferenceWrites = work;
 		return work;
 	}
+	private withWatches(
+		current: SlackPreferences,
+		conversationIds: string[],
+		since: number
+	): SlackPreferences {
+		if (conversationIds.length > 1000) throw new SlackError("capacity");
+		const origins = new Map(current.watchOrigins.map((o) => [o.conversationId, o.oldest]));
+		const threads = current.threads.filter((t) => conversationIds.includes(t.conversationId));
+		if (conversationIds.length + threads.length > 4096) throw new SlackError("capacity");
+		return {
+			...current,
+			conversationIds,
+			watchOrigins: conversationIds.map((conversationId) => ({
+				conversationId,
+				oldest: origins.get(conversationId) ?? clockTs(Math.max(0, since)),
+			})),
+			threads,
+			// Keep the round-robin position when pages add channels; resetting it would starve later streams.
+			nextStream: current.nextStream,
+		};
+	}
+	private async syncMembership(session: Session, signal: AbortSignal): Promise<void> {
+		const preferences = await this.options.store.preferences(session.lease);
+		this.live(session, signal);
+		if (preferences.followMode !== "all_joined" || preferences.nextMembershipAt > this.now())
+			return;
+		const bounded = AbortSignal.any([signal, session.controller.signal, AbortSignal.timeout(5000)]);
+		try {
+			if (!session.membership) {
+				session.membership = { ids: new Set(), cursors: new Set() };
+				const starting = await this.updatePreferences(
+					session,
+					(current) => ({
+						...current,
+						membershipStartedAt: current.membershipStartedAt || this.now(),
+						membershipSync: { ...current.membershipSync, phase: "syncing", discoveredCount: 0 },
+					}),
+					bounded
+				);
+				this.preferenceView(starting);
+			}
+			const pass = session.membership;
+			const page = await abortable(
+				this.client.listConversations({ cursor: pass.cursor, limit: 15 }, bounded),
+				bounded
+			);
+			await this.ensure(session, bounded);
+			if (session.membership !== pass) throw new SlackError("cancelled");
+			for (const item of page.items) {
+				if (item.workspaceId !== session.lease.workspaceId)
+					throw new SlackError("stale-connection");
+				if (item.canRead) pass.ids.add(SlackIdSchema.parse(item.id));
+			}
+			if (pass.ids.size > 1000) throw new SlackError("capacity");
+			if (page.hasMore) {
+				if (!page.nextCursor || pass.cursors.has(page.nextCursor) || pass.cursors.size >= 1000)
+					throw new SlackError("capacity");
+				pass.cursors.add(page.nextCursor);
+				pass.cursor = page.nextCursor;
+			}
+			const next = await this.updatePreferences(
+				session,
+				(current) => {
+					if (current.followMode !== "all_joined" || session.membership !== pass)
+						throw new SlackError("cancelled");
+					const ids = [...pass.ids].filter((id) => !current.excludedConversationIds.includes(id));
+					const union = [...new Set([...current.conversationIds, ...ids])];
+					// Add bounded discoveries immediately. Removals are authoritative only after all pages.
+					const watches = page.hasMore
+						? union.length <= 1000
+							? union
+							: current.conversationIds
+						: ids;
+					return this.withWatches(
+						{
+							...current,
+							membershipSync: {
+								phase: page.hasMore ? "syncing" : "complete",
+								discoveredCount: pass.ids.size,
+								completedAt: page.hasMore
+									? current.membershipSync.completedAt
+									: new Date(this.now()).toISOString(),
+							},
+							nextMembershipAt: page.hasMore ? 0 : this.now() + 60_000,
+							membershipRetryAt: 0,
+							membershipStartedAt: page.hasMore ? current.membershipStartedAt : 0,
+						},
+						watches,
+						current.membershipStartedAt - 600_000
+					);
+				},
+				bounded
+			);
+			this.preferenceView(next);
+			this.socket(session, next);
+			if (!page.hasMore) session.membership = undefined;
+		} catch (error) {
+			this.live(session, signal);
+			const phase =
+				(error instanceof SlackError || error instanceof SlackStoreError) &&
+				error.code === "capacity"
+					? "capacity"
+					: "error";
+			const count = session.membership?.ids.size ?? preferences.membershipSync.discoveredCount;
+			session.membership = undefined;
+			const next = await this.updatePreferences(
+				session,
+				(current) => ({
+					...current,
+					membershipSync: { ...current.membershipSync, phase, discoveredCount: count },
+					membershipRetryAt:
+						error instanceof SlackError && error.code === "rate-limited"
+							? this.now() + (error.retryAfterSeconds ?? 60) * 1000
+							: current.membershipRetryAt,
+					nextMembershipAt:
+						this.now() +
+						(error instanceof SlackError && error.retryAfterSeconds
+							? error.retryAfterSeconds * 1000
+							: 60_000),
+				}),
+				signal
+			);
+			this.preferenceView(next);
+			this.failed(error);
+		}
+	}
+	async follow(
+		input: z.infer<typeof SlackFollowConfigurationSchema>
+	): Promise<SlackWorkspaceStatus> {
+		const validated = SlackFollowConfigurationSchema.parse(input);
+		if (
+			new Set(validated.excludedConversationIds).size !== validated.excludedConversationIds.length
+		)
+			throw new SlackError("invalid-data");
+		return this.changeFollow((current) => ({
+			...current,
+			followMode: validated.mode,
+			excludedConversationIds: validated.excludedConversationIds,
+		}));
+	}
 	async watch(input: { conversationIds: string[] }): Promise<SlackWorkspaceStatus> {
 		const validated = watchSchema.parse(input);
-		this.cycle?.controller.abort();
-		const session = this.required();
-		await this.ensure(session);
-		const next = await this.updatePreferences(session, (current) => ({
+		return this.changeFollow((current) => ({
 			...current,
-			conversationIds: [...validated.conversationIds],
-			threads: current.threads.filter((t) => validated.conversationIds.includes(t.conversationId)),
-			nextStream: 0,
+			followMode: "selected",
+			selectedConversationIds: [...validated.conversationIds],
 		}));
+	}
+	private async changeFollow(
+		mutate: (current: SlackPreferences) => SlackPreferences
+	): Promise<SlackWorkspaceStatus> {
+		const session = this.required();
+		this.cycle?.controller.abort();
+		await this.cycle?.pending;
+		await this.ensure(session);
+		session.membership = undefined;
+		const next = await this.updatePreferences(session, (current) => {
+			const changed = mutate(current);
+			const ids =
+				changed.followMode === "selected"
+					? changed.selectedConversationIds
+					: current.followMode === "selected"
+						? []
+						: current.conversationIds;
+			return this.withWatches(
+				{
+					...changed,
+					membershipSync: { ...current.membershipSync, phase: "pending", discoveredCount: 0 },
+					// A provider's existing Retry-After survives preference changes.
+					nextMembershipAt: Math.max(
+						current.membershipRetryAt,
+						current.membershipSync.phase === "error" ? current.nextMembershipAt : 0
+					),
+					membershipStartedAt: current.membershipStartedAt || this.now(),
+				},
+				ids.filter((id) => !changed.excludedConversationIds.includes(id)),
+				this.now() - 600_000
+			);
+		});
 		session.socket?.controller.abort();
 		await session.socket?.pending;
 		session.socket = undefined;
 		session.socketAttempted = false;
-		this.view.watchCount = next.conversationIds.length;
+		this.preferenceView(next);
 		this.view.mode = next.conversationIds.length ? "watching" : "idle";
 		this.socket(session, next);
 		return this.status();
@@ -636,7 +867,16 @@ export class SlackWorkspaceCoordinator {
 			// Membership is required for automatic watched polling, including public channels.
 			const audience = await this.client.audience(stream.conversationId, signal);
 			if (!audience.readerIds.includes(session.lease.userId)) throw new SlackError("access-denied");
-			const result = await session.intake.poll(stream, signal);
+			const result = await session.intake.poll(
+				{
+					...stream,
+					initialOldest:
+						stream.threadTs ??
+						preferences.watchOrigins.find((o) => o.conversationId === stream.conversationId)
+							?.oldest,
+				},
+				signal
+			);
 			this.nextMethod[method] =
 				this.now() + Math.max(1000, this.options.clientOptions?.historyIntervalMs ?? 60_000);
 			if (result.threadIds.length)
@@ -648,12 +888,23 @@ export class SlackWorkspaceCoordinator {
 								(t) => t.conversationId === stream.conversationId && t.threadTs === threadTs
 							)
 						) {
-							if (threads.length >= 96) throw new SlackError("capacity");
+							if (threads.length + current.conversationIds.length >= 4096)
+								throw new SlackError("capacity");
 							threads.push({ conversationId: stream.conversationId, threadTs });
 						}
 					return { ...current, threads };
 				});
 		} catch (error) {
+			if (error instanceof SlackError && error.code === "access-denied") {
+				const next = await this.updatePreferences(session, (current) =>
+					this.withWatches(
+						current,
+						current.conversationIds.filter((id) => id !== stream.conversationId),
+						this.now() - 600_000
+					)
+				);
+				this.preferenceView(next);
+			}
 			this.nextMethod[method] =
 				this.now() +
 				(error instanceof SlackError && error.retryAfterSeconds

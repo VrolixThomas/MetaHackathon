@@ -180,12 +180,27 @@ async function until(ready: () => boolean) {
 	assert.ok(ready(), "controlled coordinator condition did not settle");
 }
 function harness(overrides: Partial<SlackWorkspaceOptions> = {}, store = new MemorySlackStore()) {
+	type Channel = {
+		id: string;
+		is_im?: boolean;
+		is_private?: boolean;
+		is_channel?: boolean;
+		is_mpim?: boolean;
+		is_archived?: boolean;
+	};
 	const control = {
 		credential: credential as SlackCredential | undefined,
 		now: initialNow,
 		availability: { awake: true, online: true },
 		rateLimited: false,
 		classifyCalls: 0,
+		catalogs: new Map<string, Channel[]>([
+			["U111", [{ id: "D111", is_im: true }]],
+			["U333", []],
+		]),
+		catalogResponse: undefined as
+			| ((fields: Record<string, unknown>) => Response | Promise<Response>)
+			| undefined,
 	};
 	const calls: { method: string; fields: Record<string, unknown> }[] = [];
 	const messages = new Map<string, ReturnType<typeof raw>[]>([
@@ -258,12 +273,18 @@ function harness(overrides: Partial<SlackWorkspaceOptions> = {}, store = new Mem
 						ok: true,
 						url: "wss://wss-primary.slack.com/link?ticket=controlled",
 					});
-				if (method === "users.conversations")
+				if (method === "users.conversations") {
+					if (control.catalogResponse) return control.catalogResponse(fields);
+					const catalog = control.catalogs.get(control.credential?.userId ?? "") ?? [];
+					const start = Number(String(fields["cursor"] ?? "").replace("page-", "")) || 0;
 					return Response.json({
 						ok: true,
-						channels: [{ id: "D111", is_im: true }],
-						response_metadata: { next_cursor: "cursor-two" },
+						channels: catalog.slice(start, start + 15),
+						response_metadata: {
+							next_cursor: start + 15 < catalog.length ? `page-${start + 15}` : "",
+						},
 					});
+				}
 				if (method === "conversations.info")
 					return Response.json({
 						ok: true,
@@ -319,8 +340,13 @@ function harness(overrides: Partial<SlackWorkspaceOptions> = {}, store = new Mem
 	};
 }
 
-test("empty watch has no automatic conversation/history/socket crawl; read proxy uses actual cursor", async () => {
+test("explicit selected empty watch has no automatic conversation/history/socket crawl; read proxy uses actual cursor", async () => {
 	const h = harness({ getAppToken: async () => "xapp-controlled" });
+	h.store.prefs.set("T111:U111", {
+		...emptySlackPreferences(),
+		sequence: 1,
+		followMode: "selected",
+	});
 	try {
 		await h.coordinator.start();
 		assert.equal(h.coordinator.status().mode, "idle");
@@ -330,7 +356,7 @@ test("empty watch has no automatic conversation/history/socket crawl; read proxy
 		);
 		const page = await h.coordinator.conversations({ cursor: "explicit-page", limit: 15 });
 		assert.equal(page.items[0]?.id, "D111");
-		assert.equal(page.nextCursor, "cursor-two");
+		assert.equal(page.nextCursor, null);
 		assert.equal(h.calls.at(-1)?.fields["cursor"], "explicit-page");
 		assert.equal(h.control.classifyCalls, 0);
 	} finally {
@@ -781,4 +807,390 @@ test("stop fences a classifier that ignores cancellation and prevents late captu
 		release?.(null);
 		await h.coordinator.dispose();
 	}
+});
+
+const joined = (count: number) =>
+	Array.from({ length: count }, (_, i) => ({ id: `D${1000 + i}`, is_im: true }));
+const catalogCalls = (h: ReturnType<typeof harness>) =>
+	h.calls.filter((c) => c.method === "users.conversations");
+async function advance(h: ReturnType<typeof harness>, milliseconds = 1000) {
+	h.control.now += milliseconds;
+	await h.coordinator.tick();
+}
+
+test("default follows all readable joined kinds over multiple pages with intake between pages", async () => {
+	const h = harness();
+	const channels = [
+		{ id: "C111", is_channel: true, is_private: false },
+		{ id: "G111", is_channel: true, is_private: true },
+		{ id: "G222", is_mpim: true, is_private: true },
+		...joined(37),
+	];
+	h.control.catalogs.set("U111", channels);
+	try {
+		await h.coordinator.start();
+		assert.equal(h.coordinator.status().followMode, "all_joined");
+		assert.equal(h.coordinator.status().membershipSync?.phase, "syncing");
+		assert.equal((await h.coordinator.watching()).length, 15);
+		await advance(h);
+		assert.equal((await h.coordinator.watching()).length, 30);
+		await advance(h);
+		assert.deepEqual(
+			await h.coordinator.watching(),
+			channels.map((c) => c.id)
+		);
+		assert.deepEqual(h.coordinator.status().membershipSync, {
+			phase: "complete",
+			discoveredCount: 40,
+			completedAt: new Date(h.control.now).toISOString(),
+		});
+		assert.deepEqual(
+			catalogCalls(h).map((c) => c.fields["cursor"]),
+			[undefined, "page-15", "page-30"]
+		);
+		assert.equal(h.calls.filter((c) => c.method === "conversations.history").length, 2);
+		assert.ok(!h.calls.some((c) => c.method.includes("join")));
+	} finally {
+		await h.coordinator.dispose();
+	}
+});
+
+test("complete refresh removes left/archived memberships, discovers new ones, and respects exclusions", async () => {
+	const h = harness();
+	h.control.catalogs.set("U111", [
+		{ id: "D111", is_im: true },
+		{ id: "D222", is_im: true },
+	]);
+	try {
+		await h.coordinator.start();
+		await h.coordinator.follow({ mode: "all_joined", excludedConversationIds: ["D222", "D333"] });
+		await advance(h);
+		assert.deepEqual(await h.coordinator.watching(), ["D111"]);
+		h.control.catalogs.set("U111", [
+			{ id: "D333", is_im: true },
+			{ id: "D444", is_im: true },
+		]);
+		await advance(h, 60_000);
+		assert.deepEqual(await h.coordinator.watching(), ["D444"]);
+		assert.deepEqual(await h.coordinator.following(), {
+			mode: "all_joined",
+			excludedConversationIds: ["D222", "D333"],
+		});
+		assert.equal(h.coordinator.status().membershipSync?.discoveredCount, 2);
+	} finally {
+		await h.coordinator.dispose();
+	}
+});
+
+test("manual watch selects explicitly; switching modes keeps manual choices and actor exclusions across restart", async () => {
+	const h = harness();
+	let resumed: SlackWorkspaceCoordinator | undefined;
+	try {
+		await h.coordinator.start();
+		await h.coordinator.watch({ conversationIds: ["D222"] });
+		assert.deepEqual(await h.coordinator.following(), {
+			mode: "selected",
+			excludedConversationIds: [],
+		});
+		const calls = catalogCalls(h).length;
+		await advance(h, 60_000);
+		assert.equal(catalogCalls(h).length, calls);
+		await h.coordinator.follow({ mode: "all_joined", excludedConversationIds: ["D111"] });
+		await advance(h);
+		assert.deepEqual(await h.coordinator.watching(), []);
+		await h.coordinator.stop();
+		resumed = new SlackWorkspaceCoordinator(h.options);
+		await resumed.start();
+		assert.deepEqual(await resumed.following(), {
+			mode: "all_joined",
+			excludedConversationIds: ["D111"],
+		});
+		assert.deepEqual(await resumed.watching(), []);
+		await resumed.follow({ mode: "selected", excludedConversationIds: ["D111"] });
+		assert.deepEqual(await resumed.watching(), ["D222"]);
+		await resumed.watch({ conversationIds: [] });
+		await resumed.stop();
+		await resumed.start();
+		assert.equal((await resumed.following()).mode, "selected");
+		assert.deepEqual(await resumed.watching(), []);
+	} finally {
+		await h.coordinator.dispose();
+		await resumed?.dispose();
+	}
+});
+
+test("failed partial catalog keeps prior watches and exposes error; a later complete pass applies removals", async () => {
+	const h = harness();
+	try {
+		await h.coordinator.start();
+		h.control.catalogResponse = (fields) =>
+			fields["cursor"]
+				? Response.json({ ok: false, error: "internal_error" })
+				: Response.json({
+						ok: true,
+						channels: joined(15),
+						response_metadata: { next_cursor: "failed-page" },
+					});
+		await advance(h, 60_000);
+		assert.ok((await h.coordinator.watching()).includes("D111"));
+		assert.equal(h.coordinator.status().membershipSync?.phase, "syncing");
+		await advance(h);
+		assert.equal(h.coordinator.status().membershipSync?.phase, "error");
+		assert.equal(
+			h.coordinator.status().membershipSync?.completedAt,
+			new Date(initialNow).toISOString()
+		);
+		assert.ok((await h.coordinator.watching()).includes("D111"));
+		h.control.catalogResponse = undefined;
+		h.control.catalogs.set("U111", [{ id: "D222", is_im: true }]);
+		await advance(h, 60_000);
+		assert.deepEqual(await h.coordinator.watching(), ["D222"]);
+		assert.equal(h.coordinator.status().membershipSync?.phase, "complete");
+	} finally {
+		await h.coordinator.dispose();
+	}
+});
+
+test("membership Retry-After persists across restart while history keeps its independent turn", async () => {
+	const h = harness();
+	let resumed: SlackWorkspaceCoordinator | undefined;
+	try {
+		await h.coordinator.start();
+		h.control.catalogResponse = () =>
+			new Response("", { status: 429, headers: { "retry-after": "120" } });
+		await advance(h, 60_000);
+		assert.equal(h.coordinator.status().error, "rate-limited");
+		const count = catalogCalls(h).length;
+		const history = h.calls.filter((c) => c.method === "conversations.history").length;
+		await advance(h);
+		assert.equal(catalogCalls(h).length, count);
+		assert.ok(h.calls.filter((c) => c.method === "conversations.history").length > history);
+		await h.coordinator.stop();
+		resumed = new SlackWorkspaceCoordinator(h.options);
+		await resumed.start();
+		assert.equal(catalogCalls(h).length, count);
+		assert.ok(Date.parse(resumed.status().retryAt ?? "") > h.control.now);
+		h.control.now += 120_000;
+		h.control.catalogResponse = undefined;
+		await resumed.tick();
+		assert.equal(catalogCalls(h).length, count + 1);
+		assert.equal(resumed.status().membershipSync?.phase, "complete");
+	} finally {
+		await h.coordinator.dispose();
+		await resumed?.dispose();
+	}
+});
+
+test("pending first-poll origins and more than 128 streams survive a restart and slow round robin", async () => {
+	const h = harness();
+	h.control.catalogs.set("U111", joined(140));
+	let resumed: SlackWorkspaceCoordinator | undefined;
+	try {
+		await h.coordinator.start();
+		for (let i = 0; i < 9; i++) await advance(h);
+		assert.equal((await h.coordinator.watching()).length, 140);
+		await h.coordinator.stop();
+		h.control.now += 20 * 60_000;
+		resumed = new SlackWorkspaceCoordinator(h.options);
+		await resumed.start();
+		for (let i = 0; i < 140; i++) {
+			h.control.now += 1000;
+			await resumed.tick();
+		}
+		const histories = h.calls.filter((c) => c.method === "conversations.history");
+		assert.equal(new Set(histories.map((c) => c.fields["channel"])).size, 140);
+		const last = histories.find((c) => c.fields["channel"] === "D1139");
+		assert.ok(last);
+		assert.ok(Number(last.fields["oldest"]) <= (initialNow - 600_000) / 1000);
+		assert.equal(h.store.checkpoints.get(credential.connectionId)?.data.polls.length, 140);
+		assert.notEqual(resumed.status().error, "capacity");
+	} finally {
+		await h.coordinator.dispose();
+		await resumed?.dispose();
+	}
+});
+
+test("catalog overflow is explicit capacity, never complete or silently limited to 32 watches", async () => {
+	const h = harness();
+	h.control.catalogs.set("U111", joined(1001));
+	try {
+		await h.coordinator.start();
+		for (let i = 0; i < 66; i++) await advance(h);
+		assert.equal(h.coordinator.status().membershipSync?.phase, "capacity");
+		assert.equal(h.coordinator.status().membershipSync?.discoveredCount, 1001);
+		assert.equal(h.coordinator.status().membershipSync?.completedAt, null);
+		assert.equal(h.coordinator.status().error, "capacity");
+		assert.equal((await h.coordinator.watching()).length, 990);
+		const count = catalogCalls(h).length;
+		await advance(h);
+		assert.equal(catalogCalls(h).length, count);
+	} finally {
+		await h.coordinator.dispose();
+	}
+});
+
+test("late catalog page after sleep or account replacement cannot add watches to either actor", async () => {
+	const h = harness();
+	let release: ((response: Response) => void) | undefined;
+	h.control.catalogResponse = () =>
+		new Promise((resolve) => {
+			release = resolve;
+		});
+	try {
+		const starting = h.coordinator.start();
+		await until(() => !!release);
+		h.control.availability = { awake: false, online: false };
+		await h.coordinator.availabilityChanged();
+		release?.(Response.json({ ok: true, channels: [{ id: "D999", is_im: true }] }));
+		await starting;
+		assert.equal(h.coordinator.status().mode, "sleeping");
+		assert.deepEqual(h.store.prefs.get("T111:U111")?.conversationIds, []);
+		h.control.catalogResponse = undefined;
+		h.control.credential = { ...credential, userId: "U333", connectionId: "connection-two" };
+		h.control.catalogs.set("U333", [{ id: "D333", is_im: true }]);
+		h.control.availability = { awake: true, online: true };
+		await h.coordinator.availabilityChanged();
+		assert.deepEqual(await h.coordinator.watching(), ["D333"]);
+		assert.deepEqual(await h.coordinator.following(), {
+			mode: "all_joined",
+			excludedConversationIds: [],
+		});
+	} finally {
+		release?.(Response.json({ ok: true, channels: [] }));
+		await h.coordinator.dispose();
+	}
+});
+
+test("unreadable memberships are not watched and fresh audience loss removes a previously followed conversation", async () => {
+	const h = harness();
+	h.control.credential = {
+		...credential,
+		scopes: credential.scopes.filter((s) => s !== "groups:history"),
+	};
+	h.control.catalogs.set("U111", [
+		{ id: "G111", is_channel: true, is_private: true },
+		{ id: "D111", is_im: true },
+	]);
+	try {
+		await h.coordinator.start();
+		assert.deepEqual(await h.coordinator.watching(), ["D111"]);
+		// The controlled metadata port now reports current membership without the actor.
+		const audience = h.coordinator.client.audience.bind(h.coordinator.client);
+		h.coordinator.client.audience = async (...args) => ({
+			...(await audience(...args)),
+			readerIds: ["U222"],
+		});
+		await advance(h);
+		assert.deepEqual(await h.coordinator.watching(), []);
+		assert.equal(h.coordinator.status().error, "access-denied");
+	} finally {
+		await h.coordinator.dispose();
+	}
+});
+
+test("exclusions stay with their actor and returning to that actor restores them", async () => {
+	const h = harness();
+	try {
+		await h.coordinator.start();
+		await h.coordinator.follow({ mode: "all_joined", excludedConversationIds: ["D111"] });
+		h.control.credential = { ...credential, userId: "U333", connectionId: "another-user" };
+		h.control.catalogs.set("U333", [{ id: "D111", is_im: true }]);
+		await advance(h);
+		assert.deepEqual(await h.coordinator.following(), {
+			mode: "all_joined",
+			excludedConversationIds: [],
+		});
+		assert.deepEqual(await h.coordinator.watching(), ["D111"]);
+		h.control.credential = credential;
+		await advance(h);
+		assert.deepEqual(await h.coordinator.following(), {
+			mode: "all_joined",
+			excludedConversationIds: ["D111"],
+		});
+		assert.deepEqual(await h.coordinator.watching(), []);
+	} finally {
+		await h.coordinator.dispose();
+	}
+});
+
+test("repeating catalog cursors fail boundedly and retain valid watches", async () => {
+	const h = harness();
+	h.control.catalogResponse = () =>
+		Response.json({
+			ok: true,
+			channels: [{ id: "D111", is_im: true }],
+			response_metadata: { next_cursor: "same-cursor" },
+		});
+	try {
+		await h.coordinator.start();
+		await advance(h);
+		assert.equal(catalogCalls(h).length, 2);
+		assert.deepEqual(await h.coordinator.watching(), ["D111"]);
+		assert.equal(h.coordinator.status().membershipSync?.phase, "capacity");
+		assert.equal(h.coordinator.status().membershipSync?.completedAt, null);
+		await h.coordinator.stop();
+		await h.coordinator.start();
+		assert.equal(h.coordinator.status().membershipSync?.phase, "capacity");
+		assert.equal(catalogCalls(h).length, 2);
+	} finally {
+		await h.coordinator.dispose();
+	}
+});
+
+test("manual selection cancels an outstanding catalog page and ignores its late completion", async () => {
+	const h = harness();
+	let release: ((value: Response) => void) | undefined;
+	h.control.catalogResponse = () =>
+		new Promise((resolve) => {
+			release = resolve;
+		});
+	try {
+		const starting = h.coordinator.start();
+		await until(() => !!release);
+		await h.coordinator.watch({ conversationIds: ["D222"] });
+		release?.(Response.json({ ok: true, channels: [{ id: "D999", is_im: true }] }));
+		await starting;
+		assert.equal((await h.coordinator.following()).mode, "selected");
+		assert.deepEqual(await h.coordinator.watching(), ["D222"]);
+		await advance(h);
+		assert.deepEqual(await h.coordinator.watching(), ["D222"]);
+	} finally {
+		release?.(Response.json({ ok: true, channels: [] }));
+		await h.coordinator.dispose();
+	}
+});
+
+test("known threads waiting beyond the lookback start at their parent and keep a fair polling turn", async () => {
+	const h = harness({ initialWatches: ["D111", "D222"] });
+	h.messages.set("D111", [raw("Parent with a later reply", { ts: ts(-300), reply_count: 1 })]);
+	try {
+		await h.coordinator.start();
+		await advance(h, 20 * 60_000);
+		await advance(h);
+		const reads = h.calls.filter((c) => c.method === "conversations.replies");
+		assert.equal(reads.length, 1);
+		assert.equal(reads[0]?.fields["oldest"], ts(-300));
+		assert.deepEqual(
+			h.calls.filter((c) => c.method === "conversations.history").map((c) => c.fields["channel"]),
+			["D111", "D222"]
+		);
+	} finally {
+		await h.coordinator.dispose();
+	}
+});
+
+test("legacy preference schema migrates explicit lists and rejects corrupt follow configuration", () => {
+	const legacy = { sequence: 4, conversationIds: ["D111"], threads: [], nextStream: 0 };
+	assert.equal(SlackPreferencesSchema.parse(legacy).followMode, "selected");
+	assert.deepEqual(SlackPreferencesSchema.parse(legacy).selectedConversationIds, ["D111"]);
+	assert.equal(
+		SlackPreferencesSchema.parse({ ...legacy, conversationIds: [] }).followMode,
+		"all_joined"
+	);
+	assert.equal(SlackPreferencesSchema.safeParse({ ...legacy, followMode: null }).success, false);
+	assert.equal(
+		SlackPreferencesSchema.safeParse({ ...legacy, excludedConversationIds: ["D111", "D111"] })
+			.success,
+		false
+	);
 });
