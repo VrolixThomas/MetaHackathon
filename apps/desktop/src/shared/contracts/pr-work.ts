@@ -23,6 +23,7 @@ export const PRFixStartInputSchema = z.strictObject({
 /** A local candidate is separate from review, author approval, publication and merge. */
 export const PRFixSummarySchema = z.strictObject({
 	id: IdSchema.max(200),
+	jobId: IdSchema,
 	pr: PullRequestSchema,
 	feedback: PullRequestFeedbackSchema,
 	phase: z.enum([
