@@ -6,6 +6,7 @@ import {
 } from "../../shared/contracts/oauth";
 import type { OAuthErrorCode, OAuthProvider } from "../../shared/contracts/oauth";
 import type { SecretEncryption } from "../runtime/credentials";
+import { SlackIdSchema, SlackScopesSchema } from "../slack/types";
 
 /** Only fixed, public-safe messages may leave this module. Never attach a provider error/cause. */
 export class OAuthError extends Error {
@@ -52,16 +53,32 @@ export const ScopesSchema = z
 			.regex(/^[\w:./-]+$/)
 	)
 	.max(50);
-export const SessionSchema = z.strictObject({
-	id: z.uuid(),
-	provider: z.enum(["github", "linear"]),
-	account: OAuthAccountSchema,
-	accessToken: TokenSchema,
-	refreshToken: TokenSchema.nullable(),
-	scopes: ScopesSchema,
-	expiresAt: z.number().int().positive().nullable(),
-	refreshExpiresAt: z.number().int().positive().nullable(),
+export const SlackIdentitySchema = z.strictObject({
+	appId: SlackIdSchema,
+	workspaceId: SlackIdSchema,
+	userId: SlackIdSchema,
 });
+export const SessionSchema = z
+	.strictObject({
+		id: z.uuid(),
+		provider: OAuthProviderSchema,
+		account: OAuthAccountSchema,
+		accessToken: TokenSchema,
+		refreshToken: TokenSchema.nullable(),
+		scopes: ScopesSchema,
+		expiresAt: z.number().int().positive().nullable(),
+		refreshExpiresAt: z.number().int().positive().nullable(),
+		slack: SlackIdentitySchema.optional(),
+	})
+	.refine((session) =>
+		session.provider === "slack"
+			? session.slack !== undefined &&
+				session.account.id === session.slack.userId &&
+				SlackScopesSchema.safeParse(session.scopes).success &&
+				Boolean(session.refreshToken) === Boolean(session.expiresAt) &&
+				Boolean(session.refreshToken) === Boolean(session.refreshExpiresAt)
+			: session.slack === undefined
+	);
 /** Main-only. Entire records, including profile and token identity, are encrypted. */
 export type OAuthSession = z.infer<typeof SessionSchema>;
 

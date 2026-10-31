@@ -13,6 +13,7 @@ import type {
 	OAuthStartInput,
 	OAuthStatus,
 } from "../../shared/contracts/oauth";
+import { type SlackCredential, SlackCredentialSchema } from "../slack/types";
 import { authorizationUrl, exchange, profile, validClient } from "./providers";
 import { OAuthStore } from "./store";
 import {
@@ -51,12 +52,12 @@ export class OAuthService {
 	private readonly store: OAuthStore;
 	private readonly fetcher: typeof fetch;
 	private readonly now: () => number;
-	private readonly epochs: Record<OAuthProvider, number> = { github: 0, linear: 0 };
+	private readonly epochs: Record<OAuthProvider, number> = { github: 0, linear: 0, slack: 0 };
 	private readonly errors: Partial<Record<OAuthProvider, OAuthErrorCode>> = {};
 	private readonly pending: Partial<Record<OAuthProvider, Promise<unknown>>> = {};
 	private readonly refreshes = new Map<
 		OAuthProvider,
-		{ id: string; epoch: number; controller: AbortController; promise: Promise<string> }
+		{ id: string; epoch: number; controller: AbortController; promise: Promise<OAuthSession> }
 	>();
 	private readonly requests = new Map<string, OAuthProvider>();
 	private flow?: Flow;
@@ -158,7 +159,14 @@ export class OAuthService {
 					: OAUTH_CALLBACK_URLS[provider],
 			phase: connecting ? "connecting" : error ? "error" : source ? "connected" : "disconnected",
 			source,
-			account: session?.account ?? null,
+			account: session?.account
+				? {
+						...session.account,
+						...(provider === "slack" && session.slack
+							? { workspaceId: session.slack.workspaceId }
+							: {}),
+					}
+				: null,
 			scopes: session?.scopes ?? [],
 			expiresAt: session?.expiresAt ? new Date(session.expiresAt).toISOString() : null,
 			error: connecting ? null : error,
@@ -233,6 +241,17 @@ export class OAuthService {
 			return;
 		}
 		const raw = request.url ?? "";
+		// Bind HTTP authority as well as the socket; localhost must reject numeric/rebound Hosts.
+		if (
+			!flow.redirectUri ||
+			request.headers.host !== new URL(flow.redirectUri).host ||
+			request.rawHeaders.filter(
+				(_, index) => index % 2 === 0 && request.rawHeaders[index]?.toLowerCase() === "host"
+			).length !== 1
+		) {
+			this.reply(response, 400);
+			return;
+		}
 		if (
 			request.method !== "GET" ||
 			raw.length > 8192 ||
@@ -334,7 +353,7 @@ export class OAuthService {
 			);
 			const address = server.address();
 			if (!address || typeof address === "string") throw new OAuthError("callback");
-			flow.redirectUri = `http://127.0.0.1:${address.port}/oauth/${provider}/callback`;
+			flow.redirectUri = `http://${new URL(OAUTH_CALLBACK_URLS[provider]).hostname}:${address.port}/oauth/${provider}/callback`;
 			const challenge = createHash("sha256").update(flow.verifier).digest("base64url");
 			await abortable(
 				this.options.openExternal(
@@ -352,7 +371,13 @@ export class OAuthService {
 				now: this.now(),
 				grant: { code, redirectUri: flow.redirectUri, verifier: flow.verifier },
 			});
-			const account = await profile(provider, tokens.accessToken, this.fetcher, signal);
+			const account = await profile(
+				provider,
+				tokens.accessToken,
+				this.fetcher,
+				signal,
+				tokens.slack
+			);
 			await this.commit(provider, epoch, signal, {
 				id: randomUUID(),
 				provider,
@@ -435,7 +460,7 @@ export class OAuthService {
 		initialSession: OAuthSession,
 		epoch: number,
 		signal: AbortSignal
-	): Promise<string> {
+	): Promise<OAuthSession> {
 		try {
 			const latest = await this.serial(provider, async () => {
 				this.assertCurrent(provider, epoch);
@@ -445,8 +470,7 @@ export class OAuthService {
 			const session = latest;
 			this.assertCurrent(provider, epoch);
 			if (signal.aborted) throw signal.reason;
-			if (session.expiresAt === null || session.expiresAt > this.now() + 60000)
-				return session.accessToken;
+			if (session.expiresAt === null || session.expiresAt > this.now() + 60000) return session;
 			if (
 				!session.refreshToken ||
 				(session.refreshExpiresAt !== null && session.refreshExpiresAt <= this.now())
@@ -465,10 +489,15 @@ export class OAuthService {
 				now: this.now(),
 				grant: { session },
 			});
-			await this.commit(provider, epoch, signal, { ...session, ...tokens }, session.id);
+			const account =
+				provider === "slack"
+					? await profile(provider, tokens.accessToken, this.fetcher, signal, tokens.slack)
+					: session.account;
+			const refreshed = { ...session, ...tokens, account };
+			await this.commit(provider, epoch, signal, refreshed, session.id);
 			this.assertCurrent(provider, epoch);
 			delete this.errors[provider];
-			return tokens.accessToken;
+			return refreshed;
 		} catch (error) {
 			if (!this.current(provider, epoch)) throw new OAuthError("cancelled");
 			const safe = providerError(error, "refresh");
@@ -479,8 +508,9 @@ export class OAuthService {
 	}
 
 	private async credential(
-		provider: OAuthProvider
-	): Promise<{ value: string; oauth: boolean } | undefined> {
+		provider: OAuthProvider,
+		manual = true
+	): Promise<{ value: string; oauth: boolean; session?: OAuthSession } | undefined> {
 		assertProvider(provider);
 		const epoch = this.epochs[provider];
 		this.assertCurrent(provider, epoch);
@@ -493,6 +523,7 @@ export class OAuthService {
 		}
 		this.assertCurrent(provider, epoch);
 		if (!session) {
+			if (!manual) return undefined;
 			let value: string | undefined;
 			try {
 				value = await this.options.getManualToken(provider);
@@ -503,7 +534,7 @@ export class OAuthService {
 			return value ? { value, oauth: false } : undefined;
 		}
 		if (session.expiresAt === null || session.expiresAt > this.now() + 60000)
-			return { value: session.accessToken, oauth: true };
+			return { value: session.accessToken, oauth: true, session };
 		let refresh = this.refreshes.get(provider);
 		if (!refresh || refresh.id !== session.id || refresh.epoch !== epoch) {
 			const controller = new AbortController();
@@ -519,7 +550,51 @@ export class OAuthService {
 			refresh = { id: session.id, epoch, controller, promise };
 			this.refreshes.set(provider, refresh);
 		}
-		return { value: await refresh.promise, oauth: true };
+		const refreshed = await refresh.promise;
+		this.assertCurrent(provider, epoch);
+		return { value: refreshed.accessToken, oauth: true, session: refreshed };
+	}
+
+	/** Main-only OAuth identity. Undefined means absent OAuth, never manual-token fallback.
+	 * The saved session ID identifies the connection across single-use token rotations.
+	 */
+	async slackCredential(): Promise<SlackCredential | undefined> {
+		const epoch = this.epochs.slack;
+		const credential = await this.credential("slack", false);
+		this.assertCurrent("slack", epoch);
+		if (!credential) return undefined;
+		const session = credential.session;
+		if (!session?.slack) throw new OAuthError("storage");
+		try {
+			const result = await this.serial("slack", async () => {
+				const latest = await this.store.get("slack");
+				this.assertCurrent("slack", epoch);
+				if (
+					latest?.id !== session.id ||
+					latest.accessToken !== session.accessToken ||
+					JSON.stringify(latest.slack) !== JSON.stringify(session.slack) ||
+					JSON.stringify(latest.scopes) !== JSON.stringify(session.scopes)
+				)
+					throw new OAuthError("cancelled");
+				const knownError = this.errors.slack;
+				if (knownError === "storage" || knownError === "refresh" || knownError === "provider")
+					throw new OAuthError(knownError);
+				const parsed = SlackCredentialSchema.safeParse({
+					connectionId: session.id,
+					accessToken: session.accessToken,
+					tokenKind: "user",
+					...session.slack,
+					scopes: session.scopes,
+				});
+				if (!parsed.success) throw new OAuthError("storage");
+				return parsed.data;
+			});
+			this.assertCurrent("slack", epoch);
+			return result;
+		} catch (error) {
+			this.assertCurrent("slack", epoch);
+			throw providerError(error, "storage");
+		}
 	}
 
 	/** Main-only: never register token/authorization as renderer RPCs. */

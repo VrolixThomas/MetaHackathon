@@ -80,7 +80,7 @@ describe("standalone OAuth browser flow", () => {
 		OAuthStatusListSchema.parse(statuses);
 		assert.deepEqual(
 			statuses.map((row) => row.provider),
-			["github", "linear"]
+			["github", "linear", "slack"]
 		);
 		assert.deepEqual(statuses[0]?.account, {
 			id: "123",

@@ -2,6 +2,12 @@ import { z } from "zod";
 import { OAuthAccountSchema } from "../../shared/contracts/oauth";
 import type { OAuthAccount, OAuthProvider } from "../../shared/contracts/oauth";
 import {
+	exchangeSlackCode,
+	refreshSlackToken,
+	slackAuthorizationUrl,
+	slackProfile,
+} from "../slack/oauth";
+import {
 	type OAuthClient,
 	OAuthError,
 	type OAuthSession,
@@ -32,6 +38,10 @@ const ClientSchema = z.object({
 });
 
 export function validClient(provider: OAuthProvider, input: unknown): OAuthClient | undefined {
+	if (provider === "slack") {
+		const result = ClientSchema.omit({ clientSecret: true }).safeParse(input);
+		return result.success ? result.data : undefined;
+	}
 	const result = ClientSchema.safeParse(input);
 	return result.success && (provider !== "github" || result.data.clientSecret)
 		? result.data
@@ -45,6 +55,13 @@ export function authorizationUrl(
 	state: string,
 	challenge: string
 ): string {
+	if (provider === "slack")
+		return slackAuthorizationUrl({
+			clientId: client.clientId,
+			redirectUri,
+			state,
+			challenge,
+		});
 	const url = new URL(endpoints[provider].authorize);
 	url.search = new URLSearchParams({
 		client_id: client.clientId,
@@ -121,9 +138,42 @@ export async function exchange(options: {
 	now: number;
 	grant: { code: string; redirectUri: string; verifier: string } | { session: OAuthSession };
 }): Promise<
-	Pick<OAuthSession, "accessToken" | "refreshToken" | "expiresAt" | "refreshExpiresAt" | "scopes">
+	Pick<
+		OAuthSession,
+		"accessToken" | "refreshToken" | "expiresAt" | "refreshExpiresAt" | "scopes" | "slack"
+	>
 > {
 	const { provider, client, signal, fetcher, grant } = options;
+	if (provider === "slack") {
+		const previous = "session" in grant ? grant.session : undefined;
+		if (previous && !previous.slack) throw new OAuthError("storage");
+		const value = previous?.slack
+			? await refreshSlackToken({
+					client,
+					previous: { ...previous, ...previous.slack },
+					fetch: fetcher,
+					signal,
+					now: options.now,
+				})
+			: "code" in grant
+				? await exchangeSlackCode({
+						client,
+						...grant,
+						fetch: fetcher,
+						signal,
+						now: options.now,
+					})
+				: undefined;
+		if (!value) throw new OAuthError("provider");
+		return {
+			accessToken: value.accessToken,
+			refreshToken: value.refreshToken,
+			expiresAt: value.expiresAt,
+			refreshExpiresAt: value.refreshExpiresAt,
+			scopes: value.scopes,
+			slack: { appId: value.appId, workspaceId: value.workspaceId, userId: value.userId },
+		};
+	}
 	const fields = new URLSearchParams({ client_id: client.clientId });
 	if (client.clientSecret) fields.set("client_secret", client.clientSecret);
 	if ("session" in grant) {
@@ -184,8 +234,13 @@ export async function profile(
 	provider: OAuthProvider,
 	token: string,
 	fetcher: typeof fetch,
-	signal: AbortSignal
+	signal: AbortSignal,
+	slack?: OAuthSession["slack"]
 ): Promise<OAuthAccount> {
+	if (provider === "slack") {
+		if (!slack) throw new OAuthError("storage");
+		return slackProfile({ grant: { ...slack, accessToken: token }, fetch: fetcher, signal });
+	}
 	const headers = {
 		Authorization: `Bearer ${token}`,
 		Accept: "application/json",

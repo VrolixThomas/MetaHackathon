@@ -79,6 +79,7 @@ export async function harness(overrides: Partial<OAuthServiceOptions> = {}) {
 	const clients: Partial<Record<OAuthProvider, OAuthClient>> = {
 		github: { clientId: "controlled-gh-client", clientSecret: "controlled-gh-secret" },
 		linear: { clientId: "controlled-linear-client" },
+		slack: { clientId: "controlled-slack-client" },
 	};
 	const changes: OAuthProvider[] = [];
 	const clock = { value: Date.parse("2026-10-30T12:00:00Z") };
@@ -122,6 +123,36 @@ export async function harness(overrides: Partial<OAuthServiceOptions> = {}) {
 			});
 		else if (entry.url === "https://api.linear.app/graphql")
 			send(response, { data: { viewer: { id: "linear-user", name: "Linear User" } } });
+		else if (entry.url === "https://slack.com/api/oauth.v2.access")
+			send(response, {
+				ok: true,
+				app_id: "A123",
+				team: { id: "T123" },
+				authed_user: {
+					id: "U123",
+					access_token: "controlled-slack-access",
+					token_type: "user",
+					scope: "users:read,chat:write",
+					refresh_token: "controlled-slack-refresh",
+					expires_in: 43200,
+				},
+			});
+		else if (entry.url === "https://slack.com/api/auth.test")
+			send(response, {
+				ok: true,
+				team_id: "T123",
+				user_id: "U123",
+			});
+		else if (entry.url === "https://slack.com/api/users.info")
+			send(response, {
+				ok: true,
+				user: {
+					id: "U123",
+					team_id: "T123",
+					name: "slack-viewer",
+					profile: { real_name: "Slack User" },
+				},
+			});
 		else send(response, {}, 404);
 	});
 	await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));

@@ -16,10 +16,13 @@ const EnvelopeSchema = z.strictObject({
 	version: z.literal(1),
 	github: CiphertextSchema.optional(),
 	linear: CiphertextSchema.optional(),
+	slack: CiphertextSchema.optional(),
 });
 type Envelope = z.infer<typeof EnvelopeSchema>;
 
-/** One service owns this store. Serial atomic replacements preserve the other provider. */
+/** One service owns this store. Serial atomic replacements preserve all other providers.
+ * Slack is additive to the v1 envelope, so existing GitHub/Linear files remain readable.
+ */
 export class OAuthStore {
 	private pending: Promise<unknown> = Promise.resolve();
 	private readonly path: string;
@@ -49,7 +52,7 @@ export class OAuthStore {
 		try {
 			file = await open(this.path, constants.O_RDONLY | constants.O_NOFOLLOW);
 			const metadata = await file.stat();
-			if (!metadata.isFile() || metadata.size > 750000) throw new OAuthError("storage");
+			if (!metadata.isFile() || metadata.size > 1100000) throw new OAuthError("storage");
 			return EnvelopeSchema.parse(JSON.parse(await file.readFile("utf8")));
 		} catch (error) {
 			if ((error as NodeJS.ErrnoException).code === "ENOENT") return { version: 1 };
