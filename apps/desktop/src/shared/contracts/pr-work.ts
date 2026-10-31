@@ -56,6 +56,23 @@ export const PRFixReviewInputSchema = z.strictObject({
 	headSha: CommitShaSchema,
 	confirmed: z.literal(true),
 });
+export const PRFixViewTargetSchema = z.strictObject({
+	id: IdSchema.max(200),
+	path: RepositoryPathSchema.nullable(),
+});
+/** File navigation is an acknowledged workspace action, shared by Muse and the reviewer. */
+export function encodePRFixViewTarget(value: z.infer<typeof PRFixViewTargetSchema>): string {
+	const target = PRFixViewTargetSchema.parse(value);
+	return `${encodeURIComponent(target.id)}${target.path === null ? "" : `?file=${encodeURIComponent(target.path)}`}`;
+}
+export function decodePRFixViewTarget(value: string): z.infer<typeof PRFixViewTargetSchema> {
+	const parts = value.split("?file=");
+	if (parts.length > 2) throw new Error("Invalid suggested fix target");
+	return PRFixViewTargetSchema.parse({
+		id: decodeURIComponent(parts[0] ?? ""),
+		path: parts[1] === undefined ? null : decodeURIComponent(parts[1]),
+	});
+}
 export type PRCommentCreateInput = z.infer<typeof PRCommentCreateInputSchema>;
 export type PRFixStartInput = z.infer<typeof PRFixStartInputSchema>;
 export type PRFixSummary = z.infer<typeof PRFixSummarySchema>;
