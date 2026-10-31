@@ -359,6 +359,9 @@ async function native() {
 				const persisted = fs.readFileSync(join(userData, "workspace", "canvases.json"), "utf8");
 				assert.ok(persisted.includes(asset.id));
 				assert.ok(persisted.includes(SHA));
+				await wait("Recent control rendered after close acknowledgement", () =>
+					js("[...document.querySelectorAll('button')].some(e=>e.textContent.trim()==='Recent')")
+				);
 				await js(
 					`(()=>{const b=[...document.querySelectorAll('button')].find(e=>e.textContent.trim()==='Recent');if(!b)throw Error('Recent missing');b.click();})()`
 				);
@@ -391,6 +394,8 @@ async function native() {
 				const turn = await start("Generate cancelled image");
 				await wait("actual held image HTTP request", () => cancellationEntered);
 				await rpc("mutation", "conversation.cancel", {
+					requestId: randomUUID(),
+					reason: "user",
 					sessionId,
 					turnId: turn.turnId,
 					generation: turn.generation,

@@ -316,7 +316,7 @@ export function CanvasWorkspace({
 			)}
 			{workspace ? (
 				<>
-					{visibleTabs.length > 0 && (
+					{(visibleTabs.length > 0 || saved.length > 0) && (
 						<div className="canvas-toolbar">
 							<div
 								ref={tabs}
