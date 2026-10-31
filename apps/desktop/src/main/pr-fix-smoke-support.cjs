@@ -14,6 +14,7 @@ const FEEDBACK =
 const NOW = "2026-10-31T12:00:00.000Z";
 const MODEL = "https://api.meta.ai/v1/responses";
 const FILES = ["src/first.cjs", "src/second.cjs"];
+const WALK_QUESTION = "Walk me through the proposed fix in the second file.";
 const text = (value) => `module.exports = { value: ${value} };\n`;
 const sha256 = (value) => createHash("sha256").update(value).digest("hex");
 function git(cwd, ...args) {
@@ -220,7 +221,101 @@ function sse(body, name, args) {
 		{ headers: { "content-type": "text/event-stream" } }
 	);
 }
-function parentModel(body) {
+function conversationStep(body) {
+	assert.ok(body.input.some((item) => item.role === "user" && item.content === WALK_QUESTION));
+	const calls = body.input.filter((item) => item.type === "function_call");
+	const allowed = ["inspect_suggested_fixes", "inspect_suggested_fix", "open_command_center"];
+	assert.ok(
+		calls.every((call) => allowed.includes(call.name)),
+		"This turn cannot start work or publish"
+	);
+	assert.equal(new Set(calls.map((call) => call.call_id)).size, calls.length);
+	assert.equal(new Set(calls.map((call) => call.name)).size, calls.length);
+	const receipt = (name) => {
+		const call = calls.find((item) => item.name === name);
+		if (!call) return null;
+		const result = body.input.find(
+			(item) => item.type === "function_call_output" && item.call_id === call.call_id
+		);
+		assert.ok(result, "The actual tool must settle before another model request");
+		return JSON.parse(result.output);
+	};
+	const list = receipt("inspect_suggested_fixes");
+	if (!list) return { tool: "inspect_suggested_fixes", args: {} };
+	assert.equal(list.display, "not-established");
+	const fix = list.fixes.find((item) => item.prId === PR_ID && item.phase === "ready");
+	assert.ok(fix);
+	assert.ok(fix.changedFiles[1]);
+	const detail = receipt("inspect_suggested_fix");
+	if (!detail)
+		return { tool: "inspect_suggested_fix", args: { id: fix.id, path: fix.changedFiles[1] } };
+	assert.equal(detail.display, "not-established");
+	assert.ok(detail.evidencePolicy.includes("untrusted evidence"));
+	assert.equal(detail.fix.id, fix.id);
+	assert.equal(detail.fix.headSha, fix.headSha);
+	assert.equal(detail.file.path, fix.changedFiles[1]);
+	assert.equal(detail.file.base.commitSha, detail.fix.baseSha);
+	assert.equal(detail.file.head.commitSha, fix.headSha);
+	assert.equal(detail.file.base.content, text(2));
+	assert.equal(detail.file.head.content, text(3));
+	assert.ok(
+		detail.fix.checks.length &&
+			detail.fix.checks.every((check) => check.exitCode === 0 && check.commitSha === fix.headSha)
+	);
+	assert.equal(detail.fix.publication, "not-published");
+	const source = {
+		id: fix.id,
+		baseSha: detail.fix.baseSha,
+		headSha: fix.headSha,
+		path: detail.file.path,
+	};
+	const applied = receipt("open_command_center");
+	if (!applied) {
+		const { kind, ...args } = detail.commandProposal;
+		assert.equal(kind, "open-center");
+		assert.equal(args.section, "fixes");
+		return { tool: "open_command_center", args, source, inspectionNotDisplay: true };
+	}
+	assert.equal(applied.status, "applied");
+	assert.ok(Number.isInteger(applied.workspaceSequence));
+	return {
+		source,
+		workspaceSequence: applied.workspaceSequence,
+		inspectionNotDisplay: true,
+		text: `${detail.file.path} is now displayed at candidate ${fix.headSha}. Before: ${detail.file.base.content.trim()} Proposed after: ${detail.file.head.content.trim()} The export moves from two to three, preserving CommonJS. The recorded local checks passed. This remains a local candidate, not published.`,
+	};
+}
+function parentModel(body, selected) {
+	if (body.tools.some((tool) => tool.name === "inspect_suggested_fixes")) {
+		const step = selected ?? conversationStep(body);
+		if (step.tool) return sse(body, step.tool, step.args);
+		assert.equal(body.stream, true);
+		assert.equal(body.store, false);
+		return new Response(
+			[
+				{ type: "response.output_text.delta", delta: step.text },
+				{
+					type: "response.completed",
+					response: {
+						id: `pr-fix-walk-${randomUUID()}`,
+						model: body.model,
+						status: "completed",
+						usage: null,
+						output: [
+							{
+								type: "message",
+								role: "assistant",
+								content: [{ type: "output_text", text: step.text }],
+							},
+						],
+					},
+				},
+			]
+				.map((event) => `data: ${JSON.stringify(event)}\n\n`)
+				.join(""),
+			{ headers: { "content-type": "text/event-stream" } }
+		);
+	}
 	return sse(body, "submit_prepared_review", {
 		summary: "Both actual PR exports change from one to two.",
 		orderRationale: "Inspect both actual exported values.",
@@ -344,6 +439,7 @@ module.exports = {
 	NOW,
 	MODEL,
 	FILES,
+	WALK_QUESTION,
 	text,
 	sha256,
 	git,
@@ -352,6 +448,7 @@ module.exports = {
 	github,
 	sse,
 	parentModel,
+	conversationStep,
 	childTool,
 	createChildModelFetch,
 	primary,

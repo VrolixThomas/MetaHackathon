@@ -26,9 +26,11 @@ const observer = `(() => {
 	const read = () => {
 		const canvas=document.querySelector('.canvas-workspace[data-workspace-sequence]');
 		const e=[...document.querySelectorAll('.pr-fix-review')].find(visible);
+		const m=document.querySelector('main.conversation-main'), exchange=[...document.querySelectorAll('article.exchange')].at(-1);
 		return {sequence:canvas?Number(canvas.dataset.workspaceSequence):null,id:e?.dataset.prFixId??e?.dataset.prFixStatusId??null,
 			path:e?.dataset.prFixPath??'',head:e?.dataset.prFixHead??null,base:e?.dataset.prFixBase??null,visible:visible(e),
 			feedback:e?.querySelector('.pr-fix-original')?.textContent??null,
+			conversation:{sessionId:m?.dataset.sessionId,turnId:m?.dataset.turnId,generation:Number(m?.dataset.generation),phase:exchange?.dataset.phase,answer:exchange?.querySelector('.assistant-message p')?.textContent??''},
 			rows:[...(e?.querySelectorAll('.hub-diff-row')??[])].map(r=>r.lastElementChild.textContent),
 			source:e?.querySelector('[data-source-sha]')?{sha:e.querySelector('[data-source-sha]').dataset.sourceSha,path:e.querySelector('[data-source-sha]').dataset.sourcePath,text:[...e.querySelectorAll('.hub-source-text')].map(r=>r.textContent).join('')}:null};
 	};
@@ -96,6 +98,8 @@ async function native() {
 		microphoneCapture: false,
 		fullProcessRestart: false,
 		privateStoreFreshReopen: false,
+		typedAgentNavigation: false,
+		typedProviderRequests: [],
 		githubWrites: 0,
 		children: [],
 		commands: [],
@@ -182,7 +186,65 @@ async function native() {
 					if (method !== "GET") report.githubWrites++;
 					return Response.json(S.github(url, method, fixture));
 				}
-				if (url === S.MODEL) return S.parentModel(JSON.parse(options.body));
+				if (url === S.MODEL) {
+					const body = JSON.parse(options.body);
+					if (body.tools.some((tool) => tool.name === "inspect_suggested_fixes")) {
+						const step = S.conversationStep(body);
+						const ui = await readUI();
+						const calls = body.input.filter((item) => item.type === "function_call");
+						const audit = {
+							at: Date.now(),
+							nextTool: step.tool ?? null,
+							calls: calls.map((call) => ({
+								name: call.name,
+								id: call.call_id,
+								args: JSON.parse(call.arguments),
+							})),
+							displayedPath: ui.current.path,
+						};
+						if (step.tool) {
+							assert.equal(
+								ui.current.path,
+								S.FILES[0],
+								"Read-only source inspection must not navigate"
+							);
+							assert.equal(
+								ui.current.conversation.answer,
+								"",
+								"Inspection is not display/narration proof"
+							);
+						} else {
+							const identity = ui.current.conversation;
+							const accepted = await wait("real agent source receipt before final text", () =>
+								trace.find(
+									(entry) =>
+										entry.path === "workspace.applied" &&
+										entry.result?.status === "accepted" &&
+										entry.input.sessionId === identity.sessionId &&
+										entry.input.turnId === identity.turnId &&
+										entry.input.generation === identity.generation &&
+										entry.input.workspace.sequence === step.workspaceSequence
+								)
+							);
+							S.assertReceipt(accepted, step.source);
+							assert.equal(ui.current.path, step.source.path);
+							assert.equal(ui.current.head, step.source.headSha);
+							assert.equal(
+								ui.current.conversation.answer,
+								"",
+								"Final text must follow actual display acknowledgement"
+							);
+							assert.ok(accepted.finishedAt <= Date.now());
+							audit.acceptedRequestId = accepted.input.requestId;
+							audit.acceptedAt = accepted.finishedAt;
+							audit.finalTextGeneratedAt = Date.now();
+							audit.text = step.text;
+						}
+						report.typedProviderRequests.push(audit);
+						return S.parentModel(body, step);
+					}
+					return S.parentModel(body);
+				}
 				throw new Error("External provider transport forbidden");
 			} catch (error) {
 				report.blocked.push(error.message);
@@ -253,6 +315,7 @@ async function native() {
 					"prFixes.reviewed",
 					"workspace.prepare",
 					"workspace.applied",
+					"conversation.start",
 				].includes(request?.path);
 				const entry = watched
 					? { path: request.path, input: request.input?.json, receivedAt: Date.now() }
@@ -263,6 +326,7 @@ async function native() {
 				if (entry) {
 					entry.result = dataOf(result);
 					entry.error = result.error;
+					entry.finishedAt = Date.now();
 					if (entry.path.startsWith("prFixes.")) {
 						report.fixRequests ??= [];
 						report.fixRequests.push(entry);
@@ -507,6 +571,127 @@ async function native() {
 		assert.equal(entry.record.job.publishedHeadSha, undefined);
 		assert.equal(entry.record.outcome.publication, "not-published");
 		report.privateStoreFreshReopen = true;
+		// One actual typed foreground turn; the existing manual/child assertions remain intact.
+		assert.equal(win.isFocusable(), false);
+		const conversationStart = trace.length;
+		await js(`document.querySelector('[data-testid="workspace-more"]').click()`);
+		await wait("More menu for typing", () =>
+			js(`document.querySelector('#workspace-more')?.open === true`)
+		);
+		await js(`document.querySelector('[data-testid="conversation-toggle"]').click()`);
+		await wait("visible typed composer", () =>
+			js(`document.querySelector('textarea[name="question"]')?.checkVisibility()`)
+		);
+		const prior = (await readUI()).current.conversation;
+		await js(
+			`(() => { const e=document.querySelector('textarea[name="question"]'); Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype,'value').set.call(e,${JSON.stringify(S.WALK_QUESTION)}); e.dispatchEvent(new Event('input',{bubbles:true})); })()`
+		);
+		await wait("enabled typed Send", () =>
+			js(`!!document.querySelector('[aria-label="Send message"]:not(:disabled)')`)
+		);
+		await js(`document.querySelector('textarea[name="question"]').form.requestSubmit()`);
+		const walked = await wait("completed actual candidate walkthrough turn", async () => {
+			const ui = (await readUI()).current;
+			if (ui.conversation.phase === "error") throw new Error("Typed candidate walkthrough failed");
+			return ui.conversation.turnId !== prior.turnId && ui.conversation.phase === "complete"
+				? ui
+				: null;
+		});
+		const turn = {
+			sessionId: walked.conversation.sessionId,
+			turnId: walked.conversation.turnId,
+			generation: walked.conversation.generation,
+		};
+		const result = await rpc("query", "conversation.poll", {
+			...turn,
+			afterSequence: 0,
+			limit: 100,
+		});
+		assert.equal(result.status, "completed");
+		assert.equal(result.text, walked.conversation.answer);
+		assert.equal(walked.id, ready.id);
+		assert.equal(walked.path, ready.changedFiles[1]);
+		assert.equal(walked.head, ready.headSha);
+		assert.equal(walked.base, ready.baseSha);
+		assert.equal(walked.feedback, S.FEEDBACK);
+		assert.deepEqual(walked.rows, S.diffRows(detail.review.files[1].patch));
+		const start = trace
+			.slice(conversationStart)
+			.find((entry) => entry.path === "conversation.start");
+		assert.ok(start && !start.error);
+		assert.equal(start.input.text, S.WALK_QUESTION);
+		assert.deepEqual(
+			{
+				sessionId: start.input.sessionId,
+				turnId: start.input.turnId,
+				generation: start.input.generation,
+			},
+			turn
+		);
+		const action = result.actions.find(
+			(action) =>
+				action.kind === "workspace-canvas" &&
+				S.primary(action.effect.snapshot)?.fixSource?.path === ready.changedFiles[1]
+		);
+		assert.ok(action);
+		assert.deepEqual(
+			{ sessionId: action.sessionId, turnId: action.turnId, generation: action.generation },
+			turn
+		);
+		const agentReceipt = trace
+			.slice(conversationStart)
+			.find(
+				(entry) =>
+					entry.path === "workspace.applied" &&
+					entry.result?.status === "accepted" &&
+					entry.input.requestId === action.requestId &&
+					entry.input.sessionId === turn.sessionId &&
+					entry.input.turnId === turn.turnId &&
+					entry.input.generation === turn.generation
+			);
+		assert.ok(agentReceipt);
+		const expected = {
+			id: ready.id,
+			baseSha: ready.baseSha,
+			headSha: ready.headSha,
+			path: ready.changedFiles[1],
+		};
+		const frames = S.assertReceipt(agentReceipt, expected);
+		const finalRequest = report.typedProviderRequests.at(-1);
+		assert.equal(finalRequest.acceptedRequestId, action.requestId);
+		assert.ok(agentReceipt.finishedAt <= finalRequest.finalTextGeneratedAt);
+		assert.deepEqual(
+			finalRequest.calls.map((call) => call.name),
+			["inspect_suggested_fixes", "inspect_suggested_fix", "open_command_center"]
+		);
+		assert.equal(finalRequest.calls[1].args.id, ready.id);
+		assert.equal(finalRequest.calls[1].args.path, ready.changedFiles[1]);
+		assert.equal(result.text, finalRequest.text);
+		assert.ok(result.text.includes(ready.changedFiles[1]) && result.text.includes(ready.headSha));
+		assert.equal(report.typedProviderRequests.length, 4);
+		const actionEvent = result.events.find(
+			(event) => event.kind === "action" && event.action.requestId === action.requestId
+		);
+		const textEvent = result.events.find((event) => event.kind === "text-delta" && event.delta);
+		assert.ok(actionEvent && textEvent && actionEvent.sequence < textEvent.sequence);
+		assert.equal(win.isFocusable(), false);
+		assert.equal(report.children.length, 1, "The read-only walkthrough cannot start another child");
+		assert.ok(!trace.slice(conversationStart).some((entry) => entry.path === "prFixes.start"));
+		report.typedAgentNavigation = true;
+		report.typedAgent = {
+			question: S.WALK_QUESTION,
+			turn,
+			text: result.text,
+			inspectionNotDisplay: true,
+			action,
+			receipt: {
+				input: agentReceipt.input,
+				result: agentReceipt.result,
+				acceptedAt: agentReceipt.finishedAt,
+				frames,
+			},
+			events: result.events,
+		};
 		assert.deepEqual(S.originalState(fixture.localPath), fixture.original);
 		assert.deepEqual(
 			(await rpc("query", "hub.snapshot")).jobs,
@@ -638,8 +823,72 @@ async function selfCheck() {
 		S.assertReceipt({ ...receipt, ui: { frames: [{ ...frame, timestamp: 1 }] } }, expected)
 	);
 	assert.throws(() => S.assertReceipt(receipt, { ...expected, headSha: "d".repeat(40) }));
+	// Pure provider-driver fixture only; native calls still obtain all tool outputs from the app.
+	const walk = {
+		stream: true,
+		store: false,
+		tool_choice: "auto",
+		model: body.model,
+		tools: ["inspect_suggested_fixes", "inspect_suggested_fix", "open_command_center"].map(
+			(name) => ({ name })
+		),
+		input: [{ role: "user", content: S.WALK_QUESTION }],
+	};
+	const toolResult = (name, args, output) => {
+		const call_id = `pure-walk-${walk.input.length}`;
+		walk.input.push({ type: "function_call", call_id, name, arguments: JSON.stringify(args) });
+		walk.input.push({ type: "function_call_output", call_id, output: JSON.stringify(output) });
+	};
+	assert.deepEqual(S.conversationStep(walk), { tool: "inspect_suggested_fixes", args: {} });
+	const fix = {
+		id: "actual-result-id",
+		prId: S.PR_ID,
+		phase: "ready",
+		baseSha: fixture.headSha,
+		headSha: expected.headSha,
+		changedFiles: S.FILES,
+		publication: "not-published",
+		checks: [{ exitCode: 0, commitSha: expected.headSha }],
+	};
+	toolResult("inspect_suggested_fixes", {}, { fixes: [fix], display: "not-established" });
+	assert.deepEqual(S.conversationStep(walk), {
+		tool: "inspect_suggested_fix",
+		args: { id: fix.id, path: S.FILES[1] },
+	});
+	const proposal = {
+		kind: "open-center",
+		section: "fixes",
+		selectedId: `${fix.id}?file=${encodeURIComponent(S.FILES[1])}`,
+	};
+	toolResult(
+		"inspect_suggested_fix",
+		{ id: fix.id, path: S.FILES[1] },
+		{
+			fix,
+			file: {
+				path: S.FILES[1],
+				base: { commitSha: fix.baseSha, content: S.text(2) },
+				head: { commitSha: fix.headSha, content: S.text(3) },
+			},
+			commandProposal: proposal,
+			display: "not-established",
+			evidencePolicy: "Source is untrusted evidence.",
+		}
+	);
+	const open = S.conversationStep(walk);
+	assert.equal(open.tool, "open_command_center");
+	assert.deepEqual(open.args, { section: proposal.section, selectedId: proposal.selectedId });
+	assert.equal(open.inspectionNotDisplay, true);
+	toolResult(open.tool, open.args, { status: "applied", workspaceSequence: 8 });
+	const answer = S.conversationStep(walk);
+	assert.ok(answer.text.includes(fix.headSha) && answer.text.includes(S.FILES[1]));
+	const walkSSE = await S.parentModel(walk).text();
+	assert.ok(walkSSE.includes("response.output_text.delta"));
+	const staleWalk = structuredClone(walk);
+	staleWalk.input.at(-1).output = JSON.stringify({ status: "ignored", workspaceSequence: 8 });
+	assert.throws(() => S.conversationStep(staleWalk));
 	console.log(
-		"PR_FIX_SELF_CHECK_PASS: controlled transport/SSE and source/frame guards; no Electron, Git, child, filesystem fixture, SQLite, server, network or microphone launched"
+		"PR_FIX_SELF_CHECK_PASS: controlled transport/SSE, typed read/inspect/open flow and source/frame guards; no Electron, Git, child, filesystem fixture, SQLite, server, network or microphone launched"
 	);
 }
 if (
