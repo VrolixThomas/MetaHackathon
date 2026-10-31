@@ -128,6 +128,10 @@ export function PRFixReview({
 	command: Command;
 }) {
 	const { fix, review } = detail;
+	const receiptMarker = "\n\nRecorded worker receipts:";
+	const receiptAt = fix.summary.indexOf(receiptMarker);
+	const explanation = receiptAt < 0 ? fix.summary : fix.summary.slice(0, receiptAt);
+	const workerNotes = receiptAt < 0 ? null : fix.summary.slice(receiptAt + 2);
 	const state = useStore(controller.store);
 	const [view, setView] = useState<"diff" | "base" | "head">("diff");
 	const matching = loadedReviewMatchesFix(detail);
@@ -207,7 +211,13 @@ export function PRFixReview({
 			</section>
 			<section aria-label="Agent summary">
 				<h2>Agent summary</h2>
-				<p className="hub-preserve">{fix.summary || "No agent summary has been recorded yet."}</p>
+				<p className="hub-preserve">{explanation || "No agent summary has been recorded yet."}</p>
+				{workerNotes && (
+					<details className="pr-fix-revisions">
+						<summary>Worker notes</summary>
+						<p className="hub-preserve">{workerNotes}</p>
+					</details>
+				)}
 			</section>
 			{fix.phase === "needs-input" && (
 				<section className="hub-decision">

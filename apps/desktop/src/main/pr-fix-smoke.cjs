@@ -440,6 +440,7 @@ async function native() {
 		await js(
 			`document.querySelector('.pr-fix-review .hub-work-diff').scrollIntoView({block:'center'})`
 		);
+		await js("window.scrollTo(0,0)");
 		const screenshot = join(__dirname, "../../out/pr-fix-controlled-diff.png");
 		fs.writeFileSync(screenshot, (await win.webContents.capturePage()).toPNG());
 		report.screenshot = {
