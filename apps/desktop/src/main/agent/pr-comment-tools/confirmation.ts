@@ -10,7 +10,7 @@ import { type PRCommentPresentation, sameCommentDraft } from "./index";
 
 /** Exact text root may send through its existing narration/checkpoint pipeline. */
 export function commentProposalText(pr: PullRequest, draft: DraftedComment) {
-	return `Post this exact comment to ${pr.repository} #${pr.number} at head ${draft.headSha}${draft.location ? `, ${draft.location.path}:${draft.location.endLine}` : ""}:\n${draft.body}\nSay “post this comment” to confirm, or ask to edit it.`;
+	return `Post this exact comment to ${pr.repository} pull request ${pr.number}${draft.location ? `, ${draft.location.path}:${draft.location.endLine}` : ""}:\n${draft.body}\nSay “post this comment” to confirm, or ask to edit it.`;
 }
 type Proposal = {
 	presentation: PRCommentPresentation;
