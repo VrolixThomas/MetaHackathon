@@ -9,6 +9,7 @@ import {
 	type CodeLocation,
 	type HubSnapshot,
 	IdSchema,
+	type ImageAsset,
 	type LocalBrowserState,
 	LocalBrowserStateSchema,
 	type PinnedSource,
@@ -34,10 +35,13 @@ import {
 } from "../../shared/contracts";
 import type { ReviewCoordinator } from "./reviews";
 
-export type GeneratedCanvas = Extract<Canvas, { kind: "document" | "visual" | "flow" }>;
+export type GeneratedCanvas = Extract<Canvas, { kind: "document" | "visual" | "flow" | "image" }>;
 const generatedSchema = CanvasSchema.refine(
 	(value): value is GeneratedCanvas =>
-		value.kind === "document" || value.kind === "visual" || value.kind === "flow",
+		value.kind === "document" ||
+		value.kind === "visual" ||
+		value.kind === "flow" ||
+		value.kind === "image",
 	"Only generated drafts can be saved"
 );
 /** Root owns the durable adapter; closed drafts remain addressable by their assigned ID. */
@@ -70,6 +74,7 @@ export interface WorkspaceBrowserPort {
 	state(): Promise<LocalBrowserState | null>;
 }
 export interface WorkspaceCoordinatorPorts {
+	getImageAsset?(id: string, signal: AbortSignal): Promise<ImageAsset>;
 	getReviews(): WorkspaceReviewPort;
 	getBrowser(): WorkspaceBrowserPort;
 	loadCanvases?(): Promise<SavedWorkspaceCanvases | null>;
@@ -98,7 +103,10 @@ const prepareSchema = z.strictObject({
 const turnSchema = TurnIdentitySchema.extend({ requestId: IdSchema });
 const clone = <T>(value: T): T => structuredClone(value);
 const generated = (canvas: Canvas): canvas is GeneratedCanvas =>
-	canvas.kind === "document" || canvas.kind === "visual" || canvas.kind === "flow";
+	canvas.kind === "document" ||
+	canvas.kind === "visual" ||
+	canvas.kind === "flow" ||
+	canvas.kind === "image";
 const initialReview = (): Canvas => ({
 	id: "review",
 	kind: "review",
@@ -519,6 +527,27 @@ export class WorkspaceCoordinator {
 				});
 				this.put(snapshot, canvas);
 				this.focus(snapshot, canvas.id, command.target);
+				break;
+			}
+			case "show-image": {
+				if (!this.ports.getImageAsset) fail("Image assets are unavailable.");
+				const asset = await invoke(() => this.ports.getImageAsset?.(command.assetId, signal));
+				if (!asset || asset.id !== command.assetId) fail("Image asset identity changed.");
+				const previous = snapshot.canvases.find(
+					(canvas) => canvas.kind === "image" && canvas.asset.id === asset.id
+				);
+				const id = previous?.id ?? randomUUID();
+				this.put(
+					snapshot,
+					parse(CanvasSchema, {
+						id,
+						kind: "image",
+						revision: previous?.revision ?? 1,
+						title: asset.title,
+						asset,
+					})
+				);
+				this.focus(snapshot, id, command.target);
 				break;
 			}
 			case "focus-canvas": {
@@ -957,11 +986,26 @@ export class WorkspaceCoordinator {
 				status,
 				...(status === "ready" && prepared ? { reviewId: prepared.id } : {}),
 			})),
-			capabilities: ["documents", "visuals", "browser", "review"],
+			capabilities: [
+				"documents",
+				"visuals",
+				"browser",
+				"review",
+				...(this.ports.getImageAsset ? ["images"] : []),
+			],
 			...(this.ports.hubSnapshot
 				? {
 						hub: await this.ports.hubSnapshot(),
-						capabilities: ["documents", "visuals", "browser", "review", "center", "source", "flow"],
+						capabilities: [
+							"documents",
+							"visuals",
+							"browser",
+							"review",
+							"center",
+							"source",
+							"flow",
+							...(this.ports.getImageAsset ? ["images"] : []),
+						],
 					}
 				: {}),
 			savedCanvases: this.library.canvases

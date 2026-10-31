@@ -355,6 +355,12 @@ export class PreparedComments {
 	}
 
 	/** Read only an exact, still-current canonical draft; never manufacture an agent copy. */
+	async latest(prId: string): Promise<DraftedComment | null> {
+		const record = [...this.records.values()]
+			.reverse()
+			.find((item) => item.pr.id === prId && !item.requestId && item.epoch === this.accountEpoch());
+		return record ? this.get(record.draftId) : null;
+	}
 	async get(id: string): Promise<DraftedComment> {
 		const record = this.record(IdSchema.parse(id));
 		const operation = this.begin(record.epoch);

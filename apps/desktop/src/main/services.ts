@@ -19,6 +19,7 @@ import { assessSuggestedFix } from "./agent/suggestion-review";
 import { createAgentComposition } from "./composition";
 import { LocalBrowserSurface } from "./composition/browser-surface";
 import { CodingProviderService } from "./composition/coding-provider-service";
+import { CommentPresentationCoordinator } from "./composition/comment-presentation";
 import { readDaySource } from "./composition/day-source";
 import { ConversationDiagnostics } from "./composition/diagnostics";
 import { createKnowledgeService } from "./composition/knowledge";
@@ -37,6 +38,12 @@ import type { DayStore } from "./db/day-store";
 import type { HubStore } from "./db/hub-store";
 import type { KnowledgeStore } from "./db/knowledge-store";
 import type { SlackWorkspaceStore } from "./db/slack-store";
+import {
+	GEMINI_IMAGE_MODEL,
+	ImageService,
+	PrivateImageStore,
+	createGeminiImageProvider,
+} from "./images";
 import { type KnowledgeService, chatSourceId, sourceFromChatMessage } from "./knowledge";
 import { FactSchema } from "./knowledge/types";
 import { OAuthService } from "./oauth/service";
@@ -82,6 +89,11 @@ let knowledgeEpoch = 0;
 let configurationPorts: AppConfigurationPorts | undefined;
 let reviews: ReviewCoordinator | undefined;
 let workspace: WorkspaceCoordinator | undefined;
+let images: ImageService | undefined;
+export function getImages(): ImageService {
+	if (closing || !images) throw new Error("Images are unavailable");
+	return images;
+}
 let hub: CommandCenterService | undefined;
 let workJobs: WorkJobCoordinator | undefined;
 let codingProvider: CodingProviderService | undefined;
@@ -94,11 +106,22 @@ let stopAttentionObserver: (() => void) | undefined;
 let reviewRegistry: ReviewRegistry | undefined;
 let hubReviewStore: HubStore | undefined;
 let preparedComments: PreparedComments | undefined;
+export const commentPresentations: CommentPresentationCoordinator =
+	new CommentPresentationCoordinator({
+		getDraft: (id) => getPreparedComments().get(id),
+		readPR: readCurrentPR,
+		confirm: (input) => getPreparedComments().confirm(input),
+		publish: (action) => conversationService.publishAction(action),
+		voice: (input) => conversationService.isVoiceTurn(input),
+		narrate: (input, text, signal) =>
+			conversationService.narrateProposal(input, `${input.requestId}-speech`, text, signal),
+	});
 let prFixes: PRFixService | undefined;
 let prWorkEpoch = 0;
 let githubCredentialIdentity: string | undefined;
 function retirePRWork() {
 	prWorkEpoch++;
+	commentPresentations.clear();
 	conversationService.resetSessions();
 	preparedComments?.invalidate();
 	void prFixes?.invalidate();
@@ -166,70 +189,104 @@ const conversationClient = new MetaClient({
 	recordUsage: (record) => agentComposition.usage.record("conversation", record),
 	recordTiming: (record) => diagnostics?.recordModelTiming(record),
 });
-export const conversationService = new ConversationService(conversationClient, {
-	narrationCheckpoints: true,
-	attention: {
-		resolve: (input, signal) => getAttention().resolve(input, signal),
-		validate: (input, signal) => getAttention().validate(input, signal),
-	},
-	hub: {
-		fixes: {
-			list: () => getPRFixes().list(),
-			detail: (id) => getPRFixes().detail(id),
-			start: (input) => getPRFixes().start(input),
+export const conversationService: ConversationService = new ConversationService(
+	conversationClient,
+	{
+		onUserTurn: (input) => {
+			commentPresentations.confirmation.acceptUserTurn(input, input.inputMode ?? "typed");
 		},
-		slack: {
-			actor: async (signal) => {
-				signal?.throwIfAborted();
-				const credential = await getSlackConnection().credential();
-				if (!credential) throw new SlackError("connection-required");
-				signal?.throwIfAborted();
-				return { workspaceId: credential.workspaceId, userId: credential.userId };
+		onSessionRelease: (sessionId) => commentPresentations.invalidate(sessionId),
+		narrationCheckpoints: true,
+		attention: {
+			resolve: (input, signal) => getAttention().resolve(input, signal),
+			validate: (input, signal) => getAttention().validate(input, signal),
+		},
+		hub: {
+			prComments: {
+				observe: async (sessionId, signal) => {
+					const screen = await getReviews().getScreen(sessionId);
+					if (screen.mode !== "review" || !screen.prId) return null;
+					await getReviews().getReady(screen.prId, signal);
+					const detail = await getReviews().get(screen.prId);
+					const pr = await readCurrentPR(screen.prId, signal);
+					if (!detail.prepared || pr.headSha !== screen.headSha || pr.headSha !== detail.pr.headSha)
+						return null;
+					const id = commentPresentations.draftId(sessionId);
+					const draft = id
+						? await getPreparedComments().get(id)
+						: await getPreparedComments().latest(pr.id);
+					return { pr, reviewId: detail.prepared.id, draft };
+				},
+				create: (input) => getPreparedComments().create(input),
+				edit: (input) => getPreparedComments().edit(input),
+				present: (input, signal) => commentPresentations.present(input, signal),
+				takeConfirmation: (turn, draft) => commentPresentations.takeConfirmation(turn, draft),
+				confirm: (input) => commentPresentations.confirm(input),
+				cancel: (requestId) => getPreparedComments().cancel(requestId),
 			},
-			list: (input, signal) => getSlackReader().conversations(input, signal),
-			read: (input, signal) =>
-				getSlackReader().read({ ...input, threadTs: input.threadTs ?? null }, signal),
+			fixes: {
+				list: () => getPRFixes().list(),
+				detail: (id) => getPRFixes().detail(id),
+				start: (input) => getPRFixes().start(input),
+			},
+			slack: {
+				actor: async (signal) => {
+					signal?.throwIfAborted();
+					const credential = await getSlackConnection().credential();
+					if (!credential) throw new SlackError("connection-required");
+					signal?.throwIfAborted();
+					return { workspaceId: credential.workspaceId, userId: credential.userId };
+				},
+				list: (input, signal) => getSlackReader().conversations(input, signal),
+				read: (input, signal) =>
+					getSlackReader().read({ ...input, threadTs: input.threadTs ?? null }, signal),
+			},
+			knowledge: {
+				search: (input, signal) =>
+					searchCurrentKnowledge(input, signal ?? AbortSignal.timeout(30_000)),
+			},
+			daySource: (input, signal) =>
+				readCurrentDaySource(input, signal ?? AbortSignal.timeout(30_000)),
+			day: {
+				snapshot: () => getDay().snapshot(),
+				operate: (operation, requestId) => getDay().operate({ requestId, operation }),
+			},
+			snapshot: () => getHub().snapshot(),
+			operate: (operation, requestId, signal) => getHub().operate(operation, requestId, signal),
+			ticket: (id, signal) => getHub().ticket(id, signal),
+			job: (id) => getHub().job(id),
+			jobLog: (id, cursor, limit) => getWorkJobs().log(id, cursor, limit),
+			feedback: (id, signal) => getHub().feedback(id, signal),
+			reviewWork: (id) => getWorkJobs().review(id),
+			source: (request, signal) => resolvePinnedSource(request, signal),
+			search: (request, signal) => getHub().search(request, signal),
 		},
-		knowledge: {
-			search: (input, signal) =>
-				searchCurrentKnowledge(input, signal ?? AbortSignal.timeout(30_000)),
+		workspace: {
+			images: {
+				generate: (input, signal) => getImages().generate(input, signal),
+				cancel: (id) => getImages().cancel(id),
+			},
+			observe: (sessionId, signal) => getWorkspace().observe(sessionId, signal),
+			execute: (command, turn, signal, onAction) =>
+				getWorkspace().execute(command, turn, signal, onAction),
+			cancel: (turn) => workspace?.cancel(turn),
 		},
-		daySource: (input, signal) =>
-			readCurrentDaySource(input, signal ?? AbortSignal.timeout(30_000)),
-		day: {
-			snapshot: () => getDay().snapshot(),
-			operate: (operation, requestId) => getDay().operate({ requestId, operation }),
+		getContext: (prId, signal) => getRuntime().github.prContext(prId, signal),
+		review: {
+			readSnapshot: (request, signal) => getReviews().readSnapshot(request, signal),
+			getReady: (prId, signal) => getReviews().getReady(prId, signal),
+			getProgress: (prId, signal) => getReviews().getProgress(prId, signal),
+			getScreen: (sessionId, initial) => getReviews().getScreen(sessionId, initial),
+			navigate: (prId, request, signal) => getReviews().navigate(prId, request, signal),
+			getFile: (prId, reviewId, path, signal) =>
+				getReviews().file({ prId, reviewId, path }, signal),
 		},
-		snapshot: () => getHub().snapshot(),
-		operate: (operation, requestId, signal) => getHub().operate(operation, requestId, signal),
-		ticket: (id, signal) => getHub().ticket(id, signal),
-		job: (id) => getHub().job(id),
-		jobLog: (id, cursor, limit) => getWorkJobs().log(id, cursor, limit),
-		feedback: (id, signal) => getHub().feedback(id, signal),
-		reviewWork: (id) => getWorkJobs().review(id),
-		source: (request, signal) => resolvePinnedSource(request, signal),
-		search: (request, signal) => getHub().search(request, signal),
-	},
-	workspace: {
-		observe: (sessionId, signal) => getWorkspace().observe(sessionId, signal),
-		execute: (command, turn, signal, onAction) =>
-			getWorkspace().execute(command, turn, signal, onAction),
-		cancel: (turn) => workspace?.cancel(turn),
-	},
-	getContext: (prId, signal) => getRuntime().github.prContext(prId, signal),
-	review: {
-		readSnapshot: (request, signal) => getReviews().readSnapshot(request, signal),
-		getReady: (prId, signal) => getReviews().getReady(prId, signal),
-		getProgress: (prId, signal) => getReviews().getProgress(prId, signal),
-		getScreen: (sessionId, initial) => getReviews().getScreen(sessionId, initial),
-		navigate: (prId, request, signal) => getReviews().navigate(prId, request, signal),
-		getFile: (prId, reviewId, path, signal) => getReviews().file({ prId, reviewId, path }, signal),
-	},
-	actionReceipts: {
-		updateScreen: (receipt, navigation, signal) =>
-			getReviews().actionApplied(receipt, navigation, signal),
-	},
-});
+		actionReceipts: {
+			updateScreen: (receipt, navigation, signal) =>
+				getReviews().actionApplied(receipt, navigation, signal),
+		},
+	}
+);
 
 export function initializeReviews(
 	store: {
@@ -799,8 +856,21 @@ export function noteAttentionActivity() {
 }
 
 export function initializeWorkspace(userDataPath: string): void {
+	images = new ImageService(
+		{
+			provider: "gemini",
+			model: GEMINI_IMAGE_MODEL,
+			generate: async (prompt, signal) =>
+				createGeminiImageProvider(await getConfiguration().imageSettings()).generate(
+					prompt,
+					signal
+				),
+		},
+		new PrivateImageStore(join(userDataPath, "workspace", "images"))
+	);
 	const store = createWorkspaceStore(userDataPath);
 	workspace = new WorkspaceCoordinator({
+		getImageAsset: async (id, signal) => (await getImages().read(id, signal)).asset,
 		getReviews,
 		hubSnapshot: () => getHub().snapshot(),
 		dayItem: async (id) => {
@@ -1027,6 +1097,7 @@ function runtimeForActiveJobs(): RuntimeService {
 export async function disposeRuntime(): Promise<void> {
 	const current = runtime;
 	closing = true;
+	images?.dispose();
 	await codingProvider?.dispose();
 	preparedComments?.invalidate();
 	await prFixes?.dispose();

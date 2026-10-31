@@ -24,6 +24,7 @@ import {
 	HubOperationSchema,
 	HubSnapshotSchema,
 	IdSchema,
+	ImageReadResultSchema,
 	KnowledgeFactSchema,
 	LinearScopeSchema,
 	LinearTicketSchema,
@@ -33,6 +34,7 @@ import {
 	OAuthStatusSchema,
 	PRCommentCreateInputSchema,
 	PRCommentEditInputSchema,
+	PRCommentPresentationReceiptSchema,
 	PRFixDetailSchema,
 	PRFixReviewInputSchema,
 	PRFixStartInputSchema,
@@ -66,6 +68,7 @@ import { createAppConfigurationRouter } from "../../config/router";
 import { createRuntimeRouter } from "../../runtime/router";
 import {
 	agentComposition,
+	commentPresentations,
 	conversationService,
 	getAttention,
 	getBrowser,
@@ -76,6 +79,7 @@ import {
 	getDiagnostics,
 	getGitHubToken,
 	getHub,
+	getImages,
 	getLocalBrowser,
 	getOAuth,
 	getPRFixes,
@@ -109,6 +113,12 @@ const hubCall = async <T>(work: () => Promise<T>): Promise<T> => {
 };
 // Register feature routers here as the application grows.
 export const appRouter = router({
+	images: router({
+		read: publicProcedure
+			.input(z.strictObject({ id: IdSchema.max(200) }))
+			.output(ImageReadResultSchema)
+			.query(({ input }) => getImages().read(input.id)),
+	}),
 	codingProvider: router({
 		status: publicProcedure
 			.input(z.strictObject({}))
@@ -128,6 +138,14 @@ export const appRouter = router({
 			.mutation(() => getCodingProvider().openLogin()),
 	}),
 	prComments: router({
+		presented: publicProcedure
+			.input(PRCommentPresentationReceiptSchema)
+			.output(AgentActionReceiptResultSchema)
+			.mutation(({ input }) => commentPresentations.applied(input)),
+		invalidate: publicProcedure
+			.input(z.strictObject({ sessionId: IdSchema }))
+			.output(z.void())
+			.mutation(({ input }) => commentPresentations.invalidate(input.sessionId)),
 		create: publicProcedure
 			.input(PRCommentCreateInputSchema)
 			.output(DraftedCommentSchema)

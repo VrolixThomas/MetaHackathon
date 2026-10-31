@@ -4,6 +4,8 @@ import {
 	AgentActionReceiptResultSchema,
 	AgentActionSchema,
 	type BrowserBounds,
+	type ImageAsset,
+	ImageReadResultSchema,
 	type PRFixPresentation,
 	WORKSPACE_GITHUB_REQUIRED,
 	type WorkspaceActionReceipt,
@@ -26,6 +28,7 @@ type PendingRender = {
 	sequence: number;
 	committed: boolean;
 	native: boolean;
+	images: Set<string>;
 	resolve(status: Status): void;
 };
 
@@ -74,6 +77,7 @@ export function createWorkspaceController(
 	let manualPending: Promise<Status> | undefined;
 	let manualInteraction = options.onManualChange;
 	let pending: PendingRender | undefined;
+	const readyImages = new Set<string>();
 	let operation: AbortController | undefined;
 	let activeRequest: string | undefined;
 	let retryFixRequest: string | undefined;
@@ -96,7 +100,8 @@ export function createWorkspaceController(
 		pending = undefined;
 	}
 	function finishRender() {
-		if (pending?.committed && pending.native) pending.resolve("applied");
+		if (pending?.committed && pending.native && pending.images.size === 0)
+			pending.resolve("applied");
 	}
 	function rendered(sequence: number) {
 		if (!pending || pending.sequence !== sequence || obscured || disposed) return;
@@ -256,7 +261,24 @@ export function createWorkspaceController(
 					review: reviews.getContext().screen ?? reviews.store.getState().screen,
 				});
 				const displayed = new Promise<Status>((resolve) => {
-					pending = { sequence: snapshot.sequence, committed: false, native: false, resolve };
+					pending = {
+						sequence: snapshot.sequence,
+						committed: false,
+						native: false,
+						resolve,
+						images: new Set(
+							snapshot.canvases
+								.filter(
+									(canvas) =>
+										canvas.kind === "image" &&
+										(canvas.id === snapshot.primaryId || canvas.id === snapshot.secondaryId)
+								)
+								.map((canvas) =>
+									canvas.kind === "image" ? `${canvas.asset.id}:${canvas.asset.sha256}` : ""
+								)
+								.filter((key) => !readyImages.has(key))
+						),
+					};
 				});
 				store.setState({ workspace: snapshot });
 				status = await Promise.race([displayed, cancelled]);
@@ -391,6 +413,20 @@ export function createWorkspaceController(
 	}
 	return {
 		store,
+		readImage: async (id: string, signal: AbortSignal) => {
+			signal.throwIfAborted();
+			const result = ImageReadResultSchema.parse(await call("query", "images.read", { id }));
+			signal.throwIfAborted();
+			return result;
+		},
+		imageReady: (asset: ImageAsset, ready: boolean) => {
+			const key = `${asset.id}:${asset.sha256}`;
+			if (ready) {
+				readyImages.add(key);
+				pending?.images.delete(key);
+			} else readyImages.delete(key);
+			finishRender();
+		},
 		start,
 		getContext,
 		applyAction,

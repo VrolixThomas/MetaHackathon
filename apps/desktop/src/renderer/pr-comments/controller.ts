@@ -288,11 +288,12 @@ export function createPRCommentController(
 		refreshContext();
 		const draft = DraftedCommentSchema.parse(raw);
 		const context = state.context;
+		const replacePosted = state.phase === "posted" && state.draft?.id !== draft.id;
 		if (
 			disposed ||
 			!context ||
 			context.reviewId !== reviewId ||
-			state.request ||
+			(state.request && !replacePosted) ||
 			confirmationPending ||
 			state.phase === "saving" ||
 			draft.evidence.kind === "fixture" ||
@@ -307,9 +308,14 @@ export function createPRCommentController(
 					draft.location.startLine !== draft.location.endLine))
 		)
 			return false;
-		if (state.draft && (state.draft.id !== draft.id || state.draft.revision > draft.revision))
+		if (
+			!replacePosted &&
+			state.draft &&
+			(state.draft.id !== draft.id || state.draft.revision > draft.revision)
+		)
 			return false;
 		if (
+			!replacePosted &&
 			state.draft?.revision === draft.revision &&
 			JSON.stringify(state.draft) !== JSON.stringify(draft)
 		)
@@ -324,6 +330,8 @@ export function createPRCommentController(
 		generation++;
 		update({
 			open: true,
+			request: null,
+			url: "",
 			draft: structuredClone(draft),
 			draftPr: context.pr,
 			body: draft.body,

@@ -4,7 +4,7 @@ import { BrowserStateSchema } from "./browser";
 import { CodeLocationSchema, IdSchema, TurnIdentitySchema } from "./common";
 export { TurnIdentitySchema } from "./common";
 import { ReviewNavigationSchema, ReviewScreenSchema } from "./prepared-review";
-import { DraftedCommentSchema } from "./review";
+import { ConfirmCommentInputSchema, DraftedCommentSchema } from "./review";
 import { WorkspaceEffectSchema, WorkspaceSnapshotSchema } from "./workspace";
 
 export const ScreenContextSchema = z.strictObject({
@@ -69,6 +69,13 @@ const actionFields = {
 	screenSequence: z.int().nonnegative(),
 };
 export const AgentActionSchema = z.discriminatedUnion("kind", [
+	z.strictObject({
+		...actionFields,
+		kind: z.literal("comment-post-state"),
+		confirmation: ConfirmCommentInputSchema,
+		status: z.enum(["posting", "posted", "uncertain"]),
+		url: z.url().optional(),
+	}),
 	z.strictObject({
 		...actionFields,
 		kind: z.literal("workspace-canvas"),

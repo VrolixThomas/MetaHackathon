@@ -107,6 +107,12 @@ export function createConversationController(
 	} | null = null;
 	let review: Pick<PreparedController, "getContext" | "applyAction"> | null = null;
 	let workspace: WorkspacePort | null = null;
+	let commentPresenter:
+		| ((
+				action: Extract<AgentAction, { kind: "draft-comment" | "comment-post-state" }>,
+				signal: AbortSignal
+		  ) => Promise<"applied" | "ignored">)
+		| null = null;
 	let disposed = false;
 	let configEpoch = 0;
 	let githubEpoch = 0;
@@ -595,6 +601,14 @@ export function createConversationController(
 	async function applyConversationAction(action: AgentAction, signal?: AbortSignal) {
 		const turn = active;
 		const isCurrent = () => !!turn && live(turn) && same(turn, action) && !signal?.aborted;
+		if (
+			((action.kind === "draft-comment" && action.reviewId) ||
+				action.kind === "comment-post-state") &&
+			commentPresenter
+		) {
+			if (!isCurrent() || !turn) return "ignored" as const;
+			return commentPresenter(action, signal ?? turn.abort.signal);
+		}
 		if (action.kind === "narration-checkpoint") {
 			const entry = store.getState().exchanges.find((item) => same(item, action));
 			const displayed = isCurrent() && !!entry && entry.answer.length >= action.throughTextLength;
@@ -660,6 +674,9 @@ export function createConversationController(
 		},
 		attachWorkspace: (port: WorkspacePort) => {
 			workspace = port;
+		},
+		attachCommentPresenter: (presenter: typeof commentPresenter) => {
+			commentPresenter = presenter;
 		},
 		attachVoice: (handle: VoiceHandle) => {
 			voice = handle;

@@ -50,6 +50,8 @@ import {
 } from "./workspace-tools";
 
 export interface ConversationOptions {
+	onUserTurn?(input: ConversationTurnInput): void;
+	onSessionRelease?(sessionId: string): void;
 	attention?: {
 		resolve(input: ConversationAttentionInput, signal: AbortSignal): Promise<AttentionClaim>;
 		validate?(input: ConversationAttentionInput, signal: AbortSignal): Promise<void>;
@@ -121,6 +123,7 @@ export class ConversationService {
 	private disposed = false;
 	private readonly reviewReceipts?: ConversationReceiptGate;
 	private readonly narrationReceipts: NarrationReceiptGate;
+	private readonly narrationProofs = new Map<string, "spoken" | "displayed" | undefined>();
 	constructor(
 		private readonly client: AgentModelClient,
 		private readonly options: ConversationOptions = {}
@@ -132,6 +135,12 @@ export class ConversationService {
 	narrationApplied(raw: unknown) {
 		const receipt = NarrationReceiptSchema.parse(raw);
 		const result = this.narrationReceipts.accept(receipt);
+		if (
+			result.status === "accepted" &&
+			receipt.status !== "ignored" &&
+			this.narrationProofs.has(receipt.requestId)
+		)
+			this.narrationProofs.set(receipt.requestId, receipt.status);
 		const session = this.sessions.get(receipt.sessionId);
 		const turn = session?.current;
 		if (
@@ -151,6 +160,66 @@ export class ConversationService {
 
 	isBusy(rawSessionId: string): boolean {
 		return this.sessions.get(IdSchema.parse(rawSessionId))?.current?.record.status === "running";
+	}
+	/** Composition-only effect publication; no renderer RPC may manufacture an action. */
+	publishAction(raw: AgentAction) {
+		const action = AgentActionSchema.parse(raw);
+		const session = this.sessions.get(action.sessionId);
+		const turn = session?.current;
+		if (
+			!session ||
+			!turn ||
+			!this.active(session, turn) ||
+			turn.input.turnId !== action.turnId ||
+			turn.input.generation !== action.generation
+		)
+			throw new Error("Conversation effect is stale");
+		turn.actions.push(action);
+		this.emit(turn, { kind: "action", action });
+	}
+	isVoiceTurn(identity: TurnIdentity) {
+		const turn = this.sessions.get(identity.sessionId)?.current;
+		return (
+			turn?.kind === "user" &&
+			turn.input.turnId === identity.turnId &&
+			turn.input.generation === identity.generation &&
+			turn.input.inputMode === "voice"
+		);
+	}
+	async narrateProposal(
+		identity: TurnIdentity,
+		requestId: string,
+		text: string,
+		signal: AbortSignal
+	): Promise<"spoken" | "displayed"> {
+		const session = this.sessions.get(identity.sessionId);
+		const turn = session?.current;
+		if (
+			!session ||
+			!turn ||
+			!this.active(session, turn) ||
+			turn.input.turnId !== identity.turnId ||
+			turn.input.generation !== identity.generation
+		)
+			throw new Error("Conversation proposal is stale");
+		this.append(turn, `${turn.text ? "\n" : ""}${text}`);
+		const action = AgentActionSchema.parse({
+			...identity,
+			requestId,
+			kind: "narration-checkpoint",
+			screenSequence: 0,
+			throughTextLength: turn.text.length,
+		});
+		if (action.kind !== "narration-checkpoint") throw new Error("Invalid narration proposal");
+		this.narrationProofs.set(requestId, undefined);
+		try {
+			await this.narrationReceipts.publish(action, signal, () => this.publishAction(action));
+			const proof = this.narrationProofs.get(requestId);
+			if (!proof) throw new Error("Comment narration was not acknowledged");
+			return proof;
+		} finally {
+			this.narrationProofs.delete(requestId);
+		}
 	}
 
 	attentionCompleted(
@@ -226,6 +295,7 @@ export class ConversationService {
 			actions: [],
 		};
 		session.current = turn;
+		this.options.onUserTurn?.(input);
 		this.rememberRequest(session, input.requestId, record);
 		this.emit(turn, { kind: "acknowledgement", text: "I’m listening." });
 		const job = this.run(session, turn);
@@ -342,6 +412,7 @@ export class ConversationService {
 
 	releaseSession(rawSessionId: string) {
 		const sessionId = IdSchema.parse(rawSessionId);
+		this.options.onSessionRelease?.(sessionId);
 		const session = this.sessions.get(sessionId);
 		if (!session) return;
 		if (session.current) this.cancelTurn(session.current);

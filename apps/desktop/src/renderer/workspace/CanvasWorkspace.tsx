@@ -11,6 +11,7 @@ import { CenterCanvas } from "../command-center/CenterCanvas";
 import { FlowCanvas, SourceCanvas } from "../command-center/SourceCanvas";
 import type { HubController } from "../command-center/controller";
 import type { DayController } from "../day/controller";
+import { ImageCanvas } from "../images";
 import type { PRFixController } from "../pr-fixes";
 import { ReviewWorkspace } from "../prepared/ReviewWorkspace";
 import type { PreparedController } from "../prepared/controller";
@@ -31,6 +32,7 @@ const kindLabel = {
 	browser: "Browser",
 	document: "Document",
 	visual: "Visual",
+	image: "Image",
 };
 const kindIcon = {
 	center: "⌂",
@@ -40,6 +42,7 @@ const kindIcon = {
 	browser: "◎",
 	document: "▤",
 	visual: "◇",
+	image: "▧",
 };
 
 export function CanvasWorkspace({
@@ -184,6 +187,14 @@ export function CanvasWorkspace({
 		buttons[next]?.focus();
 	};
 	const renderCanvas = (canvas: Canvas, visible: boolean) => {
+		if (canvas.kind === "image")
+			return (
+				<ImageCanvas
+					asset={canvas.asset}
+					read={controller.readImage}
+					onReady={controller.imageReady}
+				/>
+			);
 		if (!workspace) return null;
 		if (canvas.kind === "center")
 			return (

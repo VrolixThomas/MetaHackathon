@@ -7,7 +7,7 @@ import type { HubController } from "../command-center/controller";
 import { SlackConnections } from "../day/SlackConnections";
 import type { DayController } from "../day/controller";
 import { OAuthConnections, useOAuth } from "../oauth";
-import { PRCommentControl } from "../pr-comments";
+import { PRCommentControl, type PRCommentController, presentPRComment } from "../pr-comments";
 import type { PRFixController } from "../pr-fixes";
 import { ReviewInbox } from "../prepared/Inbox";
 import { ReviewWorkspace } from "../prepared/ReviewWorkspace";
@@ -209,6 +209,68 @@ export function ConversationApp({
 	};
 	const [conversationOpen, setConversationOpen] = useState(false);
 	const [commentOpen, setCommentOpen] = useState(false);
+	const commentUnsubscribe = useRef<(() => void) | undefined>(undefined);
+	const adoptingComment = useRef(false);
+	const bindCommentController = useCallback(
+		(comment: PRCommentController | null) => {
+			commentUnsubscribe.current?.();
+			controller.attachCommentPresenter(
+				comment && apiCall
+					? async (action, signal) => {
+							if (action.kind === "comment-post-state") {
+								if (!comment.adoptConfirmation(action.confirmation)) return "ignored";
+								if (action.status === "posted" || action.status === "uncertain")
+									comment.settleConfirmation(
+										action.confirmation.requestId,
+										action.status === "posted" && action.url ? { url: action.url } : null
+									);
+								return "applied";
+							}
+							if (!action.reviewId) return "ignored";
+							adoptingComment.current = true;
+							try {
+								const receipt = await presentPRComment(
+									comment,
+									{
+										sessionId: action.sessionId,
+										turnId: action.turnId,
+										generation: action.generation,
+										requestId: action.requestId,
+										prId: action.draft.prId,
+										reviewId: action.reviewId,
+										draft: action.draft,
+									},
+									signal
+								);
+								await apiCall("mutation", "prComments.presented", receipt);
+								return receipt.status;
+							} finally {
+								adoptingComment.current = false;
+							}
+						}
+					: null
+			);
+			if (comment && apiCall) {
+				let previous = comment.getSnapshot();
+				commentUnsubscribe.current = comment.subscribe(() => {
+					const next = comment.getSnapshot();
+					if (
+						!adoptingComment.current &&
+						((previous.open && !next.open) ||
+							previous.body !== next.body ||
+							previous.line !== next.line)
+					) {
+						void apiCall("mutation", "prComments.invalidate", {
+							sessionId: controller.sessionId,
+						}).catch(() => {});
+						if (previous.open && !next.open) controller.interruptReply();
+					}
+					previous = next;
+				});
+			}
+		},
+		[apiCall, controller]
+	);
 	const [url, setUrl] = useState("");
 	const [draft, setDraft] = useState("");
 	const scroll = useRef<HTMLDivElement>(null);
@@ -267,6 +329,7 @@ export function ConversationApp({
 				</button>
 				{apiCall && (
 					<PRCommentControl
+						onController={bindCommentController}
 						key={prCommentEpoch}
 						call={apiCall}
 						reviews={reviews}
