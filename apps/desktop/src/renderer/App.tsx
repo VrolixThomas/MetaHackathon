@@ -30,8 +30,10 @@ export function App() {
 		const workspace = createWorkspaceController(api.call, reviews, browser, controller.sessionId, {
 			onManualChange: controller.interruptReply,
 			ensureSlackTarget: async (target) => {
+				if (slack.store.getState().loadedTarget === target) await slack.refreshCurrent();
 				await slack.ensureTarget(target);
-				if (slack.store.getState().loadedTarget !== target) throw new Error("Slack source changed");
+				if (slack.store.getState().loadedTarget !== target || slack.store.getState().messageError)
+					throw new Error("Slack source changed");
 			},
 			ensureDayItem: async (id) => {
 				const current = dayRef.current;
