@@ -87,6 +87,32 @@ test("TeamService persists real selected scope, shares only observed exact local
 				analysisVersion: "test-v1",
 				items: [{ id: org, name: "Real response org" }],
 			});
+
+		if (path === "/v1/reviews/read") {
+			assert.equal(Object.keys(input.key).length, 7);
+			assert.equal(input.key.repository, undefined);
+			const review = {
+				id: "controlled-shared-review",
+				version: 1,
+				pr: {
+					id: "test/repo#1",
+					repository: "test/repo",
+					number: 1,
+					url: "https://github.com/test/repo/pull/1",
+					title: "Controlled PR",
+					author: "test",
+					baseSha: input.key.baseSha,
+					headSha: input.key.headSha,
+				},
+				createdAt: "2026-11-01T00:00:00Z",
+				summary: "Canonical prepared plan",
+				orderRationale: "Read source",
+				files: [],
+				coverage: "complete",
+				evidence: "inferred-from-github",
+			};
+			return Response.json({ key: input.key, review, digest: digest({ key: input.key, review }) });
+		}
 		if (path === "/v1/repositories/resolve")
 			return Response.json({ orgId: org, repositoryId: "42", fullName: "test/repo" });
 		if (path === "/v1/proposals/share") {
@@ -144,6 +170,26 @@ test("TeamService persists real selected scope, shares only observed exact local
 		assert.equal((await service.status()).connection, "connected");
 		const scope = await service.selectScope({ orgId: org, repositoryId: "42" });
 		assert.equal(scope.repository, "test/repo");
+		const prepared = await service.prepare(
+			{
+				pr: {
+					id: "test/repo#1",
+					repository: "test/repo",
+					number: 1,
+					url: "https://github.com/test/repo/pull/1",
+					title: "Controlled PR",
+					author: "test",
+					baseSha: "a".repeat(40),
+					headSha: "b".repeat(40),
+				},
+				description: "Exact context",
+				files: [],
+				truncated: false,
+			},
+			new AbortController().signal
+		);
+		assert.equal(prepared.summary, "Canonical prepared plan");
+
 		const preview = await service.previewProposal({
 			candidateId: "local-candidate",
 			repository: "test/repo",
