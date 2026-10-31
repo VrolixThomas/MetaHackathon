@@ -317,7 +317,12 @@ export class SlackClient {
 			audience.workspaceId !== credential.workspaceId ||
 			audience.conversationId !== conversationId ||
 			(channel.context_team_id && channel.context_team_id !== credential.workspaceId) ||
-			(channel.is_im && channel.user && !audience.readerIds.includes(channel.user))
+			// Slackbot is a system peer: Slack omits it from conversations.members.
+			// The connected human must still pass the fresh membership check above.
+			(channel.is_im &&
+				channel.user &&
+				channel.user !== "USLACKBOT" &&
+				!audience.readerIds.includes(channel.user))
 		)
 			throw new SlackError("invalid-data");
 		const [name] = await this.profileLabels.names(

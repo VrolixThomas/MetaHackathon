@@ -1020,6 +1020,14 @@ async function native() {
 			`[data-slack-target="${READER_CHANNEL}"] [data-slack-message="${ROOT_MESSAGE.ts}"] .slack-thread-link`
 		);
 		await acceptedReader(THREAD_TARGET, after);
+		const readerShot = await win.webContents.capturePage();
+		assert.ok(!readerShot.isEmpty());
+		const readerScreenshotPath = join(dirname(reportPath), "slack-reader-controlled-thread.png");
+		fs.writeFileSync(readerScreenshotPath, readerShot.toPNG());
+		report.readerScreenshot = {
+			path: readerScreenshotPath,
+			label: "Populated Slack thread — controlled provider inputs, not live workspace content",
+		};
 		after = report.readerReceipts.length;
 		await buttonText(`[data-slack-target="${THREAD_TARGET}"]`, "← Back to conversation");
 		await acceptedReader(READER_CHANNEL, after);

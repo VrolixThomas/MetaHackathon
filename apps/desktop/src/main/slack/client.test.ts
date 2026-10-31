@@ -454,6 +454,24 @@ test("conversation rejects wrong metadata identity, workspace, private membershi
 	assert.ok(!missing.requests.some((row) => row.method === "conversations.members"));
 });
 
+test("Slackbot metadata permits the system peer omitted by Slack while still requiring human membership", async () => {
+	let joined = true;
+	const { client } = harness((method) =>
+		method === "conversations.info"
+			? { ok: true, channel: { ...privateChannel(), user: "USLACKBOT" } }
+			: method === "conversations.members"
+				? { ok: true, members: joined ? [credential.userId] : [] }
+				: undefined
+	);
+	assert.equal((await client.conversation("D123")).visibility, "direct_message");
+	assert.deepEqual((await client.audience("D123")).readerIds, [credential.userId]);
+	joined = false;
+	await assert.rejects(
+		client.conversation("D123"),
+		(error: unknown) => error instanceof SlackError && error.code === "access-denied"
+	);
+});
+
 test("reader conversation requires public membership while existing explicit source reads retain public visibility", async () => {
 	let joined = false;
 	const { client } = harness((method) =>
