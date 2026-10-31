@@ -50,7 +50,8 @@ const TICKET_ID = "oauth-smoke-owned-ticket";
 const FOREIGN_ID = "oauth-smoke-other-owner-ticket";
 const FOREIGN_TITLE = "OTHER_OWNER_PRIVATE_TITLE_MUST_NOT_LEAK";
 const sleep = (ms) => new Promise((done) => setTimeout(done, ms));
-const callback = (provider) => `http://127.0.0.1:${PORT}/oauth/${provider}/callback`;
+const callback = (provider) =>
+	`http://${provider === "slack" ? "localhost" : "127.0.0.1"}:${PORT}/oauth/${provider}/callback`;
 const challenge = (verifier) => createHash("sha256").update(verifier).digest("base64url");
 
 function ticket(foreign = false) {
@@ -242,6 +243,7 @@ async function native() {
 		throw new Error(`Timed out: ${label}`);
 	}
 	function quit(error) {
+		if (error) markFailure(error);
 		if (quitting) return;
 		quitting = true;
 		if (error || failure) {
@@ -665,7 +667,7 @@ async function native() {
 			assert.equal(row.phase, "disconnected");
 			assert.equal(row.source, null);
 			assert.equal(row.account, null);
-			assert.equal(row.configurationReady, true);
+			assert.equal(row.configurationReady, PROVIDERS.includes(row.provider));
 			assert.equal(row.callbackUrl, callback(row.provider));
 		}
 		await click('.command-rail button[aria-label="Settings"]');
@@ -787,7 +789,9 @@ async function native() {
 			envPath,
 			`GITHUB_TOKEN=${SECRETS.manualGitHub}\nGH_TOKEN=${SECRETS.manualAlias}\nLINEAR_API_KEY=${SECRETS.manualLinear}\n`
 		);
-		for (const row of await statuses()) assert.equal(row.source, "oauth");
+		for (const row of (await statuses()).filter((row) => PROVIDERS.includes(row.provider)))
+			assert.equal(row.source, "oauth");
+		assert.equal((await status("slack")).source, null);
 		await rpc("hub.repositories");
 		await rpc("hub.linearScopes");
 		await click(button("linear", "disconnect"));
