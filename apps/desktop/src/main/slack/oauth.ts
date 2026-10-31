@@ -15,7 +15,8 @@ export const SLACK_USER_SCOPES = [
 	"users:read",
 	"chat:write",
 ] as const;
-const ClientSchema = z.strictObject({ clientId: SlackTokenSchema, clientSecret: SlackTokenSchema });
+// Public PKCE client: deliberately discard even a configured legacy client secret.
+const ClientSchema = z.object({ clientId: SlackTokenSchema });
 export type SlackOAuthClient = z.infer<typeof ClientSchema>;
 const TokenFieldsSchema = z.object({
 	access_token: SlackTokenSchema,
@@ -37,6 +38,7 @@ export interface SlackUserGrant {
 	scopes: string[];
 	refreshToken: string | null;
 	expiresAt: number | null;
+	refreshExpiresAt: number | null;
 }
 
 export function slackRedirectUri(input: string): string {
@@ -44,9 +46,17 @@ export function slackRedirectUri(input: string): string {
 		const url = new URL(input);
 		if (
 			input.length > 2048 ||
-			url.protocol !== "https:" ||
+			!(
+				url.protocol === "https:" ||
+				(url.protocol === "http:" &&
+					url.hostname === "localhost" &&
+					url.port &&
+					url.pathname === "/oauth/slack/callback" &&
+					input === `${url.origin}/oauth/slack/callback`)
+			) ||
 			url.username ||
 			url.password ||
+			url.search ||
 			url.hash
 		)
 			throw new Error();
@@ -56,12 +66,14 @@ export function slackRedirectUri(input: string): string {
 	}
 }
 
-/** Root supplies one-time state, optional S256 challenge, and a registered HTTPS callback. */
+/** PKCE-enabled Slack apps support localhost desktop redirects with user scopes only.
+ * https://docs.slack.dev/authentication/using-pkce/
+ */
 export function slackAuthorizationUrl(input: {
 	clientId: string;
 	redirectUri: string;
 	state: string;
-	challenge?: string;
+	challenge: string;
 }): string {
 	const url = new URL("https://slack.com/oauth/v2/authorize");
 	url.search = new URLSearchParams({
@@ -69,9 +81,8 @@ export function slackAuthorizationUrl(input: {
 		redirect_uri: slackRedirectUri(input.redirectUri),
 		state: parsed(SlackTokenSchema, input.state),
 		user_scope: SLACK_USER_SCOPES.join(","),
-		...(input.challenge
-			? { code_challenge: parsed(SlackTokenSchema, input.challenge), code_challenge_method: "S256" }
-			: {}),
+		code_challenge: parsed(SlackTokenSchema, input.challenge),
+		code_challenge_method: "S256",
 	}).toString();
 	return url.href;
 }
@@ -84,6 +95,9 @@ function tokenFields(value: z.infer<typeof TokenFieldsSchema>, now: number) {
 		scopes: parsed(SlackScopesSchema, value.scope.split(/[ ,]+/).filter(Boolean)),
 		refreshToken: value.refresh_token ?? null,
 		expiresAt: value.expires_in ? now + value.expires_in * 1000 : null,
+		// Every refresh token issued to a PKCE-enabled app expires after 30 days.
+		// A replacement token gets its own lifetime, not the original grant's deadline.
+		refreshExpiresAt: value.refresh_token ? now + 30 * 24 * 60 * 60 * 1000 : null,
 	};
 }
 
@@ -97,9 +111,8 @@ async function exchange(
 ): Promise<unknown> {
 	const validated = parsed(ClientSchema, client);
 	return new SlackTransport({ fetch: options.fetch }).call("oauth.v2.access", {
-		authorization: `Basic ${Buffer.from(`${validated.clientId}:${validated.clientSecret}`).toString("base64")}`,
 		form: true,
-		fields,
+		fields: { ...fields, client_id: validated.clientId },
 		signal: options.signal,
 		maxBytes: 65536,
 	});
@@ -110,7 +123,7 @@ export async function exchangeSlackCode(input: {
 	client: SlackOAuthClient;
 	code: string;
 	redirectUri: string;
-	verifier?: string;
+	verifier: string;
 	fetch?: typeof fetch;
 	signal?: AbortSignal;
 	now?: number;
@@ -123,7 +136,7 @@ export async function exchangeSlackCode(input: {
 				code: parsed(SlackTokenSchema, input.code),
 				redirect_uri: slackRedirectUri(input.redirectUri),
 				grant_type: "authorization_code",
-				...(input.verifier ? { code_verifier: parsed(SlackTokenSchema, input.verifier) } : {}),
+				code_verifier: parsed(SlackTokenSchema, input.verifier),
 			},
 			input
 		)
@@ -153,14 +166,35 @@ export async function refreshSlackToken(input: {
 		},
 		input
 	);
-	const value = parsed(TokenFieldsSchema, raw);
+	const envelope = parsed(
+		z.object({
+			app_id: SlackIdSchema.optional(),
+			team: z.object({ id: SlackIdSchema }).optional(),
+			authed_user: TokenFieldsSchema.extend({ id: SlackIdSchema.optional() }).optional(),
+		}),
+		raw
+	);
+	const value =
+		envelope.authed_user ?? parsed(TokenFieldsSchema.extend({ id: SlackIdSchema.optional() }), raw);
+	if (
+		(envelope.app_id && envelope.app_id !== input.previous.appId) ||
+		(envelope.team && envelope.team.id !== input.previous.workspaceId) ||
+		(value.id && value.id !== input.previous.userId)
+	)
+		throw new SlackError("access-denied");
 	if (!value.refresh_token || !value.expires_in) throw new SlackError("invalid-data");
-	return { ...input.previous, ...tokenFields(value, input.now ?? Date.now()) };
+	const tokens = tokenFields(value, input.now ?? Date.now());
+	if (
+		JSON.stringify([...new Set(tokens.scopes)].sort()) !==
+		JSON.stringify([...new Set(input.previous.scopes)].sort())
+	)
+		throw new SlackError("access-denied");
+	return { ...input.previous, ...tokens, scopes: input.previous.scopes };
 }
 
 /** Verify actual token identity and resolve display metadata; root alone stores the account/grant. */
 export async function slackProfile(input: {
-	grant: SlackUserGrant;
+	grant: Pick<SlackUserGrant, "workspaceId" | "userId" | "accessToken"> & Partial<SlackUserGrant>;
 	fetch?: typeof fetch;
 	signal?: AbortSignal;
 }): Promise<OAuthAccount> {

@@ -10,16 +10,17 @@ import {
 import { SlackError } from "./types";
 
 const client = { clientId: "controlled-client", clientSecret: "controlled-secret" };
-const redirectUri = "https://muse.example/oauth/slack/callback";
+const redirectUri = "http://localhost:43187/oauth/slack/callback";
 function fetcher(body: unknown, check?: (init: RequestInit) => void): typeof fetch {
 	return (async (input, init) => {
 		assert.equal(String(input), "https://slack.com/api/oauth.v2.access");
 		assert.equal(init?.redirect, "error");
 		assert.equal(init?.method, "POST");
-		assert.equal(
-			new Headers(init?.headers).get("authorization"),
-			`Basic ${Buffer.from("controlled-client:controlled-secret").toString("base64")}`
-		);
+		assert.equal(new Headers(init?.headers).get("authorization"), null);
+		const form = new URLSearchParams(String(init?.body));
+		assert.equal(form.get("client_id"), client.clientId);
+		assert.equal(form.get("client_secret"), null);
+		assert.ok(!JSON.stringify(init).includes(client.clientSecret));
 		check?.(init ?? {});
 		return Response.json(body);
 	}) as typeof fetch;
@@ -39,7 +40,7 @@ const grant = {
 	token_type: "bot",
 };
 
-test("Slack URL requests user scopes, state and S256 using only registered HTTPS callbacks", () => {
+test("Slack desktop URL requests user scopes and S256 with a localhost redirect", () => {
 	const url = new URL(
 		slackAuthorizationUrl({
 			clientId: client.clientId,
@@ -55,11 +56,20 @@ test("Slack URL requests user scopes, state and S256 using only registered HTTPS
 	assert.equal(url.searchParams.get("code_challenge_method"), "S256");
 	for (const invalid of [
 		"http://127.0.0.1:43187/oauth/slack/callback",
+		"http://localhost.evil:43187/oauth/slack/callback",
+		"http://localhost:43187/wrong-path",
+		`${redirectUri}?unexpected=query`,
 		"https://user:pass@muse.example/cb",
 		`${redirectUri}#fragment`,
 	])
 		assert.throws(
-			() => slackAuthorizationUrl({ clientId: "client", redirectUri: invalid, state: "state" }),
+			() =>
+				slackAuthorizationUrl({
+					clientId: "client",
+					redirectUri: invalid,
+					state: "state",
+					challenge: "challenge",
+				}),
 			SlackError
 		);
 });
@@ -87,13 +97,20 @@ test("code exchange selects nested user grant and never substitutes a bot token"
 		scopes: ["im:read", "im:history", "chat:write"],
 		refreshToken: null,
 		expiresAt: null,
+		refreshExpiresAt: null,
 	});
 	for (const bad of [
 		{ ...grant, authed_user: undefined },
 		{ ...grant, authed_user: { ...user, token_type: "bot" } },
 	])
 		await assert.rejects(
-			exchangeSlackCode({ client, code: "code", redirectUri, fetch: fetcher(bad) }),
+			exchangeSlackCode({
+				client,
+				code: "code",
+				redirectUri,
+				verifier: "verifier",
+				fetch: fetcher(bad),
+			}),
 			SlackError
 		);
 });
@@ -103,6 +120,7 @@ test("rotation retains user/workspace identity and returns replacement single-us
 		client,
 		code: "code",
 		redirectUri,
+		verifier: "verifier",
 		now: 1000,
 		fetch: fetcher({
 			...grant,
@@ -110,6 +128,7 @@ test("rotation retains user/workspace identity and returns replacement single-us
 		}),
 	});
 	assert.equal(previous.expiresAt, 43_201_000);
+	assert.equal(previous.refreshExpiresAt, 1000 + 30 * 86400000);
 	const next = await refreshSlackToken({
 		client,
 		previous,
@@ -134,6 +153,7 @@ test("rotation retains user/workspace identity and returns replacement single-us
 	assert.equal(next.workspaceId, "T123");
 	assert.equal(next.refreshToken, "second-refresh");
 	assert.equal(next.expiresAt, 43_202_000);
+	assert.equal(next.refreshExpiresAt, 2000 + 30 * 86400000);
 	await assert.rejects(
 		refreshSlackToken({
 			client,
@@ -151,7 +171,13 @@ test("provider errors, malformed and oversized bodies never expose credentials o
 		{ ...grant, ignored: "x".repeat(70000) },
 	]) {
 		await assert.rejects(
-			exchangeSlackCode({ client, code: "code", redirectUri, fetch: fetcher(body) }),
+			exchangeSlackCode({
+				client,
+				code: "code",
+				redirectUri,
+				verifier: "verifier",
+				fetch: fetcher(body),
+			}),
 			(error: unknown) =>
 				error instanceof SlackError && !error.message.includes("controlled-secret")
 		);
@@ -163,6 +189,7 @@ test("profile verifies actual user/workspace before exposing bounded display met
 		client,
 		code: "code",
 		redirectUri,
+		verifier: "verifier",
 		fetch: fetcher(grant),
 	});
 	const requests: string[] = [];
@@ -196,4 +223,102 @@ test("profile verifies actual user/workspace before exposing bounded display met
 		}),
 		SlackError
 	);
+});
+
+test("public client works with no secret and PKCE arguments cannot be omitted", async () => {
+	await exchangeSlackCode({
+		client: { clientId: client.clientId },
+		code: "code",
+		redirectUri,
+		verifier: "verifier",
+		fetch: fetcher(grant),
+	});
+	assert.throws(
+		() =>
+			slackAuthorizationUrl({
+				clientId: client.clientId,
+				redirectUri,
+				state: "state",
+				challenge: undefined as never,
+			}),
+		SlackError
+	);
+	await assert.rejects(
+		exchangeSlackCode({
+			client,
+			code: "code",
+			redirectUri,
+			verifier: undefined as never,
+			fetch: fetcher(grant),
+		}),
+		SlackError
+	);
+});
+
+test("nested refresh grants preserve identity and scope ordering; changed scopes or identities reject", async () => {
+	const previous = await exchangeSlackCode({
+		client,
+		code: "code",
+		redirectUri,
+		verifier: "verifier",
+		fetch: fetcher({
+			...grant,
+			authed_user: { ...user, expires_in: 43200, refresh_token: "refresh" },
+		}),
+	});
+	const nextUser = {
+		...user,
+		access_token: "new-user",
+		refresh_token: "next-refresh",
+		expires_in: 43200,
+		scope: "chat:write,im:history,im:read",
+	};
+	const next = await refreshSlackToken({
+		client,
+		previous,
+		fetch: fetcher({ ...grant, authed_user: nextUser }),
+	});
+	assert.equal(next.accessToken, "new-user");
+	assert.deepEqual(next.scopes, previous.scopes);
+	for (const authed_user of [
+		{ ...nextUser, id: "U999" },
+		{ ...nextUser, token_type: "bot" },
+		{ ...nextUser, scope: "im:read" },
+	])
+		await assert.rejects(
+			refreshSlackToken({ client, previous, fetch: fetcher({ ...grant, authed_user }) }),
+			SlackError
+		);
+});
+
+test("auth.test and users.info cannot confirm a foreign, bot, deleted or revoked account", async () => {
+	for (const [identity, info] of [
+		[{ ok: true, team_id: "T123", user_id: "U999" }, {}],
+		[{ ok: true, team_id: "T123", user_id: "U123", bot_id: "B123" }, {}],
+		[{ ok: false, error: "token_revoked" }, {}],
+		[{ ok: true, team_id: "T123", user_id: "U123" }, { id: "U999" }],
+		[
+			{ ok: true, team_id: "T123", user_id: "U123" },
+			{ id: "U123", team_id: "T999" },
+		],
+		[
+			{ ok: true, team_id: "T123", user_id: "U123" },
+			{ id: "U123", is_bot: true },
+		],
+		[
+			{ ok: true, team_id: "T123", user_id: "U123" },
+			{ id: "U123", deleted: true },
+		],
+	]) {
+		await assert.rejects(
+			slackProfile({
+				grant: { workspaceId: "T123", userId: "U123", accessToken: "token" },
+				fetch: (async (input) =>
+					Response.json(
+						String(input).endsWith("auth.test") ? identity : { ok: true, user: info }
+					)) as typeof fetch,
+			}),
+			SlackError
+		);
+	}
 });
