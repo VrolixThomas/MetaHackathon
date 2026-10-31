@@ -39,6 +39,17 @@ const machMagic = new Set([
 
 function verifyApp(appPath, expectedTeam) {
 	if (!expectedTeam) throw new Error("APPLE_TEAM_ID is required for signature verification");
+	const microphoneDescription = command("/usr/bin/plutil", [
+		"-extract",
+		"NSMicrophoneUsageDescription",
+		"raw",
+		"-o",
+		"-",
+		path.join(appPath, "Contents", "Info.plist"),
+	]);
+	if (!/hands-free/.test(microphoneDescription) || /Hold Space/.test(microphoneDescription)) {
+		throw new Error("App microphone description must explain the Start/End hands-free session");
+	}
 	command("/usr/bin/codesign", ["--verify", "--deep", "--strict", "--verbose=2", appPath]);
 	const appSignature = command("/usr/bin/codesign", ["--display", "--verbose=4", appPath]);
 	if (

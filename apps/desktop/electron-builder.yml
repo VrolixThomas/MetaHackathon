@@ -7,14 +7,11 @@ directories:
 
 files:
   - out/**/*
+  - node_modules/@muse-code/sdk/**/*
 
 extraResources:
-  - from: ../../fixtures/demo
-    to: demo
-    filter:
-      - "**/*"
-      - "!**/.git{,/**/*}"
-      - "!**/node_modules{,/**/*}"
+  - from: ../../services/voice/dist/metahackathon-voice
+    to: voice
 
 asar: true
 asarUnpack:
@@ -24,6 +21,7 @@ asarUnpack:
 npmRebuild: true
 forceCodeSigning: true
 beforePack: packaging/before-pack.cjs
+afterPack: packaging/after-pack.cjs
 afterSign: packaging/after-sign.cjs
 
 publish:
@@ -39,7 +37,7 @@ mac:
   entitlements: resources/entitlements.mac.plist
   entitlementsInherit: resources/entitlements.mac.plist
   extendInfo:
-    NSMicrophoneUsageDescription: Hold Space to speak to the pull request review assistant.
+    NSMicrophoneUsageDescription: Start a hands-free voice conversation with Muse. End the session to stop listening.
   target:
     - dmg
     - zip

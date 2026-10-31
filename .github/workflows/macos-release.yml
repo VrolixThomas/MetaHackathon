@@ -39,7 +39,16 @@ jobs:
       - name: Type check
         run: bun run type-check
       - name: Verify final update metadata behavior
-        run: node --test apps/desktop/packaging/refresh-update-info.test.cjs
+        run: node --test apps/desktop/packaging/*.test.cjs
+      - uses: actions/setup-python@v5
+        with:
+          python-version: 3.13.3
+      - name: Freeze the production voice sidecar on the target architecture
+        run: |
+          test "$(uname -m)" = arm64
+          python -m venv services/voice/.venv
+          services/voice/.venv/bin/python -m pip install -r services/voice/requirements.lock
+          services/voice/.venv/bin/python services/voice/scripts/freeze.py
       - name: Build desktop
         run: bun run --cwd apps/desktop build
       - name: Sign and notarize Apple Silicon app
@@ -71,6 +80,10 @@ jobs:
             apps/desktop/dist/*.blockmap
             apps/desktop/dist/latest-mac.yml
             apps/desktop/dist/signing-evidence.json
+            services/voice/dist/self-test.json
+            services/voice/dist/cold-launch-smoke.json
+            services/voice/dist/launch-smoke.json
+            services/voice/dist/bundle-inventory.json
           retention-days: 14
       - name: Preserve failed notarization diagnostics
         if: failure()

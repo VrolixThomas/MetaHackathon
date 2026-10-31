@@ -3,6 +3,7 @@ const path = require("node:path");
 const { requireSigningCredentials } = require("./credentials.cjs");
 const { command, verifyApp } = require("./verify-app.cjs");
 const { refreshUpdateInfo, validateUpdateInfo } = require("./refresh-update-info.cjs");
+const { verifyPackagedPayload } = require("./payload.cjs");
 
 requireSigningCredentials();
 const outputDir = path.resolve(process.argv[2] || "dist");
@@ -10,6 +11,7 @@ const appPath = path.resolve(process.argv[3] || "dist/mac-arm64/MetaHackathon.ap
 // A stray ZIP on disk cannot stand in for a usable updater manifest.
 validateUpdateInfo(outputDir);
 const app = verifyApp(appPath, process.env.APPLE_TEAM_ID);
+const payload = verifyPackagedPayload(appPath, ["arm64"]);
 command("/usr/bin/xcrun", ["stapler", "validate", appPath]);
 command("/usr/sbin/spctl", ["--assess", "--type", "execute", "--verbose=4", appPath]);
 const dmgs = fs.readdirSync(outputDir).filter((name) => name.endsWith(".dmg"));
@@ -75,6 +77,7 @@ for (const name of dmgs) {
 const report = {
 	verifiedAt: new Date().toISOString(),
 	app,
+	payload,
 	notarization,
 	updateArtifacts: zips.concat("latest-mac.yml"),
 	updateFileHashes: refreshUpdateInfo(outputDir, dmgs),

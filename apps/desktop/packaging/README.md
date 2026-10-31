@@ -1,95 +1,106 @@
 # macOS packaging and release evidence
 
 The normal `electron-builder.yml` requires Developer ID signing and notarization.
-It uses the v26 schema installed in the lockfile. A successful packaging command
-alone does not establish distribution readiness.
+Only root/integration runs native build, freeze, package and launch commands.
+Bounded workers run `node --test apps/desktop/packaging/*.test.cjs`: those checks
+use inert native headers and synthetic ASAR/update files, and prove policy only.
 
-`resources/entitlements.mac.plist` enables modern Electron's V8 JIT and hardened
-runtime audio input. The main app and helper processes receive those entitlements;
-`NSMicrophoneUsageDescription` explains microphone use. OS permission and actual
-capture still require an integrated voice smoke test.
+The main app and helpers receive JIT and audio-input entitlements from
+`resources/entitlements.mac.plist`. The microphone description explains Start/End
+hands-free use. Actual microphone permission and voice require separate integrated
+checks inside the installed app's responsible process.
 
-## Local mechanics probes
+## Production payload
 
-Run the isolated hello-world probe from the repository root:
-
-```sh
-bun install --frozen-lockfile
-node apps/desktop/packaging/hello-probe.cjs
-hdiutil verify apps/desktop/dist/hello-probe/*-UNSIGNED-LOCAL.dmg
-```
-
-The generated app says **UNSIGNED-LOCAL PROBE** and uses separate ignored output.
-To test launch mechanics with a local ad-hoc signature, run:
+Production copies the complete existing PyInstaller onedir output from
+`services/voice/dist/metahackathon-voice` to `Contents/Resources/voice`, preserving
+the `_internal` layout. Main already launches `Resources/voice/metahackathon-voice`.
+There is no bundled demo repository or runtime dependency on a user Python install.
+Freeze on the target Apple Silicon Mac using the existing locked pipeline:
 
 ```sh
-node apps/desktop/packaging/hello-probe.cjs --adhoc
+python3.13 -m venv services/voice/.venv
+services/voice/.venv/bin/python -m pip install -r services/voice/requirements.lock
+services/voice/.venv/bin/python services/voice/scripts/freeze.py
 ```
 
-This writes separate `hello-probe-adhoc` output with **ADHOC-LOCAL** filenames.
-An ad-hoc signature has no Developer ID/team identity and is not a notarized release.
-When launching Electron directly from an agent shell, unset `ELECTRON_RUN_AS_NODE`;
-that inherited flag runs the binary as Node and rejects browser flags. Verify app
-launches using a fresh user-data directory and clean up only the spawned process.
-For the actual desktop build, use:
+The freezer imports native code and exercises controlled local transport. Root
+alone runs it; it makes no live speech-provider request. CI uses Python 3.13.3 and
+refuses a runner whose actual architecture is not arm64. The bundle must correspond
+to the release source; retain its freezer reports with that build.
+
+Pre-pack checks reject missing/non-native executables, missing internal libraries,
+architecture mismatches and escaping/broken symlinks. Post-pack checks inspect the
+ASAR and external payload: pinned production Muse SDK and its relative JS imports,
+coding worker, unpacked native SQLite addon, SQL migrations and frozen voice layout.
+The SDK stays inside ASAR; the vendor CLI is user-installed and is never bundled
+or automatically installed. Configuration and credentials are not bundled.
+
+The installed electron-builder/osx-sign walker signs native extraResources.
+`after-sign.cjs` independently verifies every Mach-O, including `.node`, `.so`,
+`.dylib` and sidecar executables. Missing, foreign-team or ad-hoc signatures fail.
+The freezer's inventory describes its pre-sign input bytes. Signing changes them;
+`signing-evidence.json` records final signature verification and does not claim
+that the freezer inventory hashes describe the signed payload.
+
+## Root-only package acceptance
+
+After normal `bun install --frozen-lockfile` (including native rebuild) and the
+sidecar freeze, run from `apps/desktop`:
 
 ```sh
-bun run --cwd apps/desktop build
-cd apps/desktop
-METAHACKATHON_UNSIGNED_LOCAL=1 bun x --no-install electron-builder --config electron-builder.unsigned.yml --mac dmg zip --arm64 --publish never
+# Content/mechanics only: no Developer ID or notarization claim.
+MUSE_ROOT_RELEASE_ACCEPTANCE=1 node packaging/accept-macos.cjs unsigned
+# Requires the five inputs below and contacts Apple notarization.
+MUSE_ROOT_RELEASE_ACCEPTANCE=1 node packaging/accept-macos.cjs signed
 ```
 
-Unsigned output is never acceptable as D-5 signing/notarization evidence. Do not
-upload it to the release feed. The unsigned configuration disables Hardened Runtime
-because an unsigned hardened app may fail to launch.
+Both build/package the real app into a new ignored output directory with
+`--publish never`, verify production contents, and write `packaging-acceptance.json`
+only after success. Neither launches the app. Signed mode also runs finalization:
+Developer ID/hardened signatures from the expected team, microphone entitlement
+and current Info.plist metadata, app staple/Gatekeeper acceptance, final DMG
+notarization/stapling, regenerated DMG blockmaps and verified update hashes.
 
-## CI credentials and release candidate
+Root must separately launch the installed package with a user-provided `.env`,
+verify Start/End and actual microphone/voice, and exercise an update between two
+published signed versions. Package/hash checks alone do not establish those gates.
+Unset `ELECTRON_RUN_AS_NODE` when launching Electron as an app. Use isolated user
+data and clean up only the process and temporary files owned by that check.
 
-Configure these secrets only in GitHub's `release` environment:
+## Signing inputs and release candidate
 
-| Secret | Purpose |
-| --- | --- |
-| `MAC_CSC_LINK` | Base64 Developer ID Application `.p12` certificate |
-| `MAC_CSC_KEY_PASSWORD` | Certificate password |
-| `APPLE_ID` | Apple Developer account email |
-| `APPLE_APP_SPECIFIC_PASSWORD` | App-specific notarization password |
-| `APPLE_TEAM_ID` | Developer team ID |
+The supported credential set is explicit; no credentials are configured by this
+scaffold. Configure these only in GitHub's `release` environment:
+
+| CI secret | Process environment | Required input |
+| --- | --- | --- |
+| `MAC_CSC_LINK` | `CSC_LINK` | Base64 Developer ID Application `.p12` with private key |
+| `MAC_CSC_KEY_PASSWORD` | `CSC_KEY_PASSWORD` | `.p12` password |
+| `APPLE_ID` | `APPLE_ID` | Apple Developer account email |
+| `APPLE_APP_SPECIFIC_PASSWORD` | `APPLE_APP_SPECIFIC_PASSWORD` | App-specific notarization password |
+| `APPLE_TEAM_ID` | `APPLE_TEAM_ID` | Matching Developer team ID |
 
 An active Apple Developer membership and Developer ID Application certificate are
-prerequisites. Do not paste credentials in source, issue comments, or renderer
-storage. This pipeline deliberately supports the Apple ID credential set shown
-above; API-key/keychain-profile variants require an agreed pipeline change.
+prerequisites. Do not paste credentials into source, issues, renderer storage or
+command output. API-key/keychain-profile variants require an agreed pipeline
+change. The local presence-only check on 2026-11-01 found zero valid code-signing
+identities, so no local Developer ID signing/notarization success is claimed.
 
 The `Signed macOS release candidate` workflow runs manually or on `v*` tags. It
-checks credentials, builds an Apple Silicon app, signs every discovered Mach-O,
-notarizes/staples the app, and submits/staples the final signed DMG. Verification
-requires Developer ID signatures from the expected team, hardened executable
-runtime, microphone entitlement, Gatekeeper acceptance and valid staple tickets.
-`signing-evidence.json` records verification time, binary inventory and accepted
-DMG submission IDs. Because DMG stapling changes bytes after electron-builder writes
-its metadata, finalization regenerates DMG blockmaps and manifest hashes, then
-verifies every update file hash (including the unchanged ZIP). The workflow uploads
-a reviewable artifact and does not publish.
+installs locked dependencies, checks types/offline packaging policy, freezes the
+sidecar, builds, signs and notarizes the app and final DMG. It uploads reviewable
+artifacts and never publishes. Keep DMG, ZIP, blockmaps and `latest-mac.yml`
+together with unchanged filenames on the matching release in
+`VrolixThomas/MetaHackathon`. ZIP and manifest are required for macOS updates.
+Main already initializes `electron-updater` only in packaged builds. Actual update
+installation remains unverified until two signed versions have been published.
 
-After review, publish the verified DMG, ZIP, blockmaps and `latest-mac.yml` together
-on the matching GitHub Release in `VrolixThomas/MetaHackathon`. Preserve filenames.
-The ZIP and update manifest are necessary for macOS automatic updates. The
-packaging config points to that public feed. Integration must add `electron-updater`
-and initialize it from the packaged main process; a published signed release and
-an older installed version are required to verify an actual update.
+## Isolated hello-world mechanics probe
 
-## Python sidecar boundary (C-1)
-
-Voice supplies the frozen bundle and full executable/native-library inventory.
-Bundle it outside ASAR under `Contents/Resources/voice`, with no runtime dependency
-on a user Python install. Agree that copy/signing hook through MET-8 before adding
-the bundle to this config. `after-sign.cjs` checks every Mach-O in the resulting
-app, including `.node`, `.dylib`, and sidecar binaries, so a missing/foreign/ad-hoc
-signature fails the release. No Python bundle is included merely by this scaffold.
-
-## Primary references
-
-- [electron-builder v26 signing and entitlements](https://www.electron.build/v26/docs/mac/)
-- [electron-builder v26 notarization](https://www.electron.build/v26/docs/notarization/)
-- [Electron notarization prerequisites](https://github.com/electron/notarize/blob/main/README.md)
-- [Apple audio input entitlement](https://developer.apple.com/documentation/bundleresources/entitlements/com.apple.security.device.audio-input)
+Root may run `node apps/desktop/packaging/hello-probe.cjs` or add `--adhoc`.
+Those generated apps use separate ignored output and explicit UNSIGNED-LOCAL or
+ADHOC-LOCAL labels. Their config omits product payload checks. Neither establishes
+production app behavior, Developer ID, notarization or distribution readiness.
+Do not upload these probes to the release feed. Historical probe results in
+`LOCAL-RESULTS.md` remain historical, not evidence for today's integrated package.

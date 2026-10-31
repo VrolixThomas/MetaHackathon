@@ -1,6 +1,6 @@
 const { requireSigningCredentials } = require("./credentials.cjs");
-const { existsSync } = require("node:fs");
 const path = require("node:path");
+const { verifyVoiceBundle, targetArchitectures } = require("./payload.cjs");
 
 module.exports = async (context) => {
 	if (context.electronPlatformName !== "darwin") return;
@@ -11,10 +11,14 @@ module.exports = async (context) => {
 			);
 		}
 		console.warn("LOCAL PROBE: this artifact has no Developer ID signature or notarization.");
-		return;
+	} else {
+		requireSigningCredentials();
 	}
-	requireSigningCredentials();
-	if (!existsSync(path.resolve(context.packager.projectDir, "../../fixtures/demo"))) {
-		throw new Error("Signed release blocked: fixtures/demo is missing from packaged resources");
+	// The explicitly separate generated hello-world probe omits product payloads.
+	if (context.packager.config.extraResources !== null) {
+		verifyVoiceBundle(
+			path.resolve(context.packager.projectDir, "../../services/voice/dist/metahackathon-voice"),
+			targetArchitectures(context.arch)
+		);
 	}
 };
