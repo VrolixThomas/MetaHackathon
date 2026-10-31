@@ -29,6 +29,7 @@ test("retired actor or generation cannot receive a delayed message page", async 
 		let epoch = 0;
 		let current = credential;
 		const client = {
+			listConversations: h.client.listConversations.bind(h.client),
 			conversation: h.client.conversation.bind(h.client),
 			history: h.client.history.bind(h.client),
 			thread: h.client.thread.bind(h.client),

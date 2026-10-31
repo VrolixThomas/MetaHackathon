@@ -177,7 +177,7 @@ export const appRouter = router({
 					hasMore: z.boolean(),
 				})
 			)
-			.query(({ input }) => getSlackWorkspace().conversations(input)),
+			.query(({ input }) => getSlackReader().conversations(input)),
 		watch: publicProcedure
 			.input(z.strictObject({ conversationIds: z.array(IdSchema).max(1000) }))
 			.output(z.void())

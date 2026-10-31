@@ -118,7 +118,7 @@ export const conversationService = new ConversationService(conversationClient, {
 				signal?.throwIfAborted();
 				return { workspaceId: credential.workspaceId, userId: credential.userId };
 			},
-			list: (input, signal) => getSlackWorkspace().conversations(input, signal),
+			list: (input, signal) => getSlackReader().conversations(input, signal),
 			read: (input, signal) =>
 				getSlackReader().read({ ...input, threadTs: input.threadTs ?? null }, signal),
 		},

@@ -1,5 +1,6 @@
 import { z } from "zod";
 import {
+	SlackConversationPageSchema,
 	SlackMessagePageSchema,
 	SlackViewTargetSchema,
 	decodeSlackViewTarget,
@@ -50,7 +51,10 @@ async function shortRetry<T>(work: () => Promise<T>, signal: AbortSignal): Promi
 export class SlackReader {
 	constructor(
 		private readonly ports: {
-			getClient(): Pick<SlackClient, "conversation" | "history" | "thread" | "authorLabels">;
+			getClient(): Pick<
+				SlackClient,
+				"conversation" | "listConversations" | "history" | "thread" | "authorLabels"
+			>;
 			getCredential(): Promise<SlackCredential | undefined>;
 			getEpoch(): number;
 		}
@@ -83,6 +87,11 @@ export class SlackReader {
 	async conversation(conversationId: string, signal = AbortSignal.timeout(30_000)) {
 		const target = SlackViewTargetSchema.parse({ conversationId, threadTs: null });
 		return this.run(signal, (client) => client.conversation(target.conversationId, signal));
+	}
+	async conversations(input: { cursor?: string }, signal = AbortSignal.timeout(30_000)) {
+		return this.run(signal, async (client) =>
+			SlackConversationPageSchema.parse(await client.listConversations(input, signal))
+		);
 	}
 	async target(encoded: string, signal: AbortSignal) {
 		const target = decodeSlackViewTarget(encoded);
