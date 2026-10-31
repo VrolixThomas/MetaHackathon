@@ -23,7 +23,11 @@ export function DayReply({
 					<p className="day-exact-text">{item.replyDraft.body}</p>
 					<button
 						type="button"
-						disabled={busy || item.phase !== "awaiting_reply"}
+						disabled={
+							busy ||
+							item.questions.some((question) => question.answer === null) ||
+							(!!item.jobId && (!item.reviewedAt || !item.reviewedHeadSha))
+						}
 						onClick={() => {
 							if (!item.replyDraft) return;
 							void controller.operate({

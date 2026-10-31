@@ -352,7 +352,11 @@ it("requires an explicit exact-body reply action and keeps drafts distinct from 
 		},
 	]);
 	const disabled = renderToStaticMarkup(
-		<DayReply item={{ ...item, phase: "ready_review" }} controller={controller} busy={false} />
+		<DayReply
+			item={{ ...item, phase: "ready_review", jobId: "unreviewed-job", reviewedAt: null }}
+			controller={controller}
+			busy={false}
+		/>
 	);
 	assert.match(disabled, /<button[^>]*disabled=""[^>]*>Send this exact reply/);
 	base.dispose();

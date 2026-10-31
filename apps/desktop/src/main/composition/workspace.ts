@@ -75,6 +75,7 @@ export interface WorkspaceCoordinatorPorts {
 	loadCanvases?(): Promise<SavedWorkspaceCanvases | null>;
 	saveCanvases?(value: SavedWorkspaceCanvases, signal?: AbortSignal): Promise<void>;
 	hubSnapshot?(): Promise<HubSnapshot>;
+	dayItem?(id: string): Promise<{ id: string; title: string }>;
 	readSource?(location: CodeLocation, signal: AbortSignal): Promise<PinnedSource>;
 	activateReview?(prId: string, signal: AbortSignal): Promise<void>;
 }
@@ -355,6 +356,7 @@ export class WorkspaceCoordinator {
 				if (!this.ports.hubSnapshot) fail("Command center is unavailable.");
 				const titles = {
 					home: "Home",
+					day: "My day",
 					reviews: "PR reviews",
 					feedback: "My PR feedback",
 					tickets: "My tickets",
@@ -363,7 +365,12 @@ export class WorkspaceCoordinator {
 				};
 				const previous = snapshot.canvases.find((canvas) => canvas.id === "center");
 				let title = titles[command.section];
-				if (command.selectedId && command.selectedId !== "connections") {
+				if (command.section === "day" && command.selectedId) {
+					if (!this.ports.dayItem) fail("Your day is unavailable.");
+					const item = await invoke(() => this.ports.dayItem?.(command.selectedId as string));
+					if (!item || item.id !== command.selectedId) fail("This work item is unavailable.");
+					title = item.title.slice(0, 120);
+				} else if (command.selectedId && command.selectedId !== "connections") {
 					const hub = await this.ports.hubSnapshot();
 					const ticket = hub.tickets.find((item) => item.id === command.selectedId);
 					const job = hub.jobs.find((item) => item.id === command.selectedId);
@@ -782,6 +789,15 @@ export class WorkspaceCoordinator {
 				this.current(session, pending);
 				const snapshot = clone(receipt.workspace);
 				const checkActual = async () => {
+					const primary = snapshot.canvases.find((canvas) => canvas.id === snapshot.primaryId);
+					if (primary?.kind === "center" && primary.section === "day" && primary.selectedId) {
+						if (!this.ports.dayItem) fail("Your day is unavailable.");
+						const currentItem = await this.call(pending.signal, () =>
+							this.ports.dayItem?.(primary.selectedId as string)
+						);
+						if (!currentItem || currentItem.id !== primary.selectedId)
+							fail("This day item changed.");
+					}
 					const screen = parse(
 						ReviewScreenSchema,
 						await this.call(pending.signal, () => this.ports.getReviews().getScreen(session.id))

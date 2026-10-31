@@ -2,6 +2,7 @@ import type { CenterSection } from "../../shared/contracts";
 
 const paths: Record<CenterSection | "settings" | "plus" | "repository" | "conversation", string> = {
 	home: "m3 10 9-7 9 7v10a1 1 0 0 1-1 1h-5v-7H9v7H4a1 1 0 0 1-1-1Z",
+	day: "M12 3v3m0 12v3M3 12h3m12 0h3M6 6l2 2m8 8 2 2M6 18l2-2m8-8 2-2M16 12a4 4 0 1 1-8 0 4 4 0 0 1 8 0",
 	reviews: "M6 3v12a3 3 0 1 0 3 3H6m0-12a3 3 0 1 0 0 .1M18 3v4a5 5 0 0 1-5 5H6m12-9a3 3 0 1 0 0 .1",
 	feedback: "M21 11a8 8 0 0 1-8 8H7l-4 3V6a3 3 0 0 1 3-3h12a3 3 0 0 1 3 3ZM7 8h10M7 12h6",
 	tickets: "m3 6 2 2 4-4m3 2h9M3 12l2 2 4-4m3 2h9M3 18l2 2 4-4m3 2h9",

@@ -585,6 +585,28 @@ export class DayService {
 				if (item.phase === "closed" || item.phase === "cancelled" || record.sourceDeleted)
 					throw unavailable();
 				switch (op.kind) {
+					case "confirm_local_answer": {
+						const job = record.preparation?.job;
+						if (
+							item.source ||
+							item.acceptance !== "accepted" ||
+							item.questions.some((question) => question.answer === null) ||
+							(item.jobId &&
+								(!job ||
+									job.state !== "ready" ||
+									job.internal?.stage !== "admitted" ||
+									!item.reviewedAt ||
+									item.reviewedHeadSha !== job.headSha))
+						)
+							throw unavailable();
+						item.localAnswerReceipt = {
+							requestId: input.requestId,
+							confirmedById: this.actor.userId,
+							confirmedAt: this.iso(),
+						};
+						item.phase = "closed";
+						break;
+					}
 					case "accept":
 						item.acceptance = "accepted";
 						item.acceptanceBasis = "user_action";
@@ -774,7 +796,12 @@ export class DayService {
 		const job = prep?.job;
 		if (job?.internal?.stage === "prepared" && !prep?.executionDeliveredAt) item.phase = "ready";
 		else if (job?.state === "ready" && job.internal?.stage === "admitted")
-			item.phase = item.acceptance === "accepted" ? "ready_review" : "ready";
+			item.phase =
+				item.acceptance === "accepted"
+					? item.reviewedAt && item.reviewedHeadSha === job.headSha
+						? "awaiting_reply"
+						: "ready_review"
+					: "ready";
 		else if (
 			job?.internal?.stage === "admitted" &&
 			["failed", "cancelled", "paused"].includes(job.state)
@@ -1038,6 +1065,16 @@ export class DayService {
 					if (reply.status !== "delivered") reply.superseded = true;
 			}
 			record.preparation.job = job;
+			if (
+				job.state === "ready" &&
+				job.internal?.stage === "admitted" &&
+				job.reviewedAt &&
+				job.headSha &&
+				job.checks.every((check) => check.exitCode === 0 && check.commitSha === job.headSha)
+			) {
+				item.reviewedAt = job.reviewedAt;
+				item.reviewedHeadSha = job.headSha;
+			}
 			for (const decision of job.decisions.filter((decision) => decision.answer === null)) {
 				const questionId = `day-question-${sha256(JSON.stringify([job.id, decision.id]))}`;
 				if (item.questions.some((question) => question.id === questionId)) continue;

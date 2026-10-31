@@ -50,7 +50,11 @@ export function createWorkspaceController(
 	reviews: PreparedController,
 	browser: LocalBrowserController,
 	sessionId: string,
-	options: { onManualChange?: () => void; renderTimeoutMs?: number } = {}
+	options: {
+		onManualChange?: () => void;
+		renderTimeoutMs?: number;
+		ensureDayItem?: (id: string) => Promise<void>;
+	} = {}
 ) {
 	const store = createStore<{
 		workspace: WorkspaceSnapshot | null;
@@ -206,6 +210,14 @@ export function createWorkspaceController(
 			}, options.renderTimeoutMs ?? 15000);
 			try {
 				validateWorkspace(action.effect.snapshot);
+				const primary = action.effect.snapshot.canvases.find(
+					(canvas) => canvas.id === action.effect.snapshot.primaryId
+				);
+				if (primary?.kind === "center" && primary.section === "day" && primary.selectedId) {
+					if (!options.ensureDayItem) throw new Error("Day presentation is unavailable");
+					await Promise.race([options.ensureDayItem(primary.selectedId), cancelled]);
+					if (!valid()) return await acknowledge(action, status);
+				}
 				// Hide goes ahead of native navigation/resize queues and before installing another canvas.
 				if (!samePresentedContent(before, action.effect.snapshot))
 					await Promise.race([browser.present(null), cancelled]);

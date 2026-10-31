@@ -5,6 +5,7 @@ import { PullRequestSchema } from "./review";
 
 export const CenterSectionSchema = z.enum([
 	"home",
+	"day",
 	"reviews",
 	"feedback",
 	"tickets",

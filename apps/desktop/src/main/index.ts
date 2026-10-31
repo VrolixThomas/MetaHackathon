@@ -3,7 +3,16 @@ import { existsSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { promisify } from "node:util";
-import { BrowserWindow, app, dialog, safeStorage, shell, systemPreferences } from "electron";
+import {
+	net,
+	BrowserWindow,
+	app,
+	dialog,
+	powerMonitor,
+	safeStorage,
+	shell,
+	systemPreferences,
+} from "electron";
 import electronUpdater from "electron-updater";
 import { MicrophoneStatusSchema } from "../shared/contracts";
 import { developmentEnvPath } from "./config/development-path";
@@ -24,6 +33,7 @@ import {
 	initializeBrowser,
 	initializeConfiguration,
 	initializeConfigurationPorts,
+	initializeDay,
 	initializeDiagnostics,
 	initializeHub,
 	initializeLocalBrowser,
@@ -33,6 +43,7 @@ import {
 	initializeVoice,
 	initializeWorkspace,
 	noteAttentionActivity,
+	setDayAwake,
 } from "./services";
 import { setupTRPCIPC } from "./trpc/ipc-link";
 import { startUpdateCheck } from "./updates";
@@ -189,6 +200,9 @@ app
 			() => !!mainWindow?.isFocused()
 		);
 		initializeWorkspace(app.getPath("userData"));
+		await initializeDay(database.day, () => ({ online: net.isOnline() }));
+		powerMonitor.on("suspend", () => setDayAwake(false));
+		powerMonitor.on("resume", () => setDayAwake(true));
 		const voiceRoot = join(mainDirectory, "../../../../services/voice");
 		const voiceCommand = app.isPackaged
 			? join(process.resourcesPath, "voice/metahackathon-voice")

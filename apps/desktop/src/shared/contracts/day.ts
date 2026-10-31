@@ -51,6 +51,10 @@ export const DayWorkItemSchema = z
 			.strictObject({ revision: z.int().positive(), body: z.string().min(1).max(40000) })
 			.nullable(),
 		answerReceipt: ChatReplyReceiptSchema.nullable(),
+		/** Explicit personal attestation, never a Slack delivery receipt. Only for source-less work. */
+		localAnswerReceipt: z
+			.strictObject({ requestId: IdSchema, confirmedById: IdSchema, confirmedAt: DateTimeSchema })
+			.optional(),
 		createdAt: DateTimeSchema,
 		updatedAt: DateTimeSchema,
 	})
@@ -67,8 +71,17 @@ export const DayWorkItemSchema = z
 			row.acceptance !== "accepted"
 		)
 			invalid("Execution and delivery require accepted ownership");
-		if (row.phase === "closed" && !row.answerReceipt)
+		if (
+			row.phase === "closed" &&
+			!row.answerReceipt &&
+			!(row.source === null && row.localAnswerReceipt)
+		)
 			invalid("A commitment closes only after delivered answer evidence");
+		if (
+			row.localAnswerReceipt &&
+			(row.source !== null || row.localAnswerReceipt.confirmedById !== row.ownerUserId)
+		)
+			invalid("Personal confirmation cannot replace a source-thread delivery receipt");
 		if (
 			row.answerReceipt &&
 			(!row.source ||
@@ -102,6 +115,11 @@ export const DaySnapshotSchema = z
 	);
 const versioned = { itemId: IdSchema, expectedRevision: z.int().positive() };
 export const DayOperationSchema = z.discriminatedUnion("kind", [
+	z.strictObject({
+		kind: z.literal("confirm_local_answer"),
+		...versioned,
+		confirmed: z.literal(true),
+	}),
 	z.strictObject({ kind: z.literal("accept"), ...versioned }),
 	z.strictObject({ kind: z.literal("decline"), ...versioned }),
 	z.strictObject({ kind: z.literal("cover"), ...versioned }),

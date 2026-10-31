@@ -20,6 +20,49 @@ const initial: WorkspaceSnapshot = {
 	codeView: "diff",
 	browser: null,
 };
+
+it("Day item data must load before its canvas can be published or acknowledged", async () => {
+	let release!: () => void;
+	const loaded = new Promise<void>((resolve) => {
+		release = resolve;
+	});
+	const h = harness({
+		ensureDayItem: async (id) => {
+			assert.equal(id, "day-item");
+			await loaded;
+		},
+	});
+	try {
+		await h.controller.start();
+		const snapshot: WorkspaceSnapshot = {
+			...initial,
+			sequence: 1,
+			primaryId: "center",
+			centerSection: "day",
+			canvases: [
+				{
+					kind: "center",
+					id: "center",
+					title: "Actual item",
+					section: "day",
+					selectedId: "day-item",
+					revision: 1,
+				},
+			],
+		};
+		const applying = h.controller.applyAction(action(snapshot), () => true);
+		await new Promise<void>((resolve) => setImmediate(resolve));
+		assert.equal(h.controller.getContext()?.sequence, 0);
+		assert.equal(h.receipts.length, 0);
+		release();
+		await until(() => h.controller.getContext()?.sequence === 1);
+		h.controller.rendered(1);
+		h.controller.presented(1, null);
+		assert.equal(await applying, "applied");
+	} finally {
+		h.dispose();
+	}
+});
 const document: WorkspaceSnapshot = {
 	...initial,
 	sequence: 1,
@@ -62,6 +105,7 @@ function harness(
 		prepare?: (input: unknown) => Promise<AgentAction>;
 		present?: (input: unknown) => Promise<unknown>;
 		observe?: (workspace: WorkspaceSnapshot, count: number) => Promise<WorkspaceSnapshot>;
+		ensureDayItem?: (id: string) => Promise<void>;
 	} = {}
 ) {
 	const receipts: WorkspaceActionReceipt[] = [];
@@ -100,6 +144,7 @@ function harness(
 			interruptions++;
 		},
 		renderTimeoutMs: options.timeout ?? 500,
+		ensureDayItem: options.ensureDayItem,
 	});
 	return {
 		controller,

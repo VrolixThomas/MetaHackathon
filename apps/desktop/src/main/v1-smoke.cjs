@@ -63,6 +63,22 @@ function validateRequest(body, index) {
 		"cancel_work",
 		"answer_work_decision",
 		"queue_notice_announcement",
+		"day_inspect_queue",
+		"day_inspect_item",
+		"day_capture_manual",
+		"day_accept",
+		"day_decline",
+		"day_cover",
+		"day_answer_question",
+		"day_start_work",
+		"day_pause_work",
+		"day_resume_work",
+		"day_cancel",
+		"day_mark_reviewed",
+		"day_draft_reply",
+		"day_send_reply",
+		"day_link_linear",
+		"day_confirm_local_answer",
 	]);
 	for (const tool of body.tools ?? [])
 		assert.ok(workspaceTools.has(tool.name), "Unexpected workspace tool");

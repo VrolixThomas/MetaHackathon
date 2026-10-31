@@ -12,6 +12,50 @@ import {
 } from "./service";
 
 const actor = { workspaceId: "test-workspace", userId: "current-user" };
+
+test("personal answer confirmation closes only source-less work and never records a Slack send", async () => {
+	const h = harness();
+	try {
+		await h.service.operate({
+			requestId: "manual-personal",
+			operation: {
+				kind: "capture_manual",
+				title: "Answer the question",
+				summary: "User-entered personal follow-up",
+				itemKind: "follow_up",
+			},
+		});
+		const item = await first(h.service);
+		const input = {
+			requestId: "personal-answer",
+			operation: {
+				kind: "confirm_local_answer" as const,
+				itemId: item.id,
+				expectedRevision: item.revision,
+				confirmed: true as const,
+			},
+		};
+		const result = await h.service.operate(input);
+		assert.equal(result.snapshot.items[0]?.phase, "closed");
+		assert.equal(result.snapshot.items[0]?.answerReceipt, null);
+		assert.equal(result.snapshot.items[0]?.localAnswerReceipt?.confirmedById, actor.userId);
+		await h.service.operate(input);
+		assert.equal(h.calls.sends.length, 0);
+	} finally {
+		await h.service.dispose();
+	}
+	const sourced = harness();
+	try {
+		await capture(sourced.service);
+		await operate(sourced.service, { kind: "accept" });
+		await assert.rejects(
+			operate(sourced.service, { kind: "confirm_local_answer", confirmed: true })
+		);
+		assert.notEqual((await first(sourced.service)).phase, "closed");
+	} finally {
+		await sourced.service.dispose();
+	}
+});
 const timestamp = "2026-10-31T00:00:00.000Z";
 function message(
 	revisionId = "source-v1",
@@ -399,7 +443,7 @@ test("execution requires accepted start_work and actual ready head gates review"
 	assert.equal(h.calls.executes.length, 1);
 	await assert.rejects(operate(h.service, { kind: "mark_reviewed", headSha: "c".repeat(40) }));
 	await operate(h.service, { kind: "mark_reviewed", headSha: "b".repeat(40) });
-	assert.equal((await first(h.service)).phase, "ready_review");
+	assert.equal((await first(h.service)).phase, "awaiting_reply");
 	assert.ok((await first(h.service)).reviewedAt);
 	assert.equal((await first(h.service)).answerReceipt, null);
 	await h.service.dispose();

@@ -1,3 +1,4 @@
+import { z } from "zod";
 import {
 	SpeakSchema,
 	VoiceAnswerSchema,
@@ -30,7 +31,8 @@ export function connectConversationVoice(
 	api: ConversationApi,
 	ui: ConversationController,
 	media?: MediaFactory,
-	handsFreeAudio?: HandsFreeAudioFactory
+	handsFreeAudio?: HandsFreeAudioFactory,
+	configuration: { preconnect?: boolean } = {}
 ) {
 	const onlyTurn = ({ sessionId, turnId, generation }: TurnIdentity): TurnIdentity => ({
 		sessionId,
@@ -201,6 +203,26 @@ export function connectConversationVoice(
 	}
 	const conversation = createHandsFreeVoiceController({
 		...options,
+		...(configuration.preconnect
+			? {
+					preconnect: {
+						prepareOffer: async (input, signal) =>
+							VoiceAnswerSchema.parse(
+								await call(signal, "mutation", "voice.offerPrepared", VoiceOfferSchema.parse(input))
+							),
+						activate: async (input, signal) => {
+							z.strictObject({ ok: z.literal(true) }).parse(
+								await call(
+									signal,
+									"mutation",
+									"voice.activatePrepared",
+									TurnIdentitySchema.parse(input)
+								)
+							);
+						},
+					},
+				}
+			: {}),
 		...(handsFreeAudio ? { audio: handsFreeAudio } : {}),
 	});
 	ui.attachVoice({

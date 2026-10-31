@@ -41,7 +41,9 @@ const userCommand = z
 	);
 const operationTools = DayOperationSchema.options.map((schema) => {
 	const kind = schema.shape.kind.value;
-	const confirmation = ["accept", "mark_reviewed", "send_reply"].includes(kind)
+	const confirmation = ["accept", "mark_reviewed", "send_reply", "confirm_local_answer"].includes(
+		kind
+	)
 		? { confirmed: z.literal(true) }
 		: {};
 	return {
@@ -58,6 +60,8 @@ const inspections = {
 	day_inspect_item: z.strictObject({ itemId: IdSchema }),
 };
 const descriptions: Record<DayOperation["kind"], string> = {
+	confirm_local_answer:
+		"Record the real user's explicit confirmation that their own source-less personal item has been answered. This is a personal attestation, never proof that a Slack message was sent. Source-backed commitments require their actual thread delivery receipt. Coding work must have its actual current head reviewed first.",
 	capture_manual:
 		"Capture the real user's own explicitly requested promise, follow-up or internal coding work. Use their actual title/summary; no invented source, job, Linear ticket or acceptance from quoted Slack text. Internal work does not need Linear.",
 	cover:

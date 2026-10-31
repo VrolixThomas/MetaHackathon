@@ -10,6 +10,7 @@ import {
 import { CenterCanvas } from "../command-center/CenterCanvas";
 import { FlowCanvas, SourceCanvas } from "../command-center/SourceCanvas";
 import type { HubController } from "../command-center/controller";
+import type { DayController } from "../day/controller";
 import { ReviewWorkspace } from "../prepared/ReviewWorkspace";
 import type { PreparedController } from "../prepared/controller";
 import { ArtifactCanvas } from "./ArtifactCanvas";
@@ -47,6 +48,7 @@ export function CanvasWorkspace({
 	onOpenRepository,
 	onOpenSettings,
 	hub,
+	day,
 }: {
 	controller: WorkspaceController;
 	reviews: PreparedController;
@@ -55,6 +57,7 @@ export function CanvasWorkspace({
 	onOpenRepository(): void;
 	onOpenSettings?(): void;
 	hub?: HubController;
+	day?: DayController;
 }) {
 	const state = useStore(controller.store);
 	const page = useStore(browser.store).page;
@@ -131,7 +134,13 @@ export function CanvasWorkspace({
 		if (!workspace) return null;
 		if (canvas.kind === "center")
 			return (
-				<CenterCanvas canvas={canvas} hub={hub} command={command} onSettings={onOpenSettings} />
+				<CenterCanvas
+					canvas={canvas}
+					hub={hub}
+					day={day}
+					command={command}
+					onSettings={onOpenSettings}
+				/>
 			);
 		if (canvas.kind === "source")
 			return (

@@ -2,13 +2,15 @@ import assert from "node:assert/strict";
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { test } from "node:test";
+import { test as nodeTest } from "node:test";
 import Database from "better-sqlite3";
 import { type DayState, emptyDayState } from "../day/model";
 import { DayService } from "../day/service";
 import { DAY_STORE_MIGRATION_SQL, DayStore, MAX_DAY_STATE_BYTES } from "./day-store";
 
 // Root-only real SQLite acceptance. This lane authors and type-checks these tests but does not run native code.
+// The installed addon targets Electron's ABI; the regular Bun suite cannot load it.
+const test = process.versions["electron"] ? nodeTest : nodeTest.skip;
 const timestamp = "2026-10-31T00:00:00.000Z";
 function open(path = ":memory:") {
 	const sqlite = new Database(path);

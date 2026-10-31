@@ -165,6 +165,13 @@ export function DayWorkItem({
 							{checkpointLabel(item.answerReceipt.deliveredAt)}
 						</time>
 					</p>
+				) : item.localAnswerReceipt ? (
+					<p>
+						Answer confirmed by you ·{" "}
+						<time dateTime={item.localAnswerReceipt.confirmedAt}>
+							{checkpointLabel(item.localAnswerReceipt.confirmedAt)}
+						</time>
+					</p>
 				) : terminal ? (
 					<p className="day-hint">No delivered answer is recorded.</p>
 				) : item.nextCheckAt ? (
@@ -191,6 +198,29 @@ export function DayWorkItem({
 				controller={controller}
 				busy={busy}
 			/>
+			{!item.source && !terminal && item.acceptance === "accepted" && (
+				<section className="day-section">
+					<button
+						type="button"
+						disabled={
+							busy ||
+							item.questions.some((question) => question.answer === null) ||
+							(!!item.jobId && !item.reviewedAt)
+						}
+						onClick={() =>
+							void controller.operate({
+								kind: "confirm_local_answer",
+								itemId: item.id,
+								expectedRevision: item.revision,
+								confirmed: true,
+							})
+						}
+					>
+						I have answered this
+					</button>
+					<p className="day-hint">Records your confirmation; it does not send a message.</p>
+				</section>
+			)}
 		</article>
 	);
 }

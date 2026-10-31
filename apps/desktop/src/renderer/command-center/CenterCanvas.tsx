@@ -7,6 +7,8 @@ import type {
 	ReviewQueueItem,
 	WorkspaceCommand,
 } from "../../shared/contracts";
+import type { DayController } from "../day/controller";
+import { DayWorkspace } from "../workspace/DayWorkspace";
 import { MarkdownContent } from "../workspace/MarkdownContent";
 import { Connections, HubConnections } from "./Connections";
 import { JobView, TicketView } from "./WorkViews";
@@ -35,6 +37,7 @@ function SectionPrompt({
 	const failed = snapshot.errors.some((error) => error.source === source);
 	const needsRepository = source === "github" && !snapshot.repositories.length;
 	const emptyTitle = {
+		day: "No commitments yet",
 		reviews: "No incoming review requests",
 		feedback: "No own pull requests in your repositories",
 		tickets: "No assigned tickets in these scopes",
@@ -260,14 +263,22 @@ function FeedbackView({
 export function CenterCanvas({
 	canvas,
 	hub,
+	day,
 	command,
 	onSettings,
 }: {
 	canvas: Extract<Canvas, { kind: "center" }>;
 	hub?: HubController;
+	day?: DayController;
 	command: Command;
 	onSettings?(): void;
 }) {
+	if (canvas.section === "day")
+		return day ? (
+			<DayWorkspace day={day} hub={hub} itemId={canvas.selectedId} command={command} />
+		) : (
+			<p className="hub-muted">Your day is connecting…</p>
+		);
 	if (!hub)
 		return (
 			<div className="hub-center">

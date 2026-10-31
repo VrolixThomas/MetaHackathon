@@ -3,6 +3,7 @@ import { useStore } from "zustand";
 import { HubConnections } from "../command-center/Connections";
 import { CommandSidebar } from "../command-center/Sidebar";
 import type { HubController } from "../command-center/controller";
+import type { DayController } from "../day/controller";
 import { OAuthConnections, useOAuth } from "../oauth";
 import { ReviewInbox } from "../prepared/Inbox";
 import { ReviewWorkspace } from "../prepared/ReviewWorkspace";
@@ -167,12 +168,14 @@ export function ConversationApp({
 	browser,
 	workspace,
 	hub,
+	day,
 }: {
 	controller: ConversationController;
 	reviews: PreparedController;
 	browser: LocalBrowserController;
 	workspace?: WorkspaceController;
 	hub?: HubController;
+	day?: DayController;
 }) {
 	const state = useStore(controller.store);
 	const prepared = useStore(reviews.store);
@@ -274,6 +277,7 @@ export function ConversationApp({
 				{hub && workspace && (
 					<CommandSidebar
 						hub={hub}
+						day={day}
 						workspace={workspace}
 						conversationOpen={conversationOpen}
 						onConversation={() => setConversationOpen((current) => !current)}
@@ -408,6 +412,7 @@ export function ConversationApp({
 							{workspace ? (
 								<CanvasWorkspace
 									hub={hub}
+									day={day}
 									controller={workspace}
 									reviews={reviews}
 									browser={browser}

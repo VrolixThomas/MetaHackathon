@@ -9,6 +9,9 @@ import {
 	AttentionReceiptResultSchema,
 	AttentionReleaseInputSchema,
 	AttentionSettleInputSchema,
+	DayOperateInputSchema,
+	DayOperationResultSchema,
+	DaySnapshotSchema,
 	GitHubRepositorySchema,
 	HUB_ERROR_MESSAGES,
 	HubOperationResultSchema,
@@ -51,6 +54,7 @@ import {
 	getBrowser,
 	getConfiguration,
 	getConfigurationPorts,
+	getDay,
 	getDiagnostics,
 	getGitHubToken,
 	getHub,
@@ -79,6 +83,28 @@ const hubCall = async <T>(work: () => Promise<T>): Promise<T> => {
 };
 // Register feature routers here as the application grows.
 export const appRouter = router({
+	day: router({
+		snapshot: publicProcedure
+			.input(z.strictObject({}).optional())
+			.output(DaySnapshotSchema)
+			.query(async () => {
+				const current = getDay();
+				const snapshot = await current.snapshot();
+				if (getDay() !== current)
+					throw new TRPCError({ code: "CONFLICT", message: "The active source account changed" });
+				return snapshot;
+			}),
+		operate: publicProcedure
+			.input(DayOperateInputSchema)
+			.output(DayOperationResultSchema)
+			.mutation(async ({ input }) => {
+				const current = getDay();
+				const result = await hubCall(() => current.operate(input));
+				if (getDay() !== current)
+					throw new TRPCError({ code: "CONFLICT", message: "The active source account changed" });
+				return result;
+			}),
+	}),
 	oauth: router({
 		status: publicProcedure
 			.input(z.strictObject({}).optional())

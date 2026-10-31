@@ -2,6 +2,7 @@ import type { CenterSection, HubSnapshot, WorkJobSummary } from "../../shared/co
 
 export const centerSections: { id: CenterSection; label: string }[] = [
 	{ id: "home", label: "Home" },
+	{ id: "day", label: "My day" },
 	{ id: "reviews", label: "Incoming reviews" },
 	{ id: "feedback", label: "Own PR feedback" },
 	{ id: "tickets", label: "My tickets" },
@@ -27,6 +28,8 @@ export const priorityLabel = (priority: number) =>
 	["No priority", "Urgent", "High", "Normal", "Low"][priority] ?? "No priority";
 export function sectionCount(snapshot: HubSnapshot, section: CenterSection) {
 	switch (section) {
+		case "day":
+			return 0; // The independent private Day controller supplies this section's live count.
 		case "home":
 			return snapshot.jobs.reduce(
 				(count, job) => count + job.pendingDecisions + (isPendingReview(job) ? 1 : 0),

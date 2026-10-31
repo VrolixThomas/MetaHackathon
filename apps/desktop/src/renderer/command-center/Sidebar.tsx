@@ -1,5 +1,7 @@
 import { useStore } from "zustand";
 import type { CenterSection, WorkspaceCommand } from "../../shared/contracts";
+import { DayQueue } from "../day";
+import type { DayController } from "../day/controller";
 import type { WorkspaceController } from "../workspace/controller";
 import { HubIcon } from "./HubIcon";
 import type { HubController } from "./controller";
@@ -15,12 +17,14 @@ import {
 
 export function CommandSidebar({
 	hub,
+	day,
 	workspace,
 	conversationOpen,
 	onConversation,
 	onSettings,
 }: {
 	hub: HubController;
+	day?: DayController;
 	workspace: WorkspaceController;
 	conversationOpen: boolean;
 	onConversation(): void;
@@ -72,32 +76,43 @@ export function CommandSidebar({
 				>
 					m<span>·</span>
 				</button>
-				{centerSections.map((item) => {
-					const count = snapshot ? sectionCount(snapshot, item.id) : null;
-					const label = `${item.label}${count === null ? "" : ` (${count})`}`;
-					return (
-						<button
-							type="button"
-							className="quiet"
-							key={item.id}
-							title={label}
-							aria-label={label}
-							aria-current={section === item.id ? "page" : undefined}
-							onClick={() =>
-								item.id === "home"
-									? select("home")
-									: command({ kind: "browse-center", section: item.id })
-							}
-						>
-							<HubIcon name={item.id} />
-							{count !== null && (
-								<span className="command-rail-count" aria-hidden="true">
-									{count}
-								</span>
-							)}
-						</button>
-					);
-				})}
+				{centerSections
+					.filter((item) => item.id !== "day" || day)
+					.map((item) => {
+						if (item.id === "day" && day)
+							return (
+								<DayRailButton
+									key="day"
+									day={day}
+									selected={section === "day"}
+									onBrowse={() => command({ kind: "browse-center", section: "day" })}
+								/>
+							);
+						const count = snapshot ? sectionCount(snapshot, item.id) : null;
+						const label = `${item.label}${count === null ? "" : ` (${count})`}`;
+						return (
+							<button
+								type="button"
+								className="quiet"
+								key={item.id}
+								title={label}
+								aria-label={label}
+								aria-current={section === item.id ? "page" : undefined}
+								onClick={() =>
+									item.id === "home"
+										? select("home")
+										: command({ kind: "browse-center", section: item.id })
+								}
+							>
+								<HubIcon name={item.id} />
+								{count !== null && (
+									<span className="command-rail-count" aria-hidden="true">
+										{count}
+									</span>
+								)}
+							</button>
+						);
+					})}
 				<div className="command-rail-bottom">
 					<button
 						type="button"
@@ -135,7 +150,13 @@ export function CommandSidebar({
 					</button>
 				</header>
 				<section className="command-sidebar-scroll" key={section} aria-label={`${title} items`}>
-					{!snapshot ? (
+					{section === "day" && day ? (
+						<DayQueue
+							controller={day}
+							selectedId={selectedId ?? undefined}
+							onOpenItem={(id) => select("day", id)}
+						/>
+					) : !snapshot ? (
 						<p className="hub-sidebar-empty" aria-live="polite">
 							{error ? "Work is unavailable. Open Home to retry." : "Loading your workspace…"}
 						</p>
@@ -402,5 +423,34 @@ export function CommandSidebar({
 				</footer>
 			</div>
 		</aside>
+	);
+}
+
+function DayRailButton({
+	day,
+	selected,
+	onBrowse,
+}: { day: DayController; selected: boolean; onBrowse(): void }) {
+	const snapshot = useStore(day.store).snapshot;
+	const count = snapshot?.items.filter(
+		(item) => !["closed", "cancelled"].includes(item.phase)
+	).length;
+	const label = `My day${count === undefined ? "" : ` (${count})`}`;
+	return (
+		<button
+			type="button"
+			className="quiet"
+			title={label}
+			aria-label={label}
+			aria-current={selected ? "page" : undefined}
+			onClick={onBrowse}
+		>
+			<HubIcon name="day" />
+			{count !== undefined && (
+				<span className="command-rail-count" aria-hidden="true">
+					{count}
+				</span>
+			)}
+		</button>
 	);
 }

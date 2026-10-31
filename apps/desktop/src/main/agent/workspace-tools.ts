@@ -40,7 +40,7 @@ const names: Partial<Record<WorkspaceCommand["kind"], [string, string]>> = {
 	],
 	"open-center": [
 		"open_command_center",
-		"Open the actual executive center section home, reviews, feedback, tickets, completed or activity, optionally selecting an observed item. Waits for displayed receipt.",
+		"Open the actual executive center section home, day, reviews, feedback, tickets, completed or activity, optionally selecting an observed item. Day is the private internal commitments queue. Waits for displayed receipt.",
 	],
 	"open-source": [
 		"open_pinned_source",
