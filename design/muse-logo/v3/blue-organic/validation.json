@@ -1,0 +1,23 @@
+{
+  "pose_samples": 4830,
+  "minimum_sampled_edge_margin": 55.75,
+  "minimum_radial_body_gap": 20.35,
+  "compact": {
+    "outer_radius_ratio": 0.83,
+    "opening_radius_ratio": 0.7,
+    "light_scale": 0.87
+  },
+  "checks": [
+    "fixed anchor",
+    "finite contours with retained opening",
+    "real independent body/opening/light contraction",
+    "staggered onset and settle",
+    "exact 3.2s seam",
+    "reduced motion ignores time/envelope",
+    "actual preview updates body and clip contours together",
+    "pause/replay, compact/open, five states and three variations",
+    "manual/system reduction, hidden-document and page-exit suspension",
+    "embedded HTML and no media/network APIs"
+  ],
+  "scope": "Node geometry and preview attribute/event adapter only. Not browser layout, clipPath playback, actual interaction or accessibility acceptance."
+}
