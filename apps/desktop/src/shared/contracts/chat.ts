@@ -80,6 +80,8 @@ export const SlackMembershipSyncSchema = z.strictObject({
 	discoveredCount: z.int().nonnegative(),
 	completedAt: DateTimeSchema.nullable(),
 });
+export type SlackFollowConfiguration = z.infer<typeof SlackFollowConfigurationSchema>;
+export type SlackMembershipSync = z.infer<typeof SlackMembershipSyncSchema>;
 export const SlackConnectionStatusSchema = z.strictObject({
 	phase: z.enum(["disconnected", "checking", "connected", "error"]),
 	account: z
