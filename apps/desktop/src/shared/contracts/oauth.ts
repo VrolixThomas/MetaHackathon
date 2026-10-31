@@ -1,12 +1,13 @@
 import { z } from "zod";
 import { IdSchema } from "./common";
 
-export const OAuthProviderSchema = z.enum(["github", "linear"]);
+export const OAuthProviderSchema = z.enum(["github", "linear", "slack"]);
 export type OAuthProvider = z.infer<typeof OAuthProviderSchema>;
 export const OAUTH_CALLBACK_PORT = 43187;
 export const OAUTH_CALLBACK_URLS = {
 	github: "http://127.0.0.1:43187/oauth/github/callback",
 	linear: "http://127.0.0.1:43187/oauth/linear/callback",
+	slack: "http://localhost:43187/oauth/slack/callback",
 } as const;
 export const OAUTH_MESSAGES = {
 	unconfigured: "Configure the OAuth application credentials in the app .env file.",
@@ -50,8 +51,11 @@ export const OAuthStatusSchema = z.strictObject({
 });
 export const OAuthStatusListSchema = z
 	.array(OAuthStatusSchema)
-	.length(2)
-	.refine((rows) => new Set(rows.map((r) => r.provider)).size === 2, "One status per provider");
+	.length(OAuthProviderSchema.options.length)
+	.refine(
+		(rows) => new Set(rows.map((r) => r.provider)).size === OAuthProviderSchema.options.length,
+		"One status per provider"
+	);
 export const OAuthStartInputSchema = z.strictObject({
 	provider: OAuthProviderSchema,
 	requestId: IdSchema,
