@@ -1,0 +1,15 @@
+(function(){
+  'use strict';
+  const M=ResetMarks,el=id=>document.getElementById(id),pref=window.matchMedia('(prefers-reduced-motion: reduce)');
+  const copy={relay:['Intent becomes momentum.','The main intent fragment stays stable. The smaller execution fragment draws into alignment, then opens again. The movement is a handoff between two parts sharing a heading.'],synthesis:['Separate efforts. One coherent result.','The two independent light surfaces draw toward their shared region. The common area remains steady while both contributions come closer and open again.'],parallel:['Independent work. Shared direction.','The foreground surface stays stable while background surfaces draw closer into coordination, then open again. Each retains its own identity.']};
+  let kind='relay',state='working',time=0,paused=false,phase,frame=null,last=null,layers;
+  const reduced=()=>pref.matches||el('reduce').checked,set=(n,k,v)=>n.setAttribute(k,String(v));
+  function bind(){layers=el('hero').querySelectorAll('[data-layer]');}
+  function draw(){const p=M.pose(kind,{state,time,motion:!reduced()&&!paused&&!phase,phase});layers.forEach(n=>{const q=p.parts.find(q=>q.id===n.dataset.layer);set(n,'transform',q.transform);});}
+  function update(){const mode=phase?(phase==='compact'?'together pose':'open pose'):reduced()?'reduced motion / fixed pose':paused?'paused / fixed pose':state==='working'?'align, meet and open / 3.2s':'at rest';el('caption').textContent=mode;el('announcement').textContent=`Silent design simulation: ${M.NAMES[kind]}. ${mode}.`;el('direction-title').textContent=`0${M.KINDS.indexOf(kind)+1} / ${M.NAMES[kind]}`;el('motion-title').textContent=copy[kind][0];el('motion-copy').textContent=copy[kind][1];set(el('pause'),'aria-pressed',paused);el('pause').textContent=paused?'Play':'Pause';for(const p of ['compact','expanded'])set(el(p),'aria-pressed',phase===p);}
+  function needsFrame(){return !document.hidden&&!reduced()&&!paused&&!phase&&state==='working';}
+  function tick(now){frame=null;const dt=last===null?0:Math.min(.05,(now-last)/1000);last=now;time+=dt;draw();if(needsFrame())frame=requestAnimationFrame(tick);else last=null;}
+  function wake(){if(frame!==null)cancelAnimationFrame(frame);frame=null;last=null;draw();if(needsFrame())frame=requestAnimationFrame(tick);}
+  function replay(){time=0;paused=false;phase=undefined;update();wake();}
+  el('kind').addEventListener('change',()=>{kind=el('kind').value;el('hero').innerHTML=M.svg(kind,{tile:true,size:330,state,idPrefix:'live'});bind();replay();});el('state').addEventListener('change',()=>{state=el('state').value;replay();});el('replay').addEventListener('click',replay);el('pause').addEventListener('click',()=>{paused=!paused;phase=undefined;update();wake();});for(const p of ['compact','expanded'])el(p).addEventListener('click',()=>{phase=p;update();wake();});el('reduce').addEventListener('change',()=>{update();wake();});pref.addEventListener('change',()=>{update();wake();});document.addEventListener('visibilitychange',wake);window.addEventListener('pagehide',()=>{if(frame!==null)cancelAnimationFrame(frame);frame=null;});bind();update();wake();
+})();

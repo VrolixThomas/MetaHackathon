@@ -1,0 +1,40 @@
+{
+  "pose_samples": 966,
+  "minimum_control_point_margin": 35.82,
+  "movements": [
+    {
+      "kind": "relay",
+      "stable_part": "intent",
+      "parts": [
+        "action"
+      ]
+    },
+    {
+      "kind": "synthesis",
+      "stable_part": "shared",
+      "parts": [
+        "work",
+        "context"
+      ]
+    },
+    {
+      "kind": "parallel",
+      "stable_part": "foreground",
+      "parts": [
+        "background",
+        "working"
+      ]
+    }
+  ],
+  "checks": [
+    "finite bounded part transforms",
+    "actual component alignment, not opacity-only motion",
+    "stable identity part in every direction",
+    "exact 3.2s loop seam and settle",
+    "fixed reduced-motion pose",
+    "no embedded bitmap or text in masters",
+    "unique static/dynamic SVG namespaces",
+    "offline HTML/CSP with no media or network APIs"
+  ],
+  "scope": "Node pose checks, HTML/source and syntax checks. Native browser controls, layout, rendering, clipping, playback and accessibility remain unverified."
+}
