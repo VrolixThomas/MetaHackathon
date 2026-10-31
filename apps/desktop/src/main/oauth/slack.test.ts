@@ -50,6 +50,7 @@ function provider(h: Harness) {
 		gate: Promise.resolve(),
 	};
 	h.setHandler(async (entry, response) => {
+		assert.equal(entry.headers["content-type"], "application/x-www-form-urlencoded");
 		if (entry.url.endsWith("/oauth.v2.access")) {
 			const form = new URLSearchParams(entry.body);
 			assert.equal(form.get("client_id"), "controlled-slack-client");
@@ -63,7 +64,10 @@ function provider(h: Harness) {
 			} else send(response, state.grant);
 		} else if (entry.url.endsWith("/auth.test")) send(response, state.auth);
 		else if (entry.url.endsWith("/users.info")) {
-			assert.equal(JSON.parse(entry.body).user, (state.auth as { user_id: string }).user_id);
+			assert.equal(
+				new URLSearchParams(entry.body).get("user"),
+				(state.auth as { user_id: string }).user_id
+			);
 			send(response, state.user);
 		} else send(response, {}, 404);
 	});

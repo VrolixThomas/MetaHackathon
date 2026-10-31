@@ -16,6 +16,10 @@ function fetcher(body: unknown, check?: (init: RequestInit) => void): typeof fet
 		assert.equal(String(input), "https://slack.com/api/oauth.v2.access");
 		assert.equal(init?.redirect, "error");
 		assert.equal(init?.method, "POST");
+		assert.equal(
+			new Headers(init?.headers).get("content-type"),
+			"application/x-www-form-urlencoded"
+		);
 		assert.equal(new Headers(init?.headers).get("authorization"), null);
 		const form = new URLSearchParams(String(init?.body));
 		assert.equal(form.get("client_id"), client.clientId);
@@ -195,8 +199,14 @@ test("profile verifies actual user/workspace before exposing bounded display met
 	const requests: string[] = [];
 	const account = await slackProfile({
 		grant: controlledGrant,
-		fetch: (async (input) => {
+		fetch: (async (input, init) => {
 			const method = new URL(String(input)).pathname;
+			assert.equal(
+				new Headers(init?.headers).get("content-type"),
+				"application/x-www-form-urlencoded"
+			);
+			if (method.endsWith("users.info"))
+				assert.equal(new URLSearchParams(String(init?.body)).get("user"), "U123");
 			requests.push(method);
 			return Response.json(
 				method.endsWith("auth.test")
@@ -320,5 +330,30 @@ test("auth.test and users.info cannot confirm a foreign, bot, deleted or revoked
 			}),
 			SlackError
 		);
+	}
+});
+
+test("nullish optional profile names fall back without weakening verified user identity", async () => {
+	for (const [profile, name, displayName] of [
+		[{ real_name: null, display_name: "Display Name" }, "viewer", "Display Name"],
+		[{ real_name: "Real Name", display_name: null }, "viewer", "Real Name"],
+		[{ real_name: null, display_name: null }, "viewer", "viewer"],
+		[{ real_name: "", display_name: null }, undefined, "U123"],
+		[{}, undefined, "U123"],
+	] as const) {
+		const account = await slackProfile({
+			grant: { accessToken: "controlled-token", userId: "U123", workspaceId: "T123" },
+			fetch: (async (input, init) => {
+				assert.equal(
+					new Headers(init?.headers).get("content-type"),
+					"application/x-www-form-urlencoded"
+				);
+				if (String(input).endsWith("auth.test"))
+					return Response.json({ ok: true, team_id: "T123", user_id: "U123" });
+				assert.equal(new URLSearchParams(String(init?.body)).get("user"), "U123");
+				return Response.json({ ok: true, user: { id: "U123", team_id: "T123", name, profile } });
+			}) as typeof fetch,
+		});
+		assert.deepEqual(account, { id: "U123", displayName, ...(name ? { login: name } : {}) });
 	}
 });

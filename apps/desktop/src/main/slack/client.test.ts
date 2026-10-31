@@ -46,11 +46,13 @@ test("conversation discovery asks for connected user memberships and preserves e
 	assert.equal(second.items[0]?.visibility, "direct_message");
 	assert.equal(requests[0]?.method, "users.conversations");
 	assert.equal(requests[0]?.fields["user"], undefined);
-	assert.equal(requests[0]?.fields["limit"], 15);
+	assert.equal(requests[0]?.fields["limit"], "15");
+	assert.equal(requests[0]?.fields["exclude_archived"], "true");
+	assert.equal(requests[1]?.fields["cursor"], "next-page");
 });
 
 test("history and thread pages retain verbatim text, edit identity, private audience and cursor", async () => {
-	const { client } = harness((method) =>
+	const { client, requests } = harness((method) =>
 		method === "conversations.history"
 			? {
 					ok: true,
@@ -73,6 +75,14 @@ test("history and thread pages retain verbatim text, edit identity, private audi
 	assert.deepEqual(page.threadIds, [source.messageId]);
 	const thread = await client.thread({ conversationId: "D123", threadTs: source.messageId });
 	assert.equal(thread.items[0]?.citation.source.threadId, source.messageId);
+	assert.equal(
+		requests.find((row) => row.method === "conversations.history")?.fields["channel"],
+		"D123"
+	);
+	assert.equal(
+		requests.find((row) => row.method === "conversations.replies")?.fields["ts"],
+		source.messageId
+	);
 });
 
 test("private membership loss, incomplete membership, missing scopes and foreign channels fail closed", async () => {

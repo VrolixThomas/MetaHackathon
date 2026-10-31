@@ -156,7 +156,7 @@ test("time pagination follows history backwards and threads forwards without cla
 	await h.intake.poll({ conversationId: "D123" });
 	const reads = h.requests.filter((row) => row.method === "conversations.history");
 	assert.equal(reads[1]?.fields["latest"], rawMessage.ts);
-	assert.equal(reads[1]?.fields["inclusive"], false);
+	assert.equal(reads[1]?.fields["inclusive"], "false");
 	await h.intake.poll({ conversationId: "D123", threadTs: source.messageId });
 	assert.equal(h.checkpoint()?.polls.find((row) => row.threadTs)?.oldest, "1700000001.000001");
 });

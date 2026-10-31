@@ -34,6 +34,20 @@ export type Handler = (
 	method: string,
 	fields: Record<string, unknown>
 ) => unknown | Promise<unknown>;
+
+/** Keep the wire representation: form values are strings, JSON values retain their types. */
+export function requestFields(method: string, init: RequestInit = {}): Record<string, unknown> {
+	const form = method !== "chat.postMessage";
+	assert.equal(init.method, "POST");
+	assert.equal(
+		new Headers(init.headers).get("content-type"),
+		form ? "application/x-www-form-urlencoded" : "application/json; charset=utf-8"
+	);
+	assert.equal(typeof init.body, "string");
+	return form
+		? Object.fromEntries(new URLSearchParams(String(init.body)))
+		: JSON.parse(String(init.body));
+}
 /** Tests only; product composition must inject a durable atomic ledger. */
 export class TestReplyLedger implements SlackReplyLedger {
 	readonly rows = new Map<string, { binding: string; receipt?: ChatReplyReceipt }>();
@@ -67,7 +81,7 @@ export function harness(
 			assert.equal(init?.redirect, "error");
 			assert.equal(new Headers(init?.headers).get("authorization"), "Bearer user-secret");
 			const method = url.pathname.replace("/api/", "");
-			const fields = JSON.parse(String(init?.body)) as Record<string, unknown>;
+			const fields = requestFields(method, init);
 			requests.push({ method, fields });
 			const result = await handler?.(method, fields);
 			if (result instanceof Response) return result;

@@ -220,8 +220,8 @@ export async function slackProfile(input: {
 				is_bot: z.boolean().optional(),
 				profile: z
 					.object({
-						real_name: z.string().max(300).optional(),
-						display_name: z.string().max(300).optional(),
+						real_name: z.string().max(300).nullish(),
+						display_name: z.string().max(300).nullish(),
 					})
 					.optional(),
 			}),

@@ -96,6 +96,13 @@ export async function harness(overrides: Partial<OAuthServiceOptions> = {}) {
 			body: Buffer.concat(chunks).toString(),
 		};
 		requests.push(entry);
+		if (
+			entry.url.startsWith("https://slack.com/api/") &&
+			entry.headers["content-type"] !== "application/x-www-form-urlencoded"
+		) {
+			send(response, { ok: false, error: "invalid_post_type" });
+			return;
+		}
 		if (handler) {
 			await handler(entry, response);
 			return;

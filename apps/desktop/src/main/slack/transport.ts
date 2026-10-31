@@ -79,7 +79,9 @@ export class SlackTransport {
 		if (method === "conversations.history" || method === "conversations.replies")
 			this.nextAllowed.set(bucket, this.now() + (this.options.historyIntervalMs ?? 60_000));
 		const fields = options.fields ?? {};
-		const body = options.form
+		// Slack read/metadata endpoints consume form parameters; posting retains typed JSON.
+		const form = options.form ?? method !== "chat.postMessage";
+		const body = form
 			? new URLSearchParams(
 					Object.entries(fields).map(([key, value]): [string, string] => [key, String(value)])
 				).toString()
@@ -93,7 +95,7 @@ export class SlackTransport {
 					signal,
 					headers: {
 						Accept: "application/json",
-						"Content-Type": options.form
+						"Content-Type": form
 							? "application/x-www-form-urlencoded"
 							: "application/json; charset=utf-8",
 						...(options.authorization

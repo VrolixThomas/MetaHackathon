@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import { SlackClient } from "./client";
 import { type SlackSocket, SlackSocketMode, type SlackSocketState } from "./socket";
-import { credential } from "./test-support";
+import { credential, requestFields } from "./test-support";
 
 class FakeSocket implements SlackSocket {
 	onopen: (() => void) | null = null;
@@ -38,6 +38,7 @@ function socketClient(
 			fetch: (async (input, init) => {
 				assert.equal(String(input), "https://slack.com/api/apps.connections.open");
 				assert.equal(new Headers(init?.headers).get("authorization"), "Bearer xapp-controlled");
+				assert.deepEqual(requestFields("apps.connections.open", init), {});
 				opens++;
 				return Response.json(response);
 			}) as typeof fetch,

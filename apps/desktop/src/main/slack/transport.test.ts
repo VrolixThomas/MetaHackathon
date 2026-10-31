@@ -3,6 +3,114 @@ import { test } from "node:test";
 import { SlackTransport } from "./transport";
 import { SlackError } from "./types";
 
+test("read and metadata methods send form fields with exact identity and pagination values", async () => {
+	const cursor = "cursor+with/slash= &unicode-€";
+	const cases = [
+		["users.info", { user: "W123" }],
+		["auth.test", {}],
+		[
+			"users.conversations",
+			{
+				types: "public_channel,private_channel,im,mpim",
+				cursor,
+				limit: 15,
+				exclude_archived: true,
+			},
+		],
+		["conversations.info", { channel: "D123" }],
+		["conversations.members", { channel: "D123", cursor, limit: 200 }],
+		[
+			"conversations.history",
+			{
+				channel: "D123",
+				cursor,
+				oldest: "1700000000.000001",
+				latest: "1700000002.000003",
+				inclusive: true,
+				limit: 15,
+			},
+		],
+		[
+			"conversations.replies",
+			{ channel: "D123", cursor, ts: "1700000000.000001", inclusive: false, limit: 15 },
+		],
+		["apps.connections.open", {}],
+	] as const;
+	const seen: string[] = [];
+	for (const [method, fields] of cases) {
+		const transport = new SlackTransport({
+			historyIntervalMs: 0,
+			fetch: (async (input, init) => {
+				assert.equal(String(input), `https://slack.com/api/${method}`);
+				assert.equal(init?.method, "POST");
+				assert.equal(new Headers(init?.headers).get("authorization"), "Bearer controlled-token");
+				// Reproduce the live read failure when parameters are encoded as JSON.
+				if (new Headers(init?.headers).get("content-type") !== "application/x-www-form-urlencoded")
+					return Response.json({ ok: false, error: "user_not_found" });
+				assert.deepEqual(
+					Object.fromEntries(new URLSearchParams(String(init?.body))),
+					Object.fromEntries(Object.entries(fields).map(([key, value]) => [key, String(value)]))
+				);
+				seen.push(method);
+				return Response.json({ ok: true });
+			}) as typeof fetch,
+		});
+		await transport.call(method, { token: "controlled-token", fields });
+	}
+	assert.deepEqual(
+		seen,
+		cases.map(([method]) => method)
+	);
+});
+
+test("chat.postMessage remains JSON with verbatim text, thread identity and boolean flags", async () => {
+	const fields = {
+		channel: "D123",
+		thread_ts: "1700000000.000001",
+		text: "Exact reply + & = €\nsecond line",
+		unfurl_links: false,
+		reply_broadcast: false,
+	};
+	const transport = new SlackTransport({
+		fetch: (async (_input, init) => {
+			assert.equal(
+				new Headers(init?.headers).get("content-type"),
+				"application/json; charset=utf-8"
+			);
+			assert.deepEqual(JSON.parse(String(init?.body)), fields);
+			return Response.json({ ok: true });
+		}) as typeof fetch,
+	});
+	await transport.call("chat.postMessage", { token: "controlled-token", fields });
+});
+
+test("explicit form true and false override the method default", async () => {
+	for (const [method, form] of [
+		["users.info", false],
+		["chat.postMessage", true],
+	] as const) {
+		const fields = { user: "W123", text: "Exact + & €", limit: 15, inclusive: false };
+		const transport = new SlackTransport({
+			fetch: (async (_input, init) => {
+				assert.equal(
+					new Headers(init?.headers).get("content-type"),
+					form ? "application/x-www-form-urlencoded" : "application/json; charset=utf-8"
+				);
+				if (form)
+					assert.deepEqual(Object.fromEntries(new URLSearchParams(String(init?.body))), {
+						user: "W123",
+						text: fields.text,
+						limit: "15",
+						inclusive: "false",
+					});
+				else assert.deepEqual(JSON.parse(String(init?.body)), fields);
+				return Response.json({ ok: true });
+			}) as typeof fetch,
+		});
+		await transport.call(method, { fields, form });
+	}
+});
+
 test("429 Retry-After is retained across calls with no automatic retry", async () => {
 	let calls = 0;
 	let now = 0;
