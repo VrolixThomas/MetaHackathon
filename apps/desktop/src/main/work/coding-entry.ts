@@ -13,6 +13,12 @@ import {
 } from "../agent/coding-worker-tools";
 import { MetaClient } from "../agent/meta-client";
 import { EnvConfiguration } from "../config/env";
+import {
+	CodingProviderPinError,
+	codingProviderFailureCode,
+	runPinnedCodingTask,
+	stripCodingProviderEnvironment,
+} from "./coding-provider";
 
 const requestSchema = z.strictObject({
 	kind: z.literal("run"),
@@ -36,6 +42,7 @@ process.on("message", async (raw) => {
 	}
 	if (started) return;
 	started = true;
+	let selectedProvider: "meta-api" | "muse-code" | undefined;
 	try {
 		const request = requestSchema.parse(raw);
 		const config = new EnvConfiguration(request.envPath);
@@ -53,70 +60,96 @@ process.on("message", async (raw) => {
 			for (const line of redact(text).split(/\r?\n/).slice(0, 200))
 				await send({ kind: "log", text: line.slice(0, 12000) });
 		};
-		const path = request.input.worktreePath;
-		const regular = async (file: string) => {
-			try {
-				const value = await lstat(join(path, file));
-				return value.isFile() && !value.isSymbolicLink();
-			} catch {
-				return false;
-			}
-		};
-		const manager =
-			(await regular("bun.lock")) || (await regular("bun.lockb"))
-				? "bun"
-				: (await regular("pnpm-lock.yaml"))
-					? "pnpm"
-					: (await regular("yarn.lock"))
-						? "yarn"
-						: "npm";
-		const install = existsSync(join(path, "package.json"))
-			? [
-					{ command: manager, args: ["install"] },
-					{
-						command: manager,
-						args:
-							manager === "npm"
-								? ["ci"]
-								: ["install", manager === "yarn" ? "--immutable" : "--frozen-lockfile"],
-					},
-				]
-			: [];
-		const tools = createCodingWorkerTools({
-			worktreePath: path,
-			allowedCommands: install,
-			redactText: redact,
-		});
-		const client = new MetaClient({
-			getApiKey: async () => (await config.get("meta")) ?? null,
-			recordUsage: () => {},
-		});
-		const result = await runCodingTask(
-			client,
+		const result = await runPinnedCodingTask(
 			request.input,
+			() => config.codingProviderSettings(),
 			{
-				...tools,
-				...createCodingWorkerCheckpointStore(request.input.checkpointPath),
-				redactText: redact,
-				log: (event) => log(`[${event.kind}] ${event.message}`),
-				runCommand: async (input, signal) => {
-					await log(`$ ${input.command} ${input.args.join(" ")}`);
-					const output = await tools.runCommand(input, signal);
-					await log(output.stdout);
-					await log(output.stderr);
-					await log(`[exit ${output.exitCode ?? output.signal ?? "unknown"}]`);
-					return output;
+				log,
+				meta: async (input, signal) => {
+					selectedProvider = "meta-api";
+					const path = input.worktreePath;
+					const regular = async (file: string) => {
+						try {
+							const value = await lstat(join(path, file));
+							return value.isFile() && !value.isSymbolicLink();
+						} catch {
+							return false;
+						}
+					};
+					const manager =
+						(await regular("bun.lock")) || (await regular("bun.lockb"))
+							? "bun"
+							: (await regular("pnpm-lock.yaml"))
+								? "pnpm"
+								: (await regular("yarn.lock"))
+									? "yarn"
+									: "npm";
+					const install = existsSync(join(path, "package.json"))
+						? [
+								{ command: manager, args: ["install"] },
+								{
+									command: manager,
+									args:
+										manager === "npm"
+											? ["ci"]
+											: ["install", manager === "yarn" ? "--immutable" : "--frozen-lockfile"],
+								},
+							]
+						: [];
+					const tools = createCodingWorkerTools({
+						worktreePath: path,
+						allowedCommands: install,
+						redactText: redact,
+					});
+					const client = new MetaClient({
+						getApiKey: async () => (await config.get("meta")) ?? null,
+						recordUsage: () => {},
+					});
+					return runCodingTask(
+						client,
+						input,
+						{
+							...tools,
+							...createCodingWorkerCheckpointStore(input.checkpointPath),
+							redactText: redact,
+							log: (event) => log(`[${event.kind}] ${event.message}`),
+							runCommand: async (command, active) => {
+								await log(`$ ${command.command} ${command.args.join(" ")}`);
+								const output = await tools.runCommand(command, active);
+								await log(output.stdout);
+								await log(output.stderr);
+								await log(`[exit ${output.exitCode ?? output.signal ?? "unknown"}]`);
+								return output;
+							},
+						},
+						signal
+					);
+				},
+				muse: async (input, options, signal) => {
+					selectedProvider = "muse-code";
+					stripCodingProviderEnvironment(process.env);
+					const { runMuseCodeTask } = await import("./muse-code");
+					signal.throwIfAborted();
+					return runMuseCodeTask(input, { musePath: options.musePath, log, redact }, signal);
 				},
 			},
 			lifetime.signal
 		);
 		await send({ kind: "result", result: CodingTaskResultSchema.parse(result) });
 	} catch (error) {
+		if (error instanceof CodingProviderPinError)
+			await send({ kind: "log", text: `[coding-provider] Selection rejected: ${error.code}` });
+		if (selectedProvider === "muse-code") {
+			const code = codingProviderFailureCode(error);
+			if (code) await send({ kind: "log", text: `[coding-provider] muse-code stopped: ${code}` });
+		}
 		await send({
 			kind: "failed",
 			message: lifetime.signal.aborted
 				? "Worker paused before completion."
-				: "The Muse worker could not complete. Check its model connection and execution log.",
+				: selectedProvider === "muse-code"
+					? "The Muse Code worker could not complete. Check its login, subscription, quota and execution log."
+					: "The Muse worker could not complete. Check its model connection and execution log.",
 		});
 	} finally {
 		process.disconnect?.();
