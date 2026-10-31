@@ -20,3 +20,5 @@ export * from "./day";
 export * from "./knowledge";
 export * from "./pr-work";
 export * from "./coding-provider";
+export * from "./images";
+export * from "./team";

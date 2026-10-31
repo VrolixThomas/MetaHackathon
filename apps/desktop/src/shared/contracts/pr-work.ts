@@ -1,7 +1,29 @@
 import { z } from "zod";
 import { PullRequestFeedbackSchema, WorkCheckSchema, WorkReviewSchema } from "./command-center";
-import { CodeLocationSchema, CommitShaSchema, IdSchema, RepositoryPathSchema } from "./common";
-import { PullRequestSchema } from "./review";
+import {
+	CodeLocationSchema,
+	CommitShaSchema,
+	IdSchema,
+	RepositoryPathSchema,
+	TurnIdentitySchema,
+} from "./common";
+import { DraftedCommentSchema, PullRequestSchema } from "./review";
+
+export const PRCommentPresentationSchema = z.strictObject({
+	...TurnIdentitySchema.shape,
+	requestId: IdSchema,
+	prId: IdSchema,
+	reviewId: IdSchema,
+	draft: DraftedCommentSchema,
+});
+export const PRCommentPresentationReceiptSchema = z.strictObject({
+	...TurnIdentitySchema.shape,
+	requestId: IdSchema,
+	status: z.enum(["applied", "ignored"]),
+	draft: DraftedCommentSchema,
+});
+export type PRCommentPresentation = z.infer<typeof PRCommentPresentationSchema>;
+export type PRCommentPresentationReceipt = z.infer<typeof PRCommentPresentationReceiptSchema>;
 
 export const PRCommentCreateInputSchema = z.strictObject({
 	requestId: IdSchema,

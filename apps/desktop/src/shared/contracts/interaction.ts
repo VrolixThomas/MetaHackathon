@@ -1,7 +1,8 @@
 import { z } from "zod";
 import { ScenarioRequestSchema } from "./artifacts";
 import { BrowserStateSchema } from "./browser";
-import { CodeLocationSchema, IdSchema } from "./common";
+import { CodeLocationSchema, IdSchema, TurnIdentitySchema } from "./common";
+export { TurnIdentitySchema } from "./common";
 import { ReviewNavigationSchema, ReviewScreenSchema } from "./prepared-review";
 import { DraftedCommentSchema } from "./review";
 import { WorkspaceEffectSchema, WorkspaceSnapshotSchema } from "./workspace";
@@ -24,11 +25,6 @@ export const ScreenContextSchema = z.strictObject({
 	scenarioStepId: IdSchema.optional(),
 	previewMarkerId: IdSchema.optional(),
 	browser: BrowserStateSchema.optional(),
-});
-export const TurnIdentitySchema = z.strictObject({
-	sessionId: IdSchema,
-	turnId: IdSchema,
-	generation: z.int().nonnegative(),
 });
 export const ScreenContextUpdateSchema = z.strictObject({
 	sessionId: IdSchema,
@@ -107,6 +103,8 @@ export const AgentActionSchema = z.discriminatedUnion("kind", [
 		...actionFields,
 		kind: z.literal("draft-comment"),
 		draft: DraftedCommentSchema,
+		/** Canonical prepared review; absent only for legacy agent drafts. */
+		reviewId: IdSchema.optional(),
 	}),
 ]);
 

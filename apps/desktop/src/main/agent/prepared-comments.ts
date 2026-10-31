@@ -354,6 +354,28 @@ export class PreparedComments {
 		return attempt;
 	}
 
+	/** Read only an exact, still-current canonical draft; never manufacture an agent copy. */
+	async get(id: string): Promise<DraftedComment> {
+		const record = this.record(IdSchema.parse(id));
+		const operation = this.begin(record.epoch);
+		try {
+			const draft = record.core.get(id);
+			await this.validate(
+				operation,
+				{ prId: draft.prId, reviewId: record.reviewId, headSha: draft.headSha },
+				draft.location,
+				record.pr
+			);
+			this.check(operation);
+			if (record.core.get(id).revision !== draft.revision)
+				fail("Comment draft changed while reading");
+			return structuredClone(draft);
+		} catch (error) {
+			throw sanitized(error, "Comment draft is unavailable; refresh the review");
+		} finally {
+			this.operations.delete(operation);
+		}
+	}
 	async edit(raw: unknown): Promise<DraftedComment> {
 		let operation: Operation | undefined;
 		try {

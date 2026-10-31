@@ -3,6 +3,11 @@ import { z } from "zod";
 export const CONTRACT_VERSION = 1;
 export const DateTimeSchema = z.iso.datetime();
 export const IdSchema = z.string().trim().min(1);
+export const TurnIdentitySchema = z.strictObject({
+	sessionId: IdSchema,
+	turnId: IdSchema,
+	generation: z.int().nonnegative(),
+});
 export const CommitShaSchema = z.string().regex(/^[a-f0-9]{40}$/);
 export const RevisionSchema = z.enum(["base", "head"]);
 export const RepositoryPathSchema = z
