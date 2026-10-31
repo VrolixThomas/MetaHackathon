@@ -1,0 +1,25 @@
+{
+  "renderer": "PyMuPDF SVG -> PDF -> PNG; Pillow board/GIF composition; no browser",
+  "editable_svgs_rasterized": 69,
+  "gif_frames": 80,
+  "gif_duration_ms": 3200,
+  "gif_size": [
+    1200,
+    500
+  ],
+  "motion_difference": "Decoded GIF open/gathered regions differ; deterministic geometry checks in validation.json.",
+  "gradient_strategy": "Editable concentric alpha circles preserve light in both SVG and PyMuPDF; no bitmap or SVG filter dependency.",
+  "outputs": [
+    "overview.png",
+    "working-comparison.gif",
+    "motion-contact-sheet.png",
+    "sizes-and-use.png",
+    "reduced-states.png",
+    "gif-decoded-proof.png"
+  ],
+  "limits": [
+    "No browser screenshot, layout, interaction, accessibility or actual browser playback verification.",
+    "GIF does not honor OS reduced motion; HTML respects it and has static controls.",
+    "No browser, server, CLI browser, CDP, Electron, microphone or provider used."
+  ]
+}

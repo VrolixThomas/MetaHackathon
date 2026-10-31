@@ -1,0 +1,77 @@
+{
+  "pose_samples": 7728,
+  "core": "128 / 128 / r13.5 in every sample",
+  "minimum_crisp_shape_padding": 12.77,
+  "radius_checks": [
+    {
+      "kind": "gather",
+      "group": "outer",
+      "compact_radius_ratio": 0.38
+    },
+    {
+      "kind": "gather",
+      "group": "mid",
+      "compact_radius_ratio": 0.54
+    },
+    {
+      "kind": "gather",
+      "group": "inner",
+      "compact_radius_ratio": 0.74
+    },
+    {
+      "kind": "orbit",
+      "group": "outer",
+      "compact_radius_ratio": 0.38
+    },
+    {
+      "kind": "orbit",
+      "group": "mid",
+      "compact_radius_ratio": 0.54
+    },
+    {
+      "kind": "orbit",
+      "group": "inner",
+      "compact_radius_ratio": 0.74
+    },
+    {
+      "kind": "signal",
+      "group": "outer",
+      "compact_radius_ratio": 0.38
+    },
+    {
+      "kind": "signal",
+      "group": "mid",
+      "compact_radius_ratio": 0.54
+    },
+    {
+      "kind": "signal",
+      "group": "inner",
+      "compact_radius_ratio": 0.74
+    }
+  ],
+  "motion_checks": [
+    "actual radius contraction and particle shrink",
+    "staggered onset",
+    "gentle settle overshoot",
+    "exact 3.2s seam",
+    "speaking breadth responds; reduced motion does not"
+  ],
+  "preview_adapter_checks": [
+    "immediate working loop",
+    "actual particle and halo attribute updates",
+    "manual and OS reduction",
+    "hidden-document suspension",
+    "compact/expanded controls",
+    "cycle scrub",
+    "all eight state bindings",
+    "synthetic envelope scheduling",
+    "pause and page-exit cancellation"
+  ],
+  "html_checks": [
+    "embedded code and artwork",
+    "no external dependencies",
+    "CSP blocks connections and media",
+    "no network or microphone APIs"
+  ],
+  "scope": "Node geometry and attribute/event adapter only. Does not prove browser DOM, layout, playback or accessibility."
+}
