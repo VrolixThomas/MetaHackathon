@@ -1,0 +1,34 @@
+{
+  "pose_samples": 4530,
+  "core": "Exact fixed line (147,112) -> (165,91), width12",
+  "minimum_curve_control_point_padding": 44.18,
+  "shrink": [
+    {
+      "kind": "confluence",
+      "outer_distance_ratio": 0.66
+    },
+    {
+      "kind": "interval",
+      "outer_distance_ratio": 0.66
+    },
+    {
+      "kind": "wake",
+      "outer_distance_ratio": 0.677
+    }
+  ],
+  "checks": [
+    "real curve contraction and stroke shrink",
+    "staggered onset",
+    "settle overshoot",
+    "exact 3s loop seam",
+    "simulated envelope breadth",
+    "reduced motion ignores time and amplitude",
+    "preview updates paths and corresponding halos",
+    "all composition/state bindings",
+    "pause, compact/open and replay",
+    "manual/system reduction",
+    "hidden-document and page-exit suspension",
+    "self-contained HTML without media/network APIs"
+  ],
+  "scope": "Non-browser geometry and preview attribute/event adapter. Browser layout, interaction, playback and accessibility are unverified."
+}

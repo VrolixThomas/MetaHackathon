@@ -1,0 +1,18 @@
+{
+  "renderer": "Exact shared JS pose SVG -> PyMuPDF -> Pillow; no browser",
+  "editable_svgs_rasterized": 60,
+  "gif_frames": 75,
+  "gif_duration_ms": 3000,
+  "gif_size": [
+    1200,
+    520
+  ],
+  "outputs": [
+    "overview.png",
+    "working-comparison.gif",
+    "motion-contact-sheet.png",
+    "sizes-and-use.png",
+    "gif-decoded-proof.png"
+  ],
+  "scope": "Vector rasterizations, decoded GIF frames and deterministic poses. Browser layout, interaction, actual playback and accessibility remain unverified."
+}
