@@ -1,0 +1,23 @@
+{
+  "pose_samples": 1610,
+  "fixed_focus": {
+    "x": 165,
+    "y": 92,
+    "rx": 10.5,
+    "ry": 9.5
+  },
+  "minimum_sampled_edge_margin": 43,
+  "mean_context_distance_ratio": 0.872,
+  "checks": [
+    "signals physically enter context polygon",
+    "independent curved intake paths and shrinking particles",
+    "actual context contraction toward fixed focus",
+    "stagger, overshoot and exact 3.2s loop seam",
+    "reduced motion ignores time/envelope",
+    "actual preview updates body/clip, signals, halos and intake paths",
+    "pause/replay, compact/open and five states",
+    "manual/system reduction, hidden-document and page-exit suspension",
+    "self-contained HTML and no network/media APIs"
+  ],
+  "scope": "Node geometry and preview attribute/event adapter. Does not prove browser layout, native clipping/playback, real interaction or accessibility."
+}

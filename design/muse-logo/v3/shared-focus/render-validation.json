@@ -1,0 +1,21 @@
+{
+  "renderer": "Exact shared geometry, PyMuPDF vector layers and equivalent Pillow alpha clipping; no browser",
+  "editable_svgs_rendered": 20,
+  "gif_frames": 80,
+  "gif_duration_ms": 3200,
+  "gif_size": [
+    1050,
+    660
+  ],
+  "layer_order": "Signal intake routes and lights behind context; fixed foreground junction above context.",
+  "clipping": "Standard SVG clipPath in masters/HTML; equivalent shared-contour Pillow mask for non-browser renders because PyMuPDF ignores clip-path.",
+  "outputs": [
+    "icon-preview.png",
+    "overview.png",
+    "working.gif",
+    "motion-contact-sheet.png",
+    "sizes-and-use.png",
+    "gif-decoded-proof.png"
+  ],
+  "scope": "Non-browser renders and decoded GIF frames; browser layout, actual controls/playback, clipping and accessibility remain unverified."
+}
