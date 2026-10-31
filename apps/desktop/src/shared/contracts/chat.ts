@@ -71,6 +71,15 @@ export type ChatMessage = z.infer<typeof ChatMessageSchema>;
 export type ChatConversation = z.infer<typeof ChatConversationSchema>;
 export type ChatReplyReceipt = z.infer<typeof ChatReplyReceiptSchema>;
 
+export const SlackFollowConfigurationSchema = z.strictObject({
+	mode: z.enum(["all_joined", "selected"]),
+	excludedConversationIds: z.array(IdSchema).max(1000),
+});
+export const SlackMembershipSyncSchema = z.strictObject({
+	phase: z.enum(["pending", "syncing", "complete", "error", "capacity"]),
+	discoveredCount: z.int().nonnegative(),
+	completedAt: DateTimeSchema.nullable(),
+});
 export const SlackConnectionStatusSchema = z.strictObject({
 	phase: z.enum(["disconnected", "checking", "connected", "error"]),
 	account: z
@@ -83,7 +92,10 @@ export const SlackConnectionStatusSchema = z.strictObject({
 		.nullable(),
 	missing: z.array(z.enum(["SLACK_USER_TOKEN", "SLACK_APP_ID"])).max(2),
 	coverage: z.enum(["disconnected", "paused", "bounded-poll", "socket"]),
-	watching: z.array(IdSchema).max(100),
+	watching: z.array(IdSchema).max(1000),
+	followMode: z.enum(["all_joined", "selected"]).default("selected"),
+	excludedConversationIds: z.array(IdSchema).max(1000).default([]),
+	membershipSync: SlackMembershipSyncSchema.optional(),
 	error: z.enum(["configuration", "authentication", "source-unavailable"]).nullable(),
 });
 export type SlackConnectionStatus = z.infer<typeof SlackConnectionStatusSchema>;
