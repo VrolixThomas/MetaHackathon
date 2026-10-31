@@ -287,15 +287,14 @@ export function createPRFixController(call: ConversationApi["call"], options: PR
 			if (!live(operation)) return null;
 			const result = checkedSummary(await call("mutation", "prFixes.start", request));
 			if (!live(operation)) return null;
-			if (
-				result.id !== requestId ||
-				result.pr.id !== request.prId ||
-				result.feedback.id !== request.feedbackId
-			)
+			if (result.pr.id !== request.prId || result.feedback.id !== request.feedbackId)
 				throw new Error("Fix admission identity mismatch");
 			++listVersion;
 			listing = undefined;
 			adopt(result);
+			// Main may return an existing canonical candidate for this exact source.
+			// Once admission is known, a later user action may start a fresh attempt.
+			starts.delete(key);
 			store.setState({ listLoaded: true, listLoading: false });
 			return result;
 		} catch {

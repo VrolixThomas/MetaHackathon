@@ -266,3 +266,18 @@ test("cancellation displays the actual refreshed state; dispose retires pending 
 	await rejected;
 	assert.equal(late.controller.store.getState().detail, null);
 });
+
+test("known admission accepts main's canonical source alias and releases the key for a later explicit attempt", async () => {
+	const h = harness((path) =>
+		path === "prFixes.start" ? fixDetail("already-prepared-by-muse").fix : undefined
+	);
+	const input = { prId: "owner/repo#7", feedbackId: "feedback-7" };
+	assert.equal((await h.controller.start(input))?.id, "already-prepared-by-muse");
+	assert.equal((await h.controller.start(input))?.id, "already-prepared-by-muse");
+	const requests = h.calls
+		.filter((row) => row.path === "prFixes.start")
+		.map((row) => row.input as { requestId: string });
+	assert.equal(requests.length, 2);
+	assert.notEqual(requests[0]?.requestId, requests[1]?.requestId);
+	assert.equal(h.controller.store.getState().error, "");
+});
