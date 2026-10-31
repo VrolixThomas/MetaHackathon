@@ -47,6 +47,18 @@ test("Day source reads the exact original thread through current provider author
 				(row) => row.method === "conversations.replies" && row.fields["ts"] === source.messageId
 			)
 		);
+		const beyondFirstPage = await readDaySource(
+			{
+				getDay: () => h.day,
+				client: {
+					sourceMessage: h.slack.client.sourceMessage.bind(h.slack.client),
+					thread: async () => ({ items: [], nextCursor: null, hasMore: false }),
+				},
+			},
+			h.input,
+			new AbortController().signal
+		);
+		assert.equal(beyondFirstPage[0]?.citation.source.messageId, source.messageId);
 		await assert.rejects(
 			readDaySource(
 				{ getDay: () => h.day, client: h.slack.client },

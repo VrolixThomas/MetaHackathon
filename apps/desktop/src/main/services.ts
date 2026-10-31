@@ -105,6 +105,12 @@ export const conversationService = new ConversationService(conversationClient, {
 		validate: (input, signal) => getAttention().validate(input, signal),
 	},
 	hub: {
+		knowledge: {
+			search: (input, signal) =>
+				searchCurrentKnowledge(input, signal ?? AbortSignal.timeout(30_000)),
+		},
+		daySource: (input, signal) =>
+			readCurrentDaySource(input, signal ?? AbortSignal.timeout(30_000)),
 		day: {
 			snapshot: () => getDay().snapshot(),
 			operate: (operation, requestId) => getDay().operate({ requestId, operation }),

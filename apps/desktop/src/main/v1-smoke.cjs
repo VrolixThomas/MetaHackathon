@@ -79,6 +79,8 @@ function validateRequest(body, index) {
 		"day_send_reply",
 		"day_link_linear",
 		"day_confirm_local_answer",
+		"memory_search",
+		"day_read_source",
 	]);
 	for (const tool of body.tools ?? [])
 		assert.ok(workspaceTools.has(tool.name), "Unexpected workspace tool");

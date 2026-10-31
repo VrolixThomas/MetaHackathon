@@ -26,7 +26,7 @@ export async function readDaySource(
 	const source = item.source.source;
 	if (source.workspaceId !== before.actor.workspaceId || item.ownerUserId !== before.actor.userId)
 		throw new Error("This source is unavailable");
-	await ports.client.sourceMessage(source, signal);
+	const anchor = ChatMessageSchema.parse(await ports.client.sourceMessage(source, signal));
 	signal.throwIfAborted();
 	const page = await ports.client.thread(
 		{ conversationId: source.conversationId, threadTs: source.threadId ?? source.messageId },
@@ -42,5 +42,11 @@ export async function readDaySource(
 		!isDeepStrictEqual(after.actor, before.actor)
 	)
 		throw new Error("This source changed");
-	return z.array(ChatMessageSchema).max(15).parse(page.items);
+	const messages = z.array(ChatMessageSchema).max(15).parse(page.items);
+	// A later reply can fall outside the first thread page. Preserve the independently
+	// reauthorized original message instead of losing the actual request in pagination.
+	return [
+		anchor,
+		...messages.filter((row) => row.citation.source.messageId !== source.messageId),
+	].slice(0, 15);
 }
