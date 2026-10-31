@@ -242,3 +242,77 @@ test("wrong provider receipts, stale source and wrong workspace cannot establish
 		SlackError
 	);
 });
+
+test("discovered DMs and group DMs use actual peer profiles while retaining conversation IDs", async () => {
+	const { client, requests } = harness((method, fields) => {
+		if (method === "users.conversations")
+			return {
+				ok: true,
+				channels: [
+					{ id: "D123", is_im: true, user: "U456" },
+					{ id: "D234", is_im: true, user: "USLACKBOT" },
+					{
+						id: "G123",
+						is_mpim: true,
+						name: "mpdm-actual-slug",
+						members: ["U123", "U456", "U789"],
+					},
+					{ id: "C123", is_channel: true, is_private: false, name: "engineering" },
+				],
+			};
+		if (method === "users.info")
+			return {
+				ok: true,
+				user: {
+					id: fields["user"],
+					is_bot: fields["user"] === "USLACKBOT",
+					deleted: fields["user"] === "U789",
+					profile: {
+						display_name: fields["user"] === "USLACKBOT" ? "Slackbot" : "Ada",
+						real_name: null,
+					},
+				},
+			};
+		return undefined;
+	});
+	const page = await client.listConversations();
+	assert.deepEqual(
+		page.items.map(({ id, name }) => ({ id, name })),
+		[
+			{ id: "D123", name: "Ada" },
+			{ id: "D234", name: "Slackbot" },
+			{ id: "G123", name: "Ada, U789" },
+			{ id: "C123", name: "engineering" },
+		]
+	);
+	assert.equal(requests.filter((row) => row.method === "users.info").length, 3);
+	assert.equal(requests.filter((row) => row.method === "conversations.members").length, 0);
+	await client.listConversations();
+	assert.equal(
+		requests.filter((row) => row.method === "users.info").length,
+		3,
+		"cached peers must not refetch each scan"
+	);
+});
+
+test("unavailable or mismatched peer profiles fall back to identities without failing discovery", async () => {
+	const { client } = harness((method, fields) => {
+		if (method === "users.conversations")
+			return {
+				ok: true,
+				channels: [
+					{ id: "D123", is_im: true, user: "U456" },
+					{ id: "D234", is_im: true, user: "U789" },
+				],
+			};
+		if (method === "users.info") {
+			if (fields["user"] === "U456") throw new SlackError("rate-limited");
+			return { ok: true, user: { id: "U999", name: "Unrelated person" } };
+		}
+		return undefined;
+	});
+	assert.deepEqual(
+		(await client.listConversations()).items.map((row) => row.name),
+		["U456", "U789"]
+	);
+});

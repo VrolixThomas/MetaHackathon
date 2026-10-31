@@ -12,6 +12,7 @@ import {
 	type SourceAudience,
 	SourceAudienceSchema,
 } from "../../shared/contracts/chat";
+import { SlackProfileLabels } from "./profile-labels";
 import { SlackTransport } from "./transport";
 import {
 	type SlackCredential,
@@ -40,6 +41,7 @@ const ChannelSchema = z.object({
 	id: SlackIdSchema,
 	name: z.string().max(300).optional(),
 	user: SlackIdSchema.optional(),
+	members: z.unknown().optional(),
 	is_im: z.boolean().optional(),
 	is_mpim: z.boolean().optional(),
 	is_private: z.boolean().optional(),
@@ -149,6 +151,7 @@ export function slackMessage(raw: RawSlackMessage, audience: SourceAudience): Ch
 export class SlackClient {
 	readonly transport: SlackTransport;
 	private readonly now: () => number;
+	private readonly profileLabels: SlackProfileLabels;
 	private readonly sends = new Map<
 		string,
 		{ binding: string; promise: Promise<ChatReplyReceipt> }
@@ -156,6 +159,12 @@ export class SlackClient {
 	constructor(private readonly options: SlackClientOptions) {
 		this.transport = new SlackTransport(options);
 		this.now = options.now ?? Date.now;
+		this.profileLabels = new SlackProfileLabels({
+			now: this.now,
+			assertCurrent: (credential, signal) => this.assertCurrent(credential, signal),
+			request: (credential, method, fields, signal) =>
+				this.call(credential, method, fields, signal),
+		});
 	}
 	async credential(signal?: AbortSignal): Promise<SlackCredential> {
 		try {
@@ -264,12 +273,14 @@ export class SlackClient {
 				signal
 			)
 		);
-		const items = value.channels.map((row) => {
+		const names = await this.profileLabels.names(credential, value.channels, signal);
+		await this.assertCurrent(credential, signal);
+		const items = value.channels.map((row, index) => {
 			const kind = visibility(row);
 			return parsed(ChatConversationSchema, {
 				workspaceId: credential.workspaceId,
 				id: row.id,
-				name: row.name || row.user || row.id,
+				name: names[index] || row.name || row.user || row.id,
 				visibility: kind,
 				canRead: visibilityScopes[kind].every((scope) => credential.scopes.includes(scope)),
 				canReply: !row.is_archived && credential.scopes.includes("chat:write"),
