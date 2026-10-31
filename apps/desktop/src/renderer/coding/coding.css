@@ -1,0 +1,75 @@
+.coding-provider-card {
+	display: grid;
+	gap: 12px;
+	padding: 18px 0;
+	border-top: 1px solid #2c323c;
+}
+.coding-provider-card h3,
+.coding-provider-card p {
+	margin: 0;
+}
+.coding-provider-card form {
+	display: grid;
+	gap: 12px;
+}
+.coding-provider-card fieldset {
+	display: grid;
+	gap: 10px;
+	border: 1px solid #2c323c;
+	border-radius: 8px;
+	padding: 12px;
+}
+.coding-provider-card .coding-provider-choice {
+	display: flex;
+	align-items: start;
+	gap: 10px;
+	margin: 0;
+}
+.coding-provider-choice input {
+	flex: 0 0 auto;
+	margin-top: 4px;
+}
+.coding-provider-choice span {
+	display: grid;
+	gap: 4px;
+}
+.coding-provider-choice small,
+.coding-provider-card .small {
+	line-height: 1.5;
+}
+.coding-provider-actions {
+	display: flex;
+	flex-wrap: wrap;
+	gap: 8px;
+}
+.coding-provider-status,
+.coding-provider-login {
+	display: grid;
+	gap: 10px;
+}
+.coding-provider-status dl {
+	display: grid;
+	gap: 7px;
+	margin: 0;
+}
+.coding-provider-status dl > div {
+	display: grid;
+	grid-template-columns: minmax(110px, 1fr) 2fr;
+	gap: 10px;
+}
+.coding-provider-status dd {
+	margin: 0;
+	overflow-wrap: anywhere;
+}
+.coding-provider-advanced label,
+.coding-provider-advanced input {
+	display: block;
+	width: 100%;
+	margin: 8px 0;
+}
+.coding-provider-advanced input {
+	box-sizing: border-box;
+}
+.coding-provider-card output {
+	display: block;
+}
