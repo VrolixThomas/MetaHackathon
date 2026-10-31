@@ -1,0 +1,88 @@
+{
+  "pose_samples": 1932,
+  "minimum_control_point_margin": 40.03,
+  "form_palette_combinations": 36,
+  "contractions": [
+    {
+      "kind": "original",
+      "rest": [
+        129,
+        159
+      ],
+      "gathered": [
+        114,
+        159
+      ]
+    },
+    {
+      "kind": "fan",
+      "rest": [
+        142.76,
+        137.92
+      ],
+      "gathered": [
+        136.73,
+        134.47
+      ]
+    },
+    {
+      "kind": "crossing",
+      "rest": [
+        148,
+        124
+      ],
+      "gathered": [
+        136.97,
+        124
+      ]
+    },
+    {
+      "kind": "horizon",
+      "rest": [
+        140,
+        144
+      ],
+      "gathered": [
+        140,
+        123.14
+      ]
+    },
+    {
+      "kind": "prism",
+      "rest": [
+        136,
+        162
+      ],
+      "gathered": [
+        136,
+        153.12
+      ]
+    },
+    {
+      "kind": "terrace",
+      "rest": [
+        164,
+        159
+      ],
+      "gathered": [
+        154.14,
+        144.53
+      ]
+    }
+  ],
+  "checks": [
+    "six distinct three-surface arrangements",
+    "palette selection leaves geometry unchanged",
+    "primary surface fixed",
+    "actual contraction and small part scaling",
+    "exact 3.2s loop and static reduction",
+    "Original geometry/material/motion matches selected source",
+    "actual controller preserves independent form/colour selection",
+    "preset and palette buttons",
+    "pause freezes current pose",
+    "manual/system reduction and hidden/page-exit suspension",
+    "shared comparison clock",
+    "unique SVG IDs and offline packaging"
+  ],
+  "scope": "Node geometry, source and actual preview attribute/event adapter. Native browser layout, controls, gradients/clipping/playback and accessibility are unverified."
+}

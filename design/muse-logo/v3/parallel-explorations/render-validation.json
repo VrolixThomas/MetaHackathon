@@ -1,0 +1,29 @@
+{
+  "renderer": "PyMuPDF exact surfaces; Pillow equivalent SVG radial-gradient stops, transforms and clipping; no browser",
+  "editable_svgs_rendered": 126,
+  "form_palette_master_combinations": 36,
+  "gif_frames": 80,
+  "gif_duration_ms": 3200,
+  "gif_size": [
+    1080,
+    930
+  ],
+  "reference_original_blue_RGBA_max_difference": [
+    0,
+    0,
+    0,
+    0
+  ],
+  "new_image_generation": false,
+  "outputs": [
+    "comparison.png",
+    "palette-study.png",
+    "overview.png",
+    "working-comparison.gif",
+    "motion-contact-sheet.png",
+    "sizes-and-use.png",
+    "gif-decoded-proof.png",
+    "icons/{original,fan,crossing,horizon,prism,terrace}.png"
+  ],
+  "scope": "Shared-geometry non-browser renders and decoded GIF checks. Browser layout, native controls/gradients/clipping/playback and accessibility are unverified."
+}
