@@ -1,0 +1,44 @@
+.pr-comment-composer {
+	display: grid;
+	gap: 0.8rem;
+}
+.pr-comment-composer p {
+	margin: 0;
+}
+.pr-comment-target code,
+.pr-comment-consent code {
+	overflow-wrap: anywhere;
+}
+.pr-comment-composer textarea {
+	width: 100%;
+	min-height: 10rem;
+	resize: vertical;
+}
+.pr-comment-composer input[type="number"] {
+	max-width: 9rem;
+}
+.pr-comment-exact {
+	white-space: pre-wrap;
+	overflow-wrap: anywhere;
+	max-height: 45vh;
+	overflow: auto;
+	padding: 1rem;
+	border: 1px solid currentColor;
+	border-radius: 0.5rem;
+	font: inherit;
+	user-select: text;
+}
+.pr-comment-consent {
+	display: flex;
+	align-items: start;
+	gap: 0.6rem;
+}
+.pr-comment-consent input {
+	margin-top: 0.25rem;
+	flex: 0 0 auto;
+}
+.pr-comment-actions {
+	display: flex;
+	flex-wrap: wrap;
+	gap: 0.6rem;
+}
