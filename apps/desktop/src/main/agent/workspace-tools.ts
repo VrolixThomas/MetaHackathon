@@ -19,12 +19,14 @@ import {
 import { abortable, throwIfAborted } from "./cancellation";
 import { GuidedReviewError } from "./guided-review";
 import { type ConversationHubPorts, hubModelContext } from "./hub-tools";
+import { type ConversationImagePorts, ConversationImageTools } from "./image-tools";
 import type { FunctionTool } from "./meta-client";
 
 /** Only argument rejection before execution may be repaired without replaying an effect. */
 export class WorkspaceArgumentError extends Error {}
 
 export interface ConversationWorkspacePorts {
+	images?: ConversationImagePorts;
 	hub?: ConversationHubPorts;
 	observe(sessionId: string, signal: AbortSignal): Promise<WorkspaceObservation>;
 	execute(
@@ -36,6 +38,10 @@ export interface ConversationWorkspacePorts {
 	cancel?(identity: TurnIdentity): void;
 }
 const names: Partial<Record<WorkspaceCommand["kind"], [string, string]>> = {
+	"show-image": [
+		"show_generated_image",
+		"Display a privately saved raster asset using the exact asset ID from an observed image canvas. To reopen a closed image use focus_canvas with its observed Recent canvas ID. Does not generate, download or modify image bytes. Waits for actual decode and displayed receipt.",
+	],
 	"browse-center": [
 		"browse_command_center",
 		"Browse a sidebar category without replacing the displayed canvas, review file or browser. Select an actual item with open_command_center or open_ready_review to open its content.",
@@ -103,6 +109,7 @@ export class ConversationWorkspaceTools {
 	private readonly actionIds = new Set<string>();
 	private operationSequence = 0;
 	private lastEffect?: Extract<AgentAction, { kind: "workspace-canvas" }>;
+	private readonly images?: ConversationImageTools;
 	get navigation() {
 		return structuredClone(this.lastEffect?.effect.navigation);
 	}
@@ -111,10 +118,22 @@ export class ConversationWorkspaceTools {
 		private readonly turn: ConversationTurnInput,
 		private readonly signal: AbortSignal,
 		private readonly onAction: (action: AgentAction) => void
-	) {}
+	) {
+		if (ports.images)
+			this.images = new ConversationImageTools(ports.images, turn, signal, (assetId, target) =>
+				this.command(
+					WorkspaceCommandSchema.parse({
+						kind: "show-image",
+						assetId,
+						...(target ? { target } : {}),
+					})
+				)
+			);
+	}
 	get tools(): FunctionTool[] {
 		const available = this.latest?.capabilities ?? [];
 		const supports = (kind: WorkspaceCommand["kind"]) => {
+			if (kind === "show-image") return available.includes("images");
 			if (kind === "open-browser" || kind === "browser-action")
 				return available.includes("browser");
 			if (kind === "show-review" || kind === "code-view") return available.includes("review");
@@ -126,6 +145,7 @@ export class ConversationWorkspaceTools {
 			return true;
 		};
 		return [
+			...(available.includes("images") ? (this.images?.tools ?? []) : []),
 			...inspectNames
 				.filter((name) => name !== "probe_browser" || available.includes("browser"))
 				.map(
@@ -152,7 +172,11 @@ export class ConversationWorkspaceTools {
 		];
 	}
 	has(name: string) {
-		return inspectNames.includes(name) || commands.some((entry) => entry.name === name);
+		return (
+			!!this.images?.has(name) ||
+			inspectNames.includes(name) ||
+			commands.some((entry) => entry.name === name)
+		);
 	}
 	async observe(): Promise<WorkspaceObservation> {
 		this.latest = WorkspaceObservationSchema.parse(
@@ -215,6 +239,10 @@ export class ConversationWorkspaceTools {
 	async execute(name: string, rawArguments: string): Promise<WorkspaceObservation> {
 		if (!this.tools.some((tool) => tool.name === name))
 			throw new GuidedReviewError("That workspace operation is unavailable.");
+		if (this.images?.has(name)) {
+			await this.images.execute(name, rawArguments);
+			return structuredClone(this.latest ?? (await this.observe()));
+		}
 		if (inspectNames.includes(name)) {
 			z.strictObject({}).parse(JSON.parse(rawArguments));
 			return this.observe();
@@ -228,6 +256,17 @@ export class ConversationWorkspaceTools {
 			throw new WorkspaceArgumentError(
 				"Tool arguments were rejected before execution. Follow the tool schema exactly; no operation was performed."
 			);
+		}
+		if (entry.kind === "show-image") {
+			const current = this.latest ?? (await this.observe());
+			if (
+				!current.workspace.canvases.some(
+					(canvas) => canvas.kind === "image" && canvas.asset.id === args["assetId"]
+				)
+			)
+				throw new WorkspaceArgumentError(
+					"Use an actual observed raster asset ID. To reopen a saved image use its Recent canvas ID with focus_canvas."
+				);
 		}
 		if ((entry.kind === "write-document" || entry.kind === "create-visual") && args["id"]) {
 			const current = this.latest ?? (await this.observe());
@@ -245,6 +284,8 @@ export class ConversationWorkspaceTools {
 	async command(raw: WorkspaceCommand): Promise<WorkspaceObservation> {
 		const command = WorkspaceCommandSchema.parse(raw);
 		const expected = this.latest ?? (await this.observe());
+		if (command.kind === "show-image" && !expected.capabilities.includes("images"))
+			throw new GuidedReviewError("Raster images are unavailable in this workspace.");
 		if (command.kind === "navigate-review" && !expected.capabilities.includes("review"))
 			throw new GuidedReviewError("Review navigation is unavailable in this workspace.");
 		if (
