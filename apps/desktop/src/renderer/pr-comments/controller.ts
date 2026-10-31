@@ -283,6 +283,53 @@ export function createPRCommentController(
 			notice: "",
 		});
 	};
+	/** Adopt the main service's canonical draft; never call create/edit or infer consent here. */
+	const adoptDraft = (raw: DraftedComment, reviewId: string) => {
+		refreshContext();
+		const draft = DraftedCommentSchema.parse(raw);
+		const context = state.context;
+		if (
+			disposed ||
+			!context ||
+			context.reviewId !== reviewId ||
+			state.request ||
+			confirmationPending ||
+			state.phase === "saving" ||
+			draft.evidence.kind === "fixture" ||
+			draft.body.length > 20000 ||
+			draft.prId !== context.pr.id ||
+			draft.headSha !== context.pr.headSha ||
+			(draft.location &&
+				(draft.location.path !== context.file.path ||
+					draft.location.repository !== context.pr.repository ||
+					draft.location.revision !== "head" ||
+					draft.location.commitSha !== context.pr.headSha ||
+					draft.location.startLine !== draft.location.endLine))
+		)
+			return false;
+		if (state.draft && (state.draft.id !== draft.id || state.draft.revision > draft.revision))
+			return false;
+		if (
+			state.phase === "compose" &&
+			state.body &&
+			state.body !== state.draft?.body &&
+			state.body !== draft.body
+		)
+			return false;
+		generation++;
+		update({
+			open: true,
+			draft: structuredClone(draft),
+			draftPr: context.pr,
+			body: draft.body,
+			line: draft.location?.endLine.toString() ?? "",
+			phase: "review",
+			consent: false,
+			error: "",
+			notice: "Review this exact comment before confirming.",
+		});
+		return true;
+	};
 	return {
 		getSnapshot: () => state,
 		subscribe: (listener: () => void) => {
@@ -302,6 +349,7 @@ export function createPRCommentController(
 		post,
 		canConfirm,
 		newComment,
+		adoptDraft,
 		dispose: () => {
 			disposed = true;
 			generation++;

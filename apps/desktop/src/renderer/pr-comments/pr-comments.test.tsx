@@ -10,6 +10,7 @@ import { PRCommentButton, PRCommentComposer, PRCommentControl } from "./PRCommen
 import { createPRCommentApi } from "./api";
 import { type PRCommentContext, commentLocation, preparedCommentContext } from "./context";
 import { createPRCommentController } from "./controller";
+import { presentPRComment } from "./presentation";
 
 const pr = {
 	id: "owner/project#7",
@@ -153,6 +154,105 @@ async function ready(h: ReturnType<typeof harness>, body = "Please cover the edg
 	await h.ui.review();
 	assert.equal(h.ui.getSnapshot().phase, "review");
 }
+
+test("foreground presentation adopts the canonical draft without another create and waits for two visible frames", async () => {
+	const h = harness();
+	const draft = await h.api.create({
+		requestId: "foreground",
+		prId: pr.id,
+		reviewId: plan.id,
+		headSha: pr.headSha,
+		body: "Canonical exact body",
+	});
+	let frames = 0;
+	const receipt = await presentPRComment(
+		h.ui,
+		{
+			requestId: "display",
+			sessionId: "session",
+			turnId: "turn",
+			generation: 1,
+			prId: pr.id,
+			reviewId: plan.id,
+			draft,
+		},
+		new AbortController().signal,
+		{
+			frame: async () => {
+				frames++;
+			},
+			visible: () => frames >= 3,
+		}
+	);
+	assert.equal(receipt.status, "applied");
+	assert.equal(frames, 4);
+	assert.equal(h.calls.filter((call) => call.path === "prComments.create").length, 1);
+	assert.deepEqual(h.ui.getSnapshot().draft, draft);
+	assert.equal(h.ui.getSnapshot().consent, false);
+	assert.equal(h.posts(), 0);
+	const html = renderToStaticMarkup(createElement(PRCommentComposer, { controller: h.ui }));
+	assert.ok(html.includes(`data-comment-draft-id="${draft.id}"`));
+});
+
+test("foreground adoption preserves unsaved manual work and ignores stale/closed/cancelled presentations", async () => {
+	const h = harness();
+	const draft = await h.api.create({
+		requestId: "foreground",
+		prId: pr.id,
+		reviewId: plan.id,
+		headSha: pr.headSha,
+		body: "Canonical",
+	});
+	h.ui.open();
+	h.ui.setBody("Unsaved manual text");
+	assert.equal(h.ui.adoptDraft(draft, plan.id), false);
+	assert.equal(h.ui.getSnapshot().body, "Unsaved manual text");
+	h.ui.setBody("");
+	assert.equal(h.ui.adoptDraft({ ...draft, headSha: "c".repeat(40) }, plan.id), false);
+	let frames = 0;
+	const receipt = await presentPRComment(
+		h.ui,
+		{
+			requestId: "display",
+			sessionId: "session",
+			turnId: "turn",
+			generation: 1,
+			prId: pr.id,
+			reviewId: plan.id,
+			draft,
+		},
+		new AbortController().signal,
+		{
+			frame: async () => {
+				frames++;
+				if (frames === 2) h.ui.close();
+			},
+			visible: () => true,
+		}
+	);
+	assert.equal(receipt.status, "ignored");
+	assert.equal(h.posts(), 0);
+	const abort = new AbortController();
+	abort.abort();
+	assert.equal(
+		(
+			await presentPRComment(
+				h.ui,
+				{
+					requestId: "cancelled",
+					sessionId: "session",
+					turnId: "turn",
+					generation: 1,
+					prId: pr.id,
+					reviewId: plan.id,
+					draft,
+				},
+				abort.signal
+			)
+		).status,
+		"ignored"
+	);
+});
 
 test("default prepared-review controller supplies exact actual-file context and empty startup is disabled", async () => {
 	const reviews = createPreparedController(

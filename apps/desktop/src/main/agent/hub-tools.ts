@@ -39,10 +39,12 @@ import {
 	type DaySourceReader,
 } from "./knowledge-tools";
 import type { FunctionTool } from "./meta-client";
+import { type ConversationPRCommentPorts, ConversationPRCommentTools } from "./pr-comment-tools";
 import { type ConversationSlackPorts, ConversationSlackTools } from "./slack-tools";
 import { WorkspaceArgumentError } from "./workspace-tools";
 
 export interface ConversationHubPorts {
+	prComments?: ConversationPRCommentPorts;
 	fixes?: {
 		list(signal?: AbortSignal): Promise<PRFixSummary[]>;
 		detail(id: string, signal?: AbortSignal): Promise<PRFixDetail>;
@@ -317,6 +319,7 @@ export class ConversationHubTools {
 	private readonly day?: ConversationDayTools;
 	private readonly knowledge?: ConversationKnowledgeTools;
 	private readonly slack?: ConversationSlackTools;
+	private readonly prComments?: ConversationPRCommentTools;
 	private sequence = 0;
 	constructor(
 		private readonly ports: ConversationHubPorts,
@@ -324,6 +327,8 @@ export class ConversationHubTools {
 		private readonly signal: AbortSignal,
 		private readonly onSource?: (source: PinnedSource) => void
 	) {
+		if (ports.prComments)
+			this.prComments = new ConversationPRCommentTools(ports.prComments, turn, signal);
 		if (ports.slack) this.slack = new ConversationSlackTools(ports.slack, signal);
 		if (ports.knowledge || (ports.day && ports.daySource))
 			this.knowledge = new ConversationKnowledgeTools(ports, signal);
@@ -365,11 +370,13 @@ export class ConversationHubTools {
 			...(this.day?.tools ?? []),
 			...(this.knowledge?.tools ?? []),
 			...(this.slack?.tools ?? []),
+			...(this.prComments?.tools ?? []),
 		];
 	}
 	has(name: string) {
 		if (name.startsWith("inspect_suggested_") && !this.ports.fixes) return false;
 		return (
+			!!this.prComments?.has(name) ||
 			!!this.slack?.has(name) ||
 			!!this.knowledge?.has(name) ||
 			!!this.day?.has(name) ||
@@ -555,6 +562,7 @@ export class ConversationHubTools {
 	}
 	async execute(name: string, rawArguments: string): Promise<unknown> {
 		if (!this.has(name)) throw new GuidedReviewError("That hub operation is unavailable.");
+		if (this.prComments?.has(name)) return this.prComments.execute(name, rawArguments);
 		if (this.slack?.has(name)) return this.slack.execute(name, rawArguments);
 		if (this.knowledge?.has(name)) return this.knowledge.execute(name, rawArguments);
 		if (this.day?.has(name)) {

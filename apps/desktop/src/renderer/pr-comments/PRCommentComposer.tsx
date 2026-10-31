@@ -69,7 +69,13 @@ export function PRCommentComposer({
 				onOpenError?.();
 			}}
 		>
-			<div className="pr-comment-composer" data-comment-phase={state.phase}>
+			<div
+				className="pr-comment-composer"
+				data-comment-phase={state.phase}
+				data-comment-draft-id={draft?.id}
+				data-comment-draft-revision={draft?.revision}
+				data-comment-head={draft?.headSha}
+			>
 				{pr && (
 					<p className="pr-comment-target">
 						{pr.repository} #{pr.number}
@@ -195,12 +201,15 @@ export function PRCommentControl({
 	beforeOpen,
 	onOpenError,
 	onOpenChange,
+	onController,
 }: {
 	call: PRCommentCall;
 	reviews: PreparedController;
 	beforeOpen?: () => Promise<void>;
 	onOpenError?: () => void;
 	onOpenChange?: (open: boolean) => void;
+	/** Root binds foreground effects to this same persistent composer instance. */
+	onController?: (controller: PRCommentController | null) => void;
 }) {
 	const [controller] = useState(() =>
 		createPRCommentController(createPRCommentApi(call), () =>
@@ -212,6 +221,10 @@ export function PRCommentControl({
 		() => controller.getSnapshot().open,
 		() => false
 	);
+	useEffect(() => {
+		onController?.(controller);
+		return () => onController?.(null);
+	}, [controller, onController]);
 	useEffect(() => {
 		onOpenChange?.(open);
 		return () => onOpenChange?.(false);

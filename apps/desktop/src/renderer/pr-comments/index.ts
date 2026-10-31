@@ -7,3 +7,8 @@ export {
 } from "./api";
 export { preparedCommentContext, type PRCommentContext } from "./context";
 export { createPRCommentController, type PRCommentController } from "./controller";
+export {
+	presentPRComment,
+	visibleCommentDraft,
+	type CommentPresentationInput,
+} from "./presentation";
