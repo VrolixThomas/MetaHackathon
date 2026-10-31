@@ -6,6 +6,7 @@ const paths: Record<CenterSection | "settings" | "plus" | "repository" | "conver
 	slack: "M9 3 7 21M17 3l-2 18M3 9h18M3 16h18",
 	reviews: "M6 3v12a3 3 0 1 0 3 3H6m0-12a3 3 0 1 0 0 .1M18 3v4a5 5 0 0 1-5 5H6m12-9a3 3 0 1 0 0 .1",
 	feedback: "M21 11a8 8 0 0 1-8 8H7l-4 3V6a3 3 0 0 1 3-3h12a3 3 0 0 1 3 3ZM7 8h10M7 12h6",
+	fixes: "M4 4h7v16H4ZM14 4h6v16h-6M6 8h3m-3 4h3m7-4h2m-1-1v2m-1 5h2",
 	tickets: "m3 6 2 2 4-4m3 2h9M3 12l2 2 4-4m3 2h9M3 18l2 2 4-4m3 2h9",
 	completed: "m7 12 3 3 7-7M21 12a9 9 0 1 1-5-8",
 	activity: "M3 12h4l3-8 4 16 3-8h4",

@@ -181,10 +181,33 @@ export function TicketView({
 	);
 }
 
-export function WorkDiff({ review, command }: { review: WorkReview; command: Command }) {
+export function WorkDiff({
+	review,
+	command,
+	selectedPath,
+	onSelectFile,
+	view: controlledView,
+	onViewChange,
+	labels = { base: "Base", head: "Head" },
+	navigation = false,
+	showLineCounts = false,
+}: {
+	review: WorkReview;
+	command: Command;
+	selectedPath?: string;
+	onSelectFile?(path: string): void;
+	view?: "diff" | "base" | "head";
+	onViewChange?(view: "diff" | "base" | "head"): void;
+	labels?: { base: string; head: string };
+	navigation?: boolean;
+	showLineCounts?: boolean;
+}) {
 	const [selected, setSelected] = useState("");
-	const [view, setView] = useState<"diff" | "base" | "head">("diff");
-	const file = review.files.find((item) => item.path === selected) ?? review.files[0];
+	const [localView, setView] = useState<"diff" | "base" | "head">("diff");
+	const view = controlledView ?? localView;
+	const file =
+		review.files.find((item) => item.path === (selectedPath ?? selected)) ?? review.files[0];
+	const selectFile = (path: string) => (onSelectFile ? onSelectFile(path) : setSelected(path));
 	const [syntax, setSyntax] = useState<{
 		file: typeof file;
 		base: HighlightedSource;
@@ -227,10 +250,13 @@ export function WorkDiff({ review, command }: { review: WorkReview; command: Com
 			<div className="hub-actions">
 				<label className="hub-file-select">
 					Changed file
-					<select value={file.path} onChange={(event) => setSelected(event.currentTarget.value)}>
+					<select value={file.path} onChange={(event) => selectFile(event.currentTarget.value)}>
 						{review.files.map((entry) => (
 							<option value={entry.path} key={entry.path}>
 								{entry.path} · {entry.status}
+								{showLineCounts && entry.patch !== null
+									? ` · +${patchLines(entry.patch).filter((line) => line.kind === "add").length} −${patchLines(entry.patch).filter((line) => line.kind === "remove").length}`
+									: ""}
 							</option>
 						))}
 					</select>
@@ -242,16 +268,49 @@ export function WorkDiff({ review, command }: { review: WorkReview; command: Com
 							key={mode}
 							className="quiet"
 							aria-pressed={view === mode}
-							onClick={() => setView(mode)}
+							onClick={() => (onViewChange ? onViewChange(mode) : setView(mode))}
 						>
-							{mode === "diff" ? "Diff" : mode === "base" ? "Base" : "Head"}
+							{mode === "diff" ? "Diff" : labels[mode]}
 						</button>
 					))}
 				</div>
+				{navigation && (
+					<div className="hub-actions" aria-label="Changed file navigation">
+						<button
+							type="button"
+							className="quiet"
+							disabled={review.files.indexOf(file) <= 0}
+							onClick={() => {
+								const previous = review.files[review.files.indexOf(file) - 1];
+								if (previous) selectFile(previous.path);
+							}}
+						>
+							Previous file
+						</button>
+						<span>
+							File {review.files.indexOf(file) + 1} of {review.files.length}
+						</span>
+						<button
+							type="button"
+							className="quiet"
+							disabled={review.files.indexOf(file) >= review.files.length - 1}
+							onClick={() => {
+								const next = review.files[review.files.indexOf(file) + 1];
+								if (next) selectFile(next.path);
+							}}
+						>
+							Next file
+						</button>
+					</div>
+				)}
 			</div>
 			<div className="hub-revision-pair">
-				<span title={file.base.commitSha}>Base {file.base.commitSha.slice(0, 10)}</span>
-				<span title={file.head.commitSha}>Head {file.head.commitSha.slice(0, 10)}</span>
+				<span title={file.base.commitSha}>
+					{labels.base} {file.base.commitSha.slice(0, 10)}
+				</span>
+				<span title={file.head.commitSha}>
+					{labels.head} {file.head.commitSha.slice(0, 10)}
+				</span>
 			</div>
 			{view !== "diff" ? (
 				pinned ? (

@@ -10,6 +10,8 @@ export const centerSections: { id: CenterSection; label: string }[] = [
 	{ id: "completed", label: "Completed work" },
 	{ id: "activity", label: "Activity queue" },
 ];
+/** Optional independent queue; older bindings without a fix controller keep their section list. */
+export const fixesCenterSection = { id: "fixes" as const, label: "Suggested fixes" };
 export const jobTitle = (job: Pick<WorkJobSummary, "ticket" | "feedback" | "summary" | "branch">) =>
 	job.ticket?.title ??
 	(job.feedback
@@ -31,7 +33,8 @@ export function sectionCount(snapshot: HubSnapshot, section: CenterSection) {
 	switch (section) {
 		case "day":
 		case "slack":
-			return 0; // The independent private Day controller supplies this section's live count.
+		case "fixes":
+			return 0; // Independent controllers supply these sections' actual counts.
 		case "home":
 			return snapshot.jobs.reduce(
 				(count, job) => count + job.pendingDecisions + (isPendingReview(job) ? 1 : 0),

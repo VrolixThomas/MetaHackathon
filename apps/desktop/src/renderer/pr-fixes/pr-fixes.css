@@ -1,0 +1,44 @@
+.pr-fix-review {
+	display: grid;
+	gap: 1.2rem;
+}
+.pr-fix-review h1,
+.pr-fix-review h2,
+.pr-fix-review p {
+	margin-top: 0;
+}
+.pr-fix-pin {
+	overflow-wrap: anywhere;
+}
+.pr-fix-original {
+	white-space: pre-wrap;
+	overflow-wrap: anywhere;
+	font: inherit;
+	padding: 1rem;
+	border: 1px solid var(--border, #30363d);
+	border-radius: 0.6rem;
+}
+.pr-fix-files {
+	list-style: none;
+	padding: 0;
+	display: grid;
+	gap: 0.3rem;
+}
+.pr-fix-files button {
+	width: 100%;
+	display: flex;
+	justify-content: space-between;
+	gap: 1rem;
+	text-align: left;
+	overflow-wrap: anywhere;
+}
+.pr-fix-files [aria-current="true"] {
+	background: var(--surface-hover, #22272e);
+}
+.pr-fix-check small {
+	display: block;
+	width: 100%;
+}
+.pr-fix-list > button {
+	margin-bottom: 0.4rem;
+}

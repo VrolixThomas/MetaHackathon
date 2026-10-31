@@ -8,6 +8,7 @@ import type {
 	WorkspaceCommand,
 } from "../../shared/contracts";
 import type { DayController } from "../day/controller";
+import { type PRFixController, PRFixView, PrepareSuggestedFixButton } from "../pr-fixes";
 import { type SlackBrowseController, SlackConversationView } from "../slack";
 import { DayWorkspace } from "../workspace/DayWorkspace";
 import { MarkdownContent } from "../workspace/MarkdownContent";
@@ -45,6 +46,7 @@ function SectionPrompt({
 		tickets: "No assigned tickets in these scopes",
 		completed: "No saved outcomes yet",
 		activity: "No coding jobs in progress",
+		fixes: "Select a suggested fix",
 	}[section];
 	const item = source === "github" ? "pull request" : source === "linear" ? "ticket" : "job";
 	let title = count ? `Select a ${item} in the sidebar` : emptyTitle;
@@ -116,8 +118,14 @@ function FeedbackView({
 	item,
 	sequence,
 	command,
-}: { hub: HubController; item: ReviewQueueItem; sequence: number; command: Command }) {
-	const busy = useStore(hub.store).busy;
+	fixes,
+}: {
+	hub: HubController;
+	item: ReviewQueueItem;
+	sequence: number;
+	command: Command;
+	fixes?: PRFixController;
+}) {
 	const [feedback, setFeedback] = useState<{ prId: string; items: PullRequestFeedback[] } | null>(
 		null
 	);
@@ -216,34 +224,13 @@ function FeedbackView({
 								/>
 							</div>
 							{entry.suggestion && (
-								<>
-									<details className="hub-disclosure">
-										<summary>Suggested change</summary>
-										<pre>{entry.suggestion}</pre>
-									</details>
-									<button
-										type="button"
-										disabled={busy}
-										onClick={() => {
-											void hub
-												.operate({
-													kind: "start-feedback-work",
-													prId: item.pr.id,
-													feedbackId: entry.id,
-												})
-												.then((result) => {
-													if (result?.jobId)
-														command({
-															kind: "open-center",
-															section: "activity",
-															selectedId: result.jobId,
-														});
-												});
-										}}
-									>
-										Start suggestion fix
-									</button>
-								</>
+								<details className="hub-disclosure">
+									<summary>Suggested change</summary>
+									<pre>{entry.suggestion}</pre>
+								</details>
+							)}
+							{fixes && (
+								<PrepareSuggestedFixButton controller={fixes} feedback={entry} command={command} />
 							)}
 							<button
 								type="button"
@@ -267,6 +254,7 @@ export function CenterCanvas({
 	hub,
 	day,
 	slack,
+	fixes,
 	beforeNavigate,
 	command,
 	onSettings,
@@ -275,10 +263,25 @@ export function CenterCanvas({
 	hub?: HubController;
 	day?: DayController;
 	slack?: SlackBrowseController;
+	fixes?: PRFixController;
 	beforeNavigate?(): void;
 	command: Command;
 	onSettings?(): void;
 }) {
+	if (canvas.section === "fixes")
+		return fixes ? (
+			<PRFixView
+				controller={fixes}
+				selectedId={canvas.selectedId}
+				command={command}
+				onNavigate={(selectedId) => {
+					beforeNavigate?.();
+					command({ kind: "open-center", section: "fixes", selectedId });
+				}}
+			/>
+		) : (
+			<p className="hub-muted">Suggested fixes are connecting…</p>
+		);
 	if (canvas.section === "slack")
 		return slack ? (
 			<SlackConversationView
@@ -306,7 +309,15 @@ export function CenterCanvas({
 				</p>
 			</div>
 		);
-	return <ConnectedCenter canvas={canvas} hub={hub} command={command} onSettings={onSettings} />;
+	return (
+		<ConnectedCenter
+			canvas={canvas}
+			hub={hub}
+			command={command}
+			onSettings={onSettings}
+			fixes={fixes}
+		/>
+	);
 }
 
 function ConnectedCenter({
@@ -314,11 +325,13 @@ function ConnectedCenter({
 	hub,
 	command,
 	onSettings,
+	fixes,
 }: {
 	canvas: Extract<Canvas, { kind: "center" }>;
 	hub: HubController;
 	command: Command;
 	onSettings?(): void;
+	fixes?: PRFixController;
 }) {
 	const { snapshot, busy, error } = useStore(hub.store);
 	const title = centerSections.find((section) => section.id === canvas.section)?.label ?? "Home";
@@ -418,6 +431,7 @@ function ConnectedCenter({
 						item={selectedReview}
 						sequence={snapshot.sequence}
 						command={command}
+						fixes={fixes}
 					/>
 				) : (
 					<article className="hub-detail">

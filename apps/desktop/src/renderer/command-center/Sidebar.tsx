@@ -2,12 +2,14 @@ import { useStore } from "zustand";
 import type { CenterSection, WorkspaceCommand } from "../../shared/contracts";
 import { DayQueue } from "../day";
 import type { DayController } from "../day/controller";
+import { type PRFixController, PRFixList } from "../pr-fixes";
 import { type SlackBrowseController, SlackConversationList } from "../slack";
 import type { WorkspaceController } from "../workspace/controller";
 import { HubIcon } from "./HubIcon";
 import type { HubController } from "./controller";
 import {
 	centerSections,
+	fixesCenterSection,
 	isFinished,
 	jobOutcomeLabel,
 	jobReference,
@@ -20,6 +22,7 @@ export function CommandSidebar({
 	hub,
 	day,
 	slack,
+	fixes,
 	workspace,
 	conversationOpen,
 	onConversation,
@@ -28,6 +31,7 @@ export function CommandSidebar({
 	hub: HubController;
 	day?: DayController;
 	slack?: SlackBrowseController;
+	fixes?: PRFixController;
 	workspace: WorkspaceController;
 	conversationOpen: boolean;
 	onConversation(): void;
@@ -51,7 +55,7 @@ export function CommandSidebar({
 	const canvas = canvasState?.canvases.find((item) => item.id === canvasState.primaryId);
 	const section = canvasState?.centerSection ?? "home";
 	const title =
-		centerSections.find((item) => item.id === section)?.label ??
+		[...centerSections, fixesCenterSection].find((item) => item.id === section)?.label ??
 		(section === "slack" ? "Slack" : "Workspace");
 	const selectedId =
 		canvas?.kind === "center"
@@ -82,8 +86,20 @@ export function CommandSidebar({
 					m<span>·</span>
 				</button>
 				{centerSections
+					.flatMap((item) =>
+						item.id === "feedback" && fixes ? [item, fixesCenterSection] : [item]
+					)
 					.filter((item) => (item.id !== "day" || day) && (item.id !== "slack" || slack))
 					.map((item) => {
+						if (item.id === "fixes" && fixes)
+							return (
+								<FixRailButton
+									key="fixes"
+									controller={fixes}
+									selected={section === "fixes"}
+									onBrowse={() => command({ kind: "browse-center", section: "fixes" })}
+								/>
+							);
 						if (item.id === "slack" && slack)
 							return (
 								<SlackRailButton
@@ -153,26 +169,34 @@ export function CommandSidebar({
 			<div className="command-sidebar">
 				<header>
 					<strong>{title}</strong>
-					<button
-						type="button"
-						className="quiet"
-						title={
-							section === "slack"
-								? "Slack connection settings"
-								: "Add repositories and Linear scopes"
-						}
-						aria-label={
-							section === "slack"
-								? "Slack connection settings"
-								: "Add repositories and Linear scopes"
-						}
-						onClick={() => (section === "slack" ? onSettings() : select("home", "connections"))}
-					>
-						<HubIcon name={section === "slack" ? "settings" : "plus"} />
-					</button>
+					{section !== "fixes" && (
+						<button
+							type="button"
+							className="quiet"
+							title={
+								section === "slack"
+									? "Slack connection settings"
+									: "Add repositories and Linear scopes"
+							}
+							aria-label={
+								section === "slack"
+									? "Slack connection settings"
+									: "Add repositories and Linear scopes"
+							}
+							onClick={() => (section === "slack" ? onSettings() : select("home", "connections"))}
+						>
+							<HubIcon name={section === "slack" ? "settings" : "plus"} />
+						</button>
+					)}
 				</header>
 				<section className="command-sidebar-scroll" key={section} aria-label={`${title} items`}>
-					{section === "slack" && slack ? (
+					{section === "fixes" && fixes ? (
+						<PRFixList
+							controller={fixes}
+							selectedId={selectedId ?? undefined}
+							onSelect={(id) => select("fixes", id)}
+						/>
+					) : section === "slack" && slack ? (
 						<SlackConversationList
 							controller={slack}
 							selectedId={selectedId ?? undefined}
@@ -451,6 +475,37 @@ export function CommandSidebar({
 				</footer>
 			</div>
 		</aside>
+	);
+}
+
+function FixRailButton({
+	controller,
+	selected,
+	onBrowse,
+}: {
+	controller: PRFixController;
+	selected: boolean;
+	onBrowse(): void;
+}) {
+	const state = useStore(controller.store);
+	const count = state.listLoaded ? state.items.length : undefined;
+	const label = `Suggested fixes${count === undefined ? "" : ` (${count})`}`;
+	return (
+		<button
+			type="button"
+			className="quiet"
+			title={label}
+			aria-label={label}
+			aria-current={selected ? "page" : undefined}
+			onClick={onBrowse}
+		>
+			<HubIcon name="fixes" />
+			{count !== undefined && (
+				<span className="command-rail-count" aria-hidden="true">
+					{count}
+				</span>
+			)}
+		</button>
 	);
 }
 
