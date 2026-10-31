@@ -381,11 +381,14 @@ async function native() {
 				"Slack source must use the actual OAuth user grant"
 			);
 			const headers = new Headers(options.headers);
-			const fields = headers.get("content-type")?.startsWith("application/json")
-				? JSON.parse(options.body)
-				: Object.fromEntries(new URLSearchParams(options.body));
 			const method = url.pathname.slice("/api/".length);
 			assert.equal(url.pathname, `/api/${method}`);
+			assert.equal(
+				headers.get("content-type"),
+				"application/x-www-form-urlencoded",
+				"Slack read APIs must receive their actual form arguments"
+			);
+			const fields = Object.fromEntries(new URLSearchParams(options.body));
 			report.reads.push({ method, conversationId: fields.channel ?? null });
 			const response = (body) =>
 				Response.json({ ok: true, ...body }, { headers: { "x-oauth-scopes": SCOPES.join(",") } });

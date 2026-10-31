@@ -234,8 +234,18 @@ function harness(overrides: Partial<SlackWorkspaceOptions> = {}, store = new Mem
 				const url = new URL(String(input));
 				assert.equal(url.origin, "https://slack.com");
 				assert.equal(init?.redirect, "error");
-				const fields = JSON.parse(String(init?.body)) as Record<string, unknown>;
 				const method = url.pathname.replace("/api/", "");
+				const contentType = new Headers(init?.headers).get("content-type");
+				assert.equal(
+					contentType,
+					method === "chat.postMessage"
+						? "application/json; charset=utf-8"
+						: "application/x-www-form-urlencoded"
+				);
+				const fields: Record<string, unknown> =
+					method === "chat.postMessage"
+						? JSON.parse(String(init?.body))
+						: Object.fromEntries(new URLSearchParams(String(init?.body)));
 				calls.push({ method, fields });
 				if (method === "auth.test")
 					return Response.json({
@@ -481,7 +491,7 @@ test("fair watched streams and known threads use one bounded history/reply page 
 		assert.ok(
 			h.calls
 				.filter((c) => ["conversations.history", "conversations.replies"].includes(c.method))
-				.every((c) => c.fields["limit"] === 15)
+				.every((c) => c.fields["limit"] === "15")
 		);
 	} finally {
 		await h.coordinator.dispose();
