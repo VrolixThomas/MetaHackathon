@@ -2,6 +2,7 @@ import { z } from "zod";
 import { BrowserElementSchema, BrowserViewportSchema } from "./browser";
 import { CodeLocationSchema, IdSchema, RepositoryPathSchema } from "./common";
 import { LocalBrowserStateSchema } from "./local-browser";
+import { PRFixPresentationSchema } from "./pr-work";
 import { ReviewNavigationSchema, ReviewScreenSchema } from "./prepared-review";
 import { PullRequestSchema } from "./review";
 
@@ -70,6 +71,7 @@ export const CanvasSchema = z.discriminatedUnion("kind", [
 		kind: z.literal("center"),
 		section: CenterSectionSchema,
 		selectedId: IdSchema.optional(),
+		fixSource: PRFixPresentationSchema.optional(),
 	}),
 	z.strictObject({ ...canvasFields, kind: z.literal("source"), source: PinnedSourceSchema }),
 	z.strictObject({ ...canvasFields, kind: z.literal("flow"), flow: CodeFlowSchema }),

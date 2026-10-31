@@ -51,6 +51,12 @@ export const PRFixDetailSchema = z.strictObject({
 	fix: PRFixSummarySchema,
 	review: WorkReviewSchema.nullable(),
 });
+export const PRFixPresentationSchema = z.strictObject({
+	id: IdSchema.max(200),
+	baseSha: CommitShaSchema,
+	headSha: CommitShaSchema.nullable(),
+	path: RepositoryPathSchema.nullable(),
+});
 export const PRFixReviewInputSchema = z.strictObject({
 	id: IdSchema.max(200),
 	headSha: CommitShaSchema,
@@ -77,4 +83,5 @@ export type PRCommentCreateInput = z.infer<typeof PRCommentCreateInputSchema>;
 export type PRFixStartInput = z.infer<typeof PRFixStartInputSchema>;
 export type PRFixSummary = z.infer<typeof PRFixSummarySchema>;
 export type PRFixDetail = z.infer<typeof PRFixDetailSchema>;
+export type PRFixPresentation = z.infer<typeof PRFixPresentationSchema>;
 export type PRFixReviewInput = z.infer<typeof PRFixReviewInputSchema>;
