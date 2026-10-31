@@ -1,0 +1,31 @@
+{
+  "artifact": "Muse logo / motion design simulation",
+  "browser": "148.0.7778.96",
+  "checks": [
+    "three directions",
+    "all eight states per direction",
+    "static idle",
+    "amplitude response",
+    "manual and OS reduced motion",
+    "precedence",
+    "static SVG/live-pose parity",
+    "light/dark controls",
+    "simulated amplitude",
+    "manual tour start/stop",
+    "mobile width",
+    "zero browser errors",
+    "zero network requests"
+  ],
+  "viewport": [
+    1440,
+    1100
+  ],
+  "mobile": [
+    390,
+    844
+  ],
+  "screenshots": 5,
+  "errors": [],
+  "externalRequests": 0,
+  "limits": "Browser design simulation only; no Electron, provider, microphone or actual product-state integration."
+}
