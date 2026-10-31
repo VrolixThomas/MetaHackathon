@@ -108,9 +108,11 @@ create function public.team_claim(p_queue text,p_lease_seconds integer default 1
  begin
  if p_lease_seconds not between 10 and 600 then raise exception 'invalid lease'; end if;
  if p_queue='webhook' then
+ update public.team_webhooks set state='failed',error_code='unavailable',lease_token=null,lease_until=null where state='leased' and lease_until<=now() and attempts>=5;
  with candidate as (select delivery_id from public.team_webhooks where attempts<5 and available_at<=now() and (state='queued' or (state='leased' and lease_until<=now())) order by available_at for update skip locked limit 1)
  update public.team_webhooks j set state='leased',attempts=attempts+1,lease_token=gen_random_uuid(),lease_until=now()+make_interval(secs=>p_lease_seconds) from candidate c where j.delivery_id=c.delivery_id returning to_jsonb(j) into result;
  elsif p_queue='preparation' then
+ update public.team_preparation_jobs set state='failed',error_code='unavailable',lease_token=null,lease_until=null where state='leased' and lease_until<=now() and attempts>=5;
  with candidate as (select id from public.team_preparation_jobs where attempts<5 and available_at<=now() and (state='queued' or (state='leased' and lease_until<=now())) order by available_at for update skip locked limit 1)
  update public.team_preparation_jobs j set state='leased',attempts=attempts+1,lease_token=gen_random_uuid(),lease_until=now()+make_interval(secs=>p_lease_seconds) from candidate c where j.id=c.id returning to_jsonb(j) into result;
  else raise exception 'invalid queue'; end if;

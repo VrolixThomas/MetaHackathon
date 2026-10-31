@@ -92,6 +92,7 @@ export class TeamError extends Error {
 export function secureUrl(raw: string, local = false): URL {
 	const url = new URL(raw);
 	if (
+		url.pathname !== "/" ||
 		url.username ||
 		url.password ||
 		url.search ||

@@ -153,6 +153,13 @@ export class TeamAuth {
 			};
 		}
 	}
+	get revision(): number {
+		return this.epoch;
+	}
+	cancelLogin() {
+		++this.epoch;
+		this.pending = null;
+	}
 	async disconnect() {
 		++this.epoch;
 		this.pending = null;

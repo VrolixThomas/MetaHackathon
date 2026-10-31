@@ -17,6 +17,8 @@ test("independent Supabase and GitHub identity, organization membership AND fres
 				id: user,
 				identities: [{ provider: "github", identity_data: { sub: subject } }],
 			});
+		if (path.includes("team_organizations"))
+			return Response.json([{ id: org, name: "Controlled org" }]);
 		if (path.includes("team_memberships"))
 			return Response.json(membership ? [{ active: true }] : []);
 		if (path.includes("team_repositories"))
@@ -58,6 +60,15 @@ test("independent Supabase and GitHub identity, organization membership AND fres
 	});
 	assert.equal((await access.authorize("supabase-jwt", "github-token", org, "42")).userId, user);
 	assert.equal(grants, 1);
+	assert.equal(
+		(await access.organizations("supabase-jwt", "github-token"))[0]?.name,
+		"Controlled org"
+	);
+	assert.equal(
+		(await access.repositories("supabase-jwt", "github-token", org)).items[0]?.repositoryId,
+		"42"
+	);
+
 	subject = "102";
 	await assert.rejects(access.authorize("supabase-jwt", "github-token", org, "42"));
 	subject = "101";
@@ -65,6 +76,7 @@ test("independent Supabase and GitHub identity, organization membership AND fres
 	await assert.rejects(access.authorize("supabase-jwt", "github-token", org, "42"));
 	membership = true;
 	repo = false;
+	assert.deepEqual((await access.repositories("supabase-jwt", "github-token", org)).items, []);
 	await assert.rejects(access.authorize("supabase-jwt", "github-token", org, "42"));
 	assert.equal(grants, 1);
 });

@@ -23,7 +23,7 @@ export function sharedReviewKey(
 }
 export class TeamPreparationProvider {
 	constructor(
-		private readonly client: Pick<TeamClient, "load">,
+		private readonly client: Pick<TeamClient, "load" | "requestPreparation" | "preparationStatus">,
 		private readonly scope: { orgId: string; repositoryId: string; analysisVersion: string }
 	) {}
 	async lookup(context: ConversationPRContext) {
@@ -34,5 +34,36 @@ export class TeamPreparationProvider {
 		if (result.artifact && result.artifact.review.pr.repository !== context.pr.repository)
 			throw new TeamError("invalid");
 		return { key, prepared: result.artifact?.review ?? null };
+	}
+	/** A cache miss enqueues the same pinned input on the hosted consumer; never prepares a second local model result. */
+	async prepare(context: ConversationPRContext, signal: AbortSignal) {
+		signal.throwIfAborted();
+		const first = await this.lookup(context);
+		signal.throwIfAborted();
+		if (first.prepared) return first.prepared;
+		signal.throwIfAborted();
+		await this.client.requestPreparation(first.key);
+		const expires = Date.now() + 300000;
+		while (Date.now() < expires) {
+			await new Promise<void>((resolve, reject) => {
+				const abort = () => {
+					clearTimeout(timer);
+					reject(new TeamError("unavailable"));
+				};
+				const timer = setTimeout(() => {
+					signal.removeEventListener("abort", abort);
+					resolve();
+				}, 1000);
+				if (signal.aborted) abort();
+				else signal.addEventListener("abort", abort, { once: true });
+			});
+			signal.throwIfAborted();
+			const next = await this.lookup(context);
+			signal.throwIfAborted();
+			if (next.prepared) return next.prepared;
+			if ((await this.client.preparationStatus(first.key)).status === "failed")
+				throw new TeamError("unavailable");
+		}
+		throw new TeamError("unavailable");
 	}
 }
