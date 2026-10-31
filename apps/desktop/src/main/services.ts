@@ -16,6 +16,7 @@ import { ConversationDiagnostics } from "./composition/diagnostics";
 import { createKnowledgeService } from "./composition/knowledge";
 import { ReviewCoordinator } from "./composition/reviews";
 import { SlackConnection } from "./composition/slack-connection";
+import { SlackReader } from "./composition/slack-reader";
 import { SlackWorkspaceCoordinator } from "./composition/slack-workspace";
 import { type VoiceCompositionOptions, createVoiceComposition } from "./composition/voice";
 import { WorkspaceCoordinator } from "./composition/workspace";
@@ -36,6 +37,7 @@ import { HubGitHubClient } from "./runtime/hub-github";
 import { HubLinearClient } from "./runtime/hub-linear";
 import type { RuntimeOptions, RuntimeService } from "./runtime/service";
 import { WorkJobRuntime } from "./runtime/work-job-runtime";
+import { SlackError } from "./slack/types";
 import { AttentionScheduler } from "./work/attention";
 import { CommandCenterService } from "./work/hub";
 import { WorkJobCoordinator } from "./work/jobs";
@@ -62,6 +64,7 @@ let day: DayService | undefined;
 let dayAwake = true;
 let slackConnection: SlackConnection | undefined;
 let slackWorkspace: SlackWorkspaceCoordinator | undefined;
+let slackReader: SlackReader | undefined;
 let refreshSlackAccount: (() => Promise<void>) | undefined;
 let slackAccountTransition: Promise<unknown> = Promise.resolve();
 let knowledge: KnowledgeService | undefined;
@@ -107,6 +110,18 @@ export const conversationService = new ConversationService(conversationClient, {
 		validate: (input, signal) => getAttention().validate(input, signal),
 	},
 	hub: {
+		slack: {
+			actor: async (signal) => {
+				signal?.throwIfAborted();
+				const credential = await getSlackConnection().credential();
+				if (!credential) throw new SlackError("connection-required");
+				signal?.throwIfAborted();
+				return { workspaceId: credential.workspaceId, userId: credential.userId };
+			},
+			list: (input, signal) => getSlackWorkspace().conversations(input, signal),
+			read: (input, signal) =>
+				getSlackReader().read({ ...input, threadTs: input.threadTs ?? null }, signal),
+		},
 		knowledge: {
 			search: (input, signal) =>
 				searchCurrentKnowledge(input, signal ?? AbortSignal.timeout(30_000)),
@@ -288,6 +303,11 @@ export async function initializeSlack(
 		message: Parameters<typeof dayIntakeSourceBinding>[0]["message"]
 	) => JSON.stringify(dayIntakeSourceBinding({ actor, message }));
 	slackWorkspace = new SlackWorkspaceCoordinator({
+		// Explicit owner configuration only: internal customer-built apps retain Tier 3 limits.
+		// Commercial installations keep the conservative default and all HTTP 429s are honored.
+		clientOptions: {
+			historyIntervalMs: (await getConfiguration().slackSettings()).internalApp ? 1500 : 60_000,
+		},
 		getCredential: () => slackConnection?.credential() ?? Promise.resolve(undefined),
 		store: stores.slack,
 		getDay: () => day,
@@ -420,6 +440,11 @@ export async function initializeSlack(
 			},
 		},
 	});
+	slackReader = new SlackReader({
+		getClient: () => getSlackWorkspace().client,
+		getCredential: () => getSlackConnection().credential(),
+		getEpoch: () => getSlackConnection().epoch,
+	});
 	refreshSlackAccount = () => {
 		const work = slackAccountTransition
 			.catch(() => {})
@@ -450,6 +475,10 @@ export function getSlackConnection() {
 export function getSlackWorkspace() {
 	if (!slackWorkspace) throw new Error("Slack sources are unavailable");
 	return slackWorkspace;
+}
+export function getSlackReader() {
+	if (!slackReader || closing) throw new Error("Slack messages are unavailable");
+	return slackReader;
 }
 export function getKnowledge() {
 	if (!knowledge) throw new Error("Knowledge sources are unavailable");
@@ -639,6 +668,7 @@ export function initializeWorkspace(userDataPath: string): void {
 			if (!item) throw new Error("This work item is unavailable.");
 			return { id: item.id, title: item.title };
 		},
+		slackConversation: (target, signal) => getSlackReader().target(target, signal),
 		readSource: (location, signal) => getHub().source(location, signal),
 		activateReview: (prId, signal) => reviewRegistry?.activate(prId, signal) ?? Promise.resolve(),
 		getBrowser: () => ({

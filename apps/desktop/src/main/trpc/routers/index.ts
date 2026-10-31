@@ -31,6 +31,9 @@ import {
 	PullRequestFeedbackSchema,
 	RepositoryChoiceSchema,
 	SlackConnectionStatusSchema,
+	SlackFollowConfigurationSchema,
+	SlackMessagePageSchema,
+	SlackViewTargetSchema,
 	SourceRangeRequestSchema,
 	SourceSearchRequestSchema,
 	WORKSPACE_GITHUB_REQUIRED,
@@ -67,6 +70,7 @@ import {
 	getReviews,
 	getRuntime,
 	getSlackConnection,
+	getSlackReader,
 	getSlackWorkspace,
 	getVoice,
 	getWorkJobs,
@@ -93,16 +97,51 @@ const hubCall = async <T>(work: () => Promise<T>): Promise<T> => {
 // Register feature routers here as the application grows.
 export const appRouter = router({
 	slack: router({
+		conversation: publicProcedure
+			.input(SlackViewTargetSchema.pick({ conversationId: true }))
+			.output(ChatConversationSchema)
+			.query(({ input }) => getSlackReader().conversation(input.conversationId)),
+		history: publicProcedure
+			.input(
+				z.strictObject({
+					conversationId: SlackViewTargetSchema.shape.conversationId,
+					cursor: z.string().max(2000).optional(),
+				})
+			)
+			.output(SlackMessagePageSchema)
+			.query(({ input }) => getSlackReader().read({ ...input, threadTs: null })),
+		thread: publicProcedure
+			.input(
+				SlackViewTargetSchema.extend({ cursor: z.string().max(2000).optional() }).refine(
+					(input) => input.threadTs !== null
+				)
+			)
+			.output(SlackMessagePageSchema)
+			.query(({ input }) => getSlackReader().read(input)),
 		status: publicProcedure
 			.input(z.strictObject({}).optional())
 			.output(SlackConnectionStatusSchema)
 			.query(async () => {
-				const status = await getSlackConnection().status();
+				const connection = getSlackConnection();
+				const status = await connection.status();
+				const epoch = connection.epoch;
 				const source = getSlackWorkspace();
+				const watching = await source.watching().catch(() => []);
 				const view = source.status();
+				if (getSlackConnection() !== connection || connection.epoch !== epoch)
+					throw new TRPCError({ code: "CONFLICT", message: "The active source account changed" });
+				const sameActor =
+					status.account &&
+					view.actor?.workspaceId === status.account.workspaceId &&
+					view.actor.userId === status.account.userId;
 				return {
 					...status,
-					watching: await source.watching().catch(() => []),
+					watching: sameActor ? watching : [],
+					followMode: sameActor ? view.followMode : ("all_joined" as const),
+					excludedConversationIds: sameActor ? view.excludedConversationIds : [],
+					membershipSync: sameActor
+						? view.membershipSync
+						: { phase: "pending" as const, discoveredCount: 0, completedAt: null },
 					coverage:
 						status.phase !== "connected"
 							? ("disconnected" as const)
@@ -140,10 +179,16 @@ export const appRouter = router({
 			)
 			.query(({ input }) => getSlackWorkspace().conversations(input)),
 		watch: publicProcedure
-			.input(z.strictObject({ conversationIds: z.array(IdSchema).max(32) }))
+			.input(z.strictObject({ conversationIds: z.array(IdSchema).max(1000) }))
 			.output(z.void())
 			.mutation(async ({ input }) => {
 				await getSlackWorkspace().watch(input);
+			}),
+		follow: publicProcedure
+			.input(SlackFollowConfigurationSchema)
+			.output(z.void())
+			.mutation(async ({ input }) => {
+				await getSlackWorkspace().follow(input);
 			}),
 	}),
 	brain: router({

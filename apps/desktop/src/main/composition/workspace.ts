@@ -76,6 +76,7 @@ export interface WorkspaceCoordinatorPorts {
 	saveCanvases?(value: SavedWorkspaceCanvases, signal?: AbortSignal): Promise<void>;
 	hubSnapshot?(): Promise<HubSnapshot>;
 	dayItem?(id: string): Promise<{ id: string; title: string }>;
+	slackConversation?(target: string, signal: AbortSignal): Promise<{ id: string; title: string }>;
 	readSource?(location: CodeLocation, signal: AbortSignal): Promise<PinnedSource>;
 	activateReview?(prId: string, signal: AbortSignal): Promise<void>;
 }
@@ -355,6 +356,7 @@ export class WorkspaceCoordinator {
 			case "open-center": {
 				if (!this.ports.hubSnapshot) fail("Command center is unavailable.");
 				const titles = {
+					slack: "Slack",
 					home: "Home",
 					day: "My day",
 					reviews: "PR reviews",
@@ -370,6 +372,14 @@ export class WorkspaceCoordinator {
 					const item = await invoke(() => this.ports.dayItem?.(command.selectedId as string));
 					if (!item || item.id !== command.selectedId) fail("This work item is unavailable.");
 					title = item.title.slice(0, 120);
+				} else if (command.section === "slack" && command.selectedId) {
+					if (!this.ports.slackConversation) fail("Slack is unavailable.");
+					const conversation = await invoke(() =>
+						this.ports.slackConversation?.(command.selectedId as string, signal)
+					);
+					if (!conversation || conversation.id !== command.selectedId)
+						fail("This Slack conversation is unavailable.");
+					title = conversation.title.slice(0, 120);
 				} else if (command.selectedId && command.selectedId !== "connections") {
 					const hub = await this.ports.hubSnapshot();
 					const ticket = hub.tickets.find((item) => item.id === command.selectedId);
@@ -797,6 +807,14 @@ export class WorkspaceCoordinator {
 						);
 						if (!currentItem || currentItem.id !== primary.selectedId)
 							fail("This day item changed.");
+					}
+					if (primary?.kind === "center" && primary.section === "slack" && primary.selectedId) {
+						if (!this.ports.slackConversation) fail("Slack is unavailable.");
+						const current = await this.call(pending.signal, () =>
+							this.ports.slackConversation?.(primary.selectedId as string, pending.signal)
+						);
+						if (!current || current.id !== primary.selectedId)
+							fail("This Slack conversation changed.");
 					}
 					const screen = parse(
 						ReviewScreenSchema,

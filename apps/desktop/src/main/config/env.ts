@@ -208,9 +208,13 @@ export class EnvConfiguration {
 		clientId?: string;
 		clientSecret?: string;
 		redirectUri?: string;
+		internalApp?: boolean;
 	}> {
 		return this.serialize(async () => {
 			const raw = (await this.read())?.values ?? {};
+			const internal = raw["SLACK_INTERNAL_APP"]?.trim();
+			if (internal && internal !== "0" && internal !== "1")
+				throw new Error("Invalid Slack configuration");
 			const read = (key: string) => {
 				const v = raw[key]?.trim();
 				if (!v) return undefined;
@@ -224,6 +228,7 @@ export class EnvConfiguration {
 				clientId: read("SLACK_OAUTH_CLIENT_ID"),
 				clientSecret: read("SLACK_OAUTH_CLIENT_SECRET"),
 				redirectUri: read("SLACK_OAUTH_REDIRECT_URI"),
+				internalApp: internal === "1",
 			};
 		});
 	}

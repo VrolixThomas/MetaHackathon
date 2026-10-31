@@ -13,6 +13,7 @@ import "./day/day.css";
 import { OAuthProvider, createOAuthController } from "./oauth";
 import { createPreparedApi } from "./prepared/api";
 import { createPreparedController } from "./prepared/controller";
+import { createSlackBrowseController } from "./slack";
 import { createWorkspaceController } from "./workspace/controller";
 import { createLocalBrowserController } from "./workspace/local-browser";
 
@@ -22,11 +23,16 @@ export function App() {
 		const controller = createConversationController(api);
 		const day = createDayController(createDayApi(api.call));
 		const dayRef = { current: day };
+		const slack = createSlackBrowseController(api.call);
 		const reviews = createPreparedController(createPreparedApi(api.call), controller.sessionId);
 		controller.attachReview(reviews);
 		const browser = createLocalBrowserController(api.call);
 		const workspace = createWorkspaceController(api.call, reviews, browser, controller.sessionId, {
 			onManualChange: controller.interruptReply,
+			ensureSlackTarget: async (target) => {
+				await slack.ensureTarget(target);
+				if (slack.store.getState().loadedTarget !== target) throw new Error("Slack source changed");
+			},
 			ensureDayItem: async (id) => {
 				const current = dayRef.current;
 				await current.refresh();
@@ -42,7 +48,7 @@ export function App() {
 		controller.attachWorkspace(workspace);
 		const hub = createHubController(api.call);
 		const oauth = createOAuthController(api.call);
-		return { api, controller, reviews, browser, workspace, hub, oauth, dayRef };
+		return { api, controller, reviews, browser, workspace, hub, oauth, dayRef, slack };
 	});
 	const [day, setDay] = useState(runtime.dayRef.current);
 	useEffect(() => {
@@ -94,8 +100,10 @@ export function App() {
 		void runtime.workspace.start();
 		runtime.hub.start();
 		runtime.dayRef.current.start();
+		void runtime.slack.start();
 		const resetDay = () => {
 			runtime.controller.interruptReply();
+			runtime.slack.reset();
 			runtime.controller.store.setState({ exchanges: [], attention: null });
 			void runtime.api.release(runtime.controller.sessionId).catch(() => {});
 			runtime.dayRef.current.dispose();
@@ -103,10 +111,13 @@ export function App() {
 			runtime.dayRef.current = next;
 			setDay(next);
 			void next.start();
+			void runtime.slack.start();
 			const view = runtime.workspace.store.getState().workspace;
 			const primary = view?.canvases.find((canvas) => canvas.id === view.primaryId);
 			if (primary?.kind === "center" && primary.section === "day")
 				void runtime.workspace.command({ kind: "open-center", section: "day" });
+			else if (primary?.kind === "center" && primary.section === "slack")
+				void runtime.workspace.command({ kind: "open-center", section: "slack" });
 		};
 		window.addEventListener("muse:slack-account-change", resetDay);
 		const release = () => runtime.controller.release();
@@ -133,6 +144,7 @@ export function App() {
 			runtime.hub.dispose();
 			window.removeEventListener("muse:slack-account-change", resetDay);
 			runtime.dayRef.current.dispose();
+			runtime.slack.dispose();
 			runtime.reviews.dispose();
 			runtime.browser.dispose();
 			disconnectVoice();
@@ -150,6 +162,7 @@ export function App() {
 				workspace={runtime.workspace}
 				hub={runtime.hub}
 				day={day}
+				slack={runtime.slack}
 			/>
 		</OAuthProvider>
 	);

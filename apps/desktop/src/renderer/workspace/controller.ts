@@ -54,6 +54,7 @@ export function createWorkspaceController(
 		onManualChange?: () => void;
 		renderTimeoutMs?: number;
 		ensureDayItem?: (id: string) => Promise<void>;
+		ensureSlackTarget?: (target: string) => Promise<void>;
 	} = {}
 ) {
 	const store = createStore<{
@@ -216,6 +217,11 @@ export function createWorkspaceController(
 				if (primary?.kind === "center" && primary.section === "day" && primary.selectedId) {
 					if (!options.ensureDayItem) throw new Error("Day presentation is unavailable");
 					await Promise.race([options.ensureDayItem(primary.selectedId), cancelled]);
+					if (!valid()) return await acknowledge(action, status);
+				}
+				if (primary?.kind === "center" && primary.section === "slack" && primary.selectedId) {
+					if (!options.ensureSlackTarget) throw new Error("Slack presentation is unavailable");
+					await Promise.race([options.ensureSlackTarget(primary.selectedId), cancelled]);
 					if (!valid()) return await acknowledge(action, status);
 				}
 				// Hide goes ahead of native navigation/resize queues and before installing another canvas.

@@ -9,6 +9,7 @@ import { OAuthConnections, useOAuth } from "../oauth";
 import { ReviewInbox } from "../prepared/Inbox";
 import { ReviewWorkspace } from "../prepared/ReviewWorkspace";
 import type { PreparedController } from "../prepared/controller";
+import type { SlackBrowseController } from "../slack";
 import { CanvasWorkspace } from "../workspace/CanvasWorkspace";
 import { WorkSplit } from "../workspace/WorkSplit";
 import { WorkspaceDialog } from "../workspace/WorkspaceDialog";
@@ -171,6 +172,7 @@ export function ConversationApp({
 	workspace,
 	hub,
 	day,
+	slack,
 }: {
 	controller: ConversationController;
 	reviews: PreparedController;
@@ -178,6 +180,7 @@ export function ConversationApp({
 	workspace?: WorkspaceController;
 	hub?: HubController;
 	day?: DayController;
+	slack?: SlackBrowseController;
 }) {
 	const state = useStore(controller.store);
 	const prepared = useStore(reviews.store);
@@ -280,6 +283,7 @@ export function ConversationApp({
 					<CommandSidebar
 						hub={hub}
 						day={day}
+						slack={slack}
 						workspace={workspace}
 						conversationOpen={conversationOpen}
 						onConversation={() => setConversationOpen((current) => !current)}
@@ -415,6 +419,8 @@ export function ConversationApp({
 								<CanvasWorkspace
 									hub={hub}
 									day={day}
+									slack={slack}
+									onManualInteraction={controller.interruptReply}
 									controller={workspace}
 									reviews={reviews}
 									browser={browser}

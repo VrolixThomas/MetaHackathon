@@ -14,6 +14,7 @@ interface SlackSourcesState {
 	conversations: ChatConversation[];
 	cursor: string | null;
 	selected: string[];
+	excluded: string[];
 	busy: boolean;
 	loginPending: boolean;
 	error: string;
@@ -36,6 +37,7 @@ export function createSlackSourcesController(
 		conversations: [],
 		cursor: null,
 		selected: [],
+		excluded: [],
 		busy: false,
 		loginPending: false,
 		error: "",
@@ -73,6 +75,7 @@ export function createSlackSourcesController(
 			status: null,
 			conversations: [],
 			selected: [],
+			excluded: [],
 			cursor: null,
 			busy: false,
 			error: "",
@@ -137,7 +140,11 @@ export function createSlackSourcesController(
 					sourceIdentity = key;
 				}
 				if (!authorized()) return;
-				store.setState({ status: next, error: "", ...(!dirty ? { selected: next.watching } : {}) });
+				store.setState({
+					status: next,
+					error: "",
+					...(!dirty ? { selected: next.watching, excluded: next.excludedConversationIds } : {}),
+				});
 			} catch {
 				if (current())
 					store.setState({
@@ -151,13 +158,18 @@ export function createSlackSourcesController(
 		return operation.promise;
 	}
 
-	async function action(path: "slack.watch" | "slack.connect" | "slack.openSetup") {
+	async function action(
+		path: "slack.watch" | "slack.follow" | "slack.connect" | "slack.openSetup"
+	) {
 		if (disposed || store.getState().busy) return;
-		if (path !== "slack.watch" && oauth && hasPendingLogin(oauth.store.getState())) return;
+		if (oauth && hasPendingLogin(oauth.store.getState())) return;
 		const state = store.getState();
 		if (
-			path === "slack.watch" &&
-			(!authorized() || state.status?.phase !== "connected" || state.selected.length > 32)
+			["slack.watch", "slack.follow"].includes(path) &&
+			(!authorized() ||
+				state.status?.phase !== "connected" ||
+				state.selected.length > 1000 ||
+				state.excluded.length > 1000)
 		)
 			return;
 		const version = ++epoch;
@@ -168,11 +180,15 @@ export function createSlackSourcesController(
 			await call(
 				"mutation",
 				path,
-				path === "slack.watch" ? { conversationIds: state.selected } : {}
+				path === "slack.watch"
+					? { conversationIds: state.selected }
+					: path === "slack.follow"
+						? { mode: "all_joined", excludedConversationIds: state.excluded }
+						: {}
 			);
 			if (disposed || version !== epoch) return;
 			mutating = false;
-			if (path === "slack.watch") dirty = false;
+			if (path === "slack.watch" || path === "slack.follow") dirty = false;
 			if (path === "slack.connect") await oauth?.reload();
 			await refresh();
 		} catch {
@@ -207,6 +223,14 @@ export function createSlackSourcesController(
 			)
 				return;
 			dirty = true;
+			if (state.status?.followMode === "all_joined") {
+				store.setState({
+					excluded: checked
+						? state.excluded.filter((item) => item !== id)
+						: [...new Set([...state.excluded, id])],
+				});
+				return;
+			}
 			store.setState({
 				selected: checked
 					? [...new Set([...state.selected, id])]

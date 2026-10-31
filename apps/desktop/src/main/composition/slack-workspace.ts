@@ -626,7 +626,7 @@ export class SlackWorkspaceCoordinator {
 			}
 			const pass = session.membership;
 			const page = await abortable(
-				this.client.listConversations({ cursor: pass.cursor, limit: 15 }, bounded),
+				this.client.listConversations({ cursor: pass.cursor, limit: 15 }, bounded, false),
 				bounded
 			);
 			await this.ensure(session, bounded);

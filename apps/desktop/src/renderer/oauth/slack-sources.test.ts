@@ -118,6 +118,40 @@ it("watch selection preserves unsaved choices during polling and saves an exact 
 	assert.deepEqual(sources.store.getState().status?.watching, ["channel"]);
 });
 
+it("all-joined exclusions preserve newly discovered conversations while saving only explicit exclusions", async () => {
+	let watching = ["first", "second"];
+	let excluded: string[] = [];
+	let sent: unknown;
+	const { sources } = setup(async (_type, path, input) => {
+		if (path === "slack.status")
+			return {
+				...source("member", watching),
+				followMode: "all_joined",
+				excludedConversationIds: excluded,
+			};
+		if (path === "slack.conversations")
+			return {
+				items: [conversation("first"), conversation("second")],
+				nextCursor: null,
+				hasMore: false,
+			};
+		if (path === "slack.follow") {
+			sent = input;
+			excluded = (input as { excludedConversationIds: string[] }).excludedConversationIds;
+		}
+	});
+	await sources.refresh();
+	await sources.load();
+	sources.select("first", false);
+	watching = ["first", "second", "newly-joined"];
+	await sources.refresh();
+	assert.deepEqual(sources.store.getState().excluded, ["first"]);
+	await sources.action("slack.follow");
+	assert.deepEqual(sent, { mode: "all_joined", excludedConversationIds: ["first"] });
+	assert.deepEqual(sources.store.getState().excluded, ["first"]);
+	assert.ok(sources.store.getState().status?.watching.includes("newly-joined"));
+});
+
 it("actual OAuth account changes clear choices/cursor/pending data and fence late pages and failures", async () => {
 	for (const fail of [false, true]) {
 		const oldPage = deferred<unknown>();

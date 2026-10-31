@@ -81,6 +81,8 @@ function validateRequest(body, index) {
 		"day_confirm_local_answer",
 		"memory_search",
 		"day_read_source",
+		"slack_list_conversations",
+		"slack_read_messages",
 	]);
 	for (const tool of body.tools ?? [])
 		assert.ok(workspaceTools.has(tool.name), "Unexpected workspace tool");

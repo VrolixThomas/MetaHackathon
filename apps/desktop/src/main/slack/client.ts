@@ -49,6 +49,7 @@ const ChannelSchema = z.object({
 	is_channel: z.boolean().optional(),
 	is_group: z.boolean().optional(),
 	is_archived: z.boolean().optional(),
+	is_member: z.boolean().optional(),
 });
 export const RawSlackMessageSchema = z.object({
 	ts: SlackTsSchema,
@@ -291,13 +292,10 @@ export class SlackClient {
 				signal
 			)
 		);
-		const names = resolveLabels
-			? await this.profileLabels.names(credential, value.channels, signal)
-			: [];
+		const channels = value.channels.filter((row) => !row.is_archived && row.is_member !== false);
+		const names = resolveLabels ? await this.profileLabels.names(credential, channels, signal) : [];
 		await this.assertCurrent(credential, signal);
-		const items = value.channels.map((row, index) =>
-			describeConversation(credential, row, names[index])
-		);
+		const items = channels.map((row, index) => describeConversation(credential, row, names[index]));
 		const nextCursor = value.response_metadata?.next_cursor || null;
 		return { items, nextCursor, hasMore: !!nextCursor };
 	}

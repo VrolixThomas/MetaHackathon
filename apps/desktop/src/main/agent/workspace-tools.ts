@@ -13,6 +13,7 @@ import {
 	WorkspaceCommandSchema,
 	type WorkspaceObservation,
 	WorkspaceObservationSchema,
+	decodeSlackViewTarget,
 } from "../../shared/contracts";
 import { abortable, throwIfAborted } from "./cancellation";
 import { GuidedReviewError } from "./guided-review";
@@ -285,7 +286,9 @@ export class ConversationWorkspaceTools {
 		if (command.kind === "open-source") this.assertInspected(command.location);
 		if (command.kind === "create-flow")
 			for (const step of command.steps) this.assertInspected(step.location);
-		if (command.kind === "open-center" && command.selectedId) {
+		if (command.kind === "open-center" && command.selectedId && command.section === "slack") {
+			decodeSlackViewTarget(command.selectedId);
+		} else if (command.kind === "open-center" && command.selectedId) {
 			const hub = expected.hub;
 			const ids = hub
 				? [

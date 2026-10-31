@@ -13,6 +13,7 @@ import type { HubController } from "../command-center/controller";
 import type { DayController } from "../day/controller";
 import { ReviewWorkspace } from "../prepared/ReviewWorkspace";
 import type { PreparedController } from "../prepared/controller";
+import type { SlackBrowseController } from "../slack";
 import { ArtifactCanvas } from "./ArtifactCanvas";
 import { BrowserSurface } from "./BrowserSurface";
 import { CanvasSplit } from "./CanvasSplit";
@@ -49,6 +50,8 @@ export function CanvasWorkspace({
 	onOpenSettings,
 	hub,
 	day,
+	slack,
+	onManualInteraction,
 }: {
 	controller: WorkspaceController;
 	reviews: PreparedController;
@@ -58,6 +61,8 @@ export function CanvasWorkspace({
 	onOpenSettings?(): void;
 	hub?: HubController;
 	day?: DayController;
+	slack?: SlackBrowseController;
+	onManualInteraction?(): void;
 }) {
 	const state = useStore(controller.store);
 	const page = useStore(browser.store).page;
@@ -70,6 +75,7 @@ export function CanvasWorkspace({
 			(saved) => !workspace?.canvases.some((canvas) => canvas.id === saved.id)
 		) ?? [];
 	const tabs = useRef<HTMLDivElement>(null);
+	const host = useRef<HTMLElement>(null);
 	const sequence = workspace?.sequence;
 	const browserShown =
 		workspace?.canvases.some(
@@ -92,13 +98,36 @@ export function CanvasWorkspace({
 	const failed = useCallback(() => {
 		if (sequence !== undefined) controller.presentationFailed(sequence);
 	}, [controller, sequence]);
+	const primaryCanvas = workspace?.canvases.find((canvas) => canvas.id === workspace.primaryId);
+	const slackTarget =
+		primaryCanvas?.kind === "center" && primaryCanvas.section === "slack"
+			? primaryCanvas.selectedId
+			: undefined;
 	useLayoutEffect(() => {
 		controller.setObscured(blocked);
 		if (sequence === undefined) return;
 		let disposed = false;
 		let secondFrame = 0;
+		const sourceShown = () =>
+			!slackTarget ||
+			[...(host.current?.querySelectorAll<HTMLElement>("[data-slack-target]") ?? [])].some(
+				(element) => {
+					const rect = element.getBoundingClientRect();
+					return (
+						element.getAttribute("data-slack-target") === slackTarget &&
+						rect.width > 0 &&
+						rect.height > 0
+					);
+				}
+			);
 		const frame = requestAnimationFrame(() => {
-			secondFrame = requestAnimationFrame(() => controller.rendered(sequence));
+			if (!sourceShown()) {
+				controller.presentationFailed(sequence);
+				return;
+			}
+			secondFrame = requestAnimationFrame(() =>
+				sourceShown() ? controller.rendered(sequence) : controller.presentationFailed(sequence)
+			);
 		});
 		if (!browserShown)
 			void browser
@@ -114,7 +143,7 @@ export function CanvasWorkspace({
 			cancelAnimationFrame(frame);
 			cancelAnimationFrame(secondFrame);
 		};
-	}, [controller, browser, sequence, browserShown, blocked]);
+	}, [controller, browser, sequence, browserShown, blocked, slackTarget]);
 	const command = (input: WorkspaceCommand) => void controller.command(input);
 	const tabKeys = (event: KeyboardEvent<HTMLDivElement>) => {
 		if (!["ArrowLeft", "ArrowRight", "Home", "End"].includes(event.key)) return;
@@ -138,6 +167,8 @@ export function CanvasWorkspace({
 					canvas={canvas}
 					hub={hub}
 					day={day}
+					slack={slack}
+					beforeNavigate={onManualInteraction}
 					command={command}
 					onSettings={onOpenSettings}
 				/>
@@ -230,6 +261,7 @@ export function CanvasWorkspace({
 	return (
 		<section
 			className="canvas-workspace"
+			ref={host}
 			aria-label="Workspace canvases"
 			data-workspace-sequence={sequence}
 			data-primary-canvas={workspace?.primaryId}

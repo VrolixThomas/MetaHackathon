@@ -322,3 +322,15 @@ it("Slack PKCE reads only its client ID and disconnect clears only the manual Sl
 		/old-user-grant|unused-secret|keep-app-token/
 	);
 });
+
+it("internal Slack pacing is an explicit owner flag, never inferred from token presence", async (t) => {
+	const { env, path } = await fixture(t, "SLACK_OAUTH_CLIENT_ID=123.456\n");
+	assert.equal((await env.slackSettings()).internalApp, false);
+	await writeFile(path, "SLACK_INTERNAL_APP=1\n");
+	assert.equal((await env.slackSettings()).internalApp, true);
+	await writeFile(path, "SLACK_INTERNAL_APP=2\n");
+	await assert.rejects(
+		env.slackSettings(),
+		/Invalid or inaccessible local environment configuration/
+	);
+});

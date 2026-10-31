@@ -85,6 +85,29 @@ test("history and thread pages retain verbatim text, edit identity, private audi
 	);
 });
 
+test("joined catalog excludes archived and explicitly nonmember rows while preserving the actual cursor", async () => {
+	const { client } = harness((method) =>
+		method === "users.conversations"
+			? {
+					ok: true,
+					channels: [
+						{ id: "C1", name: "active", is_channel: true, is_private: false, is_member: true },
+						{ id: "C2", name: "archived", is_channel: true, is_private: false, is_archived: true },
+						{ id: "C3", name: "not-joined", is_channel: true, is_private: false, is_member: false },
+					],
+					response_metadata: { next_cursor: "next-page" },
+				}
+			: undefined
+	);
+	const page = await client.listConversations({}, undefined, false);
+	assert.deepEqual(
+		page.items.map((row) => row.id),
+		["C1"]
+	);
+	assert.equal(page.nextCursor, "next-page");
+	assert.equal(page.hasMore, true);
+});
+
 test("private membership loss, incomplete membership, missing scopes and foreign channels fail closed", async () => {
 	for (const handler of [
 		(method: string) =>

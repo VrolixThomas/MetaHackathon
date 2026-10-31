@@ -8,6 +8,7 @@ import type {
 	WorkspaceCommand,
 } from "../../shared/contracts";
 import type { DayController } from "../day/controller";
+import { type SlackBrowseController, SlackConversationView } from "../slack";
 import { DayWorkspace } from "../workspace/DayWorkspace";
 import { MarkdownContent } from "../workspace/MarkdownContent";
 import { Connections, HubConnections } from "./Connections";
@@ -37,6 +38,7 @@ function SectionPrompt({
 	const failed = snapshot.errors.some((error) => error.source === source);
 	const needsRepository = source === "github" && !snapshot.repositories.length;
 	const emptyTitle = {
+		slack: "Choose a Slack conversation",
 		day: "No commitments yet",
 		reviews: "No incoming review requests",
 		feedback: "No own pull requests in your repositories",
@@ -264,15 +266,32 @@ export function CenterCanvas({
 	canvas,
 	hub,
 	day,
+	slack,
+	beforeNavigate,
 	command,
 	onSettings,
 }: {
 	canvas: Extract<Canvas, { kind: "center" }>;
 	hub?: HubController;
 	day?: DayController;
+	slack?: SlackBrowseController;
+	beforeNavigate?(): void;
 	command: Command;
 	onSettings?(): void;
 }) {
+	if (canvas.section === "slack")
+		return slack ? (
+			<SlackConversationView
+				controller={slack}
+				selectedId={canvas.selectedId}
+				beforeNavigate={beforeNavigate}
+				onNavigate={(target) =>
+					command({ kind: "open-center", section: "slack", selectedId: target })
+				}
+			/>
+		) : (
+			<p className="hub-muted">Slack is connecting…</p>
+		);
 	if (canvas.section === "day")
 		return day ? (
 			<DayWorkspace day={day} hub={hub} itemId={canvas.selectedId} command={command} />
