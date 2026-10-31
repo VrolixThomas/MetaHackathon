@@ -329,3 +329,74 @@ test("account changes during a deferred offline cache read cannot return the pre
 	release?.();
 	await assert.rejects(result, /unauthorized/);
 });
+
+test("409 progress conflicts preserve exact attempts, do not starve other keys, and require explicit per-key resolution", async () => {
+	const cache = store();
+	let online = false;
+	const sent: string[] = [];
+	const client = new TeamClient({
+		url: "https://team.example",
+		auth: { session: async () => session() },
+		getGitHubToken: async () => "github-user",
+		cache,
+		fetch: transport((_url, init) => {
+			if (!online) throw new Error("Controlled offline");
+			const input = JSON.parse(String(init?.body));
+			sent.push(input.requestId);
+			return input.progress.key.prNumber === 1
+				? Response.json({ error: "conflict" }, { status: 409 })
+				: Response.json({ ...input.progress, revision: 1 });
+		}),
+	});
+	const first = {
+		requestId: randomUUID(),
+		expectedRevision: 0,
+		progress: {
+			key,
+			cursor: null,
+			visited: [],
+			notes: "immutable conflicting edit",
+			paused: false,
+			revision: 0,
+		},
+	};
+	const second = {
+		requestId: randomUUID(),
+		expectedRevision: 0,
+		progress: { ...first.progress, key: { ...key, prNumber: 2 }, notes: "independent edit" },
+	};
+	await client.saveProgress(first);
+	await client.saveProgress(second);
+	online = true;
+	assert.equal(await client.flushProgress(), 1);
+	assert.deepEqual(sent, [first.requestId, second.requestId]);
+	const conflicts = await client.progressConflicts();
+	assert.equal(conflicts.length, 1);
+	assert.deepEqual(conflicts[0]?.attempted, first.progress);
+	assert.equal(conflicts[0]?.requestId, first.requestId);
+	assert.equal(await client.flushProgress(), 0);
+	assert.equal(sent.length, 2);
+	await assert.rejects(
+		client.resolveProgressConflict({
+			requestId: first.requestId,
+			resolution: "discard",
+			confirmed: false,
+		})
+	);
+	await client.resolveProgressConflict({
+		requestId: first.requestId,
+		resolution: "discard",
+		confirmed: true,
+	});
+	assert.equal((await client.progressConflicts()).length, 0);
+	const history = await client.progressConflicts(true);
+	assert.equal(history[0]?.resolution, "discarded");
+	assert.deepEqual(history[0]?.attempted, first.progress);
+	await assert.rejects(
+		client.saveProgress({
+			...first,
+			progress: { ...first.progress, notes: "cannot reuse immutable attempt" },
+		})
+	);
+	assert.equal(sent.length, 2);
+});

@@ -353,10 +353,13 @@ export class TeamService {
 			};
 			this.fence(c);
 			await c.instance.preferences.write(prefs);
+			this.fence(c);
+			this.epoch++;
 			return scope;
 		});
 	}
 	async scopeForRepository(repository: string) {
+		if (!(await this.configured())) return null;
 		const c = await this.current();
 		return (
 			(await this.scopes(c)).find((s) => s.repository.toLowerCase() === repository.toLowerCase()) ??
@@ -366,10 +369,14 @@ export class TeamService {
 	async prepare(raw: ConversationPRContext, signal: AbortSignal) {
 		const context = ConversationPRContextSchema.parse(raw);
 		const c = await this.scope(context.pr.repository);
-		const result = await new TeamPreparationProvider(c.instance.client, c.scope).prepare(
-			context,
-			signal
-		);
+		signal.throwIfAborted();
+		const current = TeamOrganizationsSchema.parse(await c.instance.client.organizations());
+		if (!current.items.some((org) => org.id === c.scope.orgId)) throw new TeamError("forbidden");
+		this.fence(c);
+		const result = await new TeamPreparationProvider(c.instance.client, {
+			...c.scope,
+			analysisVersion: current.analysisVersion,
+		}).prepare(context, signal);
 		this.fence(c);
 		return result;
 	}
@@ -461,12 +468,13 @@ export class TeamService {
 	}
 	async shareProposal(raw: unknown) {
 		const input = ShareLocalProposalSchema.parse(raw);
+		const c = await this.scope(input.repository);
 		const preview = await this.previewProposal({
 			candidateId: input.candidateId,
 			repository: input.repository,
 		});
 		if (preview.bundleDigest !== input.bundleDigest) throw new TeamError("conflict");
-		const c = await this.scope(input.repository);
+		this.fence(c);
 		const result = await c.instance.client.shareProposal({
 			requestId: input.requestId,
 			bundle: preview.bundle,
@@ -510,6 +518,7 @@ export class TeamService {
 			const previous = ledger[id];
 			if (previous) {
 				if (digest(previous.input) !== digest(input)) throw new TeamError("conflict");
+				this.fence(c);
 				return previous.receipt;
 			}
 			const proof = z
@@ -560,12 +569,34 @@ export class TeamService {
 				this.fence(c);
 				ledger[id] = { input, receipt: result };
 				await c.instance.ledger.write(ledger);
+				this.fence(c);
 				return result;
 			} catch {
+				this.fence(c);
 				return receipt;
 			}
 		});
 	}
+	async progressConflicts(_input: unknown = {}) {
+		const c = await this.current();
+		const result = await c.instance.client.progressConflicts();
+		this.fence(c);
+		return result;
+	}
+	async resolveProgressConflict(input: unknown) {
+		const c = await this.current();
+		const result = await c.instance.client.resolveProgressConflict(input);
+		this.fence(c);
+		return result;
+	}
+	async flushProgress(_input: unknown = {}) {
+		const c = await this.current();
+		const saved = await c.instance.client.flushProgress();
+		const conflicts = await c.instance.client.progressConflicts();
+		this.fence(c);
+		return { saved, conflicts };
+	}
+
 	dispose() {
 		this.disposed = true;
 		this.epoch++;

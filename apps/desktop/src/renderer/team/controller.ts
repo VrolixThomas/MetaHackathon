@@ -1,11 +1,14 @@
-import type { z } from "zod";
+import { z } from "zod";
 import { createStore } from "zustand/vanilla";
 import {
 	ApplyTeamProposalSchema,
 	CreateOrganizationSchema,
 	DecideTeamProposalSchema,
 	PreviewLocalProposalSchema,
+	type ProgressConflict,
+	ProgressConflictListSchema,
 	RegisterRepositorySchema,
+	ResolveProgressConflictSchema,
 	SelectScopeSchema,
 	ShareLocalProposalSchema,
 	type TeamApplyReceipt,
@@ -37,6 +40,7 @@ export interface TeamContext {
 }
 export interface TeamState {
 	status: TeamStatus | null;
+	conflicts: ProgressConflict[];
 	organizations: z.infer<typeof TeamOrganizationSchema>[];
 	repositories: z.infer<typeof TeamRepositorySchema>[];
 	orgId: string | null;
@@ -58,6 +62,7 @@ const message = "Team request failed. Check the connection and repository access
 export function createTeamController(call: TeamCall) {
 	const store = createStore<TeamState>(() => ({
 		status: null,
+		conflicts: [],
 		organizations: [],
 		repositories: [],
 		orgId: null,
@@ -79,6 +84,7 @@ export function createTeamController(call: TeamCall) {
 	let epoch = 0;
 	let timer: ReturnType<typeof setTimeout> | undefined;
 	let refreshing = false;
+	let active: object | null = null;
 	const requests = new Map<string, string>();
 	function request(key: string) {
 		const existing = requests.get(key);
@@ -109,6 +115,7 @@ export function createTeamController(call: TeamCall) {
 				epoch++;
 				requests.clear();
 				store.setState({
+					conflicts: [],
 					organizations: [],
 					repositories: [],
 					orgId: null,
@@ -124,6 +131,7 @@ export function createTeamController(call: TeamCall) {
 				(!store.getState().organizations.length || previous?.connection !== "connected")
 			)
 				await organizations();
+			if (status.connection === "connected") await conflicts();
 		} catch {
 			if (live(version)) store.setState({ error: message });
 		} finally {
@@ -133,6 +141,14 @@ export function createTeamController(call: TeamCall) {
 				schedule();
 			}
 		}
+	}
+
+	async function conflicts() {
+		const version = epoch;
+		const rows = ProgressConflictListSchema.parse(
+			await call("query", "team.progressConflicts", {})
+		);
+		if (live(version)) store.setState({ conflicts: rows });
 	}
 	async function organizations() {
 		const version = epoch;
@@ -189,14 +205,19 @@ export function createTeamController(call: TeamCall) {
 	}
 	async function run(label: string, operation: (version: number) => Promise<void>) {
 		if (disposed || store.getState().busy) return;
-		const version = epoch;
+		const version = ++epoch;
+		const operationToken = {};
+		active = operationToken;
 		store.setState({ busy: label, error: null, notice: null });
 		try {
 			await operation(version);
 		} catch {
 			if (live(version)) store.setState({ error: message });
 		} finally {
-			if (!disposed) store.setState({ busy: null });
+			if (!disposed && active === operationToken) {
+				active = null;
+				store.setState({ busy: null });
+			}
 		}
 	}
 	return {
@@ -233,9 +254,12 @@ export function createTeamController(call: TeamCall) {
 			}),
 		async logout() {
 			epoch++;
+			const operation = {};
+			active = operation;
 			requests.clear();
 			store.setState({
 				busy: "logout",
+				conflicts: [],
 				organizations: [],
 				repositories: [],
 				orgId: null,
@@ -251,7 +275,10 @@ export function createTeamController(call: TeamCall) {
 			} catch {
 				if (!disposed) store.setState({ error: message });
 			} finally {
-				if (!disposed) store.setState({ busy: null });
+				if (!disposed && active === operation) {
+					active = null;
+					store.setState({ busy: null });
+				}
 				schedule();
 			}
 		},
@@ -439,6 +466,35 @@ export function createTeamController(call: TeamCall) {
 				if (live(version)) store.setState({ applyReceipt: receipt });
 			});
 		},
+		reloadConflicts: () => run("progress", async () => conflicts()),
+		retryProgress: () =>
+			run("progress", async (version) => {
+				const result = z
+					.object({ saved: z.int().nonnegative(), conflicts: ProgressConflictListSchema })
+					.parse(await call("mutation", "team.flushProgress", {}));
+				if (live(version))
+					store.setState({
+						conflicts: result.conflicts,
+						notice: `Saved ${result.saved} pending progress edits.`,
+					});
+			}),
+		discardProgress(requestId: string) {
+			return run("progress", async (version) => {
+				const rows = ProgressConflictListSchema.parse(
+					await call(
+						"mutation",
+						"team.resolveProgressConflict",
+						ResolveProgressConflictSchema.parse({
+							requestId,
+							confirmed: true,
+							resolution: "discard",
+						})
+					)
+				);
+				if (live(version)) store.setState({ conflicts: rows });
+			});
+		},
+
 		dispose() {
 			disposed = true;
 			epoch++;

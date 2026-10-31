@@ -103,3 +103,70 @@ test("controller requires exact confirmation and never applies on author accepta
 	assert.equal(controller.store.getState().detail?.decision?.decision, "accept");
 	controller.dispose();
 });
+
+test("pending proposal read cannot repopulate the card or clear an active logout after account retirement", async () => {
+	let resolveRead: ((value: unknown) => void) | undefined;
+	let resolveLogout: ((value: unknown) => void) | undefined;
+	const controller = createTeamController(async (_type, path) => {
+		if (path === "team.readProposal")
+			return new Promise((resolve) => {
+				resolveRead = resolve;
+			});
+		if (path === "team.logout")
+			return new Promise((resolve) => {
+				resolveLogout = resolve;
+			});
+		throw new Error("Unexpected controlled path");
+	});
+	controller.store.setState({ status, activeRepository: "test/repo" });
+	const read = controller.readProposal(detail.id);
+	assert.ok(resolveRead);
+	const logout = controller.logout();
+	assert.ok(resolveLogout);
+	resolveRead(detail);
+	await read;
+	assert.equal(controller.store.getState().detail, null);
+	assert.equal(controller.store.getState().busy, "logout");
+	resolveLogout({ ...status, connection: "disconnected", userId: null, scopes: [] });
+	await logout;
+	assert.equal(controller.store.getState().status?.connection, "disconnected");
+	controller.dispose();
+});
+test("controller startup resolves current context, real org/repo responses and private conflicts without fixture defaults", async () => {
+	const controller = createTeamController(async (_type, path) => {
+		if (path === "team.status") return status;
+		if (path === "team.organizations")
+			return {
+				analysisVersion: "test-v1",
+				items: [{ id: org, name: "Actual controlled response" }],
+			};
+		if (path === "team.repositories")
+			return {
+				items: [{ orgId: org, repositoryId: "42", fullName: "test/repo" }],
+				nextOffset: null,
+			};
+		if (path === "team.proposals")
+			return {
+				items: [
+					{
+						id: detail.id,
+						key: detail.key,
+						ownerId: detail.ownerId,
+						bundleDigest: detail.bundleDigest,
+						createdAt: detail.createdAt,
+						decision: null,
+					},
+				],
+				nextOffset: null,
+			};
+		if (path === "team.progressConflicts") return [];
+		throw new Error(`Unexpected ${path}`);
+	});
+	controller.setContext({ repository: "test/repo", prNumber: 1 });
+	await controller.start();
+	assert.equal(controller.store.getState().status?.connection, "connected");
+	assert.equal(controller.store.getState().organizations[0]?.name, "Actual controlled response");
+	assert.equal(controller.store.getState().repositories[0]?.fullName, "test/repo");
+	assert.equal(controller.store.getState().proposals[0]?.id, detail.id);
+	controller.dispose();
+});

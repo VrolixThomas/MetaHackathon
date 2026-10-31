@@ -198,6 +198,48 @@ export function TeamCard({
 							</form>
 						</>
 					)}
+					<details className="team-progress-conflicts">
+						<summary>Private progress conflicts ({state.conflicts.length})</summary>
+						<div className="hub-actions">
+							<button
+								type="button"
+								disabled={busy}
+								onClick={() => void controller.reloadConflicts()}
+							>
+								Reload conflicts
+							</button>
+							<button type="button" disabled={busy} onClick={() => void controller.retryProgress()}>
+								Retry pending progress
+							</button>
+						</div>
+						{state.conflicts.map((item) => (
+							<details key={item.requestId}>
+								<summary>
+									PR #{item.key.prNumber} · {item.attempted.cursor ?? "No file selected"}
+								</summary>
+								<p>
+									Another saved version conflicts with this pending edit (revision{" "}
+									{item.expectedRevision}).
+								</p>
+								<pre>
+									<code>{item.attempted.notes}</code>
+								</pre>
+								<p className="small">
+									Base <code>{item.key.baseSha}</code>
+									<br />
+									Head <code>{item.key.headSha}</code>
+								</p>
+								<button
+									type="button"
+									disabled={busy}
+									onClick={() => void controller.discardProgress(item.requestId)}
+								>
+									Discard this pending progress edit
+								</button>
+							</details>
+						))}
+					</details>
+
 					<div className="team-heading">
 						<h4>
 							Shared proposals{state.context.prNumber ? ` for PR #${state.context.prNumber}` : ""}

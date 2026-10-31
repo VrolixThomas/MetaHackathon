@@ -1,6 +1,14 @@
 import { z } from "zod";
 import { GitHubRepositorySchema } from "../../apps/desktop/src/shared/contracts";
-import { Digest, ProposalBundleSchema, RepositoryId, ReviewKeySchema, Sha } from "./schemas";
+import {
+	Digest,
+	ProgressSchema,
+	ProgressWriteSchema,
+	ProposalBundleSchema,
+	RepositoryId,
+	ReviewKeySchema,
+	Sha,
+} from "./schemas";
 
 export const TeamScopeSchema = z.strictObject({
 	orgId: z.uuid(),
@@ -143,3 +151,26 @@ export const TeamLocalPreviewSchema = z.strictObject({
 	bundle: ProposalBundleSchema,
 	bundleDigest: Digest,
 });
+
+export const ProgressConflictSchema = z.strictObject({
+	requestId: z.uuid(),
+	key: ReviewKeySchema,
+	attempted: ProgressSchema,
+	expectedRevision: z.int().nonnegative(),
+	detectedAt: z.iso.datetime(),
+	resolution: z.enum(["unresolved", "discarded", "replaced"]),
+	replacementRequestId: z.uuid().optional(),
+});
+export const ProgressConflictListSchema = z.array(ProgressConflictSchema).max(200);
+export const ResolveProgressConflictSchema = z
+	.strictObject({
+		requestId: z.uuid(),
+		confirmed: z.literal(true),
+		resolution: z.enum(["discard", "replace"]),
+		replacement: ProgressWriteSchema.optional(),
+	})
+	.refine(
+		(input) => (input.resolution === "replace" ? !!input.replacement : !input.replacement),
+		"Replacement must be supplied only for explicit replace"
+	);
+export type ProgressConflict = z.infer<typeof ProgressConflictSchema>;

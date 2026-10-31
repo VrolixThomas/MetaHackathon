@@ -57,6 +57,43 @@ progress/notes are separate user-scoped records with transactionally deduplicate
 Server service-role key and GitHub App private key are never sent to desktop. Use independent backend
 secret management. No local CLI sign-in credential is accepted for shared preparation.
 
+## Installed desktop facade and card
+
+`apps/desktop/src/main/team/service.ts` exports `TeamService` and `TeamServiceOptions`; root supplies
+user data directory, OS encryption, configuration, selected GitHub credential/account generation,
+external browser opening and actual local candidate/apply ports. `renderer/team/index.ts` exports
+`createTeamController(call)` and `TeamCard`. Root mounts the card, registers named `team.*` RPCs and owns
+controller/service disposal. The component provides actual connection, organization creation,
+repository registration/selection, exact source/patch/check review, sharing, author acceptance/decline,
+and a separate local Apply confirmation. An actual applied receipt may include `jobId` for root's
+`onReviewApplied(jobId)` hook; no readiness/acceptance state invents an applied result.
+
+The facade persists selected shared scope per authenticated user/GitHub repository. `prepare` uses only
+that selected scope and never silently substitutes a local shared result. Source-only schemas live in
+`schemas.ts` and UI/facade DTOs in `desktop-schemas.ts`; neither module imports Node crypto or credentials.
+Root alone promotes these to shared contracts and composes Settings, routers, source readers and local
+runtime application. Missing configuration/ports produce explicit unavailable states.
+
+Migration 003 adds idempotent organization creation and repository registration. Creators become active
+owners. Registration requires that owner membership, a freshly verified matching GitHub identity with
+repository administrator permission, and the actual active GitHub App installation for that repository.
+Existing pre-onboarding organizations require an explicit operator-assigned owner. Membership management
+for the proof of concept remains an explicit trusted administrative operation.
+
+Migration 003 also revokes every authenticated/anonymous legacy and actor-overload share/decision write.
+Only the server service role can call source-sensitive RPCs, with `p_actor` taken from the freshly
+validated Supabase user, never request JSON. The database rechecks that actor's active organization and
+repository grant, exact consent and stable request ledger. A user JWT cannot bypass current GitHub
+head/feedback verification by calling PostgREST directly with a cached witness.
+
+Private progress conflicts are durable. A 409 moves the unchanged original write into per-account
+conflict history; flushing skips only that input key and continues independent reviews. Explicit discard
+retains the original attempted notes/cursor/revision. Explicit replacement requires a new supplied
+request ID and the same immutable key; no automatic rebase or identity regeneration occurs. Facade
+`progressConflicts`, `resolveProgressConflict`, and `flushProgress` back the card's private conflict
+reload/retry/discard controls. Final generation/user checks run after encrypted cache reads/writes, so a
+late online or offline result cannot return another account's artifact as current.
+
 ## Executable hosting and exact proposal exchange
 
 Run from a clean repository root with its supplied frozen manifests (`bun install --frozen-lockfile

@@ -1,5 +1,9 @@
 import { z } from "zod";
 import {
+	ProgressConflictListSchema,
+	ResolveProgressConflictSchema,
+} from "../../../../../services/team/desktop-schemas";
+import {
 	ProposalDecisionSchema,
 	ShareProposalSchema,
 	validateBundle,
@@ -24,11 +28,18 @@ const ExchangeSchema = z.discriminatedUnion("kind", [
 	z.object({ kind: z.literal("share"), input: ShareProposalSchema }),
 	z.object({ kind: z.literal("decide"), input: ProposalDecisionSchema }),
 ]);
+const StoredConflictSchema = z.object({
+	write: ProgressWriteSchema,
+	detectedAt: z.iso.datetime(),
+	resolution: z.enum(["unresolved", "discarded", "replaced"]),
+	replacementRequestId: z.uuid().optional(),
+});
 const LocalSchema = z.strictObject({
 	userId: z.uuid(),
 	artifacts: z.record(z.string(), z.unknown()),
 	pending: z.array(ProgressWriteSchema).max(200),
 	exchanges: z.array(ExchangeSchema).max(10).default([]),
+	conflicts: z.array(StoredConflictSchema).max(200).default([]),
 });
 const PrivateCacheSchema = z.object({
 	version: z.literal(1),
@@ -87,6 +98,7 @@ export class TeamClient {
 				artifacts: {},
 				pending: [],
 				exchanges: [],
+				conflicts: [],
 			}
 		);
 	}
@@ -206,10 +218,13 @@ export class TeamClient {
 		expectedUserId?: string
 	): Promise<{ status: "saved" | "pending"; progress: TeamProgress }> {
 		const write = ProgressWriteSchema.parse(input);
-		const userId = (await this.options.auth.session()).user.id;
+		const stamp = await this.stamp();
+		const userId = stamp.userId;
 		if (expectedUserId && expectedUserId !== userId) throw new TeamError("unauthorized");
 		return this.serialize(async () => {
 			const local = await this.local(userId);
+			if (local.conflicts.some((item) => item.write.requestId === write.requestId))
+				throw new TeamError("conflict");
 			const existing = local.pending.find((item) => item.requestId === write.requestId);
 			if (existing && digest(existing) !== digest(write)) throw new TeamError("conflict");
 			if (!existing) {
@@ -223,24 +238,113 @@ export class TeamClient {
 				const progress = ProgressSchema.parse(response.value);
 				local.pending = local.pending.filter((item) => item.requestId !== write.requestId);
 				await this.persist(local);
+				await this.assertStamp(stamp);
 				return { status: "saved", progress };
 			} catch (error) {
-				if (error instanceof TeamError && error.code === "offline")
+				if (error instanceof TeamError && error.code === "conflict") {
+					if (!local.conflicts.some((item) => item.write.requestId === write.requestId)) {
+						if (local.conflicts.length >= 200) throw new TeamError("unavailable");
+						local.conflicts.push({
+							write,
+							detectedAt: new Date().toISOString(),
+							resolution: "unresolved",
+						});
+					}
+					local.pending = local.pending.filter((item) => item.requestId !== write.requestId);
+					await this.persist(local);
+					await this.assertStamp(stamp);
+					throw error;
+				}
+				if (error instanceof TeamError && error.code === "offline") {
+					await this.assertStamp(stamp);
 					return { status: "pending", progress: write.progress };
+				}
 				throw error;
 			}
 		});
 	}
+
 	async flushProgress(): Promise<number> {
-		const userId = (await this.options.auth.session()).user.id;
-		const items = (await this.local(userId)).pending;
+		const stamp = await this.stamp();
+		const local = await this.local(stamp.userId);
+		await this.assertStamp(stamp);
+		const blocked = new Set(
+			local.conflicts
+				.filter((item) => item.resolution === "unresolved")
+				.map((item) => digest(item.write.progress.key))
+		);
 		let saved = 0;
-		for (const input of items) {
-			const result = await this.saveProgress(input, userId);
-			if (result.status === "pending") break;
-			saved++;
+		for (const input of local.pending) {
+			const key = digest(input.progress.key);
+			if (blocked.has(key)) continue;
+			try {
+				const result = await this.saveProgress(input, stamp.userId);
+				if (result.status === "pending") break;
+				saved++;
+			} catch (error) {
+				if (error instanceof TeamError && error.code === "conflict") {
+					blocked.add(key);
+					continue;
+				}
+				throw error;
+			}
 		}
+		await this.assertStamp(stamp);
 		return saved;
+	}
+	async progressConflicts(includeResolved = false) {
+		const stamp = await this.stamp();
+		const local = await this.local(stamp.userId);
+		await this.assertStamp(stamp);
+		return ProgressConflictListSchema.parse(
+			local.conflicts
+				.filter((item) => includeResolved || item.resolution === "unresolved")
+				.map((item) => ({
+					requestId: item.write.requestId,
+					key: item.write.progress.key,
+					attempted: item.write.progress,
+					expectedRevision: item.write.expectedRevision,
+					detectedAt: item.detectedAt,
+					resolution: item.resolution,
+					...(item.replacementRequestId ? { replacementRequestId: item.replacementRequestId } : {}),
+				}))
+		);
+	}
+	async resolveProgressConflict(raw: unknown) {
+		const input = ResolveProgressConflictSchema.parse(raw);
+		const stamp = await this.stamp();
+		await this.serialize(async () => {
+			const local = await this.local(stamp.userId);
+			const conflict = local.conflicts.find((item) => item.write.requestId === input.requestId);
+			if (!conflict) throw new TeamError("invalid");
+			const target = input.resolution === "discard" ? "discarded" : "replaced";
+			if (conflict.resolution !== "unresolved") {
+				if (
+					conflict.resolution !== target ||
+					conflict.replacementRequestId !== input.replacement?.requestId
+				)
+					throw new TeamError("conflict");
+				return;
+			}
+			if (input.replacement) {
+				if (
+					input.replacement.requestId === input.requestId ||
+					digest(input.replacement.progress.key) !== digest(conflict.write.progress.key) ||
+					input.replacement.expectedRevision !== input.replacement.progress.revision ||
+					local.pending.some((item) => item.requestId === input.replacement?.requestId) ||
+					local.conflicts.some((item) => item.write.requestId === input.replacement?.requestId)
+				)
+					throw new TeamError("conflict");
+				if (local.pending.length >= 200) throw new TeamError("unavailable");
+				local.pending.push(input.replacement);
+				conflict.replacementRequestId = input.replacement.requestId;
+			}
+			conflict.resolution = target;
+			await this.assertStamp(stamp);
+			await this.persist(local);
+			await this.assertStamp(stamp);
+		});
+		return this.progressConflicts();
 	}
 
 	async resolveRepository(orgId: string, repositoryId: string) {

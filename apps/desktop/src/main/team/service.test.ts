@@ -226,6 +226,7 @@ test("unconfigured TeamService reports absence and cannot invent organizations",
 	});
 	try {
 		assert.equal((await service.status()).connection, "unconfigured");
+		assert.equal(await service.scopeForRepository("test/repo"), null);
 		await assert.rejects(service.organizations());
 	} finally {
 		service.dispose();
