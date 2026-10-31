@@ -1,0 +1,123 @@
+{
+	"date": "2026-10-31",
+	"implementationCommit": "0a6628c",
+	"status": "passed",
+	"scope": "Actual built Electron/preload/IPC, app-owned coding child, isolated Git and actual declared checks. GitHub/model/media responses controlled. No success RPC, tool result, runtime patch or positive display receipt substituted.",
+	"unitTests": {
+		"passed": 1561,
+		"skippedElectronOnly": 13,
+		"failed": 0,
+		"perTestTimeoutMs": 20000,
+		"files": 155,
+		"total": 1574
+	},
+	"typeCheck": "passed",
+	"lint": "passed",
+	"productionBuild": "passed",
+	"nativeRegressions": [
+		"oauth",
+		"conversation",
+		"day",
+		"prepared-reviews",
+		"workspace-browser",
+		"executive-workers",
+		"hands-free",
+		"attention"
+	],
+	"comments": {
+		"status": "passed",
+		"builtMainSha256": "3deaca0b310637c0c3bec761b9d3ab0cc51ae1bb87b32cc2772cdab048a61a91",
+		"steps": [
+			{
+				"label": "Empty startup and isolated dummy configuration",
+				"status": "passed"
+			},
+			{
+				"label": "Prepare real local source and manually open its PR",
+				"status": "passed"
+			},
+			{
+				"label": "Actual j/k file navigation and clamped endpoints",
+				"status": "passed"
+			},
+			{
+				"label": "Actual loopback native page beside the prepared review",
+				"status": "passed"
+			},
+			{
+				"label": "Typing j/k, exact draft/edit, unchecked consent and native modal resize",
+				"status": "passed"
+			},
+			{
+				"label": "Explicit UI confirmation posts once to exact PR with durable stable request identity",
+				"status": "passed"
+			},
+			{
+				"label": "UI cancellation aborts actual provider preflight without a second POST",
+				"status": "passed"
+			},
+			{
+				"label": "Fresh head change rejects actual UI confirmation before any extra POST",
+				"status": "passed"
+			}
+		],
+		"controlledConfirmedPosts": 1,
+		"nativeModalLeaks": 0,
+		"originalDirtyPreserved": true,
+		"cleanup": {
+			"ownedTempRemoved": true,
+			"serverClosed": true,
+			"guestDisposed": true
+		},
+		"screenshot": "../screenshots/pr-comment-controlled-dialog.png"
+	},
+	"fixes": {
+		"status": "passed",
+		"builtMainSha256": "f7dfcaf19498f1ba8d095ff05ddd29e114397bec8b07e02145c3f9b31ad9c53c",
+		"builtWorkerSha256": "115dbcdbc85138deeba276893a67eec21a177a0b5118fa4e95f5923b7bf5047e",
+		"actualChildren": 1,
+		"childCompleted": true,
+		"childExitCode": 0,
+		"changedFileCount": 2,
+		"actualChecks": [
+			{
+				"id": "9966e351-4cd9-4031-9190-a4873821a139",
+				"command": "npm",
+				"args": ["run", "test"],
+				"commitSha": "130c537346a0f47bcad2341a936443dc6c3aac74",
+				"startedAt": "2026-10-31T13:27:04.734Z",
+				"finishedAt": "2026-10-31T13:27:04.953Z",
+				"exitCode": 0,
+				"logId": "9966e351-4cd9-4031-9190-a4873821a139"
+			}
+		],
+		"manualAcceptedSourceReceipts": 4,
+		"typedAgentNavigation": true,
+		"typedProviderRequests": 4,
+		"typedInspectionIsNotDisplay": true,
+		"privateStoreFreshReopen": true,
+		"originalCheckoutUnchanged": true,
+		"githubWrites": 0,
+		"publication": "not-published",
+		"localReviewRecorded": true,
+		"ownedTempRemoved": true,
+		"blocked": [],
+		"screenshot": "../screenshots/pr-fix-controlled-diff.png",
+		"concurrentInspectionRegression": "passed across service instances",
+		"typedAcceptedSourceReceipts": 1
+	},
+	"limits": {
+		"liveSpeech": false,
+		"physicalMicrophone": false,
+		"liveGitHubPosting": false,
+		"fullFixProcessRestart": false,
+		"uncertainExecutionResume": false,
+		"fixClarificationAnswerAPI": false
+	},
+	"liveApp": {
+		"reopened": true,
+		"existingAccountsPresent": true,
+		"productFixturesSeeded": false,
+		"realPRFeedbackCountAtCheck": 0
+	}
+}

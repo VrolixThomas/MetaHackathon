@@ -162,6 +162,25 @@ No background history polling runs from the reader itself.
 For a verified internal customer-built registration only, `SLACK_INTERNAL_APP=1` selects conservative
 Tier 3 pacing. Leave it unset for commercial distribution; server Retry-After always wins.
 
+## Review comments and suggested fixes
+
+With a prepared PR open, use **j / k** to move through its reading order. Typing, dialogs and menus
+keep their own keys. **Add PR comment** opens a draft: review its exact wording and optional head-side
+line, then explicitly confirm posting. Editing the body or changing the source invalidates consent.
+
+Under **Own PR feedback**, choose **Prepare suggested fix**, or ask Muse to prepare the inspected
+feedback. Muse works in a separate app-owned checkout. Open **Suggested fixes** to inspect the original
+comment, explanation, changed files, syntax-highlighted diff, **Before**, **Proposed after**, and actual
+check results. Previous/Next file uses the same acknowledged navigation as Muse. Source line controls
+open the exact candidate revision.
+
+**Mark fix reviewed** records the local candidate revision you inspected. This workflow leaves the
+candidate local; publication and merging are separate operations. Failed checks, missing checks,
+clarification requests and interrupted work remain visible. Uncertain interrupted executions are
+retained rather than silently rerun. No product sample PRs or fix results are loaded at startup.
+
+See [PR work acceptance](docs/integration/pr-work-acceptance.md) for controlled-native test scope.
+
 ## Prepared reviews
 
 Add repositories through the sidebar and choose a PR from **Incoming reviews** or **Own PR feedback**. The top-left selector remains available for direct local review access. Muse fetches

@@ -52,6 +52,8 @@ bun run type-check
 bun run lint
 bun run test:contracts
 bun run test:integration
+bun run test:pr-work
+bun run test:pr-fixes
 bun run build
 bun run --filter @metahackathon/desktop preview
 ```
@@ -307,3 +309,33 @@ never display proof or send authority. The read-only sidebar/view has no product
 composer. Reader metadata is independent of background watcher startup; cached labels are not ACLs.
 Only explicit owner `SLACK_INTERNAL_APP=1` enables internal-app pacing; commercial default remains
 conservative and HTTP429 Retry-After always applies.
+
+## Prepared PR comments and local fix review (2026-10-31)
+
+MET-8 coordinates the prepared-comment/j-k/candidate-review increment. Shared `pr-work.ts`
+contains PR comment inputs, private-owner candidate summaries/details and exact file target helpers.
+Main `PreparedComments` uses the current ready `ReviewCoordinator`, complete RIGHT-side diff lines,
+exact words/revision/body/head confirmation, cancellation tombstones and the existing durable GitHub
+ledger. Account changes retire drafts and foreground history. One persistent renderer comment control
+keeps ambiguous attempt identity across closing; it remains absent before a real review exists.
+
+`main/work/pr-fixes/` composes the existing app-owned coding entry and isolated Git runtime. Admission
+is durable before execution. Each source revision, owner and attempt has a private binding; unknown
+executions are retained as interrupted and never automatically replayed. Speech cancellation does not
+own background work. The separate Suggested fixes queue shows original feedback, inferred explanation,
+actual diff/Before/Proposed after, changed files and actual checks. Mark fix reviewed records only the
+inspected candidate head privately; it does not publish, merge or grant PR-author approval.
+
+Manual and agent file selections use `encodePRFixViewTarget` and the shared workspace path. Canvas
+`fixSource` pins id/base/head/path. Main validates recorded candidate metadata; renderer loads actual
+fresh authorized detail, commits two matching visible frames, then main rechecks that metadata before
+acceptance. A separate status marker proves only preparing/unavailable metadata, never source display.
+Candidate source line actions resolve immutable app-owned runtime sources, preserving exact bytes and
+inclusive line identity. Local source listing/read tools alone establish neither display nor send authority.
+
+`test:pr-work` runs actual built Electron/IPC/Git/native-browser and controlled GitHub/model transport:
+manual file navigation, typing exclusion, exact draft/edit/consent, durable posting dedup, cancellation and
+stale head rejection. `test:pr-fixes` runs the actual app-owned coding child and validation command,
+provider-only controlled model/GitHub responses, candidate sources/checks, two-frame receipts and
+private-store reopen. They do not establish live speech, live GitHub posting or a full app restart.
+Root alone launches them. Native keyboard tests whitelist their injected keys and hold focus briefly.
