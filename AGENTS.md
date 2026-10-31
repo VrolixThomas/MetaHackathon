@@ -339,3 +339,16 @@ stale head rejection. `test:pr-fixes` runs the actual app-owned coding child and
 provider-only controlled model/GitHub responses, candidate sources/checks, two-frame receipts and
 private-store reopen. They do not establish live speech, live GitHub posting or a full app restart.
 Root alone launches them. Native keyboard tests whitelist their injected keys and hold focus briefly.
+
+## Subscription coding provider (2026-10-31)
+
+MET-8 owns `coding-provider.ts` settings/status contracts, root Settings/router/lifecycle composition
+and the pinned Muse Code SDK dependency. `CODING_PROVIDER` selects new app-owned coding jobs only;
+foreground voice/model configuration stays separate. Each job durably pins provider/path before work.
+Old Meta checkpoints remain Meta; provider failure never silently selects API billing or a new session.
+The CLI owns subscription sign-in credentials; `.env` stores selection/path, never copied account tokens.
+`main/work/muse-code/` requires observed account/subscription allowance, supported protocol, isolated
+app-owned worktree and restricted vendor permissions. Retain uncertain effects and actual pending
+questions/approvals. Only independent runtime checks establish validation, not an SDK completion summary.
+Shared organization preparation/proposal storage is proposed in `docs/integration/team-backend-plan.md`;
+it is not deployed. Native subscription checks must distinguish controlled transports from real coding.
