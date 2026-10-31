@@ -119,7 +119,8 @@ export function createWorkspaceController(
 		finishRender();
 	}
 	function presentationFailed(sequence: number) {
-		if (pending?.sequence === sequence) pending.resolve("ignored");
+		if (!pending || pending.sequence !== sequence || disposed) return;
+		pending.resolve("ignored");
 		store.setState({ error: "The browser surface could not be positioned. Try the canvas again." });
 	}
 	async function reconcile(current: number) {

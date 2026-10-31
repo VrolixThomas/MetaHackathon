@@ -590,3 +590,21 @@ it("manual fix navigation retries once when preparation completes during its ini
 		h.dispose();
 	}
 });
+
+it("late presentation failures do not label an already settled canvas as a browser error", async () => {
+	const h = harness();
+	try {
+		await h.controller.start();
+		h.controller.presentationFailed(0);
+		assert.equal(h.controller.store.getState().error, "");
+		const applied = h.controller.applyAction(action(), () => true);
+		await until(() => h.controller.getContext()?.sequence === 1);
+		h.controller.rendered(1);
+		h.controller.presented(1, null);
+		assert.equal(await applied, "applied");
+		h.controller.presentationFailed(1);
+		assert.equal(h.controller.store.getState().error, "");
+	} finally {
+		h.dispose();
+	}
+});

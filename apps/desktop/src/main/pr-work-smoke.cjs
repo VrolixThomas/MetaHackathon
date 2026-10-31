@@ -453,7 +453,7 @@ async function native() {
 			assert.equal(await reviewUI(), null);
 			assert.equal(
 				await js(
-					"[...document.querySelectorAll('.app-header button')].find(e=>e.textContent.trim()==='Add PR comment')?.disabled"
+					"![...document.querySelectorAll('.app-header button')].some(e=>e.textContent.trim()==='Add PR comment')"
 				),
 				true
 			);
@@ -507,9 +507,22 @@ async function native() {
 					.getAllWebContents()
 					.find((item) => !item.isDestroyed() && item.getURL() === `${origin}/controlled`)
 			);
+			await wait("browser canvas accepted before changing its layout", async () => {
+				const sessionId = await js(
+					"document.querySelector('main[data-session-id]').dataset.sessionId"
+				);
+				const { workspace } = await rpc("query", "workspace.observe", { sessionId });
+				return (
+					workspace.primaryId === "browser" &&
+					workspace.browser?.url === `${origin}/controlled` &&
+					(await js(
+						"document.querySelector('.canvas-workspace')?.getAttribute('aria-busy')==='false'"
+					))
+				);
+			});
 			await wait("Code tab beside control", () =>
 				js(
-					"!!document.querySelector('.canvas-tab-kind[title=Code]')?.closest('.canvas-tab').querySelector('[aria-label^=Show]')"
+					"document.querySelector('.canvas-tab-kind[title=Code]')?.closest('.canvas-tab').querySelector('[aria-label^=Show]')?.disabled===false"
 				)
 			);
 			await js(

@@ -346,6 +346,7 @@ export function getDay(): DayService {
 }
 export function setDayAwake(awake: boolean) {
 	dayAwake = awake;
+	if (!awake) prFixes?.invalidate();
 	void day?.availabilityChanged().catch(() => {});
 	void slackWorkspace?.availabilityChanged().catch(() => {});
 }

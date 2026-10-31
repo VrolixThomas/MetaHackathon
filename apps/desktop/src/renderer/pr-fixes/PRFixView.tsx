@@ -153,16 +153,25 @@ export function PRFixReview({
 					{fix.pr.repository} #{fix.pr.number}
 				</span>
 				<span className="hub-status">{fixPhaseLabel(fix)}</span>
+				<span className="hub-muted">
+					{fix.checks.length === 0
+						? "Checks not run"
+						: fix.checks.every((check) => check.exitCode === 0 && check.commitSha === fix.headSha)
+							? `${fix.checks.length} check${fix.checks.length === 1 ? "" : "s"} passed`
+							: "Check results need attention"}
+				</span>
 			</div>
 			<h1>Suggested fix · {fix.pr.title}</h1>
-			<p className="hub-muted">
-				Local candidate · not published. Reviewing it records no author approval.
-			</p>
-			<p className="pr-fix-pin">
-				Original PR head <code>{fix.pr.headSha}</code>
-				<br />
-				Candidate head <code>{fix.headSha ?? "Not created yet"}</code>
-			</p>
+			<p className="hub-muted">Local candidate · not published</p>
+			<details className="pr-fix-revisions">
+				<summary>Revisions</summary>
+				<p className="pr-fix-pin">
+					Original PR head <code>{fix.pr.headSha}</code>
+					<br />
+					Candidate head <code>{fix.headSha ?? "Not created yet"}</code>
+				</p>
+				<p>Reviewing it records no author approval.</p>
+			</details>
 			<section aria-label="Original feedback" className="pr-fix-feedback">
 				<h2>Original feedback</h2>
 				<p>
@@ -180,9 +189,12 @@ export function PRFixReview({
 					</p>
 				)}
 				{fix.feedback.commitSha && (
-					<p className="pr-fix-pin">
-						Feedback source commit <code>{fix.feedback.commitSha}</code>
-					</p>
+					<details className="pr-fix-revisions">
+						<summary>Feedback revision</summary>
+						<p className="pr-fix-pin">
+							Feedback source commit <code>{fix.feedback.commitSha}</code>
+						</p>
+					</details>
 				)}
 				<pre className="pr-fix-original">{fix.feedback.body}</pre>
 				<button

@@ -114,10 +114,7 @@ export function CanvasWorkspace({
 		let secondFrame = 0;
 		const sourceShown = () => {
 			if (fixSource) {
-				const selector =
-					fixSource.headSha === null && fixSource.path === null
-						? "[data-pr-fix-status-id]"
-						: "[data-pr-fix-id]";
+				const selector = fixSource.path === null ? "[data-pr-fix-status-id]" : "[data-pr-fix-id]";
 				return [...(host.current?.querySelectorAll<HTMLElement>(selector) ?? [])].some(
 					(element) => {
 						const rect = element.getBoundingClientRect();
@@ -291,6 +288,7 @@ export function CanvasWorkspace({
 			className="canvas-workspace"
 			ref={host}
 			aria-label="Workspace canvases"
+			aria-busy={state.busy}
 			data-workspace-sequence={sequence}
 			data-primary-canvas={workspace?.primaryId}
 			data-secondary-canvas={workspace?.secondaryId ?? ""}
@@ -365,6 +363,7 @@ export function CanvasWorkspace({
 													type="button"
 													className="quiet"
 													aria-label={`Show ${title} beside current canvas`}
+													disabled={state.busy || blocked}
 													onClick={() =>
 														command({ kind: "focus-canvas", id: canvas.id, target: "secondary" })
 													}
@@ -395,6 +394,7 @@ export function CanvasWorkspace({
 									onClick={() =>
 										command({ kind: "layout", primaryId: workspace.primaryId, secondaryId: null })
 									}
+									disabled={state.busy || blocked}
 								>
 									Single pane
 								</button>
@@ -403,6 +403,7 @@ export function CanvasWorkspace({
 									<button
 										type="button"
 										className="quiet canvas-layout-button"
+										disabled={state.busy || blocked}
 										onClick={() => {
 											const next = workspace.canvases.find(
 												(canvas) => canvas.id !== workspace.primaryId

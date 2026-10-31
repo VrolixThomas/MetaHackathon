@@ -263,6 +263,11 @@ async function native() {
 				if (entry) {
 					entry.result = dataOf(result);
 					entry.error = result.error;
+					if (entry.path.startsWith("prFixes.")) {
+						report.fixRequests ??= [];
+						report.fixRequests.push(entry);
+						save();
+					}
 				}
 				return result;
 			});
@@ -442,9 +447,11 @@ async function native() {
 			content: "Actual controlled two-file candidate diff, no live content",
 		};
 		await click(".pr-fix-review button", "Mark fix reviewed");
-		const reviewed = await wait("actual local reviewed receipt", () =>
-			trace.find((e) => e.path === "prFixes.reviewed" && e.result?.reviewedAt)
-		);
+		const reviewed = await wait("actual local reviewed receipt", () => {
+			const entry = trace.find((e) => e.path === "prFixes.reviewed");
+			if (entry?.error) throw new Error(`Local review failed: ${entry.error.message}`);
+			return entry?.result?.reviewedAt ? entry : null;
+		});
 		assert.deepEqual(reviewed.input, { id: ready.id, headSha: ready.headSha, confirmed: true });
 		assert.equal(reviewed.result.publication, "not-published");
 		await wait(
