@@ -1,0 +1,29 @@
+{
+	"date": "2026-10-31",
+	"implementationCommit": "ecb111f",
+	"method": "Actual built default Electron UI/preload/IPC, HTTP localhost callback, OS-encrypted token file and selected-source watch settings. Slack HTTP responses and external browser URL capture were controlled. No successful RPC response replaced. Isolated .env/profile, no live user credentials, speech or Slack message posting. builtMainSha256 uses base64url encoding.",
+	"status": "passed",
+	"controlledProviderInputs": true,
+	"liveConsent": false,
+	"liveSpeech": false,
+	"physicalMicrophone": false,
+	"sourceIngestion": false,
+	"workerExecution": false,
+	"processRestart": false,
+	"builtMainSha256": "aTM4LT8pg0n3mJGwyXEuixoAwkt2orhLb_WPqVh0jP8",
+	"checks": [
+		"actual UI Sign in/Cancel; localhost listener closes without token exchange; other providers unchanged",
+		"wrong state rejected; actual HTTP localhost callback, PKCE without secret/bot scope, verified user and same source actor; real encrypted 0600 grant",
+		"actual UI selects channel and DM, real watch RPC persists selection; empty selected-history transport only, no model/ingestion",
+		"UI reconnect/Cancel preserves encrypted grant; UI Disconnect clears Slack grant/account only, retains registration and GitHub/Linear baseline metadata",
+		"actual app shutdown closes pending callback; shutdown-complete observed; no SQLite import by harness"
+	],
+	"tokenPosts": 1,
+	"blocked": [],
+	"actualPreloadIPC": true,
+	"actualBuiltApp": true,
+	"actualCallbackHTTP": true,
+	"actualSafeStorage": true,
+	"ownedTempRemoved": true,
+	"screenshot": "../screenshots/slack-oauth-controlled-settings.png"
+}
