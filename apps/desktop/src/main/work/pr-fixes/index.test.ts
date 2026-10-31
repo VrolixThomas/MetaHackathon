@@ -685,3 +685,36 @@ test("credential filtering covers generated summaries and questions; source evid
 		hash(CommentFixSourceSchema.parse(ctx.source))
 	);
 });
+
+test("UI, agent and local review inspections serialize the same candidate's strict Git lock across service instances", async (t) => {
+	const ctx = await setup(t);
+	const admitted = await ctx.service.start(ctx.input);
+	await ctx.settle(admitted.id);
+	let active = 0;
+	let maxActive = 0;
+	const originalReview = ctx.options.runtime.review;
+	ctx.options.runtime.review = async (...args) => {
+		active++;
+		maxActive = Math.max(maxActive, active);
+		try {
+			if (active > 1) throw new Error("Work job operation is already active");
+			await new Promise((resolve) => setTimeout(resolve, 8));
+			return await originalReview(...args);
+		} finally {
+			active--;
+		}
+	};
+	const second = ctx.create();
+	const [ui, agent, reviewed] = await Promise.all([
+		ctx.service.detail(admitted.id),
+		second.detail(admitted.id),
+		second.markReviewed({ id: admitted.id, headSha: head, confirmed: true }),
+	]);
+	assert.ok(ui.review);
+	assert.ok(agent.review);
+	assert.ok(reviewed.reviewedAt);
+	assert.equal(maxActive, 1);
+	assert.equal(active, 0);
+	assert.equal((await ctx.service.list())[0]?.phase, "ready");
+	assert.equal((await ctx.service.detail(admitted.id)).fix.error, null);
+});

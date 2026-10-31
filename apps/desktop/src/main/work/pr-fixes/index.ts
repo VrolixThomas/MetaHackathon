@@ -605,7 +605,10 @@ export class PRFixService {
 			const job = entry.record.job;
 			const review = WorkReviewSchema.parse(
 				await this.call(context, () =>
-					this.options.runtime.review(structuredClone(job), context.controller.signal)
+					exclusive(`${this.scope(context)}:runtime-review:${job.id}`, async () => {
+						await this.guard(context);
+						return this.options.runtime.review(structuredClone(job), context.controller.signal);
+					})
 				)
 			);
 			if (
