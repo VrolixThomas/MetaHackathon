@@ -25,6 +25,14 @@ Root integration ports (`ConversationPRCommentPorts` in `index.ts`):
   A foreground abort cancels its exact posting request and retains canonical
   cancellation tombstones/ambiguous attempts and the durable GitHub ledger.
 
+Mirror a main-owned voice attempt into that same renderer controller using
+`adoptConfirmation(ConfirmCommentInput)` before sending and
+`settleConfirmation(requestId, {url}|null)` after a confirmed/unknown result. These
+methods issue no post; they retain the exact main request and prevent the composer
+from offering a competing manual attempt. Close still cancels that same canonical
+request. Root owns the trusted status event/poll transport and must ignore old-account
+updates. A confirmed posted result is not downgraded by a later missing receipt.
+
 `PRCommentConfirmationGate` is a main-only capability, with no model or public RPC:
 
 1. After a successful exact presentation receipt and canonical revalidation call

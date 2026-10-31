@@ -254,6 +254,42 @@ test("foreground adoption preserves unsaved manual work and ignores stale/closed
 	);
 });
 
+test("trusted voice attempt synchronization retains one exact request and posts no competing renderer attempt", async () => {
+	const h = harness();
+	await ready(h);
+	const draft = h.ui.getSnapshot().draft;
+	assert.ok(draft);
+	const input = {
+		requestId: "voice-attempt",
+		draftId: draft.id,
+		draftRevision: draft.revision,
+		headSha: draft.headSha,
+		body: draft.body,
+		confirmed: true as const,
+	};
+	assert.equal(h.ui.adoptConfirmation({ ...input, body: "wrong" }), false);
+	assert.equal(h.ui.adoptConfirmation(input), true);
+	assert.equal(h.ui.getSnapshot().phase, "posting");
+	h.ui.setConsent(true);
+	await h.ui.post();
+	assert.equal(h.posts(), 0);
+	assert.equal(h.ui.adoptConfirmation({ ...input, requestId: "another-attempt" }), false);
+	h.ui.close();
+	assert.equal(h.ui.getSnapshot().request?.requestId, input.requestId);
+	assert.ok(h.calls.some((call) => call.path === "prComments.cancel"));
+	assert.equal(h.ui.settleConfirmation("wrong", { url: `${pr.url}#issuecomment-123` }), false);
+	assert.equal(h.ui.settleConfirmation(input.requestId, null), true);
+	assert.equal(h.ui.getSnapshot().phase, "uncertain");
+	assert.equal(
+		h.ui.settleConfirmation(input.requestId, { url: `${pr.url}#issuecomment-123` }),
+		true
+	);
+	assert.equal(h.ui.getSnapshot().phase, "posted");
+	assert.equal(h.ui.settleConfirmation(input.requestId, null), true);
+	assert.equal(h.ui.getSnapshot().phase, "posted");
+	assert.equal(h.posts(), 0);
+});
+
 test("default prepared-review controller supplies exact actual-file context and empty startup is disabled", async () => {
 	const reviews = createPreparedController(
 		createPreparedApi(async (_type, path, raw) => {

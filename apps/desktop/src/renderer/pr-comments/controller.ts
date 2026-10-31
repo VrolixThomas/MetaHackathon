@@ -310,6 +310,11 @@ export function createPRCommentController(
 		if (state.draft && (state.draft.id !== draft.id || state.draft.revision > draft.revision))
 			return false;
 		if (
+			state.draft?.revision === draft.revision &&
+			JSON.stringify(state.draft) !== JSON.stringify(draft)
+		)
+			return false;
+		if (
 			state.phase === "compose" &&
 			state.body &&
 			state.body !== state.draft?.body &&
@@ -328,6 +333,61 @@ export function createPRCommentController(
 			error: "",
 			notice: "Review this exact comment before confirming.",
 		});
+		return true;
+	};
+	/** Mirror a trusted main-owned voice attempt without issuing another confirmation RPC. */
+	const adoptConfirmation = (raw: ConfirmCommentInput) => {
+		refreshContext();
+		const input = ConfirmCommentInputSchema.parse(raw);
+		const draft = state.draft;
+		if (
+			disposed ||
+			!draft ||
+			!sameDraftContext() ||
+			state.body !== draft.body ||
+			input.draftId !== draft.id ||
+			input.draftRevision !== draft.revision ||
+			input.body !== draft.body ||
+			input.headSha !== draft.headSha
+		)
+			return false;
+		if (state.request) return JSON.stringify(state.request) === JSON.stringify(input);
+		generation++;
+		update({ request: input, phase: "posting", consent: false, error: "", notice: "" });
+		return true;
+	};
+	const settleConfirmation = (requestId: string, result: { url: string } | null) => {
+		if (disposed || state.request?.requestId !== requestId) return false;
+		if (state.phase === "posted") return true;
+		try {
+			if (!result || !state.draftPr) throw new Error("Unconfirmed comment");
+			const url = new URL(result.url);
+			const pr = new URL(state.draftPr.url);
+			if (
+				url.protocol !== "https:" ||
+				url.origin !== pr.origin ||
+				url.pathname !== pr.pathname ||
+				url.username ||
+				url.password ||
+				url.search ||
+				!/^#(?:issuecomment-\d+|discussion_r\d+)$/.test(url.hash)
+			)
+				throw new Error("Invalid comment receipt");
+			update({
+				phase: "posted",
+				consent: false,
+				url: url.href,
+				notice: "Comment posted to GitHub.",
+				error: "",
+			});
+		} catch {
+			update({
+				phase: "uncertain",
+				consent: false,
+				error:
+					"Posting was not confirmed. Check GitHub before retrying the same request. Edits are locked for this attempt.",
+			});
+		}
 		return true;
 	};
 	return {
@@ -350,6 +410,8 @@ export function createPRCommentController(
 		canConfirm,
 		newComment,
 		adoptDraft,
+		adoptConfirmation,
+		settleConfirmation,
 		dispose: () => {
 			disposed = true;
 			generation++;
