@@ -316,3 +316,252 @@ test("unavailable or mismatched peer profiles fall back to identities without fa
 		["U456", "U789"]
 	);
 });
+
+test("background discovery skips all label and group-member work with the third parameter", async () => {
+	const { client, requests } = harness((method, fields) => {
+		if (method === "users.conversations")
+			return {
+				ok: true,
+				channels: [privateChannel(), { id: "G123", is_mpim: true, name: "mpdm-source-name" }],
+				response_metadata: { next_cursor: "next-page" },
+			};
+		if (method === "users.info") return { ok: true, user: { id: fields["user"], name: "Ada" } };
+		return undefined;
+	});
+	const page = await client.listConversations({ limit: 15 }, undefined, false);
+	assert.deepEqual(
+		page.items.map((row) => row.name),
+		["U456", "mpdm-source-name"]
+	);
+	assert.equal(page.nextCursor, "next-page");
+	assert.equal(page.hasMore, true);
+	assert.deepEqual(
+		requests.map((row) => row.method),
+		["users.conversations"]
+	);
+	assert.deepEqual(
+		(await client.listConversations()).items.map((row) => row.name),
+		["Ada", "Ada"]
+	);
+	assert.ok(requests.some((row) => row.method === "users.info"));
+});
+
+test("conversation returns actual authorized metadata and a cached profile label with one info request", async () => {
+	const { client, requests } = harness((method, fields) => {
+		if (method === "conversations.info")
+			return { ok: true, channel: { ...privateChannel(), context_team_id: "T123" } };
+		if (method === "users.info")
+			return { ok: true, user: { id: fields["user"], profile: { display_name: "Ada" } } };
+		return undefined;
+	});
+	assert.deepEqual(await client.conversation("D123"), {
+		workspaceId: "T123",
+		id: "D123",
+		name: "Ada",
+		visibility: "direct_message",
+		canRead: true,
+		canReply: true,
+	});
+	assert.equal(requests.filter((row) => row.method === "conversations.info").length, 1);
+	assert.equal(
+		requests.find((row) => row.method === "conversations.members")?.fields["limit"],
+		"200"
+	);
+	assert.deepEqual(await client.authorLabels(["U456", "U456"]), [{ id: "U456", name: "Ada" }]);
+	assert.equal(requests.filter((row) => row.method === "users.info").length, 1);
+	assert.ok(requests.every((row) => row.method !== "chat.postMessage"));
+});
+
+test("group conversation names reuse the authorized audience instead of crawling for labels", async () => {
+	const { client, requests } = harness((method, fields) => {
+		if (method === "conversations.info")
+			return {
+				ok: true,
+				channel: { id: "G123", context_team_id: "T123", is_mpim: true, members: ["U999"] },
+			};
+		if (method === "conversations.members") return { ok: true, members: ["U123", "U456", "U789"] };
+		if (method === "users.info")
+			return {
+				ok: true,
+				user: {
+					id: fields["user"],
+					profile: { display_name: fields["user"] === "U456" ? "Ada" : "Bo" },
+				},
+			};
+		return undefined;
+	});
+	assert.equal((await client.conversation("G123")).name, "Ada, Bo");
+	assert.equal(requests.filter((row) => row.method === "conversations.members").length, 1);
+	assert.deepEqual(
+		requests.filter((row) => row.method === "users.info").map((row) => row.fields["user"]),
+		["U456", "U789"]
+	);
+});
+
+test("conversation rejects wrong metadata identity, workspace, private membership and missing history scope", async () => {
+	for (const channel of [
+		{ ...privateChannel("D999") },
+		{ ...privateChannel(), context_team_id: "T999" },
+		{ ...privateChannel(), user: "U999" },
+	]) {
+		const { client, requests } = harness((method) =>
+			method === "conversations.info" ? { ok: true, channel } : undefined
+		);
+		await assert.rejects(
+			client.conversation("D123"),
+			(error: unknown) => error instanceof SlackError && error.code === "invalid-data"
+		);
+		assert.ok(!requests.some((row) => row.method === "users.info"));
+	}
+	const denied = harness((method) =>
+		method === "conversations.members" ? { ok: true, members: ["U456"] } : undefined
+	);
+	await assert.rejects(
+		denied.client.conversation("D123"),
+		(error: unknown) => error instanceof SlackError && error.code === "access-denied"
+	);
+	const missing = harness(undefined, async () => ({
+		...credential,
+		scopes: ["im:read", "users:read"],
+	}));
+	await assert.rejects(
+		missing.client.conversation("D123"),
+		(error: unknown) => error instanceof SlackError && error.code === "missing-scope"
+	);
+	assert.ok(!missing.requests.some((row) => row.method === "conversations.members"));
+});
+
+test("reader conversation requires public membership while existing explicit source reads retain public visibility", async () => {
+	let joined = false;
+	const { client } = harness((method) =>
+		method === "conversations.info"
+			? {
+					ok: true,
+					channel: {
+						id: "C123",
+						name: "actual-public-channel",
+						context_team_id: "T123",
+						is_channel: true,
+						is_private: false,
+					},
+				}
+			: method === "conversations.members"
+				? { ok: true, members: joined ? ["U123", "U456"] : ["U456"] }
+				: undefined
+	);
+	await assert.rejects(
+		client.conversation("C123"),
+		(error: unknown) => error instanceof SlackError && error.code === "access-denied"
+	);
+	assert.equal((await client.history({ conversationId: "C123" })).items.length, 1);
+	joined = true;
+	const conversation = await client.conversation("C123");
+	assert.equal(conversation.name, "actual-public-channel");
+	assert.equal(conversation.workspaceId, "T123");
+	assert.equal(conversation.visibility, "public_channel");
+});
+
+test("observed author labels retain IDs, deduplicate and fall back without a channel or member lookup", async () => {
+	const { client, requests } = harness((method, fields) => {
+		if (method === "conversations.history")
+			return {
+				ok: true,
+				messages: [rawMessage, { ...rawMessage, ts: "1700000000.000002", user: "U789" }],
+			};
+		if (method === "users.info") {
+			if (fields["user"] === "U789") throw new SlackError("rate-limited");
+			return { ok: true, user: { id: fields["user"], profile: { display_name: "Ada" } } };
+		}
+		return undefined;
+	});
+	const page = await client.history({ conversationId: "D123" });
+	const before = requests.length;
+	assert.deepEqual(
+		await client.authorLabels([
+			...page.items.map((row) => row.authorId),
+			page.items[0]?.authorId as string,
+		]),
+		[
+			{ id: "U456", name: "Ada" },
+			{ id: "U789", name: "U789" },
+		]
+	);
+	assert.deepEqual(
+		requests.slice(before).map((row) => row.method),
+		["users.info", "users.info"]
+	);
+	await client.authorLabels(page.items.map((row) => row.authorId));
+	assert.equal(requests.length, before + 2);
+});
+
+test("author input and metadata bounds reject before any provider request", async () => {
+	const { client, requests } = harness();
+	await assert.rejects(
+		client.authorLabels(Array.from({ length: 16 }, (_, index) => `U${index}`)),
+		SlackError
+	);
+	await assert.rejects(client.authorLabels(["../not-an-author"]), SlackError);
+	await assert.rejects(client.conversation("../not-a-conversation"), SlackError);
+	assert.deepEqual(await client.authorLabels([]), []);
+	assert.equal(requests.length, 0);
+});
+
+test("reader metadata and authors reject account changes during info, membership and profile requests", async () => {
+	for (const boundary of ["conversations.info", "conversations.members", "users.info"]) {
+		let current = credential;
+		const { client } = harness(
+			(method, fields) => {
+				if (method === boundary) current = { ...credential, workspaceId: "T999" };
+				if (method === "users.info")
+					return { ok: true, user: { id: fields["user"], name: "Old account name" } };
+				return undefined;
+			},
+			async () => current
+		);
+		await assert.rejects(
+			client.conversation("D123"),
+			(error: unknown) => error instanceof SlackError && error.code === "stale-connection"
+		);
+	}
+	let current = credential;
+	const { client } = harness(
+		(method, fields) => {
+			if (method === "users.info") {
+				current = { ...credential, connectionId: "new-session" };
+				return { ok: true, user: { id: fields["user"], name: "Old author" } };
+			}
+			return undefined;
+		},
+		async () => current
+	);
+	await assert.rejects(
+		client.authorLabels(["U456"]),
+		(error: unknown) => error instanceof SlackError && error.code === "stale-connection"
+	);
+});
+
+test("cancellation aborts metadata and author requests even if controlled fetch ignores the signal", async () => {
+	for (const authors of [false, true]) {
+		let started: () => void = () => {};
+		const reached = new Promise<void>((resolve) => {
+			started = resolve;
+		});
+		const { client } = harness((method) => {
+			if (method === "users.info") {
+				started();
+				return new Promise(() => {});
+			}
+			return undefined;
+		});
+		const controller = new AbortController();
+		const pending = authors
+			? client.authorLabels(["U456"], controller.signal)
+			: client.conversation("D123", controller.signal);
+		await reached;
+		controller.abort();
+		await assert.rejects(
+			pending,
+			(error: unknown) => error instanceof SlackError && error.code === "cancelled"
+		);
+	}
+});

@@ -39,6 +39,7 @@ const ThreadSchema = ReadSchema.extend({ threadTs: SlackTsSchema });
 const MetadataSchema = z.object({ next_cursor: CursorSchema.optional() }).optional();
 const ChannelSchema = z.object({
 	id: SlackIdSchema,
+	context_team_id: SlackIdSchema.optional(),
 	name: z.string().max(300).optional(),
 	user: SlackIdSchema.optional(),
 	members: z.unknown().optional(),
@@ -118,6 +119,21 @@ function visibility(row: z.infer<typeof ChannelSchema>): SourceAudience["visibil
 	if (row.is_private || row.is_group) return "private_channel";
 	if (row.is_channel && row.is_private === false) return "public_channel";
 	throw new SlackError("invalid-data");
+}
+function describeConversation(
+	credential: SlackCredential,
+	row: z.infer<typeof ChannelSchema>,
+	name?: string
+): ChatConversation {
+	const kind = visibility(row);
+	return parsed(ChatConversationSchema, {
+		workspaceId: credential.workspaceId,
+		id: row.id,
+		name: name || row.name || row.user || row.id,
+		visibility: kind,
+		canRead: visibilityScopes[kind].every((scope) => credential.scopes.includes(scope)),
+		canReply: !row.is_archived && credential.scopes.includes("chat:write"),
+	});
 }
 function operationSignal(signal?: AbortSignal): AbortSignal {
 	return AbortSignal.any([...(signal ? [signal] : []), AbortSignal.timeout(30_000)]);
@@ -242,10 +258,12 @@ export class SlackClient {
 	}
 	async listConversations(
 		input: z.infer<typeof PagingSchema> = {},
-		parentSignal?: AbortSignal
+		parentSignal?: AbortSignal,
+		resolveLabels = true
 	): Promise<SlackPage<ChatConversation>> {
 		const signal = operationSignal(parentSignal);
 		const paging = parsed(PagingSchema, input);
+		parsed(z.boolean(), resolveLabels);
 		const credential = await this.credential(signal);
 		const types = Object.entries(visibilityScopes)
 			.filter(([, scopes]) => credential.scopes.includes(scopes[0]))
@@ -273,21 +291,56 @@ export class SlackClient {
 				signal
 			)
 		);
-		const names = await this.profileLabels.names(credential, value.channels, signal);
+		const names = resolveLabels
+			? await this.profileLabels.names(credential, value.channels, signal)
+			: [];
 		await this.assertCurrent(credential, signal);
-		const items = value.channels.map((row, index) => {
-			const kind = visibility(row);
-			return parsed(ChatConversationSchema, {
-				workspaceId: credential.workspaceId,
-				id: row.id,
-				name: names[index] || row.name || row.user || row.id,
-				visibility: kind,
-				canRead: visibilityScopes[kind].every((scope) => credential.scopes.includes(scope)),
-				canReply: !row.is_archived && credential.scopes.includes("chat:write"),
-			});
-		});
+		const items = value.channels.map((row, index) =>
+			describeConversation(credential, row, names[index])
+		);
 		const nextCursor = value.response_metadata?.next_cursor || null;
 		return { items, nextCursor, hasMore: !!nextCursor };
+	}
+	/** Main-only metadata for an authorized conversation; actual source access still requires fresh audience reads. */
+	async conversation(
+		conversationId: string,
+		parentSignal?: AbortSignal
+	): Promise<ChatConversation> {
+		parsed(SlackIdSchema, conversationId);
+		const signal = operationSignal(parentSignal);
+		const credential = await this.credential(signal);
+		const { channel, audience } = await this.authorizedConversation(
+			conversationId,
+			signal,
+			credential
+		);
+		if (!audience.readerIds.includes(credential.userId)) throw new SlackError("access-denied");
+		if (
+			audience.workspaceId !== credential.workspaceId ||
+			audience.conversationId !== conversationId ||
+			(channel.context_team_id && channel.context_team_id !== credential.workspaceId) ||
+			(channel.is_im && channel.user && !audience.readerIds.includes(channel.user))
+		)
+			throw new SlackError("invalid-data");
+		const [name] = await this.profileLabels.names(
+			credential,
+			[channel.is_mpim ? { ...channel, members: audience.readerIds } : channel],
+			signal
+		);
+		await this.assertCurrent(credential, signal);
+		return describeConversation(credential, channel, name);
+	}
+	/** Main-only presentation hints for at most 15 observed message authors; not a source-read grant. */
+	async authorLabels(
+		authorIds: string[],
+		parentSignal?: AbortSignal
+	): Promise<{ id: string; name: string }[]> {
+		const ids = parsed(z.array(SlackIdSchema).max(15), authorIds);
+		const signal = operationSignal(parentSignal);
+		const credential = await this.credential(signal);
+		const labels = await this.profileLabels.authors(credential, ids, signal);
+		await this.assertCurrent(credential, signal);
+		return labels;
 	}
 	/** Fresh metadata + full bounded membership; a partial audience never becomes an access grant. */
 	async audience(
@@ -295,6 +348,13 @@ export class SlackClient {
 		parentSignal?: AbortSignal,
 		expected?: SlackCredential
 	): Promise<SourceAudience> {
+		return (await this.authorizedConversation(conversationId, parentSignal, expected)).audience;
+	}
+	private async authorizedConversation(
+		conversationId: string,
+		parentSignal?: AbortSignal,
+		expected?: SlackCredential
+	): Promise<{ channel: z.infer<typeof ChannelSchema>; audience: SourceAudience }> {
 		const signal = operationSignal(parentSignal);
 		parsed(SlackIdSchema, conversationId);
 		const credential = expected ?? (await this.credential(signal));
@@ -328,7 +388,7 @@ export class SlackClient {
 		if (kind !== "public_channel" && !members.has(credential.userId))
 			throw new SlackError("access-denied");
 		const readerIds = [...members].sort();
-		return parsed(SourceAudienceSchema, {
+		const audience = parsed(SourceAudienceSchema, {
 			workspaceId: credential.workspaceId,
 			conversationId,
 			visibility: kind,
@@ -336,6 +396,7 @@ export class SlackClient {
 			membershipRevision: slackDigest(JSON.stringify([kind, readerIds])),
 			observedAt: new Date(this.now()).toISOString(),
 		});
+		return { channel: value.channel, audience };
 	}
 	async history(input: SlackReadInput, signal?: AbortSignal): Promise<SlackMessagePage> {
 		return this.read(parsed(ReadSchema, input), signal);

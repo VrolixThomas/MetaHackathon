@@ -124,6 +124,53 @@ export class SlackProfileLabels {
 		}
 		return value;
 	}
+	private async resolveUsers(
+		credential: SlackCredential,
+		ids: string[],
+		signal: AbortSignal
+	): Promise<Map<string, string>> {
+		await this.options.assertCurrent(credential, signal);
+		if (!credential.scopes.includes("users:read")) return new Map();
+		const scope = this.currentScope(credential);
+		let misses = 0;
+		const names = new Map<string, string>();
+		await bounded(ids, async (id) => {
+			const cached = scope.profiles.get(id);
+			if (!(cached && cached.expiresAt > this.options.now()) && misses++ >= 15) return;
+			const name = await this.lookup(
+				credential,
+				scope.profiles,
+				id,
+				256,
+				signal,
+				async (lookupSignal) => {
+					const { user } = parsed(
+						NamesSchema,
+						await this.options.request(credential, "users.info", { user: id }, lookupSignal)
+					);
+					if (user.id !== id || user.deleted) return undefined;
+					// Peer bots (including Slackbot) are legitimate people-list entries; identity must match.
+					return [user.profile?.display_name, user.profile?.real_name, user.real_name, user.name]
+						.find((value) => value?.trim())
+						?.trim();
+				}
+			);
+			if (name) names.set(id, name);
+		});
+		await this.options.assertCurrent(credential, signal);
+		return names;
+	}
+	/** Only labels for IDs observed by the caller; never establishes source authorization. */
+	async authors(
+		credential: SlackCredential,
+		authorIds: string[],
+		signal: AbortSignal
+	): Promise<{ id: string; name: string }[]> {
+		const ids = [...new Set(parsed(z.array(SlackIdSchema).max(15), authorIds))];
+		const names = await this.resolveUsers(credential, ids, signal);
+		await this.options.assertCurrent(credential, signal);
+		return ids.map((id) => ({ id, name: names.get(id) || id }));
+	}
 	async names(
 		credential: SlackCredential,
 		rows: Conversation[],
@@ -163,31 +210,7 @@ export class SlackProfileLabels {
 				)
 			),
 		];
-		let misses = 0;
-		const names = new Map<string, string>();
-		await bounded(ids, async (id) => {
-			const cached = scope.profiles.get(id);
-			if (!(cached && cached.expiresAt > this.options.now()) && misses++ >= 15) return;
-			const name = await this.lookup(
-				credential,
-				scope.profiles,
-				id,
-				256,
-				signal,
-				async (lookupSignal) => {
-					const { user } = parsed(
-						NamesSchema,
-						await this.options.request(credential, "users.info", { user: id }, lookupSignal)
-					);
-					if (user.id !== id || user.deleted) return undefined;
-					// Peer bots (including Slackbot) are legitimate people-list entries; identity must match.
-					return [user.profile?.display_name, user.profile?.real_name, user.real_name, user.name]
-						.find((value) => value?.trim())
-						?.trim();
-				}
-			);
-			if (name) names.set(id, name);
-		});
+		const names = await this.resolveUsers(credential, ids, signal);
 		await this.options.assertCurrent(credential, signal);
 		return rows.map((row, index) => {
 			if (row.is_im) return row.user ? names.get(row.user) || fallback(row) : fallback(row);

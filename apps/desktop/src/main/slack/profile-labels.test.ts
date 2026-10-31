@@ -215,3 +215,26 @@ test("long group labels fit the conversation contract without splitting Unicode 
 	assert.ok(name && name.length <= 300 && name.endsWith("…"));
 	assert.ok(!/[\uD800-\uDBFF]…$/.test(name));
 });
+
+test("direct author resolution shares the profile cache without synthetic conversations or member requests", async () => {
+	const h = fixture();
+	assert.deepEqual(await h.labels.authors(credential, ["U456", "U456", "U789"], signal()), [
+		{ id: "U456", name: "Person U456" },
+		{ id: "U789", name: "Person U789" },
+	]);
+	assert.deepEqual(
+		h.calls.map((call) => call.method),
+		["users.info", "users.info"]
+	);
+	await h.labels.names(credential, [dm()], signal());
+	assert.equal(h.calls.length, 2);
+	await assert.rejects(
+		h.labels.authors(
+			credential,
+			Array.from({ length: 16 }, (_, index) => `U${index}`),
+			signal()
+		),
+		SlackError
+	);
+	assert.equal(h.calls.length, 2);
+});
