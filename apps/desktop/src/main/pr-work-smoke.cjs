@@ -50,6 +50,14 @@ async function native() {
 		"Root must launch built Electron; authors may run --self-check only"
 	);
 	const { app, BrowserWindow, ipcMain, webContents, session } = require("electron");
+	let testKey = null;
+	app.on("browser-window-created", (_event, window) => {
+		window.setFocusable(false);
+		window.setIgnoreMouseEvents(true);
+		window.webContents.on("before-input-event", (event, input) => {
+			if (!testKey || input.key.toLowerCase() !== testKey) event.preventDefault();
+		});
+	});
 	const builtMain = resolve(process.argv[2] ?? join(__dirname, "../../out/main/index.js"));
 	assert.ok(fs.existsSync(builtMain), "Root must build integration first");
 	scrubAmbientCredentials();
@@ -381,14 +389,22 @@ async function native() {
 				: null;
 		};
 		const press = async (key) => {
-			win.show();
-			win.focus();
-			win.webContents.focus();
-			await wait("isolated app document focus", () => js("document.hasFocus()"));
-			win.webContents.sendInputEvent({ type: "keyDown", keyCode: key.toUpperCase() });
-			win.webContents.sendInputEvent({ type: "char", keyCode: key });
-			win.webContents.sendInputEvent({ type: "keyUp", keyCode: key.toUpperCase() });
-			await frames();
+			try {
+				win.setFocusable(true);
+				win.show();
+				win.focus();
+				win.webContents.focus();
+				await wait("isolated app document focus", () => js("document.hasFocus()"));
+				testKey = key.toLowerCase();
+				win.webContents.sendInputEvent({ type: "keyDown", keyCode: key.toUpperCase() });
+				win.webContents.sendInputEvent({ type: "char", keyCode: key });
+				win.webContents.sendInputEvent({ type: "keyUp", keyCode: key.toUpperCase() });
+				await frames();
+			} finally {
+				testKey = null;
+				win.blur();
+				win.setFocusable(false);
+			}
 		};
 		const bare = async (key, path) => {
 			await js("document.activeElement?.blur()");
