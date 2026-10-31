@@ -131,8 +131,27 @@ function verifyPackagedPayload(appPath, architectures) {
 		!fs.statSync(path.join(`${archive}.unpacked`, sqlite)).isFile()
 	)
 		throw new Error("SQLite native addon must be unpacked");
-	if (!Array.from(entries).some((entry) => /^out\/main\/db\/migrations\/.+\.sql$/.test(entry)))
-		throw new Error("Production SQLite migrations are missing");
+	if (!Array.from(entries).some((entry) => /^out\/main\/db\/migrations\/.+\.sql$/.test(entry))) {
+		// Current SQLite adapters embed additive DDL in the compiled main process.
+		const embedded = [...entries]
+			.filter((entry) => entry.startsWith("out/main/") && entry.endsWith(".js"))
+			.map((entry) => asar.extractFile(archive, entry).toString())
+			.join("\n");
+		for (const table of [
+			"review_connection",
+			"review_prepared",
+			"review_progress",
+			"runtime_submissions",
+			"runtime_budgets",
+			"hub_state",
+			"day_state",
+			"knowledge_sources",
+			"slack_workspace_head",
+		]) {
+			if (!new RegExp(`CREATE\\s+TABLE\\s+IF\\s+NOT\\s+EXISTS\\s+${table}\\b`, "i").test(embedded))
+				throw new Error(`Production SQLite initialization is missing: ${table}`);
+		}
+	}
 	const voice = verifyVoiceBundle(path.join(resources, "voice"), architectures);
 	return { sdkVersion: sdk.version, voice };
 }
