@@ -1,3 +1,4 @@
+import { execFile } from "node:child_process";
 import { createHash } from "node:crypto";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -17,6 +18,7 @@ import { ScreenContextStore } from "./agent/screen-context";
 import { assessSuggestedFix } from "./agent/suggestion-review";
 import { createAgentComposition } from "./composition";
 import { LocalBrowserSurface } from "./composition/browser-surface";
+import { CodingProviderService } from "./composition/coding-provider-service";
 import { readDaySource } from "./composition/day-source";
 import { ConversationDiagnostics } from "./composition/diagnostics";
 import { createKnowledgeService } from "./composition/knowledge";
@@ -82,6 +84,11 @@ let reviews: ReviewCoordinator | undefined;
 let workspace: WorkspaceCoordinator | undefined;
 let hub: CommandCenterService | undefined;
 let workJobs: WorkJobCoordinator | undefined;
+let codingProvider: CodingProviderService | undefined;
+export function getCodingProvider() {
+	if (closing || !codingProvider) throw new Error("Coding provider is unavailable");
+	return codingProvider;
+}
 let attention: AttentionScheduler | undefined;
 let stopAttentionObserver: (() => void) | undefined;
 let reviewRegistry: ReviewRegistry | undefined;
@@ -593,6 +600,18 @@ export async function initializeHub(
 	focused: () => boolean = () => false
 ) {
 	if (!reviews) throw new Error("Review foundation unavailable");
+	codingProvider = new CodingProviderService({
+		configuration: getConfiguration,
+		directory: join(userDataPath, "coding", "login"),
+		probe: async (input, signal) => (await import("./work/muse-code")).probeMuseCode(input, signal),
+		resolveBinary: async (path) => (await import("./work/muse-code")).resolveMuseCodeBinary(path),
+		openCommand: (path) =>
+			new Promise<void>((resolve, reject) => {
+				execFile("/usr/bin/open", ["-a", "Terminal", path], { timeout: 10000 }, (error) =>
+					error ? reject(error) : resolve()
+				);
+			}),
+	});
 	hubReviewStore = store;
 	const github = new HubGitHubClient({ getToken: getGitHubToken });
 	const linear = new HubLinearClient({ getKey: getLinearAuthorization });
@@ -645,6 +664,9 @@ export async function initializeHub(
 			model: !!(await getConfiguration()
 				.get("meta")
 				.catch(() => undefined)),
+			coding: await getCodingProvider()
+				.readyForCoding()
+				.catch(() => false),
 		}),
 	});
 	await hub.initialize();
@@ -1003,6 +1025,7 @@ function runtimeForActiveJobs(): RuntimeService {
 export async function disposeRuntime(): Promise<void> {
 	const current = runtime;
 	closing = true;
+	await codingProvider?.dispose();
 	preparedComments?.invalidate();
 	await prFixes?.dispose();
 	await preparedComments?.dispose();

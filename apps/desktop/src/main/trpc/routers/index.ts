@@ -11,6 +11,8 @@ import {
 	AttentionSettleInputSchema,
 	ChatConversationSchema,
 	ChatMessageSchema,
+	CodingProviderSettingsSchema,
+	CodingProviderStatusSchema,
 	ConfirmCommentInputSchema,
 	DayOperateInputSchema,
 	DayOperationResultSchema,
@@ -67,6 +69,7 @@ import {
 	conversationService,
 	getAttention,
 	getBrowser,
+	getCodingProvider,
 	getConfiguration,
 	getConfigurationPorts,
 	getDay,
@@ -106,6 +109,24 @@ const hubCall = async <T>(work: () => Promise<T>): Promise<T> => {
 };
 // Register feature routers here as the application grows.
 export const appRouter = router({
+	codingProvider: router({
+		status: publicProcedure
+			.input(z.strictObject({}))
+			.output(CodingProviderStatusSchema)
+			.query(() => getCodingProvider().status()),
+		refresh: publicProcedure
+			.input(z.strictObject({}))
+			.output(CodingProviderStatusSchema)
+			.mutation(() => getCodingProvider().status(true)),
+		configure: publicProcedure
+			.input(CodingProviderSettingsSchema)
+			.output(CodingProviderStatusSchema)
+			.mutation(({ input }) => getCodingProvider().configure(input)),
+		openLogin: publicProcedure
+			.input(z.strictObject({}))
+			.output(z.void())
+			.mutation(() => getCodingProvider().openLogin()),
+	}),
 	prComments: router({
 		create: publicProcedure
 			.input(PRCommentCreateInputSchema)

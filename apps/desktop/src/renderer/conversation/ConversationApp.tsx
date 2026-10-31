@@ -1,5 +1,6 @@
 import { type RefObject, useCallback, useEffect, useRef, useState } from "react";
 import { useStore } from "zustand";
+import { CodingProviderCard } from "../coding";
 import { HubConnections } from "../command-center/Connections";
 import { CommandSidebar } from "../command-center/Sidebar";
 import type { HubController } from "../command-center/controller";
@@ -28,6 +29,7 @@ export function Configuration({
 	onOpenError,
 	returnFocus,
 	hub,
+	apiCall,
 }: {
 	controller: ConversationController;
 	onClose(): void;
@@ -35,6 +37,7 @@ export function Configuration({
 	onOpenError?(): void;
 	returnFocus?: RefObject<HTMLButtonElement | null>;
 	hub?: HubController;
+	apiCall?: ConversationApi["call"];
 }) {
 	const state = useStore(controller.store);
 	const oauth = useOAuth();
@@ -64,6 +67,7 @@ export function Configuration({
 			<p>Manage connected accounts and your local API keys.</p>
 			{oauth ? <OAuthConnections /> : hub && <HubConnections hub={hub} />}
 			<SlackConnections />
+			{apiCall && <CodingProviderCard call={apiCall} />}
 			<code className="env-path" data-testid="env-path">
 				{state.config?.envPath ??
 					state.envPath ??
@@ -592,6 +596,7 @@ export function ConversationApp({
 			)}
 			{overlay === "configuration" && (
 				<Configuration
+					apiCall={apiCall}
 					hub={hub}
 					controller={controller}
 					onClose={closeOverlay}
