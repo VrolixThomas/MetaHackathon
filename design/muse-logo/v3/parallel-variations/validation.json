@@ -1,0 +1,50 @@
+{
+  "pose_samples": 1932,
+  "minimum_control_point_margin": 39,
+  "spread": [
+    {
+      "kind": "original",
+      "rest_width": 129,
+      "gathered_width": 114
+    },
+    {
+      "kind": "compact",
+      "rest_width": 116,
+      "gathered_width": 108
+    },
+    {
+      "kind": "open",
+      "rest_width": 144,
+      "gathered_width": 122
+    },
+    {
+      "kind": "aligned",
+      "rest_width": 129,
+      "gathered_width": 114
+    },
+    {
+      "kind": "soft",
+      "rest_width": 129,
+      "gathered_width": 116
+    },
+    {
+      "kind": "level",
+      "rest_width": 129,
+      "gathered_width": 114
+    }
+  ],
+  "approved_reference": "Original matches previous Parallel geometry, material coordinates and working transforms at five sampled times. Pixel comparison is recorded by render.py.",
+  "checks": [
+    "stable foreground",
+    "actual contraction of the spread",
+    "exact 3.2s loop and static reduction",
+    "both comparison views share one clock",
+    "actual pause freezes current pose",
+    "six dropdown/card choices",
+    "gathered/resting controls",
+    "manual/system reduction",
+    "hidden-document/page-exit suspension",
+    "unique SVG namespaces and offline HTML"
+  ],
+  "scope": "Node geometry and preview attribute/event adapter. Browser layout, native interaction, gradients/clipping/playback and accessibility are unverified."
+}
