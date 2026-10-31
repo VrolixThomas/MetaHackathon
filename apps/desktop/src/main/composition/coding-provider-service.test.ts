@@ -48,6 +48,26 @@ it("API-only startup does not launch or authenticate the CLI", async (t) => {
 	assert.equal(calls.probes, 0);
 	assert.deepEqual(calls.opened, []);
 });
+it("foreground readiness returns while a subscription account probe is still pending", async (t) => {
+	const { configuration } = await setup(t);
+	await configuration.setCodingProviderSettings({ provider: "muse-code", musePath: null });
+	let finish!: (value: MuseCodeStatus) => void;
+	const pending = new Promise<MuseCodeStatus>((resolve) => {
+		finish = resolve;
+	});
+	const service = new CodingProviderService({
+		configuration: () => configuration,
+		directory: "/unused",
+		probe: () => pending,
+		resolveBinary: async () => null,
+		openCommand: async () => {},
+	});
+	t.after(() => service.dispose());
+	assert.equal(await service.readyForCoding(), false);
+	finish(account);
+	assert.equal((await service.status()).ready, true);
+	assert.equal(await service.readyForCoding(), true);
+});
 it("explicit subscription selection persists without touching voice/API keys and caches probes", async (t) => {
 	const { service, calls, configuration } = await setup(t);
 	const result = await service.configure({ provider: "muse-code", musePath: null });

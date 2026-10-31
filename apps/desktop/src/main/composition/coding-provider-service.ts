@@ -33,7 +33,12 @@ const quote = (value: string) => `'${value.replaceAll("'", "'\\''")}'`;
 
 /** Main-only configuration/account presence. The vendor owns its credentials and sign-in. */
 export class CodingProviderService {
-	private cache?: { path: string | null; at: number; promise: Promise<MuseCodeStatus> };
+	private cache?: {
+		path: string | null;
+		at: number;
+		promise: Promise<MuseCodeStatus>;
+		value?: MuseCodeStatus;
+	};
 	private readonly lifetime = new AbortController();
 	private readonly scripts = new Set<string>();
 	private opening?: Promise<void>;
@@ -88,7 +93,14 @@ export class CodingProviderService {
 				return { ...inactive(await this.detected(path)), error: "unavailable" as const };
 			}
 		})();
-		this.cache = { path, at: now, promise };
+		const entry = { path, at: now, promise, value: undefined as MuseCodeStatus | undefined };
+		this.cache = entry;
+		void promise.then(
+			(value) => {
+				if (this.cache === entry) entry.value = value;
+			},
+			() => {}
+		);
 		return promise;
 	}
 	async status(force = false) {
@@ -115,9 +127,11 @@ export class CodingProviderService {
 		this.live();
 		const configuration = this.ports.configuration();
 		const settings = await configuration.codingProviderSettings();
-		return settings.provider === "meta-api"
-			? Boolean(await configuration.get("meta"))
-			: (await this.probe(settings.musePath, false)).ready;
+		if (settings.provider === "meta-api") return Boolean(await configuration.get("meta"));
+		const previous = this.cache?.path === settings.musePath ? this.cache.value : undefined;
+		// Home/foreground context must not wait for CLI startup/account I/O. Each actual job rechecks.
+		void this.probe(settings.musePath, false).catch(() => {});
+		return previous?.ready ?? false;
 	}
 	async configure(raw: CodingProviderSettings) {
 		this.live();
