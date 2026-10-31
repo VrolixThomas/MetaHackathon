@@ -331,6 +331,7 @@ async function native() {
 							row.path === "workspace.applied" &&
 							row.completed &&
 							!row.error &&
+							row.result?.result?.data?.json?.status === "accepted" &&
 							row.input.status === "applied" &&
 							row.actualDecodedFrames?.length === 2 &&
 							row.input.workspace?.canvases.some(
@@ -344,6 +345,7 @@ async function native() {
 		await step(
 			"persisted descriptor closes into actual Recent and reopens same decoded bytes without regeneration",
 			async () => {
+				const readsBefore = report.ipc.filter((row) => row.path === "images.read").length;
 				await js(`document.querySelector('[aria-label="Close ${TITLE}"]').click()`);
 				await wait("closed image saved in Recent", async () => {
 					const observation = await observe();
@@ -374,6 +376,10 @@ async function native() {
 					);
 				});
 				assertFrame(await js(DOM), asset);
+				assert.ok(
+					report.ipc.filter((row) => row.path === "images.read").length > readsBefore,
+					"Reopening must reread the private bytes through actual IPC"
+				);
 				assert.equal(report.imageRequests.length, 1);
 			}
 		);
