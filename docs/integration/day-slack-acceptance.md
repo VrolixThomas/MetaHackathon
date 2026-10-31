@@ -1,5 +1,8 @@
 # My day, Slack and voice checkpoint — 2026-10-31
 
+Later same-day update: Slack browser login now uses the supported desktop PKCE localhost flow.
+The hosted callback blocker recorded below is superseded; see [current setup](oauth-setup.md).
+
 Implementation checkpoint: `1028187` on `hack/integration`. Eight Codex-only SuperiorSwarm
 lanes worked in separate checkouts. Their reviewed handoffs, corrections and reservations are
 recorded on MET-8. Earlier UI/agent/runtime/voice branches were audited before reusing their work.
@@ -49,9 +52,9 @@ physical microphone/acoustic verification or fully live conversational latency. 
 
 ## Remaining acceptance and external dependencies
 
-Live Slack requires the selected workspace, a granted user connection and appropriate scopes. No
-Slack account is connected on this machine yet. Browser Slack OAuth additionally requires a deployed
-app-owned HTTPS callback; OAuth helpers alone do not provide it. Developer token import is separate.
+At this checkpoint, live Slack still required the selected workspace, granted user connection and
+appropriate scopes. The earlier hosted-callback assumption was subsequently corrected: desktop
+PKCE uses localhost without a relay. Developer token import remains an optional alternative.
 Provider rate limits can defer source reads; polling cannot guarantee observation of every deletion.
 
 The complete live Slack → acceptance/Q&A → coding worker → review → original-thread answer still

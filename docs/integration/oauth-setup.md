@@ -1,4 +1,4 @@
-# GitHub and Linear login (MET-53)
+# GitHub, Linear and Slack login (MET-53 / MET-66)
 
 Muse owns this connection flow. SuperiorSwarm is not required at runtime, and its app credentials
 are not copied. Register your own applications and add the following fields to the active `.env`.
@@ -9,6 +9,22 @@ Settings shows the exact path; **Configure login** opens that file.
 | --- | --- | --- | --- |
 | GitHub | Settings → Developer settings → OAuth Apps → New OAuth App | `http://127.0.0.1:43187/oauth/github/callback` | `GITHUB_OAUTH_CLIENT_ID`, `GITHUB_OAUTH_CLIENT_SECRET` |
 | Linear | Workspace settings → API → OAuth applications | `http://127.0.0.1:43187/oauth/linear/callback` | `LINEAR_OAUTH_CLIENT_ID` |
+| Slack | Slack app → OAuth & Permissions → enable PKCE | `http://localhost:43187/oauth/slack/callback` | `SLACK_OAUTH_CLIENT_ID` |
+
+For Slack, create a dedicated Muse app using [slack-app-manifest.json](slack-app-manifest.json)
+at [Slack Apps](https://api.slack.com/apps). It configures the exact localhost callback, user scopes,
+PKCE and token rotation. Copy the app's Client ID from Basic Information into the active `.env`.
+Choose **Sign in with Slack** in Muse Settings, approve in the browser, then choose the conversations
+to watch. Tokens are obtained and stored by the app; no manual user-token copy is needed.
+
+Slack's [desktop PKCE flow](https://docs.slack.dev/authentication/using-pkce/) supports `localhost`
+redirects and user scopes without a client secret. The callback is deliberately `localhost`, while
+GitHub/Linear retain `127.0.0.1`. No hosted HTTPS relay is required for this flow. Slack desktop
+redirects cannot request bot scopes; optional Socket Mode app tokens remain a separate capability.
+The main process validates callback Host/path/state, checks the PKCE verifier, verifies the actual
+workspace/user, encrypts the grant and rotates expiring tokens without changing connection identity.
+Slack disconnect clears only its saved grant and manual Slack user token, preserving other providers.
+Signing in alone imports no messages: explicitly select watched conversations afterward.
 
 `LINEAR_OAUTH_CLIENT_SECRET` is optional: the authorization-code flow uses S256 PKCE.
 When registering Linear, enable **Public** to allow users in other workspaces to install Muse.

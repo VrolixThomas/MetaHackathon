@@ -12,15 +12,15 @@ Root must obtain a Slack app registration and read these values from the active 
 | Field | Purpose |
 | --- | --- |
 | `SLACK_OAUTH_CLIENT_ID` | Slack application client ID |
-| `SLACK_OAUTH_CLIENT_SECRET` | Code exchange and refresh; main-only |
-| `SLACK_OAUTH_REDIRECT_URI` | An actual registered HTTPS callback URL supplied by root |
 | `SLACK_APP_TOKEN` (optional) | App-level `xapp-…` token with `connections:write` for Socket Mode |
 
-Slack documents **HTTPS callbacks**. The GitHub/Linear HTTP loopback URLs cannot be reused and
-reported as a working Slack callback. Deployment must supply an app-owned HTTPS callback/relay or a
-trusted local HTTPS endpoint, with root's one-time state, PKCE and exact callback binding. These
-helpers do not invent a deployed hostname or listen for callbacks. Root encrypts the accepted user
-grant, rotates refresh tokens atomically and preserves existing GitHub/Linear connections.
+Enable PKCE in the Slack app and register **`http://localhost:43187/oauth/slack/callback`**.
+Slack's current desktop PKCE flow supports localhost and user scopes without a client secret.
+The OAuth service owns the loopback listener, one-time state, S256 verifier and exact callback
+Host/path binding. Do not substitute the other providers' numeric loopback URLs. Root encrypts
+the verified user grant, rotates refresh tokens atomically and preserves GitHub/Linear connections.
+See [Using PKCE](https://docs.slack.dev/authentication/using-pkce/) and root's
+[registration manifest](../../../../../docs/integration/slack-app-manifest.json).
 
 Request **User Token Scopes**, through `user_scope`, rather than bot scopes:
 

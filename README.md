@@ -130,7 +130,13 @@ acceptance. Muse can prepare isolated work while acceptance is pending, but exec
 Questions are covered with you when you open the item. Source-backed work closes only after a
 confirmed answer in the original thread; personal items use an explicit **I have answered this**.
 
-In **Settings → Slack**, configure a Slack **user** token and its app ID in the active `.env`:
+In **Settings → Slack**, choose **Sign in with Slack** and approve in your browser. The one-time app
+registration uses [this manifest](docs/integration/slack-app-manifest.json), enables PKCE, and registers
+`http://localhost:43187/oauth/slack/callback`. Configure `SLACK_OAUTH_CLIENT_ID` in the active `.env`.
+See the [login setup guide](docs/integration/oauth-setup.md). Muse saves and refreshes the user grant
+in its OS-encrypted account store; no client secret or hosted callback is required.
+
+The optional **Developer connection methods** disclosure can instead import a manual user token:
 
 ```dotenv
 SLACK_USER_TOKEN=
@@ -139,13 +145,12 @@ SLACK_APP_ID=
 SLACK_APP_TOKEN=
 ```
 
-Connect the configured account, then choose conversations to watch. Nothing is imported before you
+After connecting, choose conversations to watch. Nothing is imported before you
 choose. Polling is bounded; edits/deletions can have gaps. DM/private-channel knowledge stays private;
 company knowledge uses public channels, with fresh source access checked before retrieval. This
 increment runs locally while the Mac is awake and checkpoints through sleep/offline. A shared hosted
-company brain, cross-employee transport and Slack browser OAuth callback deployment are not yet
-available. Slack browser OAuth helpers require a registered app-owned HTTPS callback service; the
-local token setup above does not pretend to provide that service. GitHub/Linear login is separate.
+company brain and cross-employee transport are not yet available. Slack login preserves existing
+GitHub/Linear accounts. Replacing a Slack account clears its foreground context and private queue.
 
 ## Prepared reviews
 

@@ -275,15 +275,18 @@ is untrusted evidence, not tool authority. No mock product messages or knowledge
 
 First supervisor runtime remains active independently of a window while the Mac is awake;
 sleep/offline and durable checkpoints are explicit states. Hosted execution is not established.
-Slack OAuth requires its documented HTTPS callback setup; do not copy the other providers' HTTP
-callback and claim it works. Credentials/deployment block only relevant live checks. Root alone
+Slack OAuth uses the PKCE-enabled desktop flow with the exact registered
+`http://localhost:43187/oauth/slack/callback`; user scopes only, no client secret or hosted relay.
+GitHub/Linear keep their existing numeric loopback URLs. Credentials/consent block only live checks. Root alone
 runs combined app/native/provider tests; workers use controlled unit probes in separate worktrees.
 
 Root composes `SlackWorkspaceCoordinator` with the existing Day/worker services, SQLite stores,
 fresh knowledge authorization and original-thread delivery ledger. Settings imports a main-only
-`.env` USER token (`SLACK_USER_TOKEN`, `SLACK_APP_ID`), verifies the actual account, then watches
-only selected conversations. Socket Mode optionally uses `SLACK_APP_TOKEN`. Browser Slack OAuth
-and cross-employee transport are not deployed. Never treat local recorded facts as hosted team data.
+`.env` USER token (`SLACK_USER_TOKEN`, `SLACK_APP_ID`) remains an optional developer method.
+Browser Slack OAuth takes precedence and fails closed on refresh/account errors; never fall back to
+another manual account after a selected OAuth grant fails. It verifies the actual account and watches
+only selected conversations. Socket Mode optionally uses `SLACK_APP_TOKEN`. Cross-employee transport
+is not deployed. Never treat local recorded facts as hosted team data.
 `memory_search` and `day_read_source` bind the current account; reads preserve source identity,
 bounded exact prefixes and audience restrictions. They never establish display or send authority.
 
