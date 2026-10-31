@@ -210,6 +210,20 @@ test("read arguments reject actor/owner/agent/channel/source/sink overrides befo
 	assert.equal(h.reads.length, 0);
 });
 
+test("memory search rejects more than 256 characters before any port call and preserves the exact boundary query", async () => {
+	for (const brain of ["company", "private"] as const) {
+		const h = harness();
+		await assert.rejects(h.search({ brain, text: "x".repeat(257) }), WorkspaceArgumentError);
+		assert.equal(h.reads.length, 0);
+		const text = ` ${"x".repeat(254)} `;
+		h.setFacts([fact(brain)]);
+		await h.search({ brain, text });
+		const searches = h.reads.filter((read) => read.name === "search");
+		assert.equal(searches.length, 1);
+		assert.deepEqual(searches[0]?.input, { brain, text });
+	}
+});
+
 test("memory preserves recorded/inferred provenance, historical state, source identity and private audience without display proof", async () => {
 	const h = harness();
 	h.observe();

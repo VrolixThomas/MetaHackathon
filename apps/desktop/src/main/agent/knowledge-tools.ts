@@ -21,7 +21,7 @@ const searchSchema = z.strictObject({
 	text: z
 		.string()
 		.min(1)
-		.max(2000)
+		.max(256)
 		.refine((text) => text.trim().length > 0),
 });
 const sourceSchema = z.strictObject({ itemId: IdSchema, expectedRevision: z.int().positive() });
