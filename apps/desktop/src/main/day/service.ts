@@ -497,6 +497,14 @@ export class DayService {
 					sourceKey(row.item.source.source) === sourceKey(input.source)
 			);
 			if (!record) return null;
+			if (
+				!input.deleted &&
+				record.item.source?.source.revisionId === input.source.revisionId &&
+				!record.sourceDeleted
+			) {
+				this.remember(state, input.requestId, digest, record.item.id);
+				return record.item.id;
+			}
 			const previous = record.sourceFence;
 			if (
 				previous &&
@@ -548,7 +556,16 @@ export class DayService {
 				reason: z.string().min(1).max(2000),
 			})
 			.parse(raw);
-		const digest = sha256(JSON.stringify(["source-priority", input]));
+		const digest = sha256(
+			JSON.stringify([
+				"source-priority",
+				this.actor,
+				input.itemId,
+				input.sourceRevisionId,
+				input.rank,
+				input.reason,
+			])
+		);
 		const id = await this.update((state) => {
 			const replay = this.replay(state, input.requestId, digest);
 			if (replay) return replay;

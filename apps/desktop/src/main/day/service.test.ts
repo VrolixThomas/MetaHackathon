@@ -63,6 +63,13 @@ test("connector invalidation fences edits before inference and permanent deletes
 	try {
 		await capture(h.service);
 		const original = message();
+		await h.service.invalidateSource({
+			requestId: "capture-replayed-after-cache-ack-loss",
+			source: original.citation.source,
+			updatedAt: original.updatedAt,
+		});
+		assert.equal((await first(h.service)).phase, "captured");
+		assert.equal(h.store.state?.records[0]?.sourceText, original.text);
 		const edited = message("source-v2", "A changed request");
 		edited.updatedAt = "2026-10-31T00:00:01.000Z";
 		await h.service.invalidateSource({
