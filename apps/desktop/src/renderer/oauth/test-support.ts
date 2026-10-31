@@ -28,7 +28,11 @@ export const connected = (provider: OAuthProvider, login = "test-account") =>
 		account: { id: `test-${login}`, displayName: "Test User", login },
 	});
 
-export const statuses = (github = status("github"), linear = status("linear")) => [github, linear];
+export const statuses = (
+	github = status("github"),
+	linear = status("linear"),
+	slack = status("slack")
+) => [github, linear, slack];
 
 export function deferred<T>() {
 	let resolve!: (value: T) => void;

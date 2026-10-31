@@ -14,7 +14,7 @@ import type { ConversationApi } from "../conversation/api";
 
 export const OAUTH_POLL_INTERVAL_MS = 3000;
 export const OAUTH_CONNECTING_POLL_INTERVAL_MS = 1000;
-export const OAUTH_PROVIDERS = ["github", "linear"] as const;
+export const OAUTH_PROVIDERS = OAuthProviderSchema.options;
 export type OAuthOperation = "connect" | "cancel" | "disconnect";
 
 export interface OAuthState {
@@ -28,6 +28,15 @@ export interface OAuthState {
 	setupError: OAuthErrorCode | null;
 }
 
+export function hasPendingLogin(state: OAuthState) {
+	return (
+		state.rows.some((row) => row.phase === "connecting") ||
+		OAUTH_PROVIDERS.some(
+			(provider) => state.pending[provider] === "connect" || state.pending[provider] === "cancel"
+		)
+	);
+}
+
 /** App owns one instance shared by Settings and Connections. Only main owns credentials/login. */
 export function createOAuthController(call: ConversationApi["call"]) {
 	const store = createStore<OAuthState>(() => ({
@@ -35,8 +44,8 @@ export function createOAuthController(call: ConversationApi["call"]) {
 		loading: false,
 		busy: false,
 		error: null,
-		errors: { github: null, linear: null },
-		pending: { github: null, linear: null },
+		errors: { github: null, linear: null, slack: null },
+		pending: { github: null, linear: null, slack: null },
 		setupBusy: false,
 		setupError: null,
 	}));
@@ -45,10 +54,11 @@ export function createOAuthController(call: ConversationApi["call"]) {
 		epoch: number;
 		promise: Promise<OAuthStatus | null>;
 	};
-	const epochs = { github: 0, linear: 0 };
+	const epochs = { github: 0, linear: 0, slack: 0 };
 	const active: Record<OAuthProvider, Operation | undefined> = {
 		github: undefined,
 		linear: undefined,
+		slack: undefined,
 	};
 	let disposed = false;
 	let started = false;
@@ -68,7 +78,9 @@ export function createOAuthController(call: ConversationApi["call"]) {
 	}
 
 	function updateBusy() {
-		store.setState({ busy: !!active.github || !!active.linear || store.getState().setupBusy });
+		store.setState({
+			busy: OAUTH_PROVIDERS.some((provider) => !!active[provider]) || store.getState().setupBusy,
+		});
 	}
 
 	function adopt(row: OAuthStatus) {
@@ -124,6 +136,7 @@ export function createOAuthController(call: ConversationApi["call"]) {
 		OAuthProviderSchema.parse(provider);
 		const prior = active[provider];
 		if (prior?.kind === kind) return prior.promise;
+		if (kind === "connect" && hasPendingLogin(store.getState())) return Promise.resolve(null);
 		// Cancel supersedes a pending start immediately in the UI, then runs after its RPC.
 		// This keeps one mutation in flight per provider and prevents late login adoption.
 		if (prior && !(kind === "cancel" && prior.kind === "connect")) return Promise.resolve(null);

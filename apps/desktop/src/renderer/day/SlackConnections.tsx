@@ -1,135 +1,50 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { z } from "zod";
-import {
-	type ChatConversation,
-	ChatConversationSchema,
-	type SlackConnectionStatus,
-	SlackConnectionStatusSchema,
-} from "../../shared/contracts/chat";
+import { useEffect, useMemo } from "react";
+import { useStore } from "zustand";
 import { createConversationApi } from "../conversation/api";
+import { OAuthConnections, useOAuth } from "../oauth";
+import { createSlackSourcesController } from "../oauth/slack-sources";
 
 export function SlackConnections() {
-	const api = useMemo(
-		() => createConversationApi((input) => window.electron.trpc.request(input)),
-		[]
+	const oauth = useOAuth();
+	const controller = useMemo(
+		() =>
+			createSlackSourcesController(
+				createConversationApi((input) => window.electron.trpc.request(input)).call,
+				oauth,
+				() => window.dispatchEvent(new Event("muse:slack-account-change"))
+			),
+		[oauth]
 	);
-	const [status, setStatus] = useState<SlackConnectionStatus | null>(null);
-	const [conversations, setConversations] = useState<ChatConversation[]>([]);
-	const [cursor, setCursor] = useState<string | null>(null);
-	const [selected, setSelected] = useState<string[]>([]);
-	const [busy, setBusy] = useState(false);
-	const [error, setError] = useState("");
-	const identity = useRef<string | undefined>(undefined);
-	const dirty = useRef(false);
-	const refresh = useCallback(async () => {
-		try {
-			const next = SlackConnectionStatusSchema.parse(await api.call("query", "slack.status", {}));
-			if (next.phase !== "checking") {
-				const key = next.account ? `${next.account.workspaceId}:${next.account.userId}` : "none";
-				if (identity.current !== undefined && identity.current !== key) {
-					setConversations([]);
-					setSelected([]);
-					setCursor(null);
-					dirty.current = false;
-					window.dispatchEvent(new Event("muse:slack-account-change"));
-				}
-				identity.current = key;
-			}
-			setStatus(next);
-			if (!dirty.current) setSelected(next.watching);
-		} catch {
-			setError("Slack status is unavailable. Check the connection and retry.");
-		}
-	}, [api]);
+	const { status, conversations, cursor, selected, busy, loginPending, error } = useStore(
+		controller.store
+	);
 	useEffect(() => {
-		void refresh();
-		const timer = setInterval(() => void refresh(), 3000);
-		return () => clearInterval(timer);
-	}, [refresh]);
-	const action = async (path: string, input: unknown = {}) => {
-		setBusy(true);
-		setError("");
-		try {
-			await api.call("mutation", path, input);
-			if (path === "slack.watch") dirty.current = false;
-			await refresh();
-		} catch {
-			setError("Slack could not confirm the change. Check setup and retry.");
-		} finally {
-			setBusy(false);
-		}
-	};
-	const load = async () => {
-		const account = identity.current;
-		setBusy(true);
-		setError("");
-		try {
-			const page = z
-				.strictObject({
-					items: z.array(ChatConversationSchema),
-					nextCursor: z.string().nullable(),
-					hasMore: z.boolean(),
-				})
-				.parse(await api.call("query", "slack.conversations", cursor ? { cursor } : {}));
-			if (identity.current !== account) return;
-			setConversations((previous) => [
-				...new Map([...previous, ...page.items].map((row) => [row.id, row])).values(),
-			]);
-			setCursor(page.nextCursor);
-		} catch {
-			setError("Slack conversations could not be read with this connection.");
-		} finally {
-			setBusy(false);
-		}
-	};
+		controller.start();
+		return () => controller.dispose();
+	}, [controller]);
 	return (
 		<section className="hub-setup" aria-label="Slack connection">
-			<h3>Slack</h3>
-			<output data-testid="slack-account-status" aria-live="polite">
-				{status?.phase === "connected"
-					? `Connected · ${status.account?.workspaceName} / ${status.account?.userName}`
-					: status?.phase === "checking"
-						? "Checking connection…"
-						: status?.phase === "error"
-							? "Connection needs attention"
-							: "Not connected"}
-			</output>
+			<OAuthConnections providers={["slack"]} />
 			{error && <p role="alert">{error}</p>}
-			<div className="hub-actions">
-				<button
-					type="button"
-					className="quiet"
-					disabled={busy}
-					onClick={() => void action("slack.openSetup")}
-				>
-					Configure Slack
-				</button>
-				<button
-					type="button"
-					className="quiet"
-					disabled={busy || !!status?.missing.length}
-					onClick={() => void action("slack.connect")}
-				>
-					Connect configured Slack account
-				</button>
-			</div>
-			<details>
-				<summary>Connection setup</summary>
-				<p>
-					Configure your Slack user connection in the local .env. Browser OAuth requires a
-					registered HTTPS callback service. Existing GitHub and Linear connections stay available.
-				</p>
-			</details>
 			{status?.phase === "connected" && (
-				<>
-					<p>
+				<div aria-label="Slack watched conversations">
+					<h3>Watched conversations</h3>
+					<output data-testid="slack-source-status" aria-live="polite">
+						{status.account?.workspaceName} / {status.account?.userName} ·{" "}
 						{status.coverage === "socket"
 							? "Live events for watched conversations"
-							: status.watching.length
-								? "Bounded polling for watched conversations; edits and deletions can have gaps."
-								: "Choose conversations to watch. Nothing is imported until selected."}
-					</p>
-					<button type="button" className="quiet" disabled={busy} onClick={() => void load()}>
+							: status.coverage === "paused"
+								? "Watching paused"
+								: status.watching.length
+									? "Bounded polling; edits and deletions can have gaps."
+									: "Choose conversations to watch. Nothing is imported until selected."}
+					</output>
+					<button
+						type="button"
+						className="quiet"
+						disabled={busy}
+						onClick={() => void controller.load()}
+					>
 						{conversations.length && cursor ? "More conversations" : "Choose conversations"}
 					</button>
 					{conversations.map((row) => (
@@ -137,14 +52,8 @@ export function SlackConnections() {
 							<input
 								type="checkbox"
 								checked={selected.includes(row.id)}
-								disabled={!row.canRead}
-								onChange={(event) => {
-									const checked = event.currentTarget.checked;
-									dirty.current = true;
-									setSelected((previous) =>
-										checked ? [...previous, row.id] : previous.filter((id) => id !== row.id)
-									);
-								}}
+								disabled={busy || !row.canRead}
+								onChange={(event) => controller.select(row.id, event.currentTarget.checked)}
 							/>
 							{row.name} · {row.visibility.replaceAll("_", " ")}
 						</label>
@@ -153,13 +62,51 @@ export function SlackConnections() {
 						<button
 							type="button"
 							disabled={busy || selected.length > 32}
-							onClick={() => void action("slack.watch", { conversationIds: selected })}
+							onClick={() => void controller.action("slack.watch")}
 						>
 							Save watched conversations
 						</button>
 					)}
-				</>
+				</div>
 			)}
+			{status && status.phase !== "connected" && (
+				<output>
+					Watched conversations are unavailable. Check your Slack connection and retry.
+				</output>
+			)}
+			<button
+				type="button"
+				className="quiet"
+				disabled={busy}
+				onClick={() => void controller.refresh()}
+			>
+				Refresh watched conversations
+			</button>
+			<details className="small">
+				<summary>Developer connection methods</summary>
+				<p>
+					Optionally import a Slack user token from the main-only .env using SLACK_USER_TOKEN and
+					SLACK_APP_ID.
+				</p>
+				<div className="hub-actions">
+					<button
+						type="button"
+						className="quiet"
+						disabled={busy || loginPending}
+						onClick={() => void controller.action("slack.openSetup")}
+					>
+						Open developer configuration
+					</button>
+					<button
+						type="button"
+						className="quiet"
+						disabled={busy || loginPending}
+						onClick={() => void controller.action("slack.connect")}
+					>
+						Import .env Slack user token
+					</button>
+				</div>
+			</details>
 		</section>
 	);
 }

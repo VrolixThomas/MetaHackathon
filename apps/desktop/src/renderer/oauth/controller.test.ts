@@ -1,6 +1,10 @@
 import assert from "node:assert/strict";
 import { afterEach, it } from "node:test";
-import { OAuthStartInputSchema, type OAuthStatus } from "../../shared/contracts/oauth";
+import {
+	type OAuthProvider,
+	OAuthStartInputSchema,
+	type OAuthStatus,
+} from "../../shared/contracts/oauth";
 import type { ConversationApi } from "../conversation/api";
 import {
 	OAUTH_CONNECTING_POLL_INTERVAL_MS,
@@ -42,7 +46,7 @@ it("starts empty, shares one read, and only observes local status until an expli
 	await first;
 	assert.deepEqual(value.store.getState().rows, statuses());
 	assert.equal(value.store.getState().loading, false);
-	assert.ok(rowCounts.every((count) => count === 0 || count === 2));
+	assert.ok(rowCounts.every((count) => count === 0 || count === 3));
 	await value.start();
 	assert.equal(calls.length, 1);
 });
@@ -53,7 +57,7 @@ it("uses exact mutation routes/inputs, fresh UUIDs, and validates public results
 		calls.push(args);
 		const [, path, input] = args;
 		if (path === "oauth.openSetup") return undefined;
-		const provider = (input as { provider: "github" | "linear" }).provider;
+		const provider = (input as { provider: OAuthProvider }).provider;
 		return status(provider, { phase: path === "oauth.start" ? "connecting" : "disconnected" });
 	});
 	await value.connect("github");
@@ -126,29 +130,40 @@ it("polls at 3s normally and 1s while connecting; polling never starts provider 
 	}
 });
 
-it("deduplicates provider actions and keeps each provider busy until its own mutation settles", async () => {
-	const github = deferred<unknown>();
-	const linear = deferred<unknown>();
+it("deduplicates starts and permits only one global browser login, including after its RPC settles", async () => {
+	const login = deferred<unknown>();
 	const calls: unknown[] = [];
 	const value = controller(async (...args) => {
 		calls.push(args);
-		return (args[2] as { provider: string }).provider === "github"
-			? github.promise
-			: linear.promise;
+		if (args[1] === "oauth.cancel") return status("slack");
+		return (args[2] as { provider: OAuthProvider }).provider === "github"
+			? status("github", { phase: "connecting" })
+			: login.promise;
 	});
-	const first = value.connect("github");
-	assert.equal(value.connect("github"), first);
-	assert.equal(await value.disconnect("github"), null);
-	const second = value.connect("linear");
-	assert.equal(calls.length, 2);
-	assert.deepEqual(value.store.getState().pending, { github: "connect", linear: "connect" });
-	github.resolve(status("github", { phase: "connecting" }));
+	const first = value.connect("slack");
+	assert.equal(value.connect("slack"), first);
+	assert.equal(await value.disconnect("slack"), null);
+	assert.equal(await value.connect("github"), null);
+	assert.equal(await value.connect("linear"), null);
+	assert.equal(calls.length, 1);
+	assert.deepEqual(value.store.getState().pending, {
+		github: null,
+		linear: null,
+		slack: "connect",
+	});
+	login.resolve(status("slack", { phase: "connecting" }));
 	await first;
-	assert.equal(value.store.getState().busy, true);
-	assert.deepEqual(value.store.getState().pending, { github: null, linear: "connect" });
-	linear.resolve(status("linear", { phase: "connecting" }));
-	await second;
 	assert.equal(value.store.getState().busy, false);
+	assert.equal(await value.connect("github"), null);
+	assert.equal(await value.connect("slack"), null);
+	assert.equal(calls.length, 1);
+	await value.cancel("slack");
+	await value.connect("github");
+	assert.equal(
+		value.store.getState().rows.find((row) => row.provider === "github")?.phase,
+		"connecting"
+	);
+	assert.equal(calls.length, 3);
 });
 
 it("cancel supersedes pending start without overlapping provider mutations or adopting a late account", async () => {
@@ -261,16 +276,17 @@ it("a superseded read failure cannot replace a successful mutation with an old e
 it("rejects missing/duplicate providers and unknown public/account fields without retaining response bytes", async () => {
 	const invalid = [
 		[],
-		[status("github"), status("github")],
-		[{ ...status("github"), accessToken: "private-value" }, status("linear")],
+		[status("github"), status("linear"), status("github")],
+		[{ ...status("github"), accessToken: "private-value" }, status("linear"), status("slack")],
 		[
 			{
 				...connected("github"),
 				account: { ...connected("github").account, secret: "private-value" },
 			},
 			status("linear"),
+			status("slack"),
 		],
-		[status("github"), { ...status("linear"), error: "raw upstream message" }],
+		[status("github"), { ...status("linear"), error: "raw upstream message" }, status("slack")],
 	];
 	for (const response of invalid) {
 		let result: unknown = response;
@@ -282,7 +298,7 @@ it("rejects missing/duplicate providers and unknown public/account fields withou
 		result = statuses();
 		await value.reload();
 		assert.equal(value.store.getState().error, null);
-		assert.equal(value.store.getState().rows.length, 2);
+		assert.equal(value.store.getState().rows.length, 3);
 	}
 });
 

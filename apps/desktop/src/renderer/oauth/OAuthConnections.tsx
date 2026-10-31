@@ -1,10 +1,12 @@
 import { useStore } from "zustand";
 import { OAUTH_MESSAGES, type OAuthProvider, type OAuthStatus } from "../../shared/contracts/oauth";
 import { useOAuth } from "./context";
-import { OAUTH_PROVIDERS, type OAuthController } from "./controller";
+import { type OAuthController, hasPendingLogin } from "./controller";
 import "./oauth.css";
 
-const names = { github: "GitHub", linear: "Linear" } as const;
+const names = { github: "GitHub", linear: "Linear", slack: "Slack" } as const;
+const defaultProviders = ["github", "linear"] as const;
+type OAuthConnectionsProps = { providers?: readonly OAuthProvider[] };
 
 function accountLabel(row: OAuthStatus) {
 	if (!row.account) return "Account details unavailable";
@@ -12,7 +14,10 @@ function accountLabel(row: OAuthStatus) {
 	return login ? `${displayName} (@${login})` : displayName;
 }
 
-function OAuthRows({ controller }: { controller: OAuthController }) {
+function OAuthRows({
+	controller,
+	providers,
+}: { controller: OAuthController; providers: readonly OAuthProvider[] }) {
 	const state = useStore(controller.store);
 	return (
 		<section className="hub-setup oauth-connections" aria-label="Account connections">
@@ -29,7 +34,7 @@ function OAuthRows({ controller }: { controller: OAuthController }) {
 					</button>
 				</div>
 			)}
-			{OAUTH_PROVIDERS.map((provider) => {
+			{[...new Set(providers)].map((provider) => {
 				const row = state.rows.find((item) => item.provider === provider);
 				const pending = state.pending[provider];
 				const error = state.errors[provider] ?? row?.error;
@@ -90,7 +95,7 @@ function OAuthRows({ controller }: { controller: OAuthController }) {
 								<ConnectButton
 									provider={provider}
 									row={row}
-									pending={!!pending}
+									pending={!!pending || hasPendingLogin(state) || !!state.error}
 									failed={failed}
 									controller={controller}
 									setupBusy={state.setupBusy}
@@ -115,8 +120,10 @@ function OAuthRows({ controller }: { controller: OAuthController }) {
 									Register this callback URL for {names[provider]}: <code>{row.callbackUrl}</code>
 								</p>
 								<p>
-									Open the app .env file to configure login. Reconnecting replaces the saved
-									account.
+									{provider === "slack"
+										? "Set SLACK_OAUTH_CLIENT_ID in the app .env. Enable PKCE and register this exact localhost callback once in Slack app settings, then sign in to consent in your browser."
+										: "Open the app .env file to configure login."}{" "}
+									Reconnecting replaces the saved account.
 								</p>
 								{row.source === "env" && (
 									<p>
@@ -173,7 +180,8 @@ function ConnectButton({
 	);
 }
 
-export function OAuthConnections() {
+/** Existing surfaces keep GitHub/Linear; SlackConnections owns the Slack-only card. */
+export function OAuthConnections({ providers = defaultProviders }: OAuthConnectionsProps = {}) {
 	const controller = useOAuth();
-	return controller ? <OAuthRows controller={controller} /> : null;
+	return controller ? <OAuthRows controller={controller} providers={providers} /> : null;
 }

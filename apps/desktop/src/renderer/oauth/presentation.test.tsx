@@ -5,6 +5,7 @@ import {
 	OAUTH_CALLBACK_URLS,
 	OAUTH_MESSAGES,
 	type OAuthErrorCode,
+	type OAuthProvider as Provider,
 } from "../../shared/contracts/oauth";
 import type { ConversationApi } from "../conversation/api";
 import { type OAuthController, createOAuthController } from "./controller";
@@ -21,12 +22,12 @@ afterEach(() => {
 	for (const value of controllers.splice(0)) value.dispose();
 });
 
-function render(value: OAuthController) {
+function render(value: OAuthController, providers?: readonly Provider[]) {
 	// Zustand SSR normally uses the factory's initial state. Supply the explicitly loaded snapshot.
 	const supplied = { ...value, store: { ...value.store, getInitialState: value.store.getState } };
 	return renderToStaticMarkup(
 		<OAuthProvider controller={supplied}>
-			<OAuthConnections />
+			<OAuthConnections providers={providers} />
 		</OAuthProvider>
 	);
 }
@@ -116,7 +117,8 @@ it("unconfigured providers offer main-owned setup with callback details and no c
 	const html = render(value);
 	assert.match(button(html, "oauth-github-connect"), /Configure GitHub login/);
 	assert.match(button(html, "oauth-linear-connect"), /Configure Linear login/);
-	for (const url of Object.values(OAUTH_CALLBACK_URLS)) assert.ok(html.includes(url));
+	for (const provider of ["github", "linear"] as const)
+		assert.ok(html.includes(OAUTH_CALLBACK_URLS[provider]));
 	assert.match(html, /<details[^>]*><summary>Login setup<\/summary>/);
 	assert.match(html, /Reconnecting replaces the saved account/);
 	assert.doesNotMatch(
@@ -260,4 +262,102 @@ it("profile content stays escaped text and never renders avatars, scopes, or aut
 	const html = render(value);
 	assert.match(html, /&lt;script&gt;/);
 	assert.doesNotMatch(html, /<script|<img|example\.test|public-test-scope|<input|<textarea/);
+});
+
+it("Slack-only filtering supplies browser consent, profile, reconnect and disconnect without duplicating Settings auth", async () => {
+	const value = controller(async () =>
+		statuses(undefined, undefined, connected("slack", "slack-member"))
+	);
+	await value.reload();
+	const supplied = { ...value, store: { ...value.store, getInitialState: value.store.getState } };
+	const { SlackConnections } = await import("../day/SlackConnections");
+	const html = renderToStaticMarkup(
+		<OAuthProvider controller={supplied}>
+			<OAuthConnections />
+			<SlackConnections />
+		</OAuthProvider>
+	);
+	for (const provider of ["github", "linear", "slack"] as const) {
+		assert.equal(
+			(html.match(new RegExp(`data-oauth-provider="${provider}"`, "g")) ?? []).length,
+			1
+		);
+		assert.equal(
+			(html.match(new RegExp(`data-testid="${provider}-account-status"`, "g")) ?? []).length,
+			1
+		);
+	}
+	assert.match(button(html, "oauth-slack-connect"), /Reconnect Slack \(replace account\)/);
+	assert.match(button(html, "oauth-slack-disconnect"), />Disconnect<\/button>/);
+	assert.match(html, /Test User \(@slack-member\)/);
+	assert.ok(html.includes(OAUTH_CALLBACK_URLS.slack));
+	assert.match(html, /SLACK_OAUTH_CLIENT_ID/);
+	assert.match(html, /Enable PKCE/);
+	assert.doesNotMatch(
+		html,
+		/HTTPS callback|registered HTTPS|Connect configured Slack account|Configure your Slack user connection/
+	);
+	assert.match(
+		html,
+		/<details[^>]*><summary>Developer connection methods<\/summary>[\s\S]*Import .env Slack user token/
+	);
+});
+
+it("Slack has a sign-in control, main-owned setup, and a deduplicated additive provider filter", async () => {
+	const value = controller();
+	await value.reload();
+	let html = render(value, ["slack", "slack"]);
+	assert.equal((html.match(/data-oauth-provider="slack"/g) ?? []).length, 1);
+	assert.match(button(html, "oauth-slack-connect"), />Sign in with Slack<\/button>/);
+	assert.doesNotMatch(html, /data-oauth-provider="github"|data-oauth-provider="linear"/);
+	value.store.setState({
+		rows: statuses(undefined, undefined, status("slack", { configurationReady: false })),
+	});
+	html = render(value, ["slack"]);
+	assert.match(button(html, "oauth-slack-connect"), /Configure Slack login/);
+	assert.doesNotMatch(html, /client.?secret|<input|<textarea/i);
+});
+
+it("a Slack browser login disables starts on every auth surface through cancellation acknowledgement", async () => {
+	const login = deferred<unknown>();
+	const cancellation = deferred<unknown>();
+	const value = controller(async (_type, path) =>
+		path === "oauth.status"
+			? statuses()
+			: path === "oauth.start"
+				? login.promise
+				: cancellation.promise
+	);
+	await value.reload();
+	const start = value.connect("slack");
+	assert.match(button(render(value), "oauth-github-connect"), /disabled=""/);
+	assert.match(button(render(value), "oauth-linear-connect"), /disabled=""/);
+	assert.doesNotMatch(button(render(value, ["slack"]), "oauth-slack-cancel"), /disabled/);
+	const cancel = value.cancel("slack");
+	assert.match(button(render(value, ["slack"]), "oauth-slack-cancel"), /disabled=""/);
+	login.resolve(connected("slack", "late"));
+	await start;
+	assert.doesNotMatch(render(value, ["slack"]), /@late|>Connected<\/output>/);
+	assert.match(button(render(value), "oauth-github-connect"), /disabled=""/);
+	cancellation.resolve(status("slack"));
+	await cancel;
+	assert.doesNotMatch(button(render(value), "oauth-github-connect"), /disabled/);
+});
+
+it("Slack failed cancel/disconnect keeps the retained profile visibly last-known and never exposes raw failures", async () => {
+	for (const method of ["cancel", "disconnect"] as const) {
+		const value = controller(async (_type, path) => {
+			if (path === "oauth.status")
+				return statuses(undefined, undefined, connected("slack", "retained"));
+			throw new Error("private token diagnostic");
+		});
+		await value.reload();
+		await value[method]("slack");
+		await value.reload();
+		const html = render(value, ["slack"]);
+		assert.match(html, /Connection needs attention/);
+		assert.match(html, /Last account: Test User \(@retained\)/);
+		assert.match(button(html, "oauth-slack-disconnect"), />Disconnect<\/button>/);
+		assert.doesNotMatch(html, />Connected<\/output>|private token diagnostic/);
+	}
 });
