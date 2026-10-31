@@ -119,6 +119,12 @@ class DayChanged extends Error {
 	}
 }
 const unavailable = () => new Error("This work or its source is unavailable.");
+function revisionOrder(a: string, b: string) {
+	if (!/^\d+\.\d{6}$/.test(a) || !/^\d+\.\d{6}$/.test(b)) return null;
+	const x = BigInt(a.replace(".", ""));
+	const y = BigInt(b.replace(".", ""));
+	return x < y ? -1 : x > y ? 1 : 0;
+}
 
 /** Durable private commitments. Only trusted user operations grant ownership or authorize a reply. */
 export class DayService {
@@ -385,6 +391,19 @@ export class DayService {
 				JSON.stringify([message.authorId, message.text, message.deletedAt, message.truncated])
 			);
 			if (record) {
+				const fence = record.sourceFence;
+				if (
+					record.sourceDeleted ||
+					(fence &&
+						(fence.deleted ||
+							(revisionOrder(message.citation.source.revisionId, fence.revisionId) ??
+								(Date.parse(message.updatedAt) < Date.parse(fence.updatedAt)
+									? -1
+									: message.citation.source.revisionId === fence.revisionId
+										? 0
+										: -1)) < 0))
+				)
+					throw new DayChanged();
 				if (record.item.source?.source.revisionId === message.citation.source.revisionId) {
 					if (record.sourceDigest !== sourceDigest) throw new DayChanged();
 					// Re-ingestion cannot retroactively upgrade an incoming candidate into accepted ownership.
@@ -393,7 +412,10 @@ export class DayService {
 				}
 				if (
 					record.sourceUpdatedAt &&
-					Date.parse(message.updatedAt) <= Date.parse(record.sourceUpdatedAt)
+					(revisionOrder(
+						message.citation.source.revisionId,
+						record.item.source?.source.revisionId ?? ""
+					) ?? (Date.parse(message.updatedAt) <= Date.parse(record.sourceUpdatedAt) ? -1 : 1)) <= 0
 				)
 					throw new DayChanged();
 				if (record.item.jobId)
@@ -412,6 +434,7 @@ export class DayService {
 				record.item.acceptance = ownPromise ? "accepted" : "pending";
 				record.item.acceptanceBasis = ownPromise ? "own_explicit_promise" : "none";
 				record.item.acceptedAt = ownPromise ? this.iso() : null;
+				record.item.phase = "captured";
 				record.item.jobId = null;
 				record.item.repositoryId = input.repositoryId;
 				record.item.questions = [];
@@ -445,6 +468,104 @@ export class DayService {
 			return record.item.id;
 		});
 		return this.result(input.requestId, itemId);
+	}
+
+	/** Trusted connector invalidation, including identity-only deletes; never fabricates a message. */
+	async invalidateSource(raw: {
+		requestId: string;
+		source: ChatSource;
+		updatedAt: string;
+		deleted?: boolean;
+	}): Promise<DayOperationResult> {
+		const input = z
+			.strictObject({
+				requestId: IdSchema,
+				source: ChatSourceSchema,
+				updatedAt: z.iso.datetime(),
+				deleted: z.boolean().default(false),
+			})
+			.parse(raw);
+		if (input.source.workspaceId !== this.actor.workspaceId) throw unavailable();
+		const digest = sha256(JSON.stringify(["source-invalidation", input]));
+		const id = await this.update((state) => {
+			const replay = this.replay(state, input.requestId, digest);
+			if (replay) return replay;
+			const record = state.records.find(
+				(row) =>
+					this.owns(row.item) &&
+					row.item.source &&
+					sourceKey(row.item.source.source) === sourceKey(input.source)
+			);
+			if (!record) return null;
+			const previous = record.sourceFence;
+			if (
+				previous &&
+				(revisionOrder(input.source.revisionId, previous.revisionId) ??
+					(Date.parse(input.updatedAt) < Date.parse(previous.updatedAt) ? -1 : 0)) < 0
+			)
+				throw new DayChanged();
+			this.cancelRecord(record, input.requestId);
+			record.sourceFence = {
+				revisionId: input.source.revisionId,
+				updatedAt: input.updatedAt,
+				deleted: input.deleted || !!previous?.deleted,
+			};
+			record.sourceDeleted = record.sourceFence.deleted;
+			record.sourceText = null;
+			record.item.title = input.deleted ? "Slack source removed" : "Slack source changed";
+			record.item.summary = "";
+			record.item.replyDraft = null;
+			record.item.reviewedAt = null;
+			record.item.reviewedHeadSha = null;
+			this.touch(record);
+			this.due(state, record);
+			this.remember(state, input.requestId, digest, record.item.id);
+			return record.item.id;
+		});
+		return id === null
+			? DayOperationResultSchema.parse({
+					requestId: input.requestId,
+					itemId: null,
+					snapshot: await this.snapshot(),
+				})
+			: this.result(input.requestId, id);
+	}
+	async setInferredPriority(raw: {
+		requestId: string;
+		itemId: string;
+		expectedRevision: number;
+		sourceRevisionId: string;
+		rank: number;
+		reason: string;
+	}): Promise<DayOperationResult> {
+		const input = z
+			.strictObject({
+				requestId: IdSchema,
+				itemId: IdSchema,
+				expectedRevision: z.int().positive(),
+				sourceRevisionId: IdSchema,
+				rank: z.int().min(0).max(100),
+				reason: z.string().min(1).max(2000),
+			})
+			.parse(raw);
+		const digest = sha256(JSON.stringify(["source-priority", input]));
+		const id = await this.update((state) => {
+			const replay = this.replay(state, input.requestId, digest);
+			if (replay) return replay;
+			const record = this.record(state, input.itemId);
+			if (
+				record.item.revision !== input.expectedRevision ||
+				record.item.source?.source.revisionId !== input.sourceRevisionId ||
+				record.sourceDeleted ||
+				["closed", "cancelled"].includes(record.item.phase)
+			)
+				throw new DayChanged();
+			record.item.priority = { rank: input.rank, reason: input.reason, provenance: "inferred" };
+			this.touch(record);
+			this.remember(state, input.requestId, digest, record.item.id);
+			return record.item.id;
+		});
+		return this.result(input.requestId, id);
 	}
 	private async result(requestId: string, itemId: string): Promise<DayOperationResult> {
 		return DayOperationResultSchema.parse({ requestId, itemId, snapshot: await this.snapshot() });

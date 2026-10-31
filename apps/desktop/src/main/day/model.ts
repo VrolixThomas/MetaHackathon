@@ -48,6 +48,9 @@ export const DayRecordSchema = z.strictObject({
 	item: DayWorkItemSchema,
 	sourceUpdatedAt: time.nullable(),
 	sourceDigest: z.string().nullable(),
+	sourceFence: z
+		.strictObject({ revisionId: IdSchema, updatedAt: time, deleted: z.boolean() })
+		.optional(),
 	sourceText: z.string().max(40000).nullable(),
 	sourceDeleted: z.boolean(),
 	preparation: z

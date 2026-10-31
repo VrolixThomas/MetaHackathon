@@ -22,7 +22,12 @@ const sha256 = (text) => createHash("sha256").update(text).digest("hex");
 const sleep = (ms) => new Promise((done) => setTimeout(done, ms));
 const dataOf = (response) => response?.result?.data?.json;
 const primary = (workspace) => workspace.canvases.find((item) => item.id === workspace.primaryId);
-const contentOf = ({ sequence: _sequence, centerSection: _section, ...content }) => content;
+const contentOf = ({
+	sequence: _sequence,
+	contentSequence: _contentSequence,
+	centerSection: _section,
+	...content
+}) => content;
 let emergencyCleanup;
 
 function removeOwned(owned, ownerPath, owner) {

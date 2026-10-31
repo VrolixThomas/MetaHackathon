@@ -57,6 +57,73 @@ test("personal answer confirmation closes only source-less work and never record
 	}
 });
 const timestamp = "2026-10-31T00:00:00.000Z";
+
+test("connector invalidation fences edits before inference and permanent deletes without inventing messages", async () => {
+	const h = harness();
+	try {
+		await capture(h.service);
+		const original = message();
+		const edited = message("source-v2", "A changed request");
+		edited.updatedAt = "2026-10-31T00:00:01.000Z";
+		await h.service.invalidateSource({
+			requestId: "edit-fence",
+			source: edited.citation.source,
+			updatedAt: edited.updatedAt,
+		});
+		assert.equal((await first(h.service)).phase, "cancelled");
+		assert.equal(h.store.state?.records[0]?.sourceText, null);
+		assert.equal((await first(h.service)).summary, "");
+		await assert.rejects(
+			h.service.capture({
+				requestId: "late-old-capture",
+				message: original,
+				title: "Old",
+				summary: "Old",
+				kind: "request",
+				repositoryId: null,
+			})
+		);
+		await h.service.capture({
+			requestId: "capture-edited",
+			message: edited,
+			title: "Changed",
+			summary: "New inferred request",
+			kind: "request",
+			repositoryId: null,
+		});
+		assert.equal((await first(h.service)).phase, "captured");
+		assert.equal((await first(h.service)).acceptance, "pending");
+		const deleted = { ...edited.citation.source, revisionId: "source-v3" };
+		await h.service.invalidateSource({
+			requestId: "delete-fence",
+			source: deleted,
+			updatedAt: "2026-10-31T00:00:02.000Z",
+			deleted: true,
+		});
+		const resurrect = message("source-v4");
+		resurrect.updatedAt = "2026-10-31T00:00:03.000Z";
+		await assert.rejects(
+			h.service.capture({
+				requestId: "resurrection",
+				message: resurrect,
+				title: "Resurrect",
+				summary: "Must reject",
+				kind: "request",
+				repositoryId: null,
+			})
+		);
+		const unknown = await h.service.invalidateSource({
+			requestId: "unknown-deletion",
+			source: { ...deleted, messageId: "never-captured" },
+			updatedAt: "2026-10-31T00:00:03.000Z",
+			deleted: true,
+		});
+		assert.equal(unknown.itemId, null);
+		assert.equal(unknown.snapshot.items.length, 1);
+	} finally {
+		await h.service.dispose();
+	}
+});
 function message(
 	revisionId = "source-v1",
 	text = "Please investigate the actual request."
