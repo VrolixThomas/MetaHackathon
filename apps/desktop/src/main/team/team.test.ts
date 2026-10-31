@@ -80,9 +80,9 @@ test("Supabase PKCE exchange binds random loopback path, never accepts provider 
 	await assert.rejects(auth.finishLogin("http://127.0.0.1:43189/team-auth/wrong?code=bad"));
 	const next = new URL(auth.beginLogin("http://127.0.0.1:43189"));
 	await auth.finishLogin(`${next.searchParams.get("redirect_to")}?code=verified`);
-	assert.equal(sent.auth_code, "verified");
-	assert.equal(typeof sent.code_verifier, "string");
-	assert.equal(((await saved.read()) as Record<string, unknown>).provider_token, undefined);
+	assert.equal(sent["auth_code"], "verified");
+	assert.equal(typeof sent["code_verifier"], "string");
+	assert.equal(((await saved.read()) as Record<string, unknown>)["provider_token"], undefined);
 	await assert.rejects(auth.finishLogin(`${redirect}?code=replay`));
 });
 test("refresh failure fails closed; no GitHub credential fallback or admin keys", async () => {

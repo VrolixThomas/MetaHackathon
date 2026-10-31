@@ -109,7 +109,7 @@ export class TeamAuth {
 		const raw = (await boundedJson(response, 100000)) as Record<string, unknown>;
 		return SessionSchema.parse({
 			...raw,
-			expires_at: raw.expires_at ?? Math.floor(this.now() / 1000) + Number(raw.expires_in),
+			expires_at: raw["expires_at"] ?? Math.floor(this.now() / 1000) + Number(raw["expires_in"]),
 		});
 	}
 	async session(): Promise<TeamSession> {
