@@ -1,0 +1,21 @@
+{
+  "renderer": "PyMuPDF SVG \u2192 PDF \u2192 raster, Pillow composition; no browser",
+  "editable_svgs_rendered": 69,
+  "animated_comparison_frames": 60,
+  "static_matrix_poses": 48,
+  "motion_bounds_samples": 336,
+  "motion_bounds_result": "All sampled rich poses retain at least 2px padding in the 120px canvas.",
+  "outputs": [
+    "overview.png",
+    "static-states.png",
+    "sizes-and-use.png",
+    "motion-contact-sheet.png",
+    "working-comparison.gif"
+  ],
+  "limits": [
+    "No browser navigation, local server, CLI browser, CDP or Electron launch.",
+    "CSS animation SVGs rasterized at their static fallback; motion samples use the shared JS pose model.",
+    "No browser layout, interaction, native accessibility or actual playback validation.",
+    "No microphone, provider, product or live-state connection."
+  ]
+}

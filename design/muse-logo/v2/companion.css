@@ -1,0 +1,4 @@
+/* Component styles. JS owns motion; this file owns reserved space and treatment. */
+.companion { display:block; flex:none; inline-size:var(--companion-size,120px); block-size:var(--companion-size,120px); overflow:visible; }
+.companion-slot { display:grid; place-items:center; inline-size:var(--companion-size,120px); block-size:var(--companion-size,120px); flex:none; }
+@media (prefers-reduced-motion:reduce) { .companion * { animation:none !important; transition:none !important; } }

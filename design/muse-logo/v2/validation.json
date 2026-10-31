@@ -1,0 +1,10 @@
+{
+  "result": "PASS",
+  "checks": 19518,
+  "sampled_poses": 5832,
+  "scope": "Pure geometry + actual controller with attribute/event adapter + HTML source checks; no browser",
+  "limits": [
+    "Does not verify browser layout, DOM semantics, CSS SVG animation playback, or physical devices.",
+    "Manual opening of index.html remains the interactive visual review."
+  ]
+}

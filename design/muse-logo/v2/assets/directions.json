@@ -1,0 +1,26 @@
+{
+  "title": "Identity study v2",
+  "directions": [
+    {
+      "id": "pocket",
+      "label": "01 Companion",
+      "depiction": "pocket",
+      "explanation": "A curious pocket creature that leans in to hear you and springs into action, making a voice engineering assistant feel approachable.",
+      "color": "#E87759"
+    },
+    {
+      "id": "firefly",
+      "label": "02 Companion",
+      "depiction": "firefly",
+      "explanation": "A friendly firefly that opens its wings around a steady light, showing focused engineering work without losing its calm center.",
+      "color": "#D6DF77"
+    },
+    {
+      "id": "octopus",
+      "label": "03 Companion",
+      "depiction": "octopus",
+      "explanation": "A soft eight-armed helper that gathers loose threads and opens them toward you, making parallel engineering work feel coordinated.",
+      "color": "#8D9DE3"
+    }
+  ]
+}
