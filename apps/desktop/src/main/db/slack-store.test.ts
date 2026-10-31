@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { test } from "node:test";
+import { test as nodeTest } from "node:test";
 import Database from "better-sqlite3";
 import type { ChatMessage } from "../../shared/contracts/chat";
 import type { SlackCheckpoint } from "../slack/intake";
@@ -17,6 +17,7 @@ import {
 } from "./slack-store";
 
 // Authored/type-checked in the bounded lane. Root alone executes this real SQLite/native binding suite.
+const test = process.versions["electron"] ? nodeTest : nodeTest.skip;
 const identity: SlackIdentity = {
 	workspaceId: "T111",
 	userId: "U111",
