@@ -1,0 +1,57 @@
+{
+  "date": "2026-10-31",
+  "implementationCheckpoint": "bdfaf06",
+  "scope": "controlled native Electron Settings/IPC/coding-child/Git/runtime validation; real CLI account metadata only",
+  "liveSubscriptionCoding": false,
+  "liveModelOrMicrophone": false,
+  "unit": {
+    "passed": 1628,
+    "skipped": 13,
+    "failed": 0,
+    "files": 160
+  },
+  "native": {
+    "codingProvider": [
+      {
+        "label": "API default Settings status starts no CLI or coding child",
+        "status": "passed"
+      },
+      {
+        "label": "Explicit missing CLI selection persists and remains not ready",
+        "status": "passed"
+      },
+      {
+        "label": "Missing CLI disables ticket UI and actual selected child fails without API fallback",
+        "status": "passed"
+      },
+      {
+        "label": "Unsupported controlled CLI cannot enable coding or fall back to API",
+        "status": "passed"
+      },
+      {
+        "label": "Explicit API choice starts actual Meta child work and persists its provider pin",
+        "status": "passed"
+      },
+      {
+        "label": "Existing Meta child resumes after new-job preference changes and executes real checks",
+        "status": "passed"
+      }
+    ],
+    "v1": "passed",
+    "executive": "passed",
+    "oauth": "passed",
+    "prFixes": "passed"
+  },
+  "realCLIProbe": {
+    "installed": true,
+    "version": "1.4.13",
+    "auth": "sign-in-required",
+    "billing": "unknown",
+    "ready": false
+  },
+  "limitations": [
+    "Signed-in subscription/allowance and real coding/question/approval/resume still require live account verification.",
+    "CLI experimental account/usage protocol is gated to reviewed 1.4.13/1.4.14 schemas.",
+    "Shared Supabase organization review cache is proposed, not deployed."
+  ]
+}

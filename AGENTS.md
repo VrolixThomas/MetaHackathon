@@ -352,3 +352,5 @@ app-owned worktree and restricted vendor permissions. Retain uncertain effects a
 questions/approvals. Only independent runtime checks establish validation, not an SDK completion summary.
 Shared organization preparation/proposal storage is proposed in `docs/integration/team-backend-plan.md`;
 it is not deployed. Native subscription checks must distinguish controlled transports from real coding.
+`bun run test:coding-provider` covers actual Settings/IPC/worker pins and real local Git/checks with
+controlled model transport and a deliberately unsupported CLI. It does not prove live subscription coding.
