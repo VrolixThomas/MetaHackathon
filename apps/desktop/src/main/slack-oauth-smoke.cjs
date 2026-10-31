@@ -753,11 +753,8 @@ async function native() {
 			assert.equal(env.SLACK_OAUTH_CLIENT_ID, CLIENT);
 			assert.equal(env.SLACK_INTERNAL_APP, "1");
 			assert.deepEqual(
-				Object.entries(env).filter(([, value]) => value !== ""),
-				[
-					["SLACK_OAUTH_CLIENT_ID", CLIENT],
-					["SLACK_INTERNAL_APP", "1"],
-				]
+				Object.fromEntries(Object.entries(env).filter(([, value]) => value !== "")),
+				{ SLACK_OAUTH_CLIENT_ID: CLIENT, SLACK_INTERNAL_APP: "1" }
 			);
 		};
 		const envelope = () => {
