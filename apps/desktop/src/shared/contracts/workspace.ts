@@ -12,6 +12,7 @@ import {
 	HubSnapshotSchema,
 	PinnedSourceSchema,
 } from "./command-center";
+import { ImageAssetSchema } from "./images";
 import { WorkspaceUrlSchema } from "./web-url";
 export { WorkspaceUrlSchema } from "./web-url";
 
@@ -66,6 +67,7 @@ const canvasFields = {
 	revision: z.int().positive(),
 };
 export const CanvasSchema = z.discriminatedUnion("kind", [
+	z.strictObject({ ...canvasFields, kind: z.literal("image"), asset: ImageAssetSchema }),
 	z.strictObject({
 		...canvasFields,
 		kind: z.literal("center"),
@@ -160,6 +162,7 @@ export const WorkspaceBrowserCommandSchema = z.discriminatedUnion("kind", [
 ]);
 const target = z.enum(["primary", "secondary"]).optional();
 export const WorkspaceCommandSchema = z.discriminatedUnion("kind", [
+	z.strictObject({ kind: z.literal("show-image"), assetId: IdSchema.max(200), target }),
 	z.strictObject({ kind: z.literal("browse-center"), section: CenterSectionSchema }),
 	z.strictObject({
 		kind: z.literal("open-center"),
@@ -246,11 +249,15 @@ export const WorkspaceObservationSchema = z.strictObject({
 		)
 		.max(200),
 	capabilities: z
-		.array(z.enum(["documents", "visuals", "browser", "review", "center", "source", "flow"]))
-		.max(7),
+		.array(
+			z.enum(["documents", "visuals", "browser", "review", "center", "source", "flow", "images"])
+		)
+		.max(8),
 	hub: HubSnapshotSchema.optional(),
 	savedCanvases: z
-		.array(z.strictObject({ ...canvasFields, kind: z.enum(["document", "visual", "flow"]) }))
+		.array(
+			z.strictObject({ ...canvasFields, kind: z.enum(["document", "visual", "flow", "image"]) })
+		)
 		.max(50)
 		.optional(),
 });
