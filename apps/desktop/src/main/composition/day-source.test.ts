@@ -52,7 +52,7 @@ test("Day source reads the exact original thread through current provider author
 				getDay: () => h.day,
 				client: {
 					sourceMessage: h.slack.client.sourceMessage.bind(h.slack.client),
-					thread: async () => ({ items: [], nextCursor: null, hasMore: false }),
+					thread: async () => ({ items: [], nextCursor: null, hasMore: false, threadIds: [] }),
 				},
 			},
 			h.input,
