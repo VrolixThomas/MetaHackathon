@@ -1,11 +1,13 @@
 // ROOT ONLY, after building the integrated default App (from apps/desktop):
 // env -u ELECTRON_RUN_AS_NODE electron src/main/slack-oauth-smoke.cjs [out/main/index.js]
 // AUTHOR ONLY: node --check this-file; node this-file --self-check. No native imports in self-check.
-// Requires root's Slack OAuth provider/config/store/composition and Settings bindings, not this
-// checkout's older HTTPS-only helper. Production callback must be http://localhost:43187/oauth/slack/callback;
+// Requires root's Slack OAuth, all-joined coordinator/RPC/Settings and source profile-label bindings.
+// Production callback must be http://localhost:43187/oauth/slack/callback;
 // no callbackPort injection. Existing oauth.{status,start,cancel,disconnect} and slack.{status,
-// conversations,watch} run through the actual preload/router. Selectors follow OAuthConnections
-// data-oauth-provider/testids and SlackConnections' labelled section/buttons/checkboxes.
+// conversations,follow} run through the actual preload/router. Source status must independently
+// confirm all_joined + membershipSync.complete + all three conversations before any list/save click.
+// Advanced 'Conversations and exclusions' / 'Show conversations' / 'Save exclusions' excludes one.
+// Labels must come from actual conversation/profile responses, never raw-ID or invented DM names.
 // Only fixed-origin provider transport and shell.openExternal are controlled. No successful RPC
 // replacement, seeded connection, live consent, worker, model, source-ingestion or speech claim.
 const assert = require("node:assert/strict");
@@ -31,6 +33,11 @@ const PROFILE = {
 	displayName: "Controlled Slack Viewer",
 	login: "controlled-viewer",
 };
+const DM_PROFILE = {
+	id: "U66002",
+	displayName: "Controlled Slack Teammate",
+	login: "controlled-teammate",
+};
 const SCOPES = [
 	"channels:read",
 	"channels:history",
@@ -45,15 +52,43 @@ const SCOPES = [
 ];
 const CHANNELS = [
 	{ id: "C66001", name: "controlled-selected-channel", is_channel: true, is_private: false },
-	{ id: "D66001", name: "controlled-selected-dm", is_im: true },
-	{ id: "C66002", name: "controlled-unwatched-channel", is_channel: true, is_private: false },
+	{ id: "D66001", user: DM_PROFILE.id, is_im: true },
+	{ id: "C66002", name: "controlled-excluded-channel", is_channel: true, is_private: false },
 ];
-const WATCHED = CHANNELS.slice(0, 2).map((row) => row.id);
+const JOINED = CHANNELS.map((row) => row.id);
+const EXCLUDED = [CHANNELS[2].id];
 const hash = (value) => createHash("sha256").update(value).digest("base64url");
 const sleep = (ms) => new Promise((done) => setTimeout(done, ms));
 const rowScope = '#configuration [data-oauth-provider="slack"]';
 const sourceScope = '#configuration section[aria-label="Slack connection"]';
 
+function assertFollowing(row, excluded = []) {
+	assert.equal(row.phase, "connected");
+	assert.equal(row.error, null);
+	assert.equal(row.followMode, "all_joined");
+	assert.equal(row.membershipSync?.phase, "complete");
+	assert.equal(row.membershipSync.discoveredCount, JOINED.length);
+	assert.ok(
+		Number.isFinite(Date.parse(row.membershipSync.completedAt)),
+		"Completed discovery needs a timestamp"
+	);
+	assert.deepEqual([...row.excludedConversationIds].sort(), [...excluded].sort());
+	assert.deepEqual([...row.watching].sort(), JOINED.filter((id) => !excluded.includes(id)).sort());
+}
+function assertConversationLabels(items, labels) {
+	assert.deepEqual(items.map((row) => row.id).sort(), [...JOINED].sort());
+	const expected = items.map((row) => {
+		assert.equal(row.workspaceId, ACTOR.workspaceId);
+		const source = CHANNELS.find((channel) => channel.id === row.id);
+		assert.equal(row.name, source.is_im ? DM_PROFILE.displayName : source.name);
+		assert.equal(row.visibility, source.is_im ? "direct_message" : "public_channel");
+		return `${row.name} · ${row.visibility.replaceAll("_", " ")}`;
+	});
+	assert.deepEqual([...labels].sort(), expected.sort());
+	for (const label of labels)
+		for (const id of [...JOINED, ACTOR.userId, DM_PROFILE.id])
+			assert.ok(!label.includes(id), "Conversation label must not fall back to a raw source ID");
+}
 function scrubEnvironment(env) {
 	for (const key of Object.keys(env))
 		if (
@@ -257,6 +292,7 @@ async function native() {
 	};
 	const children = new Map();
 	const flows = [];
+	let exclusionsApplied = false;
 	for (const name of [
 		"spawn",
 		"spawnSync",
@@ -319,25 +355,35 @@ async function native() {
 						"runtime.githubSignIn",
 						"app.requestMicrophone",
 						"slack.connect",
+						"slack.watch",
 					].includes(request.path)
 				)
 					forbid(`RPC ${request.path}`);
 				if (request.path === "hub.operate" && request.input?.json?.operation?.kind !== "refresh")
 					forbid("worker/provider operation");
+				if (request.path === "slack.follow")
+					assert.deepEqual(request.input?.json, {
+						mode: "all_joined",
+						excludedConversationIds: EXCLUDED,
+					});
 				const result = await handler(sender, request); // Observe only; never supply success.
 				publicSafe(result, markers);
+				if (request.path === "slack.follow" && !result.error) exclusionsApplied = true;
 				if (
 					[
 						"oauth.start",
 						"oauth.cancel",
 						"oauth.disconnect",
-						"slack.watch",
+						"slack.follow",
 						"slack.conversations",
 					].includes(request.path)
 				)
 					report.rpc.push({
 						path: request.path,
 						provider: request.input?.json?.provider,
+						input: request.path === "slack.follow" ? request.input?.json : undefined,
+						items:
+							request.path === "slack.conversations" ? result.result?.data?.json?.items : undefined,
 						rejected: !!result.error,
 					});
 				return result;
@@ -401,21 +447,22 @@ async function native() {
 					url: "https://controlled.slack.com/",
 				});
 			if (method === "users.info") {
-				assert.equal(fields.user, ACTOR.userId);
+				const person = [PROFILE, DM_PROFILE].find((row) => row.id === fields.user);
+				assert.ok(person, "Only controlled account/DM profiles may be read");
 				return response({
 					user: {
-						id: ACTOR.userId,
+						id: person.id,
 						team_id: ACTOR.workspaceId,
-						name: PROFILE.login,
+						name: person.login,
 						is_bot: false,
 						deleted: false,
-						profile: { real_name: PROFILE.displayName },
+						profile: { display_name: person.displayName, real_name: person.displayName },
 					},
 				});
 			}
 			if (method === "users.conversations")
 				return response({ channels: CHANNELS, response_metadata: { next_cursor: "" } });
-			assert.ok(WATCHED.includes(fields.channel), "Unselected conversation must never be read");
+			assert.ok(JOINED.includes(fields.channel), "Only controlled joined conversations may be read");
 			if (method === "conversations.info")
 				return response({ channel: CHANNELS.find((row) => row.id === fields.channel) });
 			if (method === "conversations.members")
@@ -423,8 +470,13 @@ async function native() {
 					members: [ACTOR.userId, "U66002"],
 					response_metadata: { next_cursor: "" },
 				});
-			if (method === "conversations.history")
+			if (method === "conversations.history") {
+				assert.ok(
+					!exclusionsApplied || !EXCLUDED.includes(fields.channel),
+					"Excluded conversation history must stop after actual follow acknowledgement"
+				);
 				return response({ messages: [], has_more: false, response_metadata: { next_cursor: "" } });
+			}
 			return forbid("unexpected Slack API method");
 		} catch (error) {
 			throw fail(error);
@@ -627,19 +679,26 @@ async function native() {
 		});
 		assert.equal(connected.account.id, ACTOR.userId);
 		assert.equal(connected.account.displayName, PROFILE.displayName);
-		await wait("connected source actor", async () => {
-			const row = await rpc("slack.status");
-			return (
-				row.phase === "connected" &&
-				row.account?.workspaceId === ACTOR.workspaceId &&
-				row.account?.userId === ACTOR.userId
-			);
-		});
-		assert.deepEqual((await rpc("slack.status")).watching, []);
-		assert.ok(
-			!report.reads.some((row) => row.method.startsWith("conversations.")),
-			"No histories before watch selection"
+		const followed = await wait(
+			"automatic all-joined discovery for the connected source actor",
+			async () => {
+				const row = await rpc("slack.status");
+				return (
+					row.phase === "connected" &&
+					row.account?.workspaceId === ACTOR.workspaceId &&
+					row.account?.userId === ACTOR.userId &&
+					row.followMode === "all_joined" &&
+					row.membershipSync?.phase === "complete" &&
+					row
+				);
+			}
 		);
+		assertFollowing(followed);
+		assert.ok(
+			!report.rpc.some((row) => ["slack.follow", "slack.conversations"].includes(row.path)),
+			"All joined conversations must be followed before any conversation-list or save action"
+		);
+		assert.ok(report.reads.some((row) => row.method === "users.conversations"));
 		await wait("connected OAuth UI", () =>
 			js(
 				`document.querySelector(${JSON.stringify(`${rowScope} [data-testid="slack-account-status"]`)})?.textContent==='Connected'`
@@ -667,23 +726,64 @@ async function native() {
 		report.checks.push(
 			"wrong state rejected; actual HTTP localhost callback, PKCE without secret/bot scope, verified user and same source actor; real encrypted 0600 grant"
 		);
-		await buttonText(sourceScope, "Choose conversations");
-		for (const channel of CHANNELS.slice(0, 2)) {
-			await wait(`checkbox ${channel.name}`, () =>
-				js(
-					`(() => {const label=[...document.querySelectorAll(${JSON.stringify(`${sourceScope} label`)})].find(e=>e.textContent.includes(${JSON.stringify(channel.name)}));const e=label?.querySelector('input[type=checkbox]');if(!e||e.disabled)return false;if(!e.checked)e.click();return e.checked;})()`
-				)
-			);
-		}
-		await buttonText(sourceScope, "Save watched conversations");
-		await wait("actual watch preference", async () => {
-			const row = await rpc("slack.status");
-			return JSON.stringify([...row.watching].sort()) === JSON.stringify([...WATCHED].sort());
-		});
-		await wait("one bounded selected history read", () =>
+		await wait("source following UI independently of OAuth consent", () =>
+			js(
+				`document.querySelector(${JSON.stringify(`${sourceScope} h3`)})?.textContent==='Following your Slack conversations'&&document.querySelector(${JSON.stringify(`${sourceScope} [data-testid="slack-source-status"]`)})?.textContent.includes('Following all active channels and DMs you belong to · 3 conversations')`
+			)
+		);
+		await wait("one automatic bounded history read", () =>
 			report.reads.some((row) => row.method === "conversations.history")
 		);
-		assert.ok(report.rpc.some((row) => row.path === "slack.watch" && !row.rejected));
+		report.checks.push(
+			"actual source status confirms all_joined, completed discovery and all three joined conversations before any list/save UI action; automatic empty-history read"
+		);
+		await wait("collapsed advanced conversation exclusions", () =>
+			js(
+				`(() => {const e=[...document.querySelectorAll(${JSON.stringify(`${sourceScope} details > summary`)})].find(e=>e.textContent.trim()==='Conversations and exclusions');if(!e)return false;if(e.parentElement.open)throw new Error('Advanced exclusions must start collapsed');e.click();return true;})()`
+			)
+		);
+		await buttonText(sourceScope, "Show conversations");
+		const listed = await wait("actual conversation RPC source labels", () =>
+			report.rpc.find((row) => row.path === "slack.conversations" && !row.rejected && row.items)?.items
+		);
+		await wait("all three included source checkboxes", () =>
+			js(
+				`(() => {const es=[...document.querySelectorAll(${JSON.stringify(`${sourceScope} label input[type=checkbox]`)})];return es.length===3&&es.every(e=>e.checked&&!e.disabled);})()`
+			)
+		);
+		assertConversationLabels(
+			listed,
+			await js(
+				`[...document.querySelectorAll(${JSON.stringify(`${sourceScope} label`)})].map(e=>e.textContent.trim())`
+			)
+		);
+		await wait("uncheck the third source conversation", () =>
+			js(
+				`(() => {const label=[...document.querySelectorAll(${JSON.stringify(`${sourceScope} label`)})].find(e=>e.textContent.includes(${JSON.stringify(CHANNELS[2].name)}));const e=label?.querySelector('input[type=checkbox]');if(!e||e.disabled)return false;if(e.checked)e.click();return !e.checked;})()`
+			)
+		);
+		await buttonText(sourceScope, "Save exclusions");
+		const remaining = await wait("actual all-joined exclusions and completed rediscovery", async () => {
+			const row = await rpc("slack.status");
+			return (
+				row.followMode === "all_joined" &&
+				row.membershipSync?.phase === "complete" &&
+				row.excludedConversationIds?.includes(EXCLUDED[0]) &&
+				row
+			);
+		});
+		assertFollowing(remaining, EXCLUDED);
+		assert.equal(exclusionsApplied, true);
+		assert.equal(report.rpc.filter((row) => row.path === "slack.follow" && !row.rejected).length, 1);
+		assert.deepEqual(report.rpc.find((row) => row.path === "slack.follow").input, {
+			mode: "all_joined",
+			excludedConversationIds: EXCLUDED,
+		});
+		await wait("source exclusion UI confirmed", () =>
+			js(
+				`document.querySelector(${JSON.stringify(`${sourceScope} [data-testid="slack-source-status"]`)})?.textContent.includes('2 conversations · 1 excluded')`
+			)
+		);
 		await uiSafe();
 		envOnly();
 		assert.deepEqual(await others(), baseline);
@@ -702,7 +802,7 @@ async function native() {
 			report.screenshot = { available: false };
 		}
 		report.checks.push(
-			"actual UI selects channel and DM, real watch RPC persists selection; empty selected-history transport only, no model/ingestion"
+			"actual advanced UI preserves provider/profile labels, excludes third via exact slack.follow RPC and retains first channel/DM; empty history only, no model/ingestion"
 		);
 		await begin();
 		await click(action("cancel"));
@@ -835,8 +935,47 @@ function selfCheck() {
 		{ nested: { refresh_token: "hidden" } },
 	])
 		assert.throws(() => publicSafe(invalid, [ACCESS]));
+	const following = {
+		phase: "connected",
+		error: null,
+		followMode: "all_joined",
+		watching: JOINED,
+		excludedConversationIds: [],
+		membershipSync: {
+			phase: "complete",
+			discoveredCount: 3,
+			completedAt: "2026-10-31T10:00:00.000Z",
+		},
+	};
+	assertFollowing(following);
+	assertFollowing(
+		{ ...following, watching: JOINED.slice(0, 2), excludedConversationIds: EXCLUDED },
+		EXCLUDED
+	);
+	for (const invalid of [
+		{ ...following, followMode: "selected" },
+		{ ...following, watching: JOINED.slice(0, 2) },
+		{ ...following, membershipSync: { ...following.membershipSync, phase: "pending" } },
+		{ ...following, membershipSync: { ...following.membershipSync, discoveredCount: 2 } },
+	])
+		assert.throws(() => assertFollowing(invalid));
+	const items = CHANNELS.map((row) => ({
+		id: row.id,
+		workspaceId: ACTOR.workspaceId,
+		name: row.is_im ? DM_PROFILE.displayName : row.name,
+		visibility: row.is_im ? "direct_message" : "public_channel",
+	}));
+	const labels = items.map((row) => `${row.name} · ${row.visibility.replaceAll("_", " ")}`);
+	assertConversationLabels(items, labels);
+	assert.throws(() => assertConversationLabels(items, items.map((row) => row.id)));
+	assert.throws(() =>
+		assertConversationLabels(
+			items.map((row) => (row.id === "D66001" ? { ...row, name: "controlled-selected-dm" } : row)),
+			labels
+		)
+	);
 	console.log(
-		"SLACK_OAUTH_SELF_CHECK_PASS: PKCE/form/state shape, localhost/network guards, credential-env isolation and metadata guards; no Electron/native imports, app, filesystem reads or network calls"
+		"SLACK_OAUTH_SELF_CHECK_PASS: PKCE/form/state, localhost/network/env/metadata guards, completed all-joined/exclusion state and source labels; no Electron/native imports, app, filesystem reads or network calls"
 	);
 }
 if (process.argv.includes("--self-check")) selfCheck();
