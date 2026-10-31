@@ -71,6 +71,43 @@ export type ChatMessage = z.infer<typeof ChatMessageSchema>;
 export type ChatConversation = z.infer<typeof ChatConversationSchema>;
 export type ChatReplyReceipt = z.infer<typeof ChatReplyReceiptSchema>;
 
+export const SlackConversationPageSchema = z.strictObject({
+	items: z.array(ChatConversationSchema).max(15),
+	nextCursor: z.string().max(2000).nullable(),
+	hasMore: z.boolean(),
+});
+export const SlackMessagePageSchema = z
+	.strictObject({
+		actor: z.strictObject({ workspaceId: IdSchema, userId: IdSchema }),
+		conversation: ChatConversationSchema,
+		items: z.array(ChatMessageSchema).max(15),
+		authors: z.array(z.strictObject({ id: IdSchema, name: z.string().min(1).max(300) })).max(15),
+		threadTs: z.string().max(30).nullable(),
+		nextCursor: z.string().max(2000).nullable(),
+		hasMore: z.boolean(),
+	})
+	.superRefine((page, ctx) => {
+		if (
+			page.actor.workspaceId !== page.conversation.workspaceId ||
+			page.items.some(
+				(message) =>
+					message.citation.source.workspaceId !== page.actor.workspaceId ||
+					message.citation.source.conversationId !== page.conversation.id ||
+					(page.threadTs !== null &&
+						(message.citation.source.threadId ?? message.citation.source.messageId) !==
+							page.threadTs)
+			)
+		)
+			ctx.addIssue({ code: "custom", message: "Slack message page identity mismatch" });
+		if (
+			new Set(page.authors.map((author) => author.id)).size !== page.authors.length ||
+			page.authors.some((author) => !page.items.some((message) => message.authorId === author.id))
+		)
+			ctx.addIssue({ code: "custom", message: "Author labels must belong to observed messages" });
+	});
+export type SlackConversationPage = z.infer<typeof SlackConversationPageSchema>;
+export type SlackMessagePage = z.infer<typeof SlackMessagePageSchema>;
+
 export const SlackFollowConfigurationSchema = z.strictObject({
 	mode: z.enum(["all_joined", "selected"]),
 	excludedConversationIds: z.array(IdSchema).max(1000),

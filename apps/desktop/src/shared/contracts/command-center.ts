@@ -4,6 +4,7 @@ import { GitHubRepositorySchema, ReviewCacheSchema, ReviewFileSchema } from "./p
 import { PullRequestSchema } from "./review";
 
 export const CenterSectionSchema = z.enum([
+	"slack",
 	"home",
 	"day",
 	"reviews",
