@@ -20,31 +20,37 @@ export function App() {
 		const api = createConversationApi((input) => window.electron.trpc.request(input));
 		const controller = createConversationController(api);
 		const day = createDayController(createDayApi(api.call));
+		const dayRef = { current: day };
 		const reviews = createPreparedController(createPreparedApi(api.call), controller.sessionId);
 		controller.attachReview(reviews);
 		const browser = createLocalBrowserController(api.call);
 		const workspace = createWorkspaceController(api.call, reviews, browser, controller.sessionId, {
 			onManualChange: controller.interruptReply,
 			ensureDayItem: async (id) => {
-				await day.refresh();
-				if (!day.store.getState().snapshot?.items.some((item) => item.id === id))
-					await day.refresh();
-				if (!day.store.getState().snapshot?.items.some((item) => item.id === id))
+				const current = dayRef.current;
+				await current.refresh();
+				if (!current.store.getState().snapshot?.items.some((item) => item.id === id))
+					await current.refresh();
+				if (
+					current !== dayRef.current ||
+					!current.store.getState().snapshot?.items.some((item) => item.id === id)
+				)
 					throw new Error("Day item unavailable");
 			},
 		});
 		controller.attachWorkspace(workspace);
 		const hub = createHubController(api.call);
 		const oauth = createOAuthController(api.call);
-		return { api, controller, reviews, browser, workspace, hub, oauth, day };
+		return { api, controller, reviews, browser, workspace, hub, oauth, dayRef };
 	});
+	const [day, setDay] = useState(runtime.dayRef.current);
 	useEffect(() => {
 		const disconnectVoice = connectConversationVoice(
 			runtime.api,
 			runtime.controller,
 			undefined,
 			undefined,
-			{ preconnect: import.meta.env["VITE_MUSE_VOICE_PRECONNECT"] === "1" }
+			{ preconnect: import.meta.env["VITE_MUSE_VOICE_PRECONNECT"] !== "0" }
 		);
 		let accountIdentity: string | undefined;
 		const disconnectAuth = runtime.oauth.store.subscribe((state) => {
@@ -79,7 +85,16 @@ export function App() {
 		runtime.browser.start();
 		void runtime.workspace.start();
 		runtime.hub.start();
-		runtime.day.start();
+		runtime.dayRef.current.start();
+		const resetDay = () => {
+			runtime.controller.interruptReply();
+			runtime.dayRef.current.dispose();
+			const next = createDayController(createDayApi(runtime.api.call));
+			runtime.dayRef.current = next;
+			setDay(next);
+			void next.start();
+		};
+		window.addEventListener("muse:slack-account-change", resetDay);
 		const release = () => runtime.controller.release();
 		const recordError = () => {
 			void runtime.api
@@ -102,7 +117,8 @@ export function App() {
 			runtime.controller.dispose();
 			runtime.workspace.dispose();
 			runtime.hub.dispose();
-			runtime.day.dispose();
+			window.removeEventListener("muse:slack-account-change", resetDay);
+			runtime.dayRef.current.dispose();
 			runtime.reviews.dispose();
 			runtime.browser.dispose();
 			disconnectVoice();
@@ -119,7 +135,7 @@ export function App() {
 				browser={runtime.browser}
 				workspace={runtime.workspace}
 				hub={runtime.hub}
-				day={runtime.day}
+				day={day}
 			/>
 		</OAuthProvider>
 	);

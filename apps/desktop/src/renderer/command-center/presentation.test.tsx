@@ -267,9 +267,10 @@ it("uses one counted rail and browses categories independently of the selected m
 	assert.equal((sidebar.html.match(/aria-current="page"/g) ?? []).length, 1);
 	assert.equal(
 		(sidebar.html.match(/class="command-rail-count"/g) ?? []).length,
-		centerSections.length
+		centerSections.filter((section) => section.id !== "day").length
 	);
-	for (const section of centerSections) {
+	// This legacy harness supplies only the hub; Day has its own controller/native coverage.
+	for (const section of centerSections.filter((section) => section.id !== "day")) {
 		const label = `${section.label} (${sectionCount(snapshot, section.id)})`;
 		assert.ok(sidebar.html.includes(`title="${label}" aria-label="${label}"`));
 		sidebar.click(label);
@@ -342,7 +343,7 @@ it("shows each non-Home queue only in the sidebar and leaves selection guidance 
 	const snapshot = makeSnapshot();
 	snapshot.jobs = [summary("ready", "saved"), summary("needs-input", "active")];
 	const hub = suppliedHub(snapshot);
-	for (const section of centerSections.filter((item) => item.id !== "home")) {
+	for (const section of centerSections.filter((item) => !["home", "day"].includes(item.id))) {
 		const sidebar = sidebarControls(hub, suppliedWorkspace(section.id)).html;
 		const main = renderToStaticMarkup(
 			<CenterCanvas

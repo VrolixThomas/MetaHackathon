@@ -349,6 +349,8 @@ test("real source becomes private pending Day work after actor activation and ca
 		assert.equal(item.source?.audience.visibility, "direct_message");
 		assert.equal(item.acceptance, "pending");
 		assert.equal(item.questions[0]?.question, "Which deadline?");
+		assert.equal(item.priority.rank, 2);
+		assert.equal(item.priority.reason, "Inferred urgency");
 		assert.equal(snapshot.currentItemId, null);
 		assert.equal(h.calls.filter((c) => c.method === "chat.postMessage").length, 0);
 		const row = [...h.store.sources.values()][0];

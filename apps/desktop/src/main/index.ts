@@ -40,6 +40,7 @@ import {
 	initializeOAuth,
 	initializeReviews,
 	initializeRuntime,
+	initializeSlack,
 	initializeVoice,
 	initializeWorkspace,
 	noteAttentionActivity,
@@ -201,6 +202,9 @@ app
 		);
 		initializeWorkspace(app.getPath("userData"));
 		await initializeDay(database.day, () => ({ online: net.isOnline() }));
+		void initializeSlack(database, () => ({ online: net.isOnline() })).catch(() =>
+			console.warn("Slack sources need configuration.")
+		);
 		powerMonitor.on("suspend", () => setDayAwake(false));
 		powerMonitor.on("resume", () => setDayAwake(true));
 		const voiceRoot = join(mainDirectory, "../../../../services/voice");

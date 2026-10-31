@@ -1,24 +1,34 @@
+import { createHash } from "node:crypto";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { TRPCError } from "@trpc/server";
 import type { DayActor, ReviewCache } from "../shared/contracts";
 import { ConversationService } from "./agent/conversation";
+import { classifyDayMessage, dayIntakeSourceBinding } from "./agent/day-intake";
 import { MetaClient } from "./agent/meta-client";
 import { prepareReview } from "./agent/prepare-review";
 import { ScreenContextStore } from "./agent/screen-context";
 import { assessSuggestedFix } from "./agent/suggestion-review";
 import { createAgentComposition } from "./composition";
 import { LocalBrowserSurface } from "./composition/browser-surface";
+import { readDaySource } from "./composition/day-source";
 import { ConversationDiagnostics } from "./composition/diagnostics";
+import { createKnowledgeService } from "./composition/knowledge";
 import { ReviewCoordinator } from "./composition/reviews";
+import { SlackConnection } from "./composition/slack-connection";
+import { SlackWorkspaceCoordinator } from "./composition/slack-workspace";
 import { type VoiceCompositionOptions, createVoiceComposition } from "./composition/voice";
 import { WorkspaceCoordinator } from "./composition/workspace";
 import { createWorkspaceStore } from "./composition/workspace-store";
 import type { EnvConfiguration } from "./config/env";
 import type { AppConfigurationPorts } from "./config/router";
-import { DayService } from "./day/service";
+import { type DayReplyPort, DayService } from "./day/service";
 import type { DayStore } from "./db/day-store";
 import type { HubStore } from "./db/hub-store";
+import type { KnowledgeStore } from "./db/knowledge-store";
+import type { SlackWorkspaceStore } from "./db/slack-store";
+import { type KnowledgeService, chatSourceId, sourceFromChatMessage } from "./knowledge";
+import { FactSchema } from "./knowledge/types";
 import { OAuthService } from "./oauth/service";
 import { type BrowserPage, BrowserService, type BrowserServiceOptions } from "./runtime/browser";
 import type { CredentialAccess, SecretEncryption } from "./runtime/credentials";
@@ -50,6 +60,10 @@ let configuration: EnvConfiguration | undefined;
 let oauth: OAuthService | undefined;
 let day: DayService | undefined;
 let dayAwake = true;
+let slackConnection: SlackConnection | undefined;
+let slackWorkspace: SlackWorkspaceCoordinator | undefined;
+let knowledge: KnowledgeService | undefined;
+let knowledgeEpoch = 0;
 let configurationPorts: AppConfigurationPorts | undefined;
 let reviews: ReviewCoordinator | undefined;
 let workspace: WorkspaceCoordinator | undefined;
@@ -168,7 +182,8 @@ export function initializeReviews(
 export async function initializeDay(
 	store: DayStore,
 	availability: () => { online: boolean },
-	actor: DayActor = { workspaceId: "local", userId: "local" }
+	actor: DayActor = { workspaceId: "local", userId: "local" },
+	replies?: DayReplyPort
 ) {
 	await day?.dispose();
 	const currentActor = structuredClone(actor);
@@ -185,6 +200,7 @@ export async function initializeDay(
 	day = new DayService({
 		store,
 		actor: currentActor,
+		replies,
 		cadenceMs: 2000,
 		availability: () => ({ awake: dayAwake, online: availability().online }),
 		linearTicket: (id, signal) => getHub().ticket(id, signal),
@@ -247,6 +263,205 @@ export function getDay(): DayService {
 export function setDayAwake(awake: boolean) {
 	dayAwake = awake;
 	void day?.availabilityChanged().catch(() => {});
+	void slackWorkspace?.availabilityChanged().catch(() => {});
+}
+
+export async function initializeSlack(
+	stores: { day: DayStore; slack: SlackWorkspaceStore; knowledge: KnowledgeStore },
+	availability: () => { online: boolean }
+) {
+	slackConnection = new SlackConnection({ readSettings: () => getConfiguration().slackSettings() });
+	const ownPromises = new Set<string>();
+	const binding = (
+		actor: DayActor,
+		message: Parameters<typeof dayIntakeSourceBinding>[0]["message"]
+	) => JSON.stringify(dayIntakeSourceBinding({ actor, message }));
+	slackWorkspace = new SlackWorkspaceCoordinator({
+		getCredential: () => slackConnection?.credential() ?? Promise.resolve(undefined),
+		store: stores.slack,
+		getDay: () => day,
+		availability: () => ({ awake: dayAwake, online: availability().online }),
+		activateActor: async (actor, replies) => {
+			const current = await day?.snapshot();
+			if (
+				!current ||
+				current.actor.workspaceId !== actor.workspaceId ||
+				current.actor.userId !== actor.userId
+			)
+				await initializeDay(stores.day, availability, actor, replies);
+		},
+		getAppToken: async () => (await getConfiguration().slackSettings()).appToken,
+		invalidateSource: (input) => getDay().invalidateSource(input),
+		classify: async ({ actor, message }, signal) => {
+			const repositories = (await getHub().snapshot()).repositories.map((row) => ({
+				id: row.id,
+				repository: row.repository,
+			}));
+			const result = await classifyDayMessage(
+				conversationClient,
+				{ actor, message, repositories },
+				signal
+			);
+			if (!result) return null;
+			if (result.explicitOwnPromise) {
+				if (ownPromises.size >= 128)
+					ownPromises.delete(ownPromises.values().next().value as string);
+				ownPromises.add(binding(actor, message));
+			}
+			return {
+				kind: result.explicitOwnPromise ? "promise" : result.kind,
+				title: result.title,
+				summary: result.summary,
+				repositoryId: result.repositoryId,
+				questions: result.questions,
+				priorityRank: result.priorityRank,
+				priorityReason: result.priorityReason,
+			};
+		},
+		ownPromiseAuthority: ({ actor, message, classification }) => {
+			const key = binding(actor, message);
+			if (
+				classification.kind !== "promise" ||
+				message.authorId !== actor.userId ||
+				!ownPromises.delete(key)
+			)
+				return undefined;
+			return { explicitOwnPromise: true, actor };
+		},
+		publishKnowledge: async (batch, signal) => {
+			const credential = await slackConnection?.credential();
+			if (!credential || credential.connectionId !== batch.connectionId)
+				throw new Error("Slack account changed");
+			knowledgeEpoch++;
+			for (const message of batch.messages) {
+				signal.throwIfAborted();
+				if (message.truncated || (!message.deletedAt && !message.text)) continue;
+				await stores.knowledge.transaction(credential.workspaceId, (tx) => {
+					const id = chatSourceId(message.citation.source);
+					const previous = tx.getSource(id);
+					if (previous?.revision === message.citation.source.revisionId) return;
+					const source = sourceFromChatMessage(message, (previous?.sequence ?? 0) + 1);
+					tx.putSource(source);
+					if (source.state !== "active" || !source.text || source.text.length > 12000) return;
+					const factId = `chat-${createHash("sha256")
+						.update(JSON.stringify([id, source.revision]))
+						.digest("hex")}`;
+					if (tx.getFact(factId)) return;
+					const ref = { sourceId: id, revision: source.revision };
+					tx.insertFact(
+						FactSchema.parse({
+							id: factId,
+							workspaceId: credential.workspaceId,
+							scope:
+								source.kind === "slack-public-channel"
+									? { kind: "company" }
+									: { kind: "private", ownerUserId: credential.userId },
+							category: "context",
+							title: source.text.slice(0, 120),
+							text: source.text,
+							basis: { kind: "recorded", source: ref },
+							sources: [ref],
+							parentFactIds: [],
+							supersedes: [],
+							contradicts: [],
+							createdBy: {
+								workspaceId: credential.workspaceId,
+								userId: credential.userId,
+								agentId: `muse:${credential.userId}`,
+							},
+							createdAt: message.updatedAt,
+						})
+					);
+				});
+			}
+			for (const deletion of batch.deletions)
+				await stores.knowledge.transaction(credential.workspaceId, (tx) => {
+					const previous = tx.getSource(chatSourceId(deletion));
+					if (previous && previous.state !== "deleted")
+						tx.putSource({
+							...previous,
+							revision: deletion.revisionId,
+							sequence: previous.sequence + 1,
+							state: "deleted",
+							text: null,
+						});
+				});
+		},
+	});
+	knowledge = createKnowledgeService({
+		store: stores.knowledge,
+		client: slackWorkspace.client,
+		getCredential: () => slackConnection?.credential() ?? Promise.resolve(undefined),
+		getEpoch: () => `${slackConnection?.epoch ?? 0}:${knowledgeEpoch}`,
+		directory: {
+			resolveDirectory: async (workspaceId, userIds, agentIds) => {
+				const credential = await slackConnection?.credential();
+				if (!credential || credential.workspaceId !== workspaceId)
+					return { memberUserIds: [], agentOwners: [] };
+				const agentId = `muse:${credential.userId}`;
+				return {
+					memberUserIds:
+						userIds.includes(credential.userId) || agentIds.includes(agentId)
+							? [credential.userId]
+							: [],
+					agentOwners: agentIds.includes(agentId) ? [{ agentId, userId: credential.userId }] : [],
+				};
+			},
+		},
+	});
+	await slackWorkspace.start();
+}
+export function getSlackConnection() {
+	if (!slackConnection) throw new Error("Slack setup is unavailable");
+	return slackConnection;
+}
+export function getSlackWorkspace() {
+	if (!slackWorkspace) throw new Error("Slack sources are unavailable");
+	return slackWorkspace;
+}
+export function getKnowledge() {
+	if (!knowledge) throw new Error("Knowledge sources are unavailable");
+	return knowledge;
+}
+export async function readCurrentDaySource(input: unknown, signal: AbortSignal) {
+	return readDaySource({ getDay, client: getSlackWorkspace().client }, input, signal);
+}
+export async function searchCurrentKnowledge(
+	input: { brain: "company" | "private"; text: string },
+	signal: AbortSignal
+) {
+	signal.throwIfAborted();
+	const connection = getSlackConnection();
+	const credential = await connection.credential();
+	if (!credential) throw new Error("Connect Slack to inspect source-backed knowledge");
+	const epoch = connection.epoch;
+	const current = getKnowledge();
+	const result = await current.searchSharedExact(
+		{
+			workspaceId: credential.workspaceId,
+			userId: credential.userId,
+			agentId: `muse:${credential.userId}`,
+		},
+		{
+			scope:
+				input.brain === "company"
+					? { kind: "company" }
+					: { kind: "private", ownerUserId: credential.userId },
+			text: input.text,
+			limit: 20,
+		}
+	);
+	signal.throwIfAborted();
+	const after = await connection.credential();
+	if (
+		getSlackConnection() !== connection ||
+		getKnowledge() !== current ||
+		connection.epoch !== epoch ||
+		after?.connectionId !== credential.connectionId
+	)
+		throw new Error("The active source account changed");
+	signal.throwIfAborted();
+	return result;
 }
 export async function initializeHub(
 	userDataPath: string,
@@ -569,6 +784,8 @@ function runtimeForActiveJobs(): RuntimeService {
 
 export async function disposeRuntime(): Promise<void> {
 	const current = runtime;
+	await slackWorkspace?.dispose().catch(() => {});
+	slackConnection?.dispose();
 	await day?.dispose().catch(() => console.warn("Day supervision could not finish cleanup."));
 	stopAttentionObserver?.();
 	await attention?.dispose().catch(() => {

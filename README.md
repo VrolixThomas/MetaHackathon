@@ -66,6 +66,9 @@ No PR selection or button-holding is required.
 The session uses one microphone stream. Speech detection and a bounded pre-roll buffer run locally;
 utterances are sent through the existing speech/model providers. Source navigation can interrupt a
 reply without ending the microphone session. Stop, error and app shutdown release capture.
+While listening, Muse prepares one bounded speech connection before the next utterance. It expires
+after 20 seconds and falls back to the ordinary connection path. To disable this optimization for a
+diagnostic build, set `VITE_MUSE_VOICE_PRECONNECT=0` when building.
 
 Configuration reports microphone permission from the running app's process. Use **Request
 microphone access** if needed. macOS permission can be attributed to the development launcher;
@@ -117,6 +120,32 @@ Workers run with your OS permissions, not inside a security sandbox. Declared Ja
 checks and standard package managers are supported. Detected custom commit hooks stop the commit;
 the repository convention must be resolved rather than silently bypassed. No checks are invented for repositories
 without configured validation commands.
+
+## My day and Slack
+
+**My day** holds personal follow-ups, accepted requests, missing-context questions and reviewable
+outcomes. You can add a real item yourself without connecting a provider. Incoming Slack requests
+remain pending until accepted; a source-bound explicit promise from your own account can count as
+acceptance. Muse can prepare isolated work while acceptance is pending, but execution waits for it.
+Questions are covered with you when you open the item. Source-backed work closes only after a
+confirmed answer in the original thread; personal items use an explicit **I have answered this**.
+
+In **Settings → Slack**, configure a Slack **user** token and its app ID in the active `.env`:
+
+```dotenv
+SLACK_USER_TOKEN=
+SLACK_APP_ID=
+# Optional Socket Mode token for events; it does not grant user access.
+SLACK_APP_TOKEN=
+```
+
+Connect the configured account, then choose conversations to watch. Nothing is imported before you
+choose. Polling is bounded; edits/deletions can have gaps. DM/private-channel knowledge stays private;
+company knowledge uses public channels, with fresh source access checked before retrieval. This
+increment runs locally while the Mac is awake and checkpoints through sleep/offline. A shared hosted
+company brain, cross-employee transport and Slack browser OAuth callback deployment are not yet
+available. Slack browser OAuth helpers require a registered app-owned HTTPS callback service; the
+local token setup above does not pretend to provide that service. GitHub/Linear login is separate.
 
 ## Prepared reviews
 

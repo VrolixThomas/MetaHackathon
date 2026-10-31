@@ -200,6 +200,51 @@ export class EnvConfiguration {
 			credential((await this.read())?.values ?? {}, CredentialProviderSchema.parse(provider))
 		);
 	}
+	/** Main-only Slack setup. These values never enter AppConfiguration/renderer metadata. */
+	slackSettings(): Promise<{
+		userToken?: string;
+		appId?: string;
+		appToken?: string;
+		clientId?: string;
+		clientSecret?: string;
+		redirectUri?: string;
+	}> {
+		return this.serialize(async () => {
+			const raw = (await this.read())?.values ?? {};
+			const read = (key: string) => {
+				const v = raw[key]?.trim();
+				if (!v) return undefined;
+				if (v.length > 16384 || /[\r\n\0]/.test(v)) throw new Error("Invalid Slack configuration");
+				return v;
+			};
+			return {
+				userToken: read("SLACK_USER_TOKEN"),
+				appId: read("SLACK_APP_ID"),
+				appToken: read("SLACK_APP_TOKEN"),
+				clientId: read("SLACK_OAUTH_CLIENT_ID"),
+				clientSecret: read("SLACK_OAUTH_CLIENT_SECRET"),
+				redirectUri: read("SLACK_OAUTH_REDIRECT_URI"),
+			};
+		});
+	}
+	ensureSlackTemplate(): Promise<void> {
+		return this.serialize(async () => {
+			const source = (await this.read()) ?? document("");
+			const fields = [
+				"SLACK_USER_TOKEN",
+				"SLACK_APP_ID",
+				"SLACK_APP_TOKEN",
+				"SLACK_OAUTH_CLIENT_ID",
+				"SLACK_OAUTH_CLIENT_SECRET",
+				"SLACK_OAUTH_REDIRECT_URI",
+			];
+			const missing = fields.filter((key) => source.values[key] === undefined);
+			if (missing.length)
+				await this.write(
+					`${source.text}\n# Slack user connection and optional app registration. Keep private.\n${missing.map((key) => `${key}=\n`).join("")}`
+				);
+		});
+	}
 	set(provider: CredentialProvider, secret: string): Promise<void> {
 		return this.serialize(async () => {
 			const selected = CredentialProviderSchema.parse(provider);

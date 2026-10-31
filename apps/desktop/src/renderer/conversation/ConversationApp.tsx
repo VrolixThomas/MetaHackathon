@@ -3,6 +3,7 @@ import { useStore } from "zustand";
 import { HubConnections } from "../command-center/Connections";
 import { CommandSidebar } from "../command-center/Sidebar";
 import type { HubController } from "../command-center/controller";
+import { SlackConnections } from "../day/SlackConnections";
 import type { DayController } from "../day/controller";
 import { OAuthConnections, useOAuth } from "../oauth";
 import { ReviewInbox } from "../prepared/Inbox";
@@ -58,6 +59,7 @@ export function Configuration({
 		>
 			<p>Credentials stay in your local configuration file.</p>
 			{oauth ? <OAuthConnections /> : hub && <HubConnections hub={hub} />}
+			<SlackConnections />
 			<code className="env-path" data-testid="env-path">
 				{state.config?.envPath ??
 					state.envPath ??

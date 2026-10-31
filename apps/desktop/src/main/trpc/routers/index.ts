@@ -9,6 +9,8 @@ import {
 	AttentionReceiptResultSchema,
 	AttentionReleaseInputSchema,
 	AttentionSettleInputSchema,
+	ChatConversationSchema,
+	ChatMessageSchema,
 	DayOperateInputSchema,
 	DayOperationResultSchema,
 	DaySnapshotSchema,
@@ -18,6 +20,7 @@ import {
 	HubOperationSchema,
 	HubSnapshotSchema,
 	IdSchema,
+	KnowledgeFactSchema,
 	LinearScopeSchema,
 	LinearTicketSchema,
 	OAuthProviderInputSchema,
@@ -27,6 +30,7 @@ import {
 	PinnedSourceSchema,
 	PullRequestFeedbackSchema,
 	RepositoryChoiceSchema,
+	SlackConnectionStatusSchema,
 	SourceRangeRequestSchema,
 	SourceSearchRequestSchema,
 	WORKSPACE_GITHUB_REQUIRED,
@@ -62,11 +66,15 @@ import {
 	getOAuth,
 	getReviews,
 	getRuntime,
+	getSlackConnection,
+	getSlackWorkspace,
 	getVoice,
 	getWorkJobs,
 	getWorkspace,
 	pickReviewRepository,
+	readCurrentDaySource,
 	screenContexts,
+	searchCurrentKnowledge,
 } from "../../services";
 import { HubFailure } from "../../work/hub";
 import { bootstrapRouter } from "./bootstrap";
@@ -83,7 +91,75 @@ const hubCall = async <T>(work: () => Promise<T>): Promise<T> => {
 };
 // Register feature routers here as the application grows.
 export const appRouter = router({
+	slack: router({
+		status: publicProcedure
+			.input(z.strictObject({}).optional())
+			.output(SlackConnectionStatusSchema)
+			.query(async () => {
+				const status = await getSlackConnection().status();
+				const source = getSlackWorkspace();
+				const view = source.status();
+				return {
+					...status,
+					watching: await source.watching().catch(() => []),
+					coverage:
+						status.phase !== "connected"
+							? ("disconnected" as const)
+							: !view.watchCount ||
+									["stopped", "unconfigured", "sleeping", "offline", "backoff"].includes(view.mode)
+								? ("paused" as const)
+								: view.transport === "socket"
+									? ("socket" as const)
+									: ("bounded-poll" as const),
+					error: status.error ?? (view.error ? ("source-unavailable" as const) : null),
+				};
+			}),
+		connect: publicProcedure
+			.input(z.strictObject({}).optional())
+			.output(z.void())
+			.mutation(async () => {
+				await getSlackConnection().refresh();
+				await getSlackWorkspace().start();
+				await getSlackWorkspace().tick();
+			}),
+		openSetup: publicProcedure
+			.input(z.strictObject({}).optional())
+			.output(z.void())
+			.mutation(async () => {
+				const config = getConfiguration();
+				await config.ensureSlackTemplate();
+				await getConfigurationPorts().openEnv(config.path);
+			}),
+		conversations: publicProcedure
+			.input(z.strictObject({ cursor: z.string().max(2000).optional() }))
+			.output(
+				z.strictObject({
+					items: z.array(ChatConversationSchema).max(15),
+					nextCursor: z.string().nullable(),
+					hasMore: z.boolean(),
+				})
+			)
+			.query(({ input }) => getSlackWorkspace().conversations(input)),
+		watch: publicProcedure
+			.input(z.strictObject({ conversationIds: z.array(IdSchema).max(32) }))
+			.output(z.void())
+			.mutation(async ({ input }) => {
+				await getSlackWorkspace().watch(input);
+			}),
+	}),
+	brain: router({
+		search: publicProcedure
+			.input(
+				z.strictObject({ brain: z.enum(["company", "private"]), text: z.string().min(1).max(256) })
+			)
+			.output(z.array(KnowledgeFactSchema).max(20))
+			.query(({ input }) => searchCurrentKnowledge(input, AbortSignal.timeout(30_000))),
+	}),
 	day: router({
+		thread: publicProcedure
+			.input(z.strictObject({ itemId: IdSchema, expectedRevision: z.int().positive() }))
+			.output(z.array(ChatMessageSchema).max(15))
+			.query(({ input }) => readCurrentDaySource(input, AbortSignal.timeout(30_000))),
 		snapshot: publicProcedure
 			.input(z.strictObject({}).optional())
 			.output(DaySnapshotSchema)

@@ -70,3 +70,20 @@ export type ChatCitation = z.infer<typeof ChatCitationSchema>;
 export type ChatMessage = z.infer<typeof ChatMessageSchema>;
 export type ChatConversation = z.infer<typeof ChatConversationSchema>;
 export type ChatReplyReceipt = z.infer<typeof ChatReplyReceiptSchema>;
+
+export const SlackConnectionStatusSchema = z.strictObject({
+	phase: z.enum(["disconnected", "checking", "connected", "error"]),
+	account: z
+		.strictObject({
+			workspaceId: IdSchema,
+			workspaceName: z.string().max(300),
+			userId: IdSchema,
+			userName: z.string().max(300),
+		})
+		.nullable(),
+	missing: z.array(z.enum(["SLACK_USER_TOKEN", "SLACK_APP_ID"])).max(2),
+	coverage: z.enum(["disconnected", "paused", "bounded-poll", "socket"]),
+	watching: z.array(IdSchema).max(100),
+	error: z.enum(["configuration", "authentication", "source-unavailable"]).nullable(),
+});
+export type SlackConnectionStatus = z.infer<typeof SlackConnectionStatusSchema>;

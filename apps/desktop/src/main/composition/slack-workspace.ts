@@ -222,6 +222,10 @@ export class SlackWorkspaceCoordinator {
 	status(): SlackWorkspaceStatus {
 		return structuredClone(this.view);
 	}
+	async watching(): Promise<string[]> {
+		const session = this.required();
+		return [...(await this.options.store.preferences(session.lease)).conversationIds];
+	}
 	private required(): Session {
 		if (!this.session) throw new SlackError("connection-required");
 		return this.session;
@@ -896,7 +900,23 @@ export class SlackWorkspaceCoordinator {
 						? { explicitOwnPromise: true, actor: actorOf(session.lease) }
 						: undefined
 				);
-				const item = captured.snapshot.items.find((item) => item.id === captured.itemId);
+				let item = captured.snapshot.items.find((item) => item.id === captured.itemId);
+				if (
+					item &&
+					record.decision.priorityRank !== undefined &&
+					record.decision.priorityReason?.trim()
+				) {
+					if (!(await this.currentRecord(session, record, signal))) return;
+					const ranked = await day.setInferredPriority({
+						requestId: `slack-priority-${hash([record.source, record.digest])}`,
+						itemId: item.id,
+						expectedRevision: item.revision,
+						sourceRevisionId: record.source.revisionId,
+						rank: record.decision.priorityRank,
+						reason: record.decision.priorityReason,
+					});
+					item = ranked.snapshot.items.find((row) => row.id === captured.itemId);
+				}
 				if (record.decision.questions.length && item && !item.questions.length) {
 					if (!(await this.currentRecord(session, record, signal))) return;
 					await day.queueContext({

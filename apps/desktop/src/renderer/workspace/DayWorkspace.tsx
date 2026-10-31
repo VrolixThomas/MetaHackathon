@@ -1,8 +1,12 @@
-import { useState } from "react";
+import { useMemo, useState } from "react";
+import { z } from "zod";
 import { useStore } from "zustand";
 import type { WorkspaceCommand } from "../../shared/contracts";
+import { ChatMessageSchema } from "../../shared/contracts/chat";
 import type { HubController } from "../command-center/controller";
+import { createConversationApi } from "../conversation/api";
 import { DayWorkItem } from "../day";
+import type { DayThreadState } from "../day/DaySourceThread";
 import type { DayController } from "../day/controller";
 
 export function DayWorkspace({
@@ -17,6 +21,23 @@ export function DayWorkspace({
 	command(input: WorkspaceCommand): void;
 }) {
 	const state = useStore(day.store);
+	const api = useMemo(
+		() => createConversationApi((input) => window.electron.trpc.request(input)),
+		[]
+	);
+	const [thread, setThread] = useState<DayThreadState>();
+	const load = async (id: string, expectedRevision: number) => {
+		setThread({ itemId: id, expectedRevision, loading: true, error: false, messages: null });
+		try {
+			const messages = z
+				.array(ChatMessageSchema)
+				.max(15)
+				.parse(await api.call("query", "day.thread", { itemId: id, expectedRevision }));
+			setThread({ itemId: id, expectedRevision, loading: false, error: false, messages });
+		} catch {
+			setThread({ itemId: id, expectedRevision, loading: false, error: true, messages: null });
+		}
+	};
 	if (!itemId)
 		return (
 			<section className="hub-empty" aria-label="My day">
@@ -40,8 +61,14 @@ export function DayWorkspace({
 		);
 	return (
 		<div data-center-section="day" data-selected-id={itemId}>
-			<DayWorkItem controller={day} itemId={itemId} command={command} />
-			{hub && <StartDayWork day={day} hub={hub} itemId={itemId} />}
+			<DayWorkItem
+				controller={day}
+				itemId={itemId}
+				command={command}
+				thread={thread}
+				onLoadThread={(id, revision) => void load(id, revision)}
+			/>
+			{hub && <StartDayWork key={itemId} day={day} hub={hub} itemId={itemId} />}
 		</div>
 	);
 }
