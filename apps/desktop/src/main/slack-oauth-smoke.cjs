@@ -462,7 +462,10 @@ async function native() {
 			}
 			if (method === "users.conversations")
 				return response({ channels: CHANNELS, response_metadata: { next_cursor: "" } });
-			assert.ok(JOINED.includes(fields.channel), "Only controlled joined conversations may be read");
+			assert.ok(
+				JOINED.includes(fields.channel),
+				"Only controlled joined conversations may be read"
+			);
 			if (method === "conversations.info")
 				return response({ channel: CHANNELS.find((row) => row.id === fields.channel) });
 			if (method === "conversations.members")
@@ -743,8 +746,11 @@ async function native() {
 			)
 		);
 		await buttonText(sourceScope, "Show conversations");
-		const listed = await wait("actual conversation RPC source labels", () =>
-			report.rpc.find((row) => row.path === "slack.conversations" && !row.rejected && row.items)?.items
+		const listed = await wait(
+			"actual conversation RPC source labels",
+			() =>
+				report.rpc.find((row) => row.path === "slack.conversations" && !row.rejected && row.items)
+					?.items
 		);
 		await wait("all three included source checkboxes", () =>
 			js(
@@ -763,18 +769,24 @@ async function native() {
 			)
 		);
 		await buttonText(sourceScope, "Save exclusions");
-		const remaining = await wait("actual all-joined exclusions and completed rediscovery", async () => {
-			const row = await rpc("slack.status");
-			return (
-				row.followMode === "all_joined" &&
-				row.membershipSync?.phase === "complete" &&
-				row.excludedConversationIds?.includes(EXCLUDED[0]) &&
-				row
-			);
-		});
+		const remaining = await wait(
+			"actual all-joined exclusions and completed rediscovery",
+			async () => {
+				const row = await rpc("slack.status");
+				return (
+					row.followMode === "all_joined" &&
+					row.membershipSync?.phase === "complete" &&
+					row.excludedConversationIds?.includes(EXCLUDED[0]) &&
+					row
+				);
+			}
+		);
 		assertFollowing(remaining, EXCLUDED);
 		assert.equal(exclusionsApplied, true);
-		assert.equal(report.rpc.filter((row) => row.path === "slack.follow" && !row.rejected).length, 1);
+		assert.equal(
+			report.rpc.filter((row) => row.path === "slack.follow" && !row.rejected).length,
+			1
+		);
 		assert.deepEqual(report.rpc.find((row) => row.path === "slack.follow").input, {
 			mode: "all_joined",
 			excludedConversationIds: EXCLUDED,
@@ -967,7 +979,12 @@ function selfCheck() {
 	}));
 	const labels = items.map((row) => `${row.name} · ${row.visibility.replaceAll("_", " ")}`);
 	assertConversationLabels(items, labels);
-	assert.throws(() => assertConversationLabels(items, items.map((row) => row.id)));
+	assert.throws(() =>
+		assertConversationLabels(
+			items,
+			items.map((row) => row.id)
+		)
+	);
 	assert.throws(() =>
 		assertConversationLabels(
 			items.map((row) => (row.id === "D66001" ? { ...row, name: "controlled-selected-dm" } : row)),
