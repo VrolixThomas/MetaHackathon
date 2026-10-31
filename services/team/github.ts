@@ -50,6 +50,16 @@ export class HostedGitHub {
 			);
 		return boundedJson(response, 2000000);
 	}
+	async installation(repository: string, expected?: string) {
+		if (!/^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+$/.test(repository)) throw new TeamError("invalid");
+		const data = z
+			.object({ id: z.number().int().positive(), suspended_at: z.string().nullable() })
+			.parse(await this.request(`/repos/${repository}/installation`, this.jwt()));
+		if (data.suspended_at !== null || (expected && String(data.id) !== expected))
+			throw new TeamError("forbidden");
+		return String(data.id);
+	}
+
 	async authorize(repository: TeamRepository): Promise<string> {
 		if (!repository.enabled) throw new TeamError("forbidden");
 		const jwt = this.jwt();

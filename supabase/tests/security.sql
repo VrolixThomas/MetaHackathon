@@ -49,6 +49,11 @@ select public.team_claim('preparation',120)->>'lease_token' as prep_lease \gset
 select id as prep_id from public.team_preparation_jobs \gset
 select public.team_finish_preparation(:'prep_id',:'prep_lease',jsonb_build_object('pr',jsonb_build_object('baseSha',repeat('a',40),'headSha',repeat('b',40),'number',1)),repeat('f',64));
 select pg_temp.assert((select digest=repeat('d',64) from public.team_review_artifacts),'canonical result never overwritten');
+-- Source-sensitive consent cannot bypass the HTTP verifier through a user JWT.
+select pg_temp.assert(not has_function_privilege('authenticated','public.team_share_proposal(jsonb,text,uuid)','execute'),'legacy direct share denied');
+select pg_temp.assert(not has_function_privilege('authenticated','public.team_share_proposal(jsonb,text,uuid,uuid)','execute'),'actor direct share denied');
+select pg_temp.assert(not has_function_privilege('authenticated','public.team_decide_proposal(uuid,text,text,uuid,boolean)','execute'),'legacy direct decision denied');
+select pg_temp.assert(not has_function_privilege('authenticated','public.team_decide_proposal(uuid,text,text,uuid,boolean,uuid)','execute'),'actor direct decision denied');
 -- Proposal bundle and author decision isolation.
 update public.team_memberships set active=true;
 update public.team_repository_grants set checked_at=now(),expires_at=now()+interval '60 seconds';
@@ -59,19 +64,47 @@ select jsonb_build_object('key',:'key'::jsonb,'baseSha',repeat('b',40),'candidat
 select team_private.sha(:'bundle'::jsonb) as bundle_digest \gset
 set local role authenticated;
 set local request.jwt.claim.sub='00000000-0000-4000-8000-000000000001';
-select public.team_share_proposal(:'bundle',:'bundle_digest','40000000-0000-4000-8000-000000000001')->>'id' as proposal_id \gset
-select public.team_share_proposal(:'bundle',:'bundle_digest','40000000-0000-4000-8000-000000000001');
+reset role;
+set local role service_role;
+select public.team_share_proposal(:'bundle',:'bundle_digest','40000000-0000-4000-8000-000000000001','00000000-0000-4000-8000-000000000001')->>'id' as proposal_id \gset
+reset role;
+set local role authenticated;
+reset role;
+set local role service_role;
+select public.team_share_proposal(:'bundle',:'bundle_digest','40000000-0000-4000-8000-000000000001','00000000-0000-4000-8000-000000000001');
+reset role;
+set local role authenticated;
 select pg_temp.assert((select count(*)=1 from public.team_fix_proposals),'exact proposal retry dedup');
 do $$begin begin perform public.team_decide_proposal((select id from public.team_fix_proposals limit 1),(select bundle_digest from public.team_fix_proposals limit 1),'accept','50000000-0000-4000-8000-000000000001',true);raise exception 'unexpected nonauthor decision';exception when insufficient_privilege then null;end;end$$;
 set local request.jwt.claim.sub='00000000-0000-4000-8000-000000000002';
 select pg_temp.assert((select bundle_digest=team_private.sha(bundle) from public.team_fix_proposals),'user B sees exact shared bytes/hash');
-select public.team_share_proposal(:'bundle',:'bundle_digest','40000000-0000-4000-8000-000000000002');
+reset role;
+set local role service_role;
+select public.team_share_proposal(:'bundle',:'bundle_digest','40000000-0000-4000-8000-000000000002','00000000-0000-4000-8000-000000000002');
+reset role;
+set local role authenticated;
 select pg_temp.assert((select count(*)=1 from public.team_fix_proposals),'two owners reuse same exact bundle');
-select pg_temp.assert(public.team_find_shared_proposal('40000000-0000-4000-8000-000000000002',:'bundle_digest')->>'id'=:'proposal_id','second owner has its own durable retry receipt');
-do $$begin begin perform public.team_find_shared_proposal('40000000-0000-4000-8000-000000000002',repeat('0',64));raise exception 'request identity rebound';exception when serialization_failure then null;end;end$$;
+reset role;
+set local role service_role;
+select pg_temp.assert(public.team_find_shared_proposal('40000000-0000-4000-8000-000000000002',:'bundle_digest','00000000-0000-4000-8000-000000000002')->>'id'=:'proposal_id','second owner has its own durable retry receipt');
+reset role;
+set local role authenticated;
+reset role;
+set local role service_role;
+do $$begin begin perform public.team_find_shared_proposal('40000000-0000-4000-8000-000000000002',repeat('0',64),'00000000-0000-4000-8000-000000000002');raise exception 'request identity rebound';exception when serialization_failure then null;end;end$$;
+reset role;
+set local role authenticated;
 
-select public.team_decide_proposal(:'proposal_id',:'bundle_digest','accept','50000000-0000-4000-8000-000000000002',true);
-select public.team_decide_proposal(:'proposal_id',:'bundle_digest','accept','50000000-0000-4000-8000-000000000002',true);
+reset role;
+set local role service_role;
+select public.team_decide_proposal(:'proposal_id',:'bundle_digest','accept','50000000-0000-4000-8000-000000000002',true,'00000000-0000-4000-8000-000000000002');
+reset role;
+set local role authenticated;
+reset role;
+set local role service_role;
+select public.team_decide_proposal(:'proposal_id',:'bundle_digest','accept','50000000-0000-4000-8000-000000000002',true,'00000000-0000-4000-8000-000000000002');
+reset role;
+set local role authenticated;
 select pg_temp.assert((select count(*)=1 from public.team_proposal_decisions),'author decision exact retry dedup');
 set local request.jwt.claim.sub='00000000-0000-4000-8000-000000000003';
 select pg_temp.assert((select count(*)=0 from public.team_fix_proposals),'nonmember cannot read proposal bytes');
@@ -101,4 +134,16 @@ select public.team_retry_preparation(:'key','60000000-0000-4000-8000-00000000000
 select pg_temp.assert((select state='leased' from public.team_preparation_jobs),'duplicate retry cannot reset a new active lease');
 reset role;
 
+reset role;
+set local role service_role;
+select public.team_create_organization('00000000-0000-4000-8000-000000000001','Created org','70000000-0000-4000-8000-000000000001')->>'id' as new_org \gset
+select pg_temp.assert(public.team_create_organization('00000000-0000-4000-8000-000000000001','Created org','70000000-0000-4000-8000-000000000001')->>'id'=:'new_org','org creation idempotent');
+insert into public.team_memberships values(:'new_org','00000000-0000-4000-8000-000000000002',true);
+select public.team_register_repository('00000000-0000-4000-8000-000000000001',:'new_org','43','test/second','7','70000000-0000-4000-8000-000000000002');
+do $$begin begin perform public.team_register_repository('00000000-0000-4000-8000-000000000002',(select id from public.team_organizations where name='Created org'),'44','test/forged','7',gen_random_uuid());raise exception 'member registered repo';exception when insufficient_privilege then null;end;end$$;
+reset role;
+set local role authenticated;
+-- Even with fresh server head/source witnesses, direct calls cannot record stale consent.
+do $$begin begin perform public.team_decide_proposal((select id from public.team_fix_proposals limit 1),repeat('a',64),'accept',gen_random_uuid(),true,'00000000-0000-4000-8000-000000000002');raise exception 'direct actor RPC permitted';exception when insufficient_privilege then null;end;end$$;
+reset role;
 rollback;

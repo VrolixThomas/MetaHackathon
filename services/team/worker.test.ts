@@ -65,7 +65,7 @@ test("signed webhook durable admission is scoped, deterministic, bounded, and ta
 			reads++;
 			if (url.pathname.endsWith("team_repositories")) return [repository];
 			if (url.pathname.endsWith("team_ingest_webhook")) {
-				admitted.push(String(body.p_delivery));
+				admitted.push(String(body["p_delivery"]));
 				return;
 			}
 			throw new Error("Unexpected route");
@@ -168,8 +168,8 @@ test("real prepareReview structured model port publishes one canonical result; r
 				finishes++;
 				stored = {
 					key,
-					review: body.p_review as TeamArtifact["review"],
-					digest: String(body.p_digest),
+					review: body["p_review"] as TeamArtifact["review"],
+					digest: String(body["p_digest"]),
 				};
 				return;
 			}

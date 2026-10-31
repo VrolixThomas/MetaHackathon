@@ -52,6 +52,23 @@ export class TeamClient {
 		this.base = secureUrl(options.url, options.allowLocal).origin;
 	}
 
+	private async stamp() {
+		const revision = this.options.getAccountRevision?.() ?? this.options.auth.revision ?? 0;
+		const session = await this.options.auth.session();
+		if (revision !== (this.options.getAccountRevision?.() ?? this.options.auth.revision ?? 0))
+			throw new TeamError("unauthorized");
+		return { userId: session.user.id, token: session.access_token, revision };
+	}
+	private async assertStamp(stamp: { userId: string; token: string; revision: number }) {
+		const session = await this.options.auth.session();
+		if (
+			session.user.id !== stamp.userId ||
+			session.access_token !== stamp.token ||
+			stamp.revision !== (this.options.getAccountRevision?.() ?? this.options.auth.revision ?? 0)
+		)
+			throw new TeamError("unauthorized");
+	}
+
 	private async cacheData() {
 		const raw = await this.options.cache.read();
 		if (raw === null)
@@ -152,10 +169,14 @@ export class TeamClient {
 		raw: ReviewKey
 	): Promise<{ status: "current" | "offline-cache" | "pending"; artifact: TeamArtifact | null }> {
 		const key = ReviewKeySchema.parse(raw);
-		const userId = (await this.options.auth.session()).user.id;
+		const stamp = await this.stamp();
+		const userId = stamp.userId;
 		try {
 			const response = await this.request("reviews/read", { key }, userId);
-			if (response.value === null) return { status: "pending", artifact: null };
+			if (response.value === null) {
+				await this.assertStamp(stamp);
+				return { status: "pending", artifact: null };
+			}
 			const value = artifact(response.value);
 			if (digest(value.key) !== digest(key)) throw new TeamError("invalid");
 			await this.serialize(async () => {
@@ -165,12 +186,14 @@ export class TeamClient {
 				for (const id of ids.slice(0, Math.max(0, ids.length - 100))) delete local.artifacts[id];
 				await this.persist(local);
 			});
+			await this.assertStamp(stamp);
 			return { status: "current", artifact: value };
 		} catch (error) {
 			if (!(error instanceof TeamError) || error.code !== "offline") throw error;
 			if ((await this.options.auth.session()).user.id !== userId)
 				throw new TeamError("unauthorized");
 			const cached = (await this.local(userId)).artifacts[digest(key)];
+			await this.assertStamp(stamp);
 			return { status: "offline-cache", artifact: cached ? artifact(cached) : null };
 		}
 	}
@@ -218,6 +241,37 @@ export class TeamClient {
 			saved++;
 		}
 		return saved;
+	}
+
+	async resolveRepository(orgId: string, repositoryId: string) {
+		return (await this.request("repositories/resolve", { orgId, repositoryId })).value;
+	}
+	async createOrganization(input: unknown) {
+		return (await this.request("organizations/create", input)).value;
+	}
+	async registerRepository(input: unknown) {
+		return (await this.request("repositories/register", input)).value;
+	}
+	async browseProposals(input: {
+		orgId: string;
+		repositoryId: string;
+		prNumber?: number;
+		offset?: number;
+	}) {
+		return (await this.request("proposals/browse", input)).value;
+	}
+	async getProposal(input: { orgId: string; repositoryId: string; proposalId: string }) {
+		return (await this.request("proposals/get", input)).value;
+	}
+	async authorizeApply(key: ReviewKey, proposalId: string, bundleDigest: string) {
+		return (
+			await this.request("proposals/authorize-apply", {
+				key,
+				proposalId,
+				bundleDigest,
+				confirmed: true,
+			})
+		).value;
 	}
 
 	async organizations() {

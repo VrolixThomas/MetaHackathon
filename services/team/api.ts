@@ -1,6 +1,7 @@
 import { z } from "zod";
 import type { TeamAccess, TeamRepository } from "./access";
 import type { HostedGitHub } from "./github";
+import { onboard } from "./onboarding";
 import {
 	type ProposalBundle,
 	ProposalDecisionSchema,
@@ -19,8 +20,14 @@ import { type SupabaseRest, query } from "./supabase";
 
 /** Every operation revalidates source access. All GitHub operations are reads. */
 export function createTeamApi(
-	access: Pick<TeamAccess, "authorize" | "github" | "organizations" | "repositories">,
-	options?: { admin: SupabaseRest; github: Pick<HostedGitHub, "context">; analysisVersion: string }
+	access: Pick<TeamAccess, "authorize" | "github" | "organizations" | "repositories"> &
+		Partial<Pick<TeamAccess, "identify">>,
+	options?: {
+		admin: SupabaseRest;
+		github: Pick<HostedGitHub, "context"> &
+			Partial<Pick<HostedGitHub, "installation" | "authorize">>;
+		analysisVersion: string;
+	}
 ) {
 	const verifyFeedback = async (
 		bundle: ProposalBundle,
@@ -83,11 +90,98 @@ export function createTeamApi(
 				bundle?: { key?: unknown };
 			};
 
+			if (path === "/v1/organizations/create" || path === "/v1/repositories/register") {
+				if (!options?.github.installation || !options.github.authorize || !access.identify)
+					throw new TeamError("unavailable");
+				return Response.json(
+					await onboard(path, body, jwt, github, {
+						access: { identify: access.identify.bind(access), github: access.github.bind(access) },
+						admin: options.admin,
+						github: {
+							installation: options.github.installation.bind(options.github),
+							authorize: options.github.authorize.bind(options.github),
+						},
+					})
+				);
+			}
+			if (path === "/v1/proposals/browse" || path === "/v1/proposals/get") {
+				const input = z
+					.object({
+						orgId: z.uuid(),
+						repositoryId: z.string(),
+						proposalId: z.uuid().optional(),
+						prNumber: z.int().positive().optional(),
+						offset: z.int().min(0).max(10000).default(0),
+					})
+					.parse(body);
+				const actor = await access.authorize(jwt, github, input.orgId, input.repositoryId);
+				const filters: Record<string, string> = {
+					org_id: input.orgId,
+					repository_id: input.repositoryId,
+				};
+				if (input.proposalId) filters["id"] = input.proposalId;
+				if (input.prNumber) filters["key->>prNumber"] = String(input.prNumber);
+				const rows = z
+					.array(
+						z
+							.object({
+								id: z.uuid(),
+								key: ReviewKeySchema,
+								owner_id: z.uuid(),
+								bundle_digest: z.string(),
+								created_at: z.string(),
+								bundle: z.unknown().optional(),
+							})
+							.passthrough()
+					)
+					.max(21)
+					.parse(
+						await actor.db.request(
+							`${query("team_fix_proposals", filters, path.endsWith("/get") ? "*" : "id,key,owner_id,bundle_digest,created_at")}&limit=${path.endsWith("/get") ? 1 : 21}&offset=${input.offset}&order=created_at.desc,id`
+						)
+					);
+				const selected = rows.slice(0, path.endsWith("/get") ? 1 : 20);
+				const decisions = selected.length
+					? z
+							.array(z.object({ proposal_id: z.uuid() }).passthrough())
+							.max(20)
+							.parse(
+								await actor.db.request(
+									`/rest/v1/team_proposal_decisions?${new URLSearchParams({ select: "*", proposal_id: `in.(${selected.map((row) => row.id).join(",")})` })}`
+								)
+							)
+					: [];
+				const items = selected.map((row) => {
+					if (row.bundle) {
+						const bundle = validateBundle(row.bundle);
+						if (digest(bundle) !== row.bundle_digest) throw new TeamError("invalid");
+					}
+					return {
+						...row,
+						decision: decisions.find((item) => item.proposal_id === row.id) ?? null,
+					};
+				});
+				return Response.json(
+					path.endsWith("/get")
+						? (items[0] ?? null)
+						: { items, nextOffset: rows.length > 20 ? input.offset + 20 : null }
+				);
+			}
 			if (path === "/v1/organizations") {
 				if (!options) throw new TeamError("unavailable");
 				return Response.json({
 					analysisVersion: options.analysisVersion,
 					items: await access.organizations(jwt, github),
+				});
+			}
+
+			if (path === "/v1/repositories/resolve") {
+				const input = z.object({ orgId: z.uuid(), repositoryId: z.string() }).parse(body);
+				const actor = await access.authorize(jwt, github, input.orgId, input.repositoryId);
+				return Response.json({
+					orgId: input.orgId,
+					repositoryId: actor.repository.repository_id,
+					fullName: actor.repository.full_name,
 				});
 			}
 			if (path === "/v1/repositories") {
@@ -100,6 +194,8 @@ export function createTeamApi(
 			const actor = await access.authorize(jwt, github, key.orgId, key.repositoryId);
 			const { db, userId, repository } = actor;
 			if (path === "/v1/reviews/read") {
+				if (options && key.analysisVersion !== options.analysisVersion)
+					throw new TeamError("conflict");
 				const rows = z
 					.array(z.object({ key: ReviewKeySchema, review: z.unknown(), digest: z.string() }))
 					.max(1)
@@ -218,6 +314,72 @@ export function createTeamApi(
 				}
 				return Response.json(rows[0] ?? null);
 			}
+
+			if (path === "/v1/proposals/authorize-apply") {
+				if (!options) throw new TeamError("unavailable");
+				const input = z
+					.object({ proposalId: z.uuid(), bundleDigest: z.string(), confirmed: z.literal(true) })
+					.parse(body);
+				const records = z
+					.array(z.object({ bundle: z.unknown(), bundle_digest: z.string() }).passthrough())
+					.max(1)
+					.parse(
+						await db.request(
+							query("team_fix_proposals", { id: input.proposalId, key: JSON.stringify(key) })
+						)
+					);
+				const record = records[0];
+				if (!record || record.bundle_digest !== input.bundleDigest) throw new TeamError("conflict");
+				const bundle = validateBundle(record.bundle);
+				if (digest(bundle) !== input.bundleDigest) throw new TeamError("invalid");
+				const decisions = z
+					.array(
+						z
+							.object({
+								id: z.uuid(),
+								proposal_id: z.uuid(),
+								bundle_digest: z.string(),
+								decision: z.literal("accept"),
+								author_id: z.uuid(),
+								github_author_id: z.string(),
+							})
+							.passthrough()
+					)
+					.max(1)
+					.parse(
+						await db.request(
+							query("team_proposal_decisions", {
+								proposal_id: input.proposalId,
+								decision: "accept",
+							})
+						)
+					);
+				const decision = decisions[0];
+				if (
+					!decision ||
+					decision.bundle_digest !== input.bundleDigest ||
+					decision.author_id !== userId ||
+					decision.github_author_id !== actor.githubId
+				)
+					throw new TeamError("forbidden");
+				const current = z
+					.object({
+						user: z.object({ id: z.number().int() }),
+						head: z.object({ sha: z.string() }),
+						base: z.object({ repo: z.object({ id: z.number().int() }) }),
+					})
+					.parse(
+						await access.github(`/repos/${repository.full_name}/pulls/${key.prNumber}`, github)
+					);
+				if (
+					String(current.user.id) !== actor.githubId ||
+					String(current.base.repo.id) !== key.repositoryId ||
+					current.head.sha !== key.headSha
+				)
+					throw new TeamError("conflict");
+				await verifyFeedback(bundle, github, repository);
+				return Response.json({ proposal: { ...record, decision }, decision, userId });
+			}
 			if (path === "/v1/proposals/share" || path === "/v1/proposals/decide") {
 				if (!options) throw new TeamError("unavailable");
 
@@ -225,7 +387,8 @@ export function createTeamApi(
 					const input = ShareProposalSchema.parse(body);
 					const bundle = validateBundle(input.bundle);
 					if (digest(bundle) !== input.bundleDigest) throw new TeamError("invalid");
-					const previous = await db.rpc("team_find_shared_proposal", {
+					const previous = await options.admin.rpc("team_find_shared_proposal", {
+						p_actor: userId,
 						p_request: input.requestId,
 						p_digest: input.bundleDigest,
 					});
@@ -321,7 +484,8 @@ export function createTeamApi(
 					if (digest(bundle) !== input.bundleDigest) throw new TeamError("invalid");
 					await verifyFeedback(bundle, github, repository);
 					return Response.json(
-						await db.rpc("team_share_proposal", {
+						await options.admin.rpc("team_share_proposal", {
+							p_actor: userId,
 							p_bundle: bundle,
 							p_digest: input.bundleDigest,
 							p_request: input.requestId,
@@ -344,7 +508,8 @@ export function createTeamApi(
 				if (digest(selected) !== input.bundleDigest) throw new TeamError("invalid");
 				await verifyFeedback(selected, github, repository);
 				return Response.json(
-					await db.rpc("team_decide_proposal", {
+					await options.admin.rpc("team_decide_proposal", {
+						p_actor: userId,
 						p_id: input.proposalId,
 						p_digest: input.bundleDigest,
 						p_decision: input.decision,

@@ -1,62 +1,10 @@
-import { z } from "zod";
-import { RepositoryPathSchema } from "../../apps/desktop/src/shared/contracts";
-import { Digest, RepositoryId, ReviewKeySchema, Sha, digest, sha256 } from "./protocol";
-
-const BlobSchema = z.strictObject({ text: z.string().max(300000), sha256: Digest });
-export const ProposalBundleSchema = z.strictObject({
-	key: ReviewKeySchema,
-	feedback: z.strictObject({
-		kind: z.enum(["pull-review-comment", "issue-comment"]),
-		id: RepositoryId,
-		revision: z.iso.datetime(),
-		body: z.string().min(1).max(16000),
-		bodyDigest: Digest,
-	}),
-	baseSha: Sha,
-	candidateSha: Sha,
-	files: z
-		.array(
-			z.strictObject({
-				path: RepositoryPathSchema,
-				before: BlobSchema.nullable(),
-				after: BlobSchema.nullable(),
-			})
-		)
-		.min(1)
-		.max(40),
-	patch: BlobSchema,
-	checks: z
-		.array(
-			z.strictObject({
-				command: z.array(z.string().min(1).max(2000)).min(1).max(30),
-				cwd: RepositoryPathSchema.optional(),
-				commitSha: Sha,
-				startedAt: z.iso.datetime(),
-				finishedAt: z.iso.datetime(),
-				exitCode: z.int(),
-				environment: z.string().min(1).max(4000),
-				output: BlobSchema,
-			})
-		)
-		.max(30),
-	checksDigest: Digest,
-	sourcesDigest: Digest,
-	provenance: z.literal("reported-local-candidate"),
-});
-export type ProposalBundle = z.infer<typeof ProposalBundleSchema>;
-export const ShareProposalSchema = z.strictObject({
-	requestId: z.uuid(),
-	bundle: ProposalBundleSchema,
-	bundleDigest: Digest,
-});
-export const ProposalDecisionSchema = z.strictObject({
-	key: ReviewKeySchema,
-	proposalId: z.uuid(),
-	bundleDigest: Digest,
-	requestId: z.uuid(),
-	decision: z.enum(["accept", "decline"]),
-	confirmed: z.literal(true),
-});
+import { type ProposalBundle, ProposalBundleSchema, digest, sha256 } from "./protocol";
+export {
+	ProposalBundleSchema,
+	type ProposalBundle,
+	ShareProposalSchema,
+	ProposalDecisionSchema,
+} from "./schemas";
 export function validateBundle(raw: unknown): ProposalBundle {
 	const bundle = ProposalBundleSchema.parse(raw);
 	const blobs = [

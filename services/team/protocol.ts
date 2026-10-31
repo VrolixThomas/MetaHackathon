@@ -1,27 +1,6 @@
 import { createHash } from "node:crypto";
-import { z } from "zod";
-import {
-	PreparedReviewSchema,
-	RepositoryPathSchema,
-} from "../../apps/desktop/src/shared/contracts";
-
-export const Digest = z.string().regex(/^[0-9a-f]{64}$/);
-export const Sha = z.string().regex(/^[0-9a-f]{40}$/);
-export const RepositoryId = z.string().regex(/^[1-9][0-9]{0,18}$/);
-export const ReviewKeySchema = z.strictObject({
-	orgId: z.uuid(),
-	repositoryId: RepositoryId,
-	prNumber: z.int().positive(),
-	baseSha: Sha,
-	headSha: Sha,
-	contextDigest: Digest,
-	analysisVersion: z
-		.string()
-		.min(1)
-		.max(160)
-		.regex(/^[a-zA-Z0-9._:-]+$/),
-});
-export type ReviewKey = z.infer<typeof ReviewKeySchema>;
+import { ArtifactSchema, type TeamArtifact } from "./schemas";
+export * from "./schemas";
 /** Sorted keys, preserved string bytes; arrays retain their order. */
 export function canonical(value: unknown): string {
 	if (value === null || typeof value !== "object") return JSON.stringify(value);
@@ -37,12 +16,6 @@ export function digest(value: unknown): string {
 export function sha256(text: string): string {
 	return createHash("sha256").update(text, "utf8").digest("hex");
 }
-export const ArtifactSchema = z.strictObject({
-	key: ReviewKeySchema,
-	review: PreparedReviewSchema,
-	digest: Digest,
-});
-export type TeamArtifact = z.infer<typeof ArtifactSchema>;
 export function artifact(raw: unknown): TeamArtifact {
 	const value = ArtifactSchema.parse(raw);
 	if (
@@ -54,27 +27,6 @@ export function artifact(raw: unknown): TeamArtifact {
 		throw new Error("Team artifact identity or digest mismatch");
 	return value;
 }
-export const ProgressSchema = z.strictObject({
-	key: ReviewKeySchema,
-	cursor: RepositoryPathSchema.nullable(),
-	visited: z.array(RepositoryPathSchema).max(100),
-	notes: z.string().max(32000),
-	paused: z.boolean(),
-	revision: z.int().nonnegative(),
-});
-export type TeamProgress = z.infer<typeof ProgressSchema>;
-export const ProgressWriteSchema = z.strictObject({
-	requestId: z.uuid(),
-	expectedRevision: z.int().nonnegative(),
-	progress: ProgressSchema,
-});
-export const SessionSchema = z.object({
-	access_token: z.string().min(1).max(32768),
-	refresh_token: z.string().min(1).max(32768),
-	expires_at: z.int().positive(),
-	user: z.object({ id: z.uuid() }),
-});
-export type TeamSession = z.infer<typeof SessionSchema>;
 export class TeamError extends Error {
 	constructor(
 		readonly code:

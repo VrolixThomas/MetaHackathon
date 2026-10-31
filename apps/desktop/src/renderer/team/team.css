@@ -1,0 +1,100 @@
+.team-card {
+	display: grid;
+	gap: 14px;
+	min-width: 0;
+}
+.team-card h3,
+.team-card h4,
+.team-card h5 {
+	margin: 0 0 6px;
+}
+.team-heading,
+.team-repository {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	flex-wrap: wrap;
+	gap: 10px;
+}
+.team-onboarding,
+.team-card form,
+.team-repositories,
+.team-confirm {
+	display: grid;
+	gap: 10px;
+}
+.team-card label {
+	display: flex;
+	align-items: center;
+	flex-wrap: wrap;
+	gap: 8px;
+}
+.team-card label > input:not([type="checkbox"]),
+.team-card select {
+	flex: 1;
+	min-width: 160px;
+	padding: 7px 9px;
+	color: inherit;
+	background: #171c24;
+	border: 1px solid #38404d;
+	border-radius: 6px;
+}
+.team-repository,
+.team-check {
+	padding: 10px 0;
+	border-bottom: 1px solid #303846;
+}
+.team-proposal-list {
+	margin: 0;
+	padding-left: 20px;
+	display: grid;
+	gap: 6px;
+}
+.team-proposal-review {
+	display: grid;
+	gap: 12px;
+	border-top: 1px solid #38404d;
+	padding-top: 14px;
+	min-width: 0;
+}
+.team-source-pair {
+	display: grid;
+	grid-template-columns: repeat(2, minmax(0, 1fr));
+	gap: 10px;
+}
+.team-card pre {
+	margin: 7px 0;
+	padding: 12px;
+	overflow: auto;
+	max-height: 420px;
+	white-space: pre;
+	background: #11161e;
+	border: 1px solid #303846;
+	border-radius: 6px;
+	font-size: 12px;
+	tab-size: 4;
+}
+.team-card code,
+.team-identity {
+	overflow-wrap: anywhere;
+}
+.team-card pre code {
+	overflow-wrap: normal;
+}
+.team-card blockquote {
+	margin: 0;
+	padding: 8px 12px;
+	border-left: 3px solid #626f87;
+	white-space: pre-wrap;
+}
+.team-confirm {
+	padding: 12px;
+	background: #1b2431;
+	border: 1px solid #3b4b64;
+	border-radius: 6px;
+}
+@media (max-width: 760px) {
+	.team-source-pair {
+		grid-template-columns: 1fr;
+	}
+}

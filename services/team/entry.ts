@@ -25,7 +25,7 @@ function required(env: NodeJS.ProcessEnv, key: string) {
 }
 export function dependencies(env: NodeJS.ProcessEnv) {
 	const url = required(env, "SUPABASE_URL");
-	const allowLocal = env.TEAM_ALLOW_LOCAL_SUPABASE === "1";
+	const allowLocal = env["TEAM_ALLOW_LOCAL_SUPABASE"] === "1";
 	const key = required(env, "SUPABASE_PUBLISHABLE_KEY");
 	const admin = new SupabaseRest({
 		url,
@@ -69,8 +69,8 @@ export async function main(args: string[], env = process.env): Promise<void> {
 		throw new Error("Expected serve or consume; use --help");
 	if (mode === "serve") {
 		const handler = serverHandler(env);
-		const port = Number(env.TEAM_PORT ?? 8787);
-		const host = env.TEAM_HOST ?? "127.0.0.1";
+		const port = Number(env["TEAM_PORT"] ?? 8787);
+		const host = env["TEAM_HOST"] ?? "127.0.0.1";
 		if (!Number.isInteger(port) || port < 1 || port > 65535) throw new Error("Invalid TEAM_PORT");
 		const server = createServer(async (req, res) => {
 			try {

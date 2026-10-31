@@ -126,7 +126,7 @@ export class TeamAccess {
 			db,
 		};
 	}
-	private async identify(jwt: string, githubToken: string) {
+	async identify(jwt: string, githubToken: string) {
 		const db = this.options.user(jwt);
 		const user = userSchema.parse(await db.request("/auth/v1/user"));
 		const identity = user.identities.find((item) => item.provider === "github");

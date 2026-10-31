@@ -251,3 +251,81 @@ test("offline outboxes survive account switches separately and never dispatch ol
 	await assert.rejects(client.saveProgress(write("late private A")));
 	assert.equal(sent, before);
 });
+
+test("account generation changes during the final cache write reject a current artifact result", async () => {
+	let revision = 0;
+	let entered: (() => void) | undefined;
+	let release: (() => void) | undefined;
+	const ready = new Promise<void>((resolve) => {
+		entered = resolve;
+	});
+	const blocked = new Promise<void>((resolve) => {
+		release = resolve;
+	});
+	let data: unknown = null;
+	const cache: TeamStore = {
+		read: async () => data,
+		write: async (value) => {
+			entered?.();
+			await blocked;
+			data = value;
+		},
+	};
+	const client = new TeamClient({
+		url: "https://team.example",
+		auth: { session: async () => session() },
+		getAccountRevision: () => revision,
+		getGitHubToken: async () => "github-user",
+		cache,
+		fetch: transport(() => Response.json(shared)),
+	});
+	const result = client.load(key);
+	await ready;
+	revision++;
+	release?.();
+	await assert.rejects(result, /unauthorized/);
+});
+test("account changes during a deferred offline cache read cannot return the previous user's artifact", async () => {
+	let current = session();
+	let block = false;
+	let entered: (() => void) | undefined;
+	let release: (() => void) | undefined;
+	const ready = new Promise<void>((resolve) => {
+		entered = resolve;
+	});
+	const blocked = new Promise<void>((resolve) => {
+		release = resolve;
+	});
+	let data: unknown = null;
+	const cache: TeamStore = {
+		read: async () => {
+			if (block) {
+				entered?.();
+				await blocked;
+			}
+			return data;
+		},
+		write: async (value) => {
+			data = value;
+		},
+	};
+	let offline = false;
+	const client = new TeamClient({
+		url: "https://team.example",
+		auth: { session: async () => current },
+		getGitHubToken: async () => "github-user",
+		cache,
+		fetch: transport(() => {
+			if (offline) throw new Error("controlled offline");
+			return Response.json(shared);
+		}),
+	});
+	await client.load(key);
+	offline = true;
+	block = true;
+	const result = client.load(key);
+	await ready;
+	current = session("00000000-0000-4000-8000-000000000002");
+	release?.();
+	await assert.rejects(result, /unauthorized/);
+});
