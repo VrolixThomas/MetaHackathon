@@ -655,7 +655,12 @@ async function native() {
 		);
 		report.actualBuiltApp = true;
 		const initial = await hub();
-		assert.deepEqual(initial.connections, { github: false, linear: false, model: true });
+		assert.deepEqual(initial.connections, {
+			github: false,
+			linear: false,
+			model: true,
+			coding: true,
+		});
 		for (const key of ["repositories", "reviews", "tickets", "jobs", "notices"])
 			assert.deepEqual(initial[key], []);
 		assert.deepEqual(initial.viewer, { githubLogin: null, linearName: null });
@@ -750,7 +755,12 @@ async function native() {
 				snapshot
 			);
 		});
-		assert.deepEqual(connected.connections, { github: true, linear: true, model: true });
+		assert.deepEqual(connected.connections, {
+			github: true,
+			linear: true,
+			model: true,
+			coding: true,
+		});
 		assert.deepEqual(connected.errors, []);
 		assert.equal(connected.tickets[0].id, TICKET_ID);
 		assert.equal(connected.tickets[0].assigneeId, LINEAR_PROFILE.id);

@@ -9,7 +9,7 @@ import { z } from "zod";
 import type { MuseCodeStatus } from "../../../shared/contracts/coding-provider";
 import { abortable } from "../../agent/cancellation";
 import { redactCodingText } from "../../agent/coding-worker-safety";
-import { executionEnvironment } from "../../runtime/environment";
+import { codingEnvironment } from "../coding-environment";
 
 export type MuseFailure = NonNullable<MuseCodeStatus["error"]>;
 const errors: Record<MuseFailure, string> = {
@@ -48,11 +48,9 @@ export interface MuseCodeDependencies {
 }
 /** Explicit allowlist: provider keys, fail-open flags, Node hooks and alternate endpoints are absent. */
 export function museEnvironment(): NodeJS.ProcessEnv {
-	const env = executionEnvironment();
+	const env = codingEnvironment();
 	env["MUSE_NO_AUTO_UPDATE"] = "1";
 	env["PATH"] = `${join(homedir(), ".local", "bin")}:${env["PATH"]}`;
-	for (const key of ["XDG_CONFIG_HOME", "XDG_DATA_HOME", "XDG_STATE_HOME"])
-		if (process.env[key] && isAbsolute(process.env[key] as string)) env[key] = process.env[key];
 	return env;
 }
 export const CODING_TOOLS = [
@@ -87,7 +85,7 @@ export async function initializeOwnedHandshake(
 ) {
 	let closing: Promise<void> | undefined;
 	const close = () => {
-		closing ??= handshake.close();
+		closing ??= handshake.close().then(() => {});
 		return closing;
 	};
 	const abort = () => {

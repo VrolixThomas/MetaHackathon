@@ -25,6 +25,7 @@
 		"test:oauth": "electron-vite build && env -u ELECTRON_RUN_AS_NODE electron src/main/oauth-smoke.cjs",
 		"test:pr-work": "electron-vite build && env -u ELECTRON_RUN_AS_NODE electron src/main/pr-work-smoke.cjs",
 		"test:pr-fixes": "electron-vite build && env -u ELECTRON_RUN_AS_NODE electron src/main/pr-fix-smoke.cjs",
+		"test:coding-provider": "electron-vite build && env -u ELECTRON_RUN_AS_NODE electron src/main/coding-provider-smoke.cjs",
 		"test:day": "electron-vite build && env -u ELECTRON_RUN_AS_NODE electron src/main/day-smoke.cjs",
 		"test:slack-oauth": "electron-vite build && env -u ELECTRON_RUN_AS_NODE electron src/main/slack-oauth-smoke.cjs"
 	},

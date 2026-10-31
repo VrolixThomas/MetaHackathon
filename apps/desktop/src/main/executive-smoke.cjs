@@ -709,7 +709,12 @@ async function native() {
 		const initial = await snapshot();
 		assert.deepEqual(initial.repositories, [], "No seeded repository may enter a clean profile");
 		assert.deepEqual(initial.jobs, [], "No seeded jobs may enter a clean profile");
-		assert.deepEqual(initial.connections, { github: true, linear: true, model: true });
+		assert.deepEqual(initial.connections, {
+			github: true,
+			linear: true,
+			model: true,
+			coding: true,
+		});
 		await operate({ kind: "add-repository", repository: REPOSITORY, localPath: fixture.localPath });
 		const ready = await wait("provider-owned ticket and queues", async () => {
 			const state = await snapshot();

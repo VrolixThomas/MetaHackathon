@@ -141,7 +141,10 @@ async function native() {
 	ipcMain.handle = function (channel, handler) {
 		if (channel !== "trpc:request") return originalHandle.call(this, channel, handler);
 		return originalHandle.call(this, channel, async (event, input) => {
-			const audited = input?.path?.startsWith("codingProvider.") || input?.path === "hub.operate";
+			const audited =
+				input?.path?.startsWith("codingProvider.") ||
+				input?.path === "hub.operate" ||
+				input?.path === "workspace.applied";
 			const row = audited ? { path: input.path, input: structuredClone(input.input?.json) } : null;
 			if (row) report.ipc.push(row);
 			const result = await handler(event, input);
@@ -315,17 +318,38 @@ async function native() {
 					`[...document.querySelectorAll('.command-sidebar-scroll button')].some(e=>e.textContent.includes(${JSON.stringify(fixtures.TICKET)}))`
 				)
 			);
+			const receiptStart = report.ipc.length;
 			await js(
 				`[...document.querySelectorAll('.command-sidebar-scroll button')].find(e=>e.textContent.includes(${JSON.stringify(fixtures.TICKET)})).click()`
+			);
+			await wait("ticket canvas navigation receipt", () =>
+				report.ipc
+					.slice(receiptStart)
+					.some(
+						(row) =>
+							row.path === "workspace.applied" &&
+							row.input.status === "applied" &&
+							row.result?.result?.data?.json?.status === "accepted"
+					)
 			);
 			await wait("actual ticket start form", () =>
 				js("!!document.querySelector('form.hub-start-work select')")
 			);
 		};
 		const fillTicket = async (repositoryId) => {
-			await field("form.hub-start-work select", repositoryId);
-			await field("form.hub-start-work textarea", fixtures.BRIEF);
+			await wait("repository option in actual ticket form", () =>
+				js(
+					`[...document.querySelector('form.hub-start-work select').options].some(option=>option.value===${JSON.stringify(repositoryId)})`
+				)
+			);
+			await js(
+				`(() => { const form=document.querySelector('form.hub-start-work');const select=form.querySelector('select');Object.getOwnPropertyDescriptor(HTMLSelectElement.prototype,'value').set.call(select,${JSON.stringify(repositoryId)});select.dispatchEvent(new Event('change',{bubbles:true}));const text=form.querySelector('textarea');Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype,'value').set.call(text,${JSON.stringify(fixtures.BRIEF)});text.dispatchEvent(new Event('input',{bubbles:true}));})()`
+			);
 			await frames();
+			const actual = await js(
+				"({value:document.querySelector('form.hub-start-work select').value,options:[...document.querySelector('form.hub-start-work select').options].map(e=>e.value)})"
+			);
+			assert.equal(actual.value, repositoryId, JSON.stringify(actual));
 		};
 		const failedJob = async (repositoryId, expectedPath) => {
 			const value = await operate({
