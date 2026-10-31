@@ -255,10 +255,10 @@ with controlled provider transport. Root alone runs it. It is not live provider 
 ## Slack and commitments increment (2026-10-31)
 
 MET-66 owns new `main/slack/`; MET-67 new `main/day/` and `main/db/day-store.ts`;
-MET-68 new `renderer/day/`; MET-69 new `main/knowledge/`. MET-70 temporarily reserves
-`composition/reviews.ts`/tests and `agent/guided-review.ts`/tests for operation-scoped source
-reads. MET-51's existing Astra/MAX Codex worker owns the reserved renderer voice preconnection
-files. Exact workspaces/reservations are on MET-8. Integration retains shared contracts, existing
+MET-68 new `renderer/day/`; MET-69 new `main/knowledge/`. MET-70's operation-scoped source-read
+handoff and MET-51's Astra/MAX Codex preconnection handoff are integrated; those reservations
+are released. MET-71's memory/source-read modules are also handed off and released. Exact
+workspaces/reservations are on MET-8. Integration retains shared contracts, existing
 renderer bindings, services, root routers, lifecycle, credential composition and dependencies.
 
 `chat.ts`, `day.ts` and `knowledge.ts` are the shared source/queue/knowledge DTOs. New internal
@@ -278,3 +278,17 @@ sleep/offline and durable checkpoints are explicit states. Hosted execution is n
 Slack OAuth requires its documented HTTPS callback setup; do not copy the other providers' HTTP
 callback and claim it works. Credentials/deployment block only relevant live checks. Root alone
 runs combined app/native/provider tests; workers use controlled unit probes in separate worktrees.
+
+Root composes `SlackWorkspaceCoordinator` with the existing Day/worker services, SQLite stores,
+fresh knowledge authorization and original-thread delivery ledger. Settings imports a main-only
+`.env` USER token (`SLACK_USER_TOKEN`, `SLACK_APP_ID`), verifies the actual account, then watches
+only selected conversations. Socket Mode optionally uses `SLACK_APP_TOKEN`. Browser Slack OAuth
+and cross-employee transport are not deployed. Never treat local recorded facts as hosted team data.
+`memory_search` and `day_read_source` bind the current account; reads preserve source identity,
+bounded exact prefixes and audience restrictions. They never establish display or send authority.
+
+`bun run test:day` checks the actual My day UI/IPC and SQLite persistence with controlled inputs.
+`test:hands-free` and `test:attention` explicitly build the legacy controlled cold media transport
+with `VITE_MUSE_VOICE_PRECONNECT=0`. Normal builds enable bounded preconnection by default.
+Actual-provider warm/cold and fallback measurements are separate from those simulated regressions;
+see `docs/integration/evidence/voice-preconnect-2026-10-31.json`. Root alone runs native checks.

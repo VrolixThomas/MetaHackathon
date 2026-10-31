@@ -194,6 +194,29 @@
 			"shutdown": true,
 			"speechStarts": 2,
 			"cancelledTurns": 1
+		},
+		{
+			"case": "default-on-final",
+			"status": "passed",
+			"sourceRevision": "9fd767a",
+			"preconnect": "default-warm",
+			"liveASR": true,
+			"liveTTS": true,
+			"liveModel": false,
+			"physicalMicrophone": false,
+			"physicalSpeakerMuted": true,
+			"syntheticPhrase": true,
+			"transcriptMatches": true,
+			"intervals": {
+				"physicalMarkerToEndpointMs": 680,
+				"endpointToReleaseMs": 703,
+				"releaseToTranscriptMs": 502,
+				"endpointToPCMms": 1784,
+				"markerEndToPCMms": 2464
+			},
+			"shutdown": true,
+			"speechStarts": 1,
+			"cancelledTurns": 0
 		}
 	]
 }

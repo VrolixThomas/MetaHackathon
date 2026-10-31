@@ -592,6 +592,12 @@ async function native() {
 				)
 		);
 		const selectedFrames = assertDisplayedReceipt(selectedReceipt, itemId, TITLE);
+		const screenshot = join(__dirname, "../../out/day-workspace-controlled.png");
+		fs.writeFileSync(screenshot, (await win.webContents.capturePage()).toPNG());
+		report.screenshot = {
+			path: screenshot,
+			content: "controlled personal item; no live Slack content",
+		};
 		const prepared = trace
 			.slice(selectionStart)
 			.find(
