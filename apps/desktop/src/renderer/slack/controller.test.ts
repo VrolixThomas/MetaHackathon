@@ -394,3 +394,22 @@ it("rejects malformed catalog IDs before rendering navigation targets", async ()
 	assert.equal(controller.store.getState().listError, SLACK_LIST_ERROR);
 	controller.dispose();
 });
+
+it("coalesces refresh requests with the current source read instead of consuming another history page", async () => {
+	const waiting = deferred<SlackMessagePage>();
+	const entered = deferred<void>();
+	const { controller, calls } = harness(async (_, path) => {
+		if (path === "slack.history") {
+			entered.resolve();
+			return waiting.promise;
+		}
+	});
+	const target = controller.ensureTarget("C01");
+	await entered.promise;
+	const refresh = controller.refreshCurrent();
+	waiting.resolve(page());
+	await Promise.all([target, refresh]);
+	assert.equal(calls.filter((call) => call.path === "slack.history").length, 1);
+	assert.equal(controller.store.getState().loadedTarget, "C01");
+	controller.dispose();
+});

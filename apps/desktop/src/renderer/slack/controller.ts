@@ -367,6 +367,10 @@ export function createSlackBrowseController(call: ConversationApi["call"]) {
 		refreshConversations: () => readConversations(false),
 		loadMoreConversations: () => readConversations(true),
 		async refreshCurrent() {
+			if (reading) {
+				await reading.promise.catch(() => {});
+				return;
+			}
 			const target = store.getState().target;
 			if (target) await loadTarget(target, false, true).catch(() => {});
 		},
