@@ -27,12 +27,19 @@ import {
 import { abortable, throwIfAborted } from "./cancellation";
 import { type ConversationDayPorts, ConversationDayTools } from "./day-tools";
 import { GuidedReviewError } from "./guided-review";
+import {
+	type ConversationKnowledgePorts,
+	ConversationKnowledgeTools,
+	type DaySourceReader,
+} from "./knowledge-tools";
 import type { FunctionTool } from "./meta-client";
 import { WorkspaceArgumentError } from "./workspace-tools";
 
 export interface ConversationHubPorts {
 	/** Optional authenticated Day service; no product fallback when it is absent. */
 	day?: ConversationDayPorts;
+	knowledge?: ConversationKnowledgePorts;
+	daySource?: DaySourceReader;
 	snapshot(signal?: AbortSignal): Promise<HubSnapshot>;
 	/** Persist an operation before returning; the caller signal must never own an admitted worker. */
 	operate(
@@ -286,6 +293,7 @@ export class ConversationHubTools {
 	private readonly observedIssues = new Set<string>();
 	private readonly dayReviewChecks = new Map<string, WorkJob["checks"]>();
 	private readonly day?: ConversationDayTools;
+	private readonly knowledge?: ConversationKnowledgeTools;
 	private sequence = 0;
 	constructor(
 		private readonly ports: ConversationHubPorts,
@@ -293,6 +301,8 @@ export class ConversationHubTools {
 		private readonly signal: AbortSignal,
 		private readonly onSource?: (source: PinnedSource) => void
 	) {
+		if (ports.knowledge || (ports.day && ports.daySource))
+			this.knowledge = new ConversationKnowledgeTools(ports, signal);
 		if (ports.day)
 			this.day = new ConversationDayTools(ports.day, turn, signal, {
 				identifiers: async () => {
@@ -313,7 +323,9 @@ export class ConversationHubTools {
 		const context = hubModelContext(this.latest);
 		for (const row of context.repositories) this.observedRepositories.add(row.id);
 		for (const row of context.tickets) this.observedIssues.add(row.id);
-		return { ...context, ...(this.day?.context ? { day: this.day.context } : {}) };
+		const day = this.day?.context;
+		if (day) this.knowledge?.observeDayResult(day);
+		return { ...context, ...(day ? { day } : {}) };
 	}
 	get tools(): FunctionTool[] {
 		return [
@@ -326,10 +338,12 @@ export class ConversationHubTools {
 					parameters: z.toJSONSchema(schema),
 				})),
 			...(this.day?.tools ?? []),
+			...(this.knowledge?.tools ?? []),
 		];
 	}
 	has(name: string) {
 		return (
+			!!this.knowledge?.has(name) ||
 			!!this.day?.has(name) ||
 			(Object.hasOwn(schemas, name) && (name !== "inspect_work_log" || !!this.ports.jobLog))
 		);
@@ -513,7 +527,12 @@ export class ConversationHubTools {
 	}
 	async execute(name: string, rawArguments: string): Promise<unknown> {
 		if (!this.has(name)) throw new GuidedReviewError("That hub operation is unavailable.");
-		if (this.day?.has(name)) return this.day.execute(name, rawArguments);
+		if (this.knowledge?.has(name)) return this.knowledge.execute(name, rawArguments);
+		if (this.day?.has(name)) {
+			const result = await this.day.execute(name, rawArguments);
+			this.knowledge?.observeDayResult(result);
+			return result;
+		}
 		let args: Record<string, unknown>;
 		try {
 			args = schemas[name as keyof typeof schemas].parse(JSON.parse(rawArguments));
