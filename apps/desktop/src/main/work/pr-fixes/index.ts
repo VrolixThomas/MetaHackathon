@@ -1,6 +1,7 @@
 import { isAbsolute, join, relative, resolve, sep } from "node:path";
 import { isDeepStrictEqual } from "node:util";
 import { z } from "zod";
+import type { CodingProviderSettings } from "../../../shared/contracts/coding-provider";
 import { WorkReviewSchema } from "../../../shared/contracts/command-center";
 import {
 	type PRFixDetail,
@@ -54,6 +55,7 @@ export interface PRFixServiceOptions {
 	runtime: Pick<WorkJobRuntime, "prepare" | "finalize" | "review">;
 	workerEntry: string;
 	envPath: string;
+	codingSettings?: () => Promise<CodingProviderSettings>;
 	readSource(
 		input: { prId: string; feedbackId: string },
 		signal: AbortSignal
@@ -128,6 +130,10 @@ export class PRFixService {
 
 	async start(raw: PRFixStartInput): Promise<PRFixSummary> {
 		const input = PRFixStartInputSchema.parse(raw);
+		const codingProvider = (await this.options.codingSettings?.()) ?? {
+			provider: "meta-api" as const,
+			musePath: null,
+		};
 		const context = await this.begin();
 		let run: Run | undefined;
 		try {
@@ -151,6 +157,7 @@ export class PRFixService {
 					const now = new Date().toISOString();
 					entry = {
 						id: input.requestId,
+						codingProvider,
 						jobId: identity(context.owner, input.requestId).jobId,
 						source,
 						fingerprint,
@@ -332,6 +339,10 @@ export class PRFixService {
 								{
 									workerEntry: this.options.workerEntry,
 									envPath: this.options.envPath,
+									providerSettings: entry.codingProvider ?? {
+										provider: "meta-api",
+										musePath: null,
+									},
 									assertLive: () => this.assertLive(context),
 									log: (text) => {
 										for (const line of this.redact(text).split(/\r?\n/).slice(-40))

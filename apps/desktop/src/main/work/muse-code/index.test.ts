@@ -12,7 +12,22 @@ import {
 	probeMuseCode,
 	runMuseCodeTask,
 } from "./index";
-import { CODING_TOOLS, HOST_ARGS } from "./protocol";
+import { CODING_TOOLS, HOST_ARGS, initializeOwnedHandshake } from "./protocol";
+
+test("cancellation closes an owned CLI even when initialize never responds", async () => {
+	let closed = 0;
+	const controller = new AbortController();
+	const handshake = {
+		initialize: () => new Promise(() => {}),
+		close: async () => {
+			closed++;
+		},
+	} as unknown as Parameters<typeof initializeOwnedHandshake>[0];
+	const pending = initializeOwnedHandshake(handshake, controller.signal);
+	controller.abort();
+	await assert.rejects(pending, { name: "AbortError" });
+	assert.equal(closed, 1);
+});
 
 const fingerprint = "sha256:7fddaf646dbc317e5fcac0785e135eb04df14fbb0db1863089dfd6da21730e5b";
 const question = "Which empty state should be shown?";

@@ -2,6 +2,7 @@ import { existsSync } from "node:fs";
 import { lstat } from "node:fs/promises";
 import { isAbsolute, join } from "node:path";
 import { z } from "zod";
+import { CodingProviderSettingsSchema } from "../../shared/contracts";
 import {
 	CodingTaskInputSchema,
 	CodingTaskResultSchema,
@@ -24,6 +25,7 @@ const requestSchema = z.strictObject({
 	kind: z.literal("run"),
 	input: CodingTaskInputSchema,
 	envPath: z.string().refine(isAbsolute),
+	providerSettings: CodingProviderSettingsSchema.optional(),
 });
 const lifetime = new AbortController();
 let started = false;
@@ -62,7 +64,10 @@ process.on("message", async (raw) => {
 		};
 		const result = await runPinnedCodingTask(
 			request.input,
-			() => config.codingProviderSettings(),
+			() =>
+				request.providerSettings
+					? Promise.resolve(request.providerSettings)
+					: config.codingProviderSettings(),
 			{
 				log,
 				meta: async (input, signal) => {

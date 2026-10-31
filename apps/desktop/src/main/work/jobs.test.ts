@@ -6,6 +6,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { type TestContext, test } from "node:test";
 import {
+	type CodingProviderSettings,
 	type HubPersistence,
 	type LinearTicket,
 	type WatchedRepository,
@@ -19,6 +20,27 @@ import { CommandCenterService } from "./hub";
 import { WorkJobCoordinator } from "./jobs";
 
 const time = "2026-10-29T00:00:00Z";
+
+test("queued jobs keep their admission provider while later jobs use the changed preference", async (t) => {
+	const fixture = await harness(t);
+	fixture.internal.pump = async () => {};
+	let preference: CodingProviderSettings = { provider: "muse-code", musePath: "/opt/muse" };
+	Object.assign(fixture.options, { codingSettings: async () => preference });
+	const first = await fixture.jobs.start(ticket, repository, "First real request", "first");
+	preference = { provider: "meta-api", musePath: null };
+	const second = await fixture.jobs.start(
+		{ ...ticket, id: "second-ticket" },
+		repository,
+		"Second request",
+		"second"
+	);
+	assert.deepEqual((await fixture.hub.job(first)).codingProvider, {
+		provider: "muse-code",
+		musePath: "/opt/muse",
+	});
+	assert.deepEqual((await fixture.hub.job(second)).codingProvider, preference);
+	assert.equal((await fixture.hub.job(first)).state, "queued");
+});
 const ticket = {
 	id: "ticket",
 	identifier: "MET-49",

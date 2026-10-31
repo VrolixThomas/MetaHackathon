@@ -106,7 +106,11 @@ it("login is user initiated, shell quoted, private, coalesced and cleaned up on 
 	assert.equal(calls.opened.length, 1);
 	const path = String(calls.opened.at(0));
 	assert.equal((await stat(path)).mode & 0o777, 0o700);
-	assert.equal(await readFile(path, "utf8"), "#!/bin/sh\nexec '/tmp/vendor'\\''s muse' login\n");
+	const script = await readFile(path, "utf8");
+	assert.ok(script.startsWith("#!/bin/sh\nexec /usr/bin/env -i "));
+	assert.ok(script.endsWith("'/tmp/vendor'\\''s muse' login\n"));
+	assert.ok(script.includes("'MUSE_NO_AUTO_UPDATE=1'"));
+	assert.ok(!script.includes("fake-api"));
 	await service.dispose();
 	await assert.rejects(stat(path));
 	await assert.rejects(service.status());

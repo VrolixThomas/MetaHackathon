@@ -5,6 +5,7 @@ import { join } from "node:path";
 import { isDeepStrictEqual } from "node:util";
 import { z } from "zod";
 import {
+	type CodingProviderSettings,
 	IdSchema,
 	type LinearTicket,
 	type PullRequest,
@@ -22,6 +23,7 @@ import { type CodingTaskInput, CodingTaskResultSchema } from "../agent/coding-wo
 import type { HubGitHubClient } from "../runtime/hub-github";
 import type { HubLinearClient } from "../runtime/hub-linear";
 import type { WorkJobRuntime } from "../runtime/work-job-runtime";
+import { codingEnvironment } from "./coding-environment";
 import type { CommandCenterService, HubJobs } from "./hub";
 
 const eventSchema = z.discriminatedUnion("kind", [
@@ -69,6 +71,7 @@ interface JobOptions {
 	directory: string;
 	workerEntry: string;
 	envPath: string;
+	codingSettings?: () => Promise<CodingProviderSettings>;
 	redact?: (value: string) => string;
 	assessSuggestion?: (
 		job: WorkJob,
@@ -127,7 +130,7 @@ export class WorkJobCoordinator implements HubJobs {
 				inProgress.has(job.state)
 		);
 		if (existing) return existing.id;
-		const job = this.make(repository, ticket, null, brief);
+		const job = await this.make(repository, ticket, null, brief);
 		let admitted = job.id;
 		await this.options.hub.update((state) => {
 			const duplicate = state.jobs.find(
@@ -192,7 +195,7 @@ export class WorkJobCoordinator implements HubJobs {
 		bindingDigest: string,
 		signal: AbortSignal
 	) {
-		const candidate = this.make(request.repository, null, null, request.brief);
+		const candidate = await this.make(request.repository, null, null, request.brief);
 		candidate.state = "paused";
 		candidate.pauseReason = "user";
 		candidate.internal = {
@@ -340,7 +343,7 @@ export class WorkJobCoordinator implements HubJobs {
 		);
 		if (existing) return existing.id;
 		const brief = `Review this actual GitHub feedback on ${pr.id}. Follow repository conventions. Clarify any changed product behavior before applying it.\nReviewer: ${feedback.author}\n${feedback.body}\nPinned revision: ${pr.headSha}\nPath: ${feedback.path ?? "not anchored"}; line: ${feedback.line ?? "not anchored"}\nProposed suggestion: ${feedback.suggestion ?? "none"}`;
-		const job = this.make(repository, null, feedback, brief);
+		const job = await this.make(repository, null, feedback, brief);
 		job.pullRequest = pr;
 		job.baseSha = pr.headSha;
 		let admitted = job.id;
@@ -359,16 +362,20 @@ export class WorkJobCoordinator implements HubJobs {
 		);
 		return job.id;
 	}
-	private make(
+	private async make(
 		repository: WatchedRepository,
 		ticket: LinearTicket | null,
 		feedback: PullRequestFeedback | null,
 		brief: string
-	): WorkJob {
+	): Promise<WorkJob> {
 		const id = randomUUID();
 		const now = new Date().toISOString();
 		return WorkJobSchema.parse({
 			id,
+			codingProvider: (await this.options.codingSettings?.()) ?? {
+				provider: "meta-api",
+				musePath: null,
+			},
 			ticket,
 			feedback,
 			repositoryId: repository.id,
@@ -783,13 +790,7 @@ export class WorkJobCoordinator implements HubJobs {
 		return new Promise<z.infer<typeof CodingTaskResultSchema>>((resolve, reject) => {
 			const child = fork(this.options.workerEntry, [], {
 				silent: true,
-				env: {
-					PATH: process.env["PATH"],
-					HOME: process.env["HOME"],
-					LANG: process.env["LANG"],
-					TMPDIR: process.env["TMPDIR"],
-					ELECTRON_RUN_AS_NODE: "1",
-				},
+				env: codingEnvironment({ ELECTRON_RUN_AS_NODE: "1" }),
 				serialization: "json",
 				execArgv: [],
 			});
@@ -821,9 +822,17 @@ export class WorkJobCoordinator implements HubJobs {
 			});
 			child.once("error", () => finish(undefined, new Error("Worker could not launch")));
 			child.once("exit", () => finish(undefined, new Error("Worker exited before completion")));
-			child.send({ kind: "run", input, envPath: this.options.envPath }, (error) => {
-				if (error) finish(undefined, new Error("Worker could not receive its task"));
-			});
+			child.send(
+				{
+					kind: "run",
+					input,
+					envPath: this.options.envPath,
+					providerSettings: job.codingProvider ?? { provider: "meta-api", musePath: null },
+				},
+				(error) => {
+					if (error) finish(undefined, new Error("Worker could not receive its task"));
+				}
+			);
 		});
 	}
 	async answer(jobId: string, decisionId: string, answer: string) {

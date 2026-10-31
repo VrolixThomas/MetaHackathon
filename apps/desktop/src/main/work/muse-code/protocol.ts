@@ -38,7 +38,12 @@ export interface MuseHost {
 }
 export interface MuseCodeDependencies {
 	resolveBinary(path: string | null): Promise<{ path: string; version: string }>;
-	connect(path: string, cwd: string, env: NodeJS.ProcessEnv): Promise<MuseHost>;
+	connect(
+		path: string,
+		cwd: string,
+		env: NodeJS.ProcessEnv,
+		signal: AbortSignal
+	): Promise<MuseHost>;
 	checkPlugins(path: string, cwd: string, env: NodeJS.ProcessEnv): Promise<void>;
 }
 /** Explicit allowlist: provider keys, fail-open flags, Node hooks and alternate endpoints are absent. */
@@ -74,6 +79,37 @@ export const HOST_ARGS = [
 	"-c",
 	"managed_hooks_path=null",
 ] as const;
+
+/** Own the spawned process immediately, including a server that never answers initialize. */
+export async function initializeOwnedHandshake(
+	handshake: ReturnType<typeof spawnMspConnection>,
+	signal: AbortSignal
+) {
+	let closing: Promise<void> | undefined;
+	const close = () => {
+		closing ??= handshake.close();
+		return closing;
+	};
+	const abort = () => {
+		void close().catch(() => {});
+	};
+	signal.addEventListener("abort", abort, { once: true });
+	try {
+		signal.throwIfAborted();
+		return await abortable(
+			handshake.initialize({
+				clientInfo: { name: "muse_desktop_worker", version: "1" },
+				capabilities: { experimentalApi: true, userInputDialogs: true },
+			}),
+			signal
+		);
+	} catch (error) {
+		await close().catch(() => {});
+		throw error;
+	} finally {
+		signal.removeEventListener("abort", abort);
+	}
+}
 export const dependencies: MuseCodeDependencies = {
 	async checkPlugins(path, cwd, env) {
 		const stdout = await new Promise<string>((resolve, reject) =>
@@ -127,7 +163,7 @@ export const dependencies: MuseCodeDependencies = {
 		}
 		throw new MuseCodeRuntimeError("not-installed");
 	},
-	async connect(path, cwd, env) {
+	async connect(path, cwd, env, signal) {
 		const handshake = spawnMspConnection({
 			command: path,
 			args: HOST_ARGS,
@@ -137,10 +173,7 @@ export const dependencies: MuseCodeDependencies = {
 			onStderr: () => {},
 		});
 		try {
-			const host = await handshake.initialize({
-				clientInfo: { name: "muse_desktop_worker", version: "1" },
-				capabilities: { experimentalApi: true, userInputDialogs: true },
-			});
+			const host = await initializeOwnedHandshake(handshake, signal);
 			const durability = readSessionDurability(host.initializeResult);
 			const client = new MuseClient(host.connection, { host, durability });
 			return {

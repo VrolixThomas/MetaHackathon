@@ -3,6 +3,7 @@ import { constants } from "node:fs";
 import { chmod, lstat, mkdir, open, rename, unlink } from "node:fs/promises";
 import { isAbsolute, join, parse, resolve } from "node:path";
 import { z } from "zod";
+import { CodingProviderSettingsSchema } from "../../../shared/contracts/coding-provider";
 import { CommentFixRecordSchema, CommentFixSourceSchema } from "../../agent/pr-comment-fixes";
 
 export const hash = (value: unknown) =>
@@ -14,6 +15,7 @@ export function identity(owner: string, id: string) {
 }
 export const EntrySchema = z.strictObject({
 	id: z.string().min(1).max(200),
+	codingProvider: CodingProviderSettingsSchema.optional(),
 	jobId: z.string().min(1).max(200),
 	source: CommentFixSourceSchema,
 	fingerprint: z.string().regex(/^[a-f0-9]{64}$/),

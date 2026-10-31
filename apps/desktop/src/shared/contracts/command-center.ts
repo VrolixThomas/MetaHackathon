@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { CodingProviderSettingsSchema } from "./coding-provider";
 import { CodeLocationSchema, CommitShaSchema, IdSchema, RepositoryPathSchema } from "./common";
 import { GitHubRepositorySchema, ReviewCacheSchema, ReviewFileSchema } from "./prepared-review";
 import { PullRequestSchema } from "./review";
@@ -103,6 +104,7 @@ export const WorkDecisionSchema = z.strictObject({
 });
 export const WorkJobSchema = z.strictObject({
 	id: IdSchema,
+	codingProvider: CodingProviderSettingsSchema.optional(),
 	ticket: LinearTicketSchema.nullable(),
 	feedback: PullRequestFeedbackSchema.nullable().optional(),
 	repositoryId: IdSchema,

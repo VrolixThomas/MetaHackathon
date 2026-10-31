@@ -1,12 +1,13 @@
 import { type ChildProcess, fork } from "node:child_process";
 import { z } from "zod";
+import type { CodingProviderSettings } from "../../../shared/contracts/coding-provider";
 import {
 	type CodingTaskInput,
 	CodingTaskInputSchema,
 	type CodingTaskResult,
 	CodingTaskResultSchema,
 } from "../../agent/coding-worker";
-import { executionEnvironment } from "../../runtime/environment";
+import { codingEnvironment } from "../coding-environment";
 
 const eventSchema = z.discriminatedUnion("kind", [
 	z.strictObject({ kind: z.literal("log"), text: z.string().max(12000) }),
@@ -16,6 +17,7 @@ const eventSchema = z.discriminatedUnion("kind", [
 interface ChildOptions {
 	workerEntry: string;
 	envPath: string;
+	providerSettings?: CodingProviderSettings;
 	log: (text: string) => void;
 	assertLive: () => void;
 	/** Pure protocol probes may inject a controlled process; production always uses Node fork. */
@@ -38,7 +40,7 @@ export function runPRFixChild(
 				silent: true,
 				serialization: "json",
 				execArgv: [],
-				env: executionEnvironment({ ELECTRON_RUN_AS_NODE: "1" }),
+				env: codingEnvironment({ ELECTRON_RUN_AS_NODE: "1" }),
 			});
 		} catch {
 			reject(new Error("The coding worker could not launch."));
@@ -134,12 +136,20 @@ export function runPRFixChild(
 		try {
 			options.assertLive();
 			signal.throwIfAborted();
-			child.send({ kind: "run", input, envPath: options.envPath }, (error) => {
-				if (error) {
-					failure = new Error("The coding worker could not receive its task.");
-					terminate();
+			child.send(
+				{
+					kind: "run",
+					input,
+					envPath: options.envPath,
+					...(options.providerSettings ? { providerSettings: options.providerSettings } : {}),
+				},
+				(error) => {
+					if (error) {
+						failure = new Error("The coding worker could not receive its task.");
+						terminate();
+					}
 				}
-			});
+			);
 		} catch {
 			failure = new Error("The coding worker was interrupted.");
 			terminate();

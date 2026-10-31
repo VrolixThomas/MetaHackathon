@@ -733,6 +733,7 @@ export async function initializeHub(
 		runtime,
 		workerEntry: join(dirname(fileURLToPath(import.meta.url)), "coding-worker.js"),
 		envPath: getConfiguration().path,
+		codingSettings: () => getConfiguration().codingProviderSettings(),
 		getEpoch: () => prWorkEpoch,
 		getAccount: currentPRAccount,
 		readSource: async ({ prId, feedbackId }, signal) => {
@@ -754,6 +755,7 @@ export async function initializeHub(
 		directory: join(userDataPath, "work", "jobs"),
 		workerEntry: join(dirname(fileURLToPath(import.meta.url)), "coding-worker.js"),
 		envPath: getConfiguration().path,
+		codingSettings: () => getConfiguration().codingProviderSettings(),
 		assessSuggestion: (job, review, signal) =>
 			assessSuggestedFix(conversationClient, job, review, signal),
 		redact,

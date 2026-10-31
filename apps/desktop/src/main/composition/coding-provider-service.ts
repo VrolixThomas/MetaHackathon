@@ -11,6 +11,7 @@ import {
 	MuseCodeStatusSchema,
 } from "../../shared/contracts";
 import type { EnvConfiguration } from "../config/env";
+import { codingEnvironment } from "../work/coding-environment";
 
 interface Ports {
 	configuration(): EnvConfiguration;
@@ -152,10 +153,19 @@ export class CodingProviderService {
 			await mkdir(this.ports.directory, { recursive: true, mode: 0o700 });
 			const directory = await realpath(this.ports.directory);
 			const path = join(directory, `muse-login-${randomUUID()}.command`);
-			await writeFile(path, `#!/bin/sh\nexec ${quote(binary)} login\n`, {
-				flag: "wx",
-				mode: 0o700,
-			});
+			const environment = { ...codingEnvironment(), MUSE_NO_AUTO_UPDATE: "1" };
+			const assignments = Object.entries(environment)
+				.filter((entry): entry is [string, string] => typeof entry[1] === "string")
+				.map(([key, value]) => quote(`${key}=${value}`))
+				.join(" ");
+			await writeFile(
+				path,
+				`#!/bin/sh\nexec /usr/bin/env -i ${assignments} ${quote(binary)} login\n`,
+				{
+					flag: "wx",
+					mode: 0o700,
+				}
+			);
 			this.scripts.add(path);
 			this.live();
 			await this.ports.openCommand(path);

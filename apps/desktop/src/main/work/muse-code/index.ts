@@ -49,7 +49,7 @@ async function connect(
 	signal: AbortSignal,
 	ports: MuseCodeDependencies
 ): Promise<MuseHost> {
-	const pending = ports.connect(binary, cwd, museEnvironment());
+	const pending = ports.connect(binary, cwd, museEnvironment(), signal);
 	// Even an adapter that completes after cancellation must not leave an owned process alive.
 	void pending.then(
 		(host) => {
