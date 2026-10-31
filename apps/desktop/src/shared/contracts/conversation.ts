@@ -10,6 +10,8 @@ export const ConversationTurnInputSchema = z.strictObject({
 	...TurnIdentitySchema.shape,
 	requestId: IdSchema,
 	text: z.string().trim().min(1).max(32_000),
+	/** Stamped by the actual app input path, never by model tool arguments. */
+	inputMode: z.enum(["typed", "voice"]).optional(),
 	prId: IdSchema.optional(),
 	screen: ReviewScreenSchema.optional(),
 	workspace: WorkspaceSnapshotSchema.optional(),

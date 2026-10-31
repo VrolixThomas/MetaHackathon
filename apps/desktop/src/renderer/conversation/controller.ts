@@ -334,6 +334,7 @@ export function createConversationController(
 			...turn,
 			requestId: id(),
 			text: question,
+			inputMode: "typed",
 			...context,
 		};
 		updateExchange(turn, { requestId: input.requestId });

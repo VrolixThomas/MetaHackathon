@@ -79,7 +79,7 @@ export function connectConversationVoice(
 			},
 			start: (input, signal) => {
 				signal.throwIfAborted();
-				const turn = ConversationTurnInputSchema.parse(input);
+				const turn = ConversationTurnInputSchema.parse({ ...input, inputMode: "voice" });
 				ui.requestStarted(turn);
 				trace("agent-start", onlyTurn(turn));
 				return api.start(turn);
