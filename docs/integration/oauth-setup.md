@@ -14,8 +14,9 @@ Settings shows the exact path; **Configure login** opens that file.
 For Slack, create a dedicated Muse app using [slack-app-manifest.json](slack-app-manifest.json)
 at [Slack Apps](https://api.slack.com/apps). It configures the exact localhost callback, user scopes,
 PKCE and token rotation. Copy the app's Client ID from Basic Information into the active `.env`.
-Choose **Sign in with Slack** in Muse Settings, approve in the browser, then choose the conversations
-to watch. Tokens are obtained and stored by the app; no manual user-token copy is needed.
+Choose **Sign in with Slack** in Muse Settings and approve in the browser. Muse automatically follows
+all active joined conversations; individual exclusions are optional. Tokens are obtained and stored
+by the app; no manual user-token copy is needed.
 
 Slack's [desktop PKCE flow](https://docs.slack.dev/authentication/using-pkce/) supports `localhost`
 redirects and user scopes without a client secret. The callback is deliberately `localhost`, while
@@ -24,7 +25,8 @@ redirects cannot request bot scopes; optional Socket Mode app tokens remain a se
 The main process validates callback Host/path/state, checks the PKCE verifier, verifies the actual
 workspace/user, encrypts the grant and rotates expiring tokens without changing connection identity.
 Slack disconnect clears only its saved grant and manual Slack user token, preserving other providers.
-Signing in alone imports no messages: explicitly select watched conversations afterward.
+Signing in enables joined-conversation discovery and background source intake. The Slack sidebar
+provides an actual message/thread reader. Sending remains a separate confirmed action.
 
 `LINEAR_OAUTH_CLIENT_SECRET` is optional: the authorization-code flow uses S256 PKCE.
 When registering Linear, enable **Public** to allow users in other workspaces to install Muse.

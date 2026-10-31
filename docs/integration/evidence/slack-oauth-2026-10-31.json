@@ -1,7 +1,4 @@
 {
-	"date": "2026-10-31",
-	"implementationCommit": "ecb111f",
-	"method": "Actual built default Electron UI/preload/IPC, HTTP localhost callback, OS-encrypted token file and selected-source watch settings. Slack HTTP responses and external browser URL capture were controlled. No successful RPC response replaced. Isolated .env/profile, no live user credentials, speech or Slack message posting. builtMainSha256 uses base64url encoding.",
 	"status": "passed",
 	"controlledProviderInputs": true,
 	"liveConsent": false,
@@ -10,11 +7,15 @@
 	"sourceIngestion": false,
 	"workerExecution": false,
 	"processRestart": false,
-	"builtMainSha256": "aTM4LT8pg0n3mJGwyXEuixoAwkt2orhLb_WPqVh0jP8",
+	"controlledPopulatedReader": true,
+	"typedAgentNavigation": false,
+	"builtMainSha256": "vQaXAx8HQdPMkxzUILGNm9jTWufPMzbWC5hZnsgHO9Y",
 	"checks": [
 		"actual UI Sign in/Cancel; localhost listener closes without token exchange; other providers unchanged",
 		"wrong state rejected; actual HTTP localhost callback, PKCE without secret/bot scope, verified user and same source actor; real encrypted 0600 grant",
-		"actual UI selects channel and DM, real watch RPC persists selection; empty selected-history transport only, no model/ingestion",
+		"actual source status confirms all_joined, completed discovery and all three joined conversations before any list/save UI action; automatic empty-history read",
+		"actual advanced UI preserves provider/profile labels, excludes third via exact slack.follow RPC and retains first channel/DM; empty history only, no model/ingestion",
+		"controlled populated channel/thread/back through actual UI + source RPCs; exact target/text/observed authors and two distinct app rAF frames precede each real accepted workspace.applied; bounded intake empty, no model/worker/media",
 		"UI reconnect/Cancel preserves encrypted grant; UI Disconnect clears Slack grant/account only, retains registration and GitHub/Linear baseline metadata",
 		"actual app shutdown closes pending callback; shutdown-complete observed; no SQLite import by harness"
 	],
@@ -25,5 +26,39 @@
 	"actualCallbackHTTP": true,
 	"actualSafeStorage": true,
 	"ownedTempRemoved": true,
-	"screenshot": "../screenshots/slack-oauth-controlled-settings.png"
+	"date": "2026-10-31",
+	"implementationCommit": "9831daa",
+	"method": "Actual built default Electron App, preload/IPC, real HTTP localhost PKCE callback, OS encrypted grants, auto-follow/exclusions and channel/thread/back UI. Slack responses are controlled; successful RPCs, source stores and render acknowledgements are not replaced.",
+	"readerPageCount": 3,
+	"acceptedReaderReceipts": 3,
+	"screenshot": "../screenshots/slack-reader-controlled-thread.png",
+	"liveVerification": {
+		"normalAppConsent": true,
+		"persistedThroughRestart": true,
+		"joinedChannels": 4,
+		"joinedDMs": 8,
+		"automaticallyFollowed": 12,
+		"postedMessages": 0,
+		"populatedHistory": false,
+		"slackbotCanvasAfterFix": true,
+		"openedChannelPagesEmpty": 2,
+		"openedDMPagesEmpty": 1
+	},
+	"regressions": {
+		"bunPassedBeforeFinalNarrowFix": 1425,
+		"bunElectronOnlySkipped": 13,
+		"electronSlackSQLitePassed": 8,
+		"nativeGates": [
+			"oauth",
+			"conversation",
+			"day",
+			"prepared-reviews",
+			"workspace",
+			"executive",
+			"hands-free",
+			"attention",
+			"slack-oauth-reader"
+		],
+		"focusedFinalProviderReaderPassed": 27
+	}
 }

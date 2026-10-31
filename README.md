@@ -145,12 +145,22 @@ SLACK_APP_ID=
 SLACK_APP_TOKEN=
 ```
 
-After connecting, choose conversations to watch. Nothing is imported before you
-choose. Polling is bounded; edits/deletions can have gaps. DM/private-channel knowledge stays private;
+After connecting, Muse automatically follows all active channels and DMs you belong to, discovers
+new memberships, and stops following conversations you leave. Settings → Conversations and exclusions
+lets you mute individual conversations. Polling is bounded; edits/deletions can have gaps. DM/private-channel knowledge stays private;
 company knowledge uses public channels, with fresh source access checked before retrieval. This
 increment runs locally while the Mac is awake and checkpoints through sleep/offline. A shared hosted
 company brain and cross-employee transport are not yet available. Slack login preserves existing
 GitHub/Linear accounts. Replacing a Slack account clears its foreground context and private queue.
+
+Open **Slack** in the left sidebar to browse channels and DMs. Select a conversation to read its
+actual messages, load older pages, refresh, or open a thread. The reader is read-only; confirmed
+replies remain in the work-item flow. Ask Muse to show a Slack conversation or explain a thread;
+it reads the same provider data and waits for the requested canvas to display before narrating it.
+No background history polling runs from the reader itself.
+
+For a verified internal customer-built registration only, `SLACK_INTERNAL_APP=1` selects conservative
+Tier 3 pacing. Leave it unset for commercial distribution; server Retry-After always wins.
 
 ## Prepared reviews
 

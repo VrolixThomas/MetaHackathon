@@ -285,7 +285,9 @@ fresh knowledge authorization and original-thread delivery ledger. Settings impo
 `.env` USER token (`SLACK_USER_TOKEN`, `SLACK_APP_ID`) remains an optional developer method.
 Browser Slack OAuth takes precedence and fails closed on refresh/account errors; never fall back to
 another manual account after a selected OAuth grant fails. It verifies the actual account and watches
-only selected conversations. Socket Mode optionally uses `SLACK_APP_TOKEN`. Cross-employee transport
+all joined active conversations by default, with durable exclusions and periodic membership sync.
+Legacy nonempty explicit selections stay selected; empty legacy preferences adopt all_joined.
+Socket Mode optionally uses `SLACK_APP_TOKEN`. Cross-employee transport
 is not deployed. Never treat local recorded facts as hosted team data.
 `memory_search` and `day_read_source` bind the current account; reads preserve source identity,
 bounded exact prefixes and audience restrictions. They never establish display or send authority.
@@ -295,3 +297,13 @@ bounded exact prefixes and audience restrictions. They never establish display o
 with `VITE_MUSE_VOICE_PRECONNECT=0`. Normal builds enable bounded preconnection by default.
 Actual-provider warm/cold and fallback measurements are separate from those simulated regressions;
 see `docs/integration/evidence/voice-preconnect-2026-10-31.json`. Root alone runs native checks.
+
+Slack reader increment: shared message pages retain actor/conversation/thread/source identity and
+observed author labels. `center/slack` selections encode channel[/thread] through shared helpers;
+main requires current joined membership and the renderer must load the exact target, then commit
+two visible frames with `data-slack-target` before a positive workspace receipt. Foreground
+slack_list_conversations/slack_read_messages return bounded untrusted data and command proposals,
+never display proof or send authority. The read-only sidebar/view has no product fixtures or send
+composer. Reader metadata is independent of background watcher startup; cached labels are not ACLs.
+Only explicit owner `SLACK_INTERNAL_APP=1` enables internal-app pacing; commercial default remains
+conservative and HTTP429 Retry-After always applies.
