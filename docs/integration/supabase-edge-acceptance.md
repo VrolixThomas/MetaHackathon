@@ -1,3 +1,7 @@
+> Historical hosted-preparation design/evidence. Superseded on 2026-11-01 by
+> [desktop Muse processing with optional Supabase sharing](team-setup.md). Worker/webhook
+> functions and scheduler are disabled; their setup instructions below are not current requirements.
+
 # Supabase-only hosted review preparation — 2026-11-01
 
 Three functions are deployed in `vmydpscnfgvbciotoaln`:

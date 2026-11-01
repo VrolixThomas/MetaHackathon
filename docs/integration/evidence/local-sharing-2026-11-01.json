@@ -1,0 +1,186 @@
+{
+	"sourceCommit": "d286e2d90aceb67fceae6bfc4f3a80a59f7c62be",
+	"date": "2026-11-01",
+	"status": "local-processing-and-optional-sharing-accepted",
+	"policy": {
+		"analysis": "desktop-to-Muse-API",
+		"cloud": "shared-findings-and-proposals-only",
+		"hostedPreparation": false
+	},
+	"validation": {
+		"frozenInstall": "passed-no-lockfile-changes",
+		"typeCheck": "passed",
+		"lint": "passed",
+		"build": "passed",
+		"unit": {
+			"passed": 1816,
+			"skipped": 13,
+			"failed": 0,
+			"files": 186
+		},
+		"sql": {
+			"passed": true,
+			"engine": "isolated PostgreSQL",
+			"migrations": "001-006",
+			"liveHostedPolicyExchange": false
+		},
+		"nativeLocalPreparation": {
+			"passed": true,
+			"actualAppIPC": true,
+			"actualMetaClient": true,
+			"localModelCalls": 1,
+			"exactPublications": 1,
+			"providers": "controlled HTTP",
+			"phases": [
+				"active environment and actual SettingsTeamCard begin disconnected without product fallback",
+				"actual TeamLogin PKCE callback and OS-encrypted session with real org/repository selection",
+				"root ReviewCoordinator prepares locally through actual MetaClient and publishes exact inferred analysis",
+				"actual shared proposal renders exact Before/After/patch/hash and requires explicit decision",
+				"accepted exact proposal applies through actual isolated runtime checks and enters Completed work",
+				"actual disconnect removes encrypted session and retires current team detail"
+			]
+		},
+		"nativeCacheReuse": {
+			"passed": true,
+			"actualAppIPC": true,
+			"localModelCalls": 0,
+			"publications": 0,
+			"providers": "controlled HTTP",
+			"phases": [
+				"active environment and actual SettingsTeamCard begin disconnected without product fallback",
+				"actual TeamLogin PKCE callback and OS-encrypted session with real org/repository selection",
+				"root ReviewCoordinator reuses exact shared PreparedReview with no local preparation model call",
+				"actual shared proposal renders exact Before/After/patch/hash and requires explicit decision",
+				"accepted exact proposal applies through actual isolated runtime checks and enters Completed work",
+				"actual disconnect removes encrypted session and retires current team detail"
+			]
+		},
+		"nativeConversation": {
+			"passed": true,
+			"actualAppIPC": true,
+			"model": "simulated",
+			"historyVerified": true,
+			"cancelledLateSuppressed": true,
+			"liveSpeech": false
+		},
+		"liveGitHubMuse": {
+			"status": "passed",
+			"liveGitHub": true,
+			"liveMuse": true,
+			"actualTeamService": true,
+			"localOrchestration": true,
+			"cloudWorkerRequired": false,
+			"sharingConfigured": false,
+			"localPreparationCalls": 1,
+			"pr": {
+				"url": "https://github.com/VrolixThomas/duckdemo/pull/2",
+				"number": 2,
+				"repository": "VrolixThomas/duckdemo",
+				"baseSha": "9f707f6abb0ca135532531ecf0dd9aab225c6668",
+				"headSha": "9bfff2421846732f23d7bb8347f7afd55eb62fa6"
+			},
+			"files": 4,
+			"coverage": "complete",
+			"evidence": "inferred-from-github",
+			"commentsPosted": 0,
+			"actualNativeRenderer": false,
+			"checkedAt": "2026-11-01T12:40:25.092Z"
+		},
+		"liveSupabase": {
+			"checkedAt": "2026-11-01T13:02:19.629Z",
+			"functions": {
+				"muse-team-api": {
+					"status": 200,
+					"body": {
+						"status": "configured",
+						"missing": [],
+						"invalid": []
+					}
+				},
+				"muse-team-worker": {
+					"status": 404
+				},
+				"muse-team-webhook": {
+					"status": 404
+				}
+			},
+			"unauthenticatedSharingDenied": 401,
+			"hostedQueueRetired": 410,
+			"cloudModelCredentialPresent": false,
+			"realTwoUserSharing": false
+		},
+		"remoteRetirement": {
+			"functionNames": ["muse-team-api"],
+			"workerCronJobs": 0,
+			"schedulerEnabled": false,
+			"customAPISecrets": ["TEAM_ANALYSIS_VERSION"],
+			"modelCallTelemetryMeasured": false
+		},
+		"packaging": {
+			"offlinePolicyTests": 13,
+			"nativePackage": {
+				"verifiedAt": "2026-11-01T13:10:06.935Z",
+				"kind": "unsigned-local",
+				"payload": {
+					"sdkVersion": "1.4.14",
+					"voice": {
+						"binaryCount": 274,
+						"architectures": ["arm64"]
+					}
+				},
+				"commands": [
+					{
+						"program": "bun",
+						"args": ["run", "build"],
+						"startedAt": "2026-11-01T13:09:25.298Z",
+						"finishedAt": "2026-11-01T13:09:27.529Z",
+						"exitCode": 0
+					},
+					{
+						"program": "bun",
+						"args": [
+							"x",
+							"--no-install",
+							"electron-builder",
+							"--config",
+							"electron-builder.unsigned.yml",
+							"--mac",
+							"dmg",
+							"zip",
+							"--arm64",
+							"--publish",
+							"never",
+							"-c.directories.output=/Users/Werk/Documents/Repositories/MetaHackathon-worktrees/integration/apps/desktop/dist/acceptance-unsigned-1793538565298"
+						],
+						"startedAt": "2026-11-01T13:09:27.529Z",
+						"finishedAt": "2026-11-01T13:10:06.830Z",
+						"exitCode": 0
+					}
+				],
+				"appLaunch": "not-run",
+				"physicalMicrophone": "not-run",
+				"updaterInstallation": "not-run"
+			},
+			"output": "apps/desktop/dist/acceptance-unsigned-1793538565298",
+			"developerIDSigned": false
+		}
+	},
+	"releaseIdentity": {
+		"product": "MuseFocus",
+		"bundleId": "app.musefocus.desktop",
+		"storageIdentity": "MetaHackathon",
+		"domain": "musefocus.app",
+		"domainConfigured": false,
+		"localValidSigningIdentities": 0,
+		"signedAcceptanceRun": false,
+		"releaseEnvironmentCredentialStatus": "empty-environment-secret-list; inherited-org-credentials-not-verified",
+		"releaseEnvironmentCreated": true,
+		"releaseEnvironmentSecretsCount": 0
+	},
+	"remaining": [
+		"Developer ID certificate including private key/export password and notarization credentials",
+		"Signed installed-app microphone and update acceptance",
+		"Real two-user authorized Supabase findings/proposal exchange",
+		"Live speech/posting not rechecked in this increment"
+	]
+}

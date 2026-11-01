@@ -69,7 +69,8 @@ Its model transport is simulated; it neither records a microphone nor uses live 
 User direction adds real repository connection and local SQLite preparation, with a review-first
 workspace inspired by Macro. Voice stays available everywhere; transcript and typing are hidden
 until requested. A resizable right native browser pane opens an explicitly supplied local URL.
-No demo content enters startup. Team hosting, webhooks and Supabase remain future deployment work.
+No demo content enters startup. Current Supabase scope is optional sharing of desktop-prepared
+findings and proposed fixes; hosted preparation and webhooks are out of scope.
 
 `bun run test:prepared-reviews` validates pinned local source, durable prepared plans and guided
 file actions in native Electron with controlled GitHub/model responses. `bun run test:local-browser`
@@ -201,6 +202,22 @@ notices and pinned source flows. `ReviewQueueItem.preparationStatus` is derived 
 coordinators; `retry-review` explicitly restarts failed preparation. Source flow excerpts are read in
 main, preserve exact commit/path/line/text identity, and label ordering/explanation as inference.
 Development worktrees reuse the main checkout `.env`; `LINEAR_API_KEY` stays main-only.
+
+## Local processing and MuseFocus distribution (2026-11-01)
+
+All review analysis executes from the desktop through the Muse API. An authorized exact shared
+cache hit can be reused; otherwise run local preparation once, then attempt bounded optional
+publication. Team login, missing scope, network failures and publication races must not remove a
+successful local result. Supabase stores team findings/proposals with RLS and fresh GitHub access
+checks. No GitHub App, cloud model credential, hosted queue, webhook or Cron job is required.
+Migration 006 records reported local analysis provenance; it does not turn inference into execution.
+Archived worker code/migrations remain for history, but default Edge build/deploy includes only API.
+
+The distribution name is MuseFocus, bundle ID `app.musefocus.desktop`. Keep the existing
+MetaHackathon storage/encryption identity and honor explicit isolated profiles. The proposed
+`musefocus.app` domain is unconfigured. Apple signing inputs belong in the GitHub `release`
+environment, never product `.env`; SuperiorSwarm aliases are supported. Package mechanics do not
+prove Developer ID signing, notarization, installed microphone access or update compatibility.
 
 `bun run test:executive` runs the real built UI/IPC, app-owned Git worktree, worker child, checkpoint,
 decision and actual validation command with controlled GitHub/Linear/model responses. It is not live
@@ -350,20 +367,22 @@ The CLI owns subscription sign-in credentials; `.env` stores selection/path, nev
 `main/work/muse-code/` requires observed account/subscription allowance, supported protocol, isolated
 app-owned worktree and restricted vendor permissions. Retain uncertain effects and actual pending
 questions/approvals. Only independent runtime checks establish validation, not an SDK completion summary.
-Shared organization preparation/proposal storage is proposed in `docs/integration/team-backend-plan.md`;
-it is not deployed. Native subscription checks must distinguish controlled transports from real coding.
+Shared organization findings/proposal storage uses the optional deployed Supabase sharing API;
+see `docs/integration/team-setup.md`. Native subscription checks must distinguish controlled
+transports from real coding.
 `bun run test:coding-provider` covers actual Settings/IPC/worker pins and real local Git/checks with
 controlled model transport and a deliberately unsupported CLI. It does not prove live subscription coding.
 
 ## Shared team, conversational comments and raster canvases (2026-11-01)
 
-MET-72/MET-41 implement the optional Supabase review service and hosted GitHub App consumer;
+MET-72/MET-41 implement the optional Supabase sharing service for desktop-prepared findings;
 MET-73 covers exact reported proposal bundles, author decisions and independently checked local
 applications. `shared/contracts/team.ts` owns all public wire schemas. Service schema paths re-export
 them; session/access/refresh token schemas remain main/server-only. Apply every ordered migration.
 Fresh source-sensitive share/decision RPCs are service-role-only with a server-verified actor;
 organization membership alone never grants repository access. Private progress conflicts retain
-their original attempt and do not block independent keys. Explicit retry never resets an active lease.
+their original attempt and do not block independent keys. Review Retry invokes local preparation;
+legacy hosted request/retry routes return 410 and do not schedule work.
 
 Local application verifies exact accepted before/after bytes in an app-owned checkout and records
 actual runtime checks/new applied SHA. Reported source candidate SHA is distinct. Completed work
@@ -404,16 +423,15 @@ credentials bypass RLS and stay server-only, behind fresh HTTP authorization. Te
 organizations with the same repository ID, forged keys, revocation and multi-org users. The SQL CI
 workflow runs all policy tests against isolated PostgreSQL; live two-user OAuth remains separate.
 
-The hosted target is Supabase-only: `services/team/edge/` sources build to ignored generated
-`supabase/functions/*/index.ts` via `team:edge:build`; deploy only the three named Muse functions.
-Each handler owns authentication: user JWT + GitHub identity, raw webhook HMAC, or dedicated worker
-invocation key. `verify_jwt=false` is not permission to accept a public API key as authentication.
+The sharing target is Supabase: `services/team/edge/` sources build to ignored generated
+`supabase/functions/muse-team-api/index.ts` via `team:edge:build`; deploy only `muse-team-api`.
+The handler owns authentication: user JWT plus matching GitHub identity.
+`verify_jwt=false` is not permission to accept a public API key as authentication.
 Modern Supabase `sb_*` API keys use only `apikey`; user JWTs stay separate on Authorization.
 API bases preserve the trusted function prefix; Supabase/Auth URLs remain origin-only.
 
-One worker invocation has a 100-second total deadline, including transport/body/claim/terminal
-operations. HTTP 202 means accepted, not completed. Job leases and fenced results remain authoritative;
-there is no continuation of a half-generated model response. Cron/Vault management is server-only,
-installed unscheduled by migration 005. Enable only explicitly through the preflight command after
-real App credentials/install; never fabricate App IDs or mark live preparation from an empty tick.
-Git/build/terminal coding workers remain app-owned local processes, outside Supabase Edge.
+Legacy worker/webhook code and lease regressions remain historical. Their original budgets and
+fences do not establish current hosted capability. Cron/Vault management stays server-only;
+migration 005 installed it unscheduled, and current deployment keeps it disabled. No App/model
+secret or hosted queue is required. Git/build/terminal coding workers remain app-owned local
+processes, outside Supabase Edge.

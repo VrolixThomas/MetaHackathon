@@ -134,9 +134,9 @@ the repository convention must be resolved rather than silently bypassed. No che
 without configured validation commands.
 
 Coding runs on this Mac. SQLite and local private files hold prepared review plans and proposed
-fixes; published comments and branches are shared through GitHub. A shared organization backend
-uses Supabase DB/Auth and deployed Edge API, webhook and finite preparation workers. The worker
-scheduler remains off until the GitHub App is installed/configured; see [team setup](docs/integration/team-setup.md).
+fixes; published comments and branches are shared through GitHub. The optional shared organization
+backend uses Supabase DB/Auth and a sharing API. Analysis remains desktop-initiated through Muse;
+there are no remote preparation workers. See [team setup](docs/integration/team-setup.md).
 
 ## My day and Slack
 
@@ -223,10 +223,11 @@ The repository connection, prepared plans and visited-file progress live in SQLi
 user-data directory. A 60-second refresh runs while the app is open; changed PR revisions invalidate
 old plans. **Refresh** checks now, and failed preparation can be explicitly retried. No fixture
 fallback is used. Suggested comments remain unposted; the current review flow does not submit them.
-The optional team service shares one immutable analysis per PR/context/version. Select a connected
-team repository in Settings to use it. A cache miss queues the hosted consumer; it does not start a
-duplicate local model preparation. GitHub App webhooks can prepare while desktops are closed once
-the backend is deployed. A local-only setup continues to use SQLite.
+The optional team service shares immutable findings per PR/context/version. Select a connected
+team repository in Settings to reuse current shared findings. A cache miss prepares locally through
+the Muse API and optionally publishes that result to Supabase; unavailable sharing never blocks
+local preparation. SQLite retains local reviews. No hosted preparation worker or GitHub App is
+required. See [team setup](docs/integration/team-setup.md).
 
 If preparation is still running, its status is shown before opening. Failed preparation has an
 explicit retry action. A ready review in any watched repository can be opened by Muse.
@@ -262,11 +263,16 @@ the prepared-review suggested comments remain unposted.
 
 ## Distribution configuration
 
+The release application is **MuseFocus** (`app.musefocus.desktop`). The existing data directory and
+encryption identity are retained to preserve installed configuration and review history.
 A packaged app uses `~/Library/Application Support/MetaHackathon/.env`. A user-provided `.env`
 placed alongside the `.app`, or provided in its resources before packaging, seeds that file on
 first startup. Existing installed configuration is preserved. `METAHACKATHON_ENV_FILE` can
 explicitly select a different local file. No real credentials are committed to this repository.
-Developer ID signing, notarization and signed updates remain separate release checks.
+Developer ID signing, notarization and signed updates remain separate release checks. The
+[Apple setup checklist](apps/desktop/packaging/README.md#operator-checklist) accepts the same
+certificate/notarization secret names as SuperiorSwarm. The planned `musefocus.app` domain is not
+configured as a callback, update feed or download host.
 
 ## Validation
 

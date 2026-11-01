@@ -84,8 +84,10 @@ data and clean up only the process and temporary files owned by that check.
 
 ## Signing inputs and release candidate
 
-The supported credential set is explicit; no credentials are configured by this
-scaffold. Configure these only in GitHub's `release` environment:
+The supported credential set is explicit. Integration created this repository's
+[`release` environment](https://github.com/VrolixThomas/MetaHackathon/settings/environments)
+on 2026-11-01; its environment-secret list was empty. No credential values were copied.
+Configure these only in that environment:
 
 | Preferred CI secret | SuperiorSwarm alias if preferred is absent | Process environment | Required input |
 | --- | --- | --- | --- |
