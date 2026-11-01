@@ -1,25 +1,18 @@
 "use client";
+import { captures } from "@/lib/captures";
 import { chapters } from "@/lib/story";
 import { AnimatePresence, motion, useReducedMotion } from "motion/react";
+import Image from "next/image";
 import { useRef } from "react";
-import { AnimatedBrand, Brand } from "../brand";
+import { AnimatedBrand } from "../brand";
 import { Icon } from "../icons";
 import { useStory } from "./context";
-import { ClarifyView, FixView, FlowView, FollowView, PlanView, ReviewView } from "./views";
 
-const views = {
-	plan: PlanView,
-	review: ReviewView,
-	flow: FlowView,
-	fix: FixView,
-	follow: FollowView,
-	clarify: ClarifyView,
-};
 export function Walkthrough() {
 	const { state, dispatch } = useStory();
 	const index = chapters.findIndex((c) => c.id === state.chapter);
 	const chapter = chapters[index] ?? chapters[0];
-	const View = views[state.chapter];
+	const capture = captures[state.chapter];
 	const reduce = useReducedMotion() || state.paused;
 	const tabs = useRef<(HTMLButtonElement | null)[]>([]);
 	return (
@@ -30,11 +23,7 @@ export function Walkthrough() {
 		>
 			<div className="demo-intro">
 				<div className="demo-focus-heading">
-					<AnimatedBrand
-						size={64}
-						paused={state.paused}
-						focusToken={`${state.chapter}:${state.chapter === "review" ? state.file : state.chapter === "flow" ? state.flow : ""}`}
-					/>
+					<AnimatedBrand size={64} paused={state.paused} focusToken={state.chapter} />
 					<div>
 						<span className="eyebrow">One connected day</span>
 						<h2 id="demo-heading">Everything moves. Your focus stays clear.</h2>
@@ -86,119 +75,54 @@ export function Walkthrough() {
 					</button>
 				))}
 			</div>
-			<div className="app-window">
-				<div className="window-bar">
-					<div className="traffic-lights" aria-hidden="true">
-						<i />
-						<i />
-						<i />
-					</div>
-					<span>MuseFocus</span>
-					<span className="example-label">Interactive illustration</span>
+			<div id="story-panel" role="tabpanel" aria-labelledby={`chapter-${chapter.id}`}>
+				<div className="capture-heading">
+					<h3>{chapter.title}</h3>
+					<p>{capture.caption}</p>
 				</div>
-				<div className="workspace">
-					<aside className="work-sidebar" aria-label="Illustrative background work">
-						<div className="sidebar-brand">
-							<Brand size={26} />
-						</div>
-						<span className="sidebar-label">Your work, connected</span>
-						<div className="work-source">
-							<Icon name="linear" size={15} />
-							<div>
-								<strong>Session recovery</strong>
-								<small>
-									{state.planScope ? "First pass in motion" : "A question before we start"}
-								</small>
-							</div>
-							<span className="tiny-dot" />
-						</div>
-						<div className="work-source">
-							<Icon name="github" size={15} />
-							<div>
-								<strong>Review progress</strong>
-								<small>Teammate’s PR · Ready for review</small>
-							</div>
-							<span className="tiny-dot quiet" />
-						</div>
-						<div className="work-source">
-							<Icon name="slack" size={15} />
-							<div>
-								<strong>Website won’t load</strong>
-								<small>{state.clarified ? "Context is clearer" : "Missing a little context"}</small>
-							</div>
-							<span className="tiny-dot quiet" />
-						</div>
-						<div className="sidebar-bottom">
-							<span className="activity-bars" aria-hidden="true">
-								<i />
-								<i />
-								<i />
-								<i />
-								<i />
-							</span>
-							<p>
-								Work keeps moving.
-								<br />
-								<span>You set the pace.</span>
-							</p>
-						</div>
-					</aside>
-					<div
-						className="focus-workspace"
-						id="story-panel"
-						role="tabpanel"
-						aria-labelledby={`chapter-${chapter.id}`}
+				<AnimatePresence mode="wait" initial={false}>
+					<motion.figure
+						key={chapter.id}
+						initial={reduce ? false : { opacity: 0, y: 8 }}
+						animate={{ opacity: 1, y: 0 }}
+						exit={{ opacity: 0 }}
+						transition={{ duration: reduce ? 0 : 0.2 }}
 					>
-						<div className="workspace-bar">
-							<span>
-								<i className="focus-pip" />
-								In focus<span className="slash">/</span>
-								{chapter.source}
-							</span>
-							<span className="mono">0{index + 1} / 06</span>
-						</div>
-						<div className="story-content">
-							<AnimatePresence mode="wait" initial={false}>
-								<motion.div
-									key={chapter.id}
-									initial={reduce ? false : { opacity: 0, y: 9 }}
-									animate={{ opacity: 1, y: 0 }}
-									exit={{ opacity: 0 }}
-									transition={{ duration: reduce ? 0 : 0.18 }}
-								>
-									<p className="scene-eyebrow">{chapter.cue}</p>
-									<h3>{chapter.title}</h3>
-									<p className="scene-description">{chapter.subtitle}</p>
-									<div className="scene-view">
-										<View />
-									</div>
-								</motion.div>
-							</AnimatePresence>
-						</div>
-						<div className="focus-actions">
-							<span>
-								<Icon name="spark" size={13} />
-								Your attention stays here.
-							</span>
-							<button
-								type="button"
-								className="button next-button"
-								onClick={() => dispatch({ type: "next" })}
-							>
-								{index === chapters.length - 1
-									? "Back to the start"
-									: state.chapter === "review"
-										? "Show the entire flow"
-										: "Next into focus"}
-								<Icon name="arrow" size={14} />
-							</button>
-						</div>
-					</div>
+						<a
+							href={capture.src}
+							target="_blank"
+							rel="noreferrer"
+							aria-label={`Open full-size capture: ${chapter.label}`}
+						>
+							<Image
+								className="real-app-capture"
+								src={capture.src}
+								width={2880}
+								height={1920}
+								alt={capture.alt}
+								priority={index === 0}
+								sizes="(max-width: 760px) 100vw, 1160px"
+							/>
+						</a>
+					</motion.figure>
+				</AnimatePresence>
+				<div className="capture-actions">
+					<a className="text-link" href={capture.src} target="_blank" rel="noreferrer">
+						Open full size ↗
+					</a>
+					<button
+						className="button next-button"
+						type="button"
+						onClick={() => dispatch({ type: "next" })}
+					>
+						{index === chapters.length - 1 ? "Back to the start" : "Next into focus"}
+						<Icon name="arrow" size={14} />
+					</button>
 				</div>
 			</div>
 			<p className="demo-caption">
-				Interactive product illustration. Tickets, code, conversations and policies are scripted
-				examples.
+				Illustrative walkthrough captured in MuseFocus with prepared demo data. Select a scene or
+				open a capture at full size.
 			</p>
 			<output aria-live="polite" aria-atomic="true" className="sr-only">
 				{chapter.label} in focus. {chapter.title}

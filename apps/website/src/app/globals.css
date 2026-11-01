@@ -2443,3 +2443,45 @@ details > p {
 		transition: none !important;
 	}
 }
+
+.real-app-capture {
+	display: block;
+	width: 100%;
+	height: auto;
+	border: 1px solid var(--line);
+	border-radius: 12px;
+}
+.capture-heading {
+	margin: 22px 0;
+}
+.capture-heading h3 {
+	font-size: 25px;
+	letter-spacing: -.6px;
+}
+.capture-heading p {
+	margin-top: 10px;
+	color: var(--secondary);
+	font-size: 13px;
+	line-height: 1.8;
+}
+.capture-actions {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	gap: 16px;
+	margin-top: 18px;
+}
+.feature-capture {
+	width: 100%;
+}
+.feature-capture .real-app-capture {
+	border-radius: 8px;
+}
+@media (max-width: 760px) {
+	.capture-heading h3 {
+		font-size: 22px;
+	}
+	.capture-heading p {
+		font-size: 12px;
+	}
+}

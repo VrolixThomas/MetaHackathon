@@ -1,8 +1,18 @@
+import { captures } from "@/lib/captures";
+import type { ChapterId } from "@/lib/story";
 import Image from "next/image";
 import { Brand } from "./brand";
 import { Icon } from "./icons";
 import { StoryLink } from "./story/context";
-import { FlowGraphic } from "./story/views";
+
+function Capture({ chapter }: { chapter: ChapterId }) {
+	const c = captures[chapter];
+	return (
+		<a className="feature-capture" href={c.src} target="_blank" rel="noreferrer">
+			<Image className="real-app-capture" src={c.src} width={2880} height={1920} alt={c.alt} />
+		</a>
+	);
+}
 
 export function WhyFocus() {
 	return (
@@ -48,64 +58,10 @@ export function WorkflowSections() {
 						Shape the first pass <Icon name="arrow" size={15} />
 					</StoryLink>
 				</div>
-				<div className="feature-visual planning-visual">
-					<div className="mini-topbar">
-						<Icon name="linear" size={14} />
-						<span>Session recovery</span>
-						<span className="example-tag">Example</span>
-					</div>
-					<p className="visual-question">
-						“What should come back
-						<br />
-						when I reopen a workspace?”
-					</p>
-					<div className="mini-answer">
-						<Brand name={false} size={28} />
-						<p>Let’s decide what the first pass should remember.</p>
-					</div>
-					<div className="mini-choices">
-						<span>
-							<i />
-							Files and review position
-						</span>
-						<span>
-							<i />
-							The working layout, too
-						</span>
-					</div>
-					<div className="mini-bottom">
-						<Icon name="spark" size={13} />A better brief starts with your judgment.
-					</div>
-				</div>
+				<Capture chapter="plan" />
 			</section>
 			<section className="feature feature-reverse content-width" aria-labelledby="review-heading">
-				<div className="feature-visual review-preview">
-					<div className="mini-topbar">
-						<Icon name="github" size={14} />
-						<span>A reading order that tells the story</span>
-						<span className="example-tag">Example</span>
-					</div>
-					<ol>
-						{[
-							{ n: "01", label: "Enter through the route", file: "src/routes/review.ts" },
-							{ n: "02", label: "Follow the preparation", file: "src/review/prepare.ts" },
-							{ n: "03", label: "Finish at persistence", file: "src/db/review-store.ts" },
-						].map((file) => (
-							<li key={file.n}>
-								<span>{file.n}</span>
-								<div>
-									<strong>{file.label}</strong>
-									<code>{file.file}</code>
-								</div>
-								<Icon name="arrow" size={13} />
-							</li>
-						))}
-					</ol>
-					<div className="mini-bottom">
-						<Icon name="flow" size={14} />
-						Entry point to finish. Context stays close.
-					</div>
-				</div>
+				<Capture chapter="review" />
 				<div className="feature-copy">
 					<span className="step-label">02 / Understand what you’re reviewing</span>
 					<h2 id="review-heading">
@@ -139,7 +95,7 @@ export function WorkflowSections() {
 					<span className="step-label">Zoom out without losing your place</span>
 					<p>“Show me the entire flow.”</p>
 				</div>
-				<FlowGraphic compact />
+				<Capture chapter="flow" />
 			</section>
 			<section className="feature content-width" aria-labelledby="follow-heading">
 				<div className="feature-copy">
@@ -161,64 +117,10 @@ export function WorkflowSections() {
 						Explore a follow-up <Icon name="arrow" size={15} />
 					</StoryLink>
 				</div>
-				<div className="feature-visual follow-preview">
-					<div className="mini-topbar">
-						<Icon name="clock" size={14} />
-						<span>After your review</span>
-						<span className="example-tag">Example</span>
-					</div>
-					<p className="visual-question">
-						“Bring it back when
-						<br />
-						the work needs me.”
-					</p>
-					<ul>
-						<li>
-							<Icon name="check" size={14} />
-							Required checks pass
-						</li>
-						<li>
-							<Icon name="check" size={14} />
-							Review questions are resolved
-						</li>
-						<li>
-							<Icon name="check" size={14} />
-							New scope returns to you
-						</li>
-					</ul>
-					<div className="mini-bottom">
-						<span className="tiny-dot" />
-						Following within your instructions.
-					</div>
-				</div>
+				<Capture chapter="follow" />
 			</section>
 			<section className="feature feature-reverse content-width" aria-labelledby="clarify-heading">
-				<div className="feature-visual slack-preview">
-					<div className="mini-topbar">
-						<Icon name="slack" size={14} />
-						<span>In the original thread</span>
-						<span className="example-tag">Example</span>
-					</div>
-					<div className="mini-thread">
-						<span className="thread-avatar">A</span>
-						<p>
-							The website doesn’t load for me.
-							<br />
-							Can you look into it?
-						</p>
-					</div>
-					<div className="mini-thread reply">
-						<Brand name={false} size={27} />
-						<div>
-							<strong>You, with MuseFocus</strong>
-							<p>What are you trying to do, which account is affected, and what happens?</p>
-						</div>
-					</div>
-					<div className="mini-bottom">
-						<Icon name="chat" size={13} />
-						Bounded clarification, with your permission.
-					</div>
-				</div>
+				<Capture chapter="clarify" />
 				<div className="feature-copy">
 					<span className="step-label">04 / Stop being the messenger</span>
 					<h2 id="clarify-heading">

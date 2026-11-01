@@ -55,112 +55,27 @@ export const chapters = [
 ] as const;
 
 export type ChapterId = (typeof chapters)[number]["id"];
-export type StoryState = {
-	chapter: ChapterId;
-	planScope: "position" | "layout" | null;
-	file: number;
-	discussion: boolean;
-	flow: "flow" | "run" | "visual";
-	proposal: "before" | "after";
-	follow: "notify" | "approve";
-	clarified: boolean;
-	paused: boolean;
-};
-export const initialStory: StoryState = {
-	chapter: "plan",
-	planScope: null,
-	file: 0,
-	discussion: false,
-	flow: "flow",
-	proposal: "after",
-	follow: "notify",
-	clarified: false,
-	paused: false,
-};
+export type StoryState = { chapter: ChapterId; paused: boolean };
+export const initialStory: StoryState = { chapter: "plan", paused: false };
 export type StoryAction =
 	| { type: "chapter"; chapter: ChapterId }
 	| { type: "next" }
-	| { type: "scope"; scope: NonNullable<StoryState["planScope"]> }
-	| { type: "file"; file: number }
-	| { type: "discussion"; open: boolean }
-	| { type: "flow"; view: StoryState["flow"] }
-	| { type: "proposal"; view: StoryState["proposal"] }
-	| { type: "follow"; mode: StoryState["follow"] }
-	| { type: "clarify" }
 	| { type: "motion" };
-
 export function storyReducer(state: StoryState, action: StoryAction): StoryState {
 	switch (action.type) {
 		case "chapter":
-			return chapters.some((c) => c.id === action.chapter)
-				? { ...state, chapter: action.chapter, discussion: false }
-				: state;
+			return { ...state, chapter: action.chapter };
 		case "next":
 			return {
 				...state,
 				chapter:
 					chapters[(chapters.findIndex((c) => c.id === state.chapter) + 1) % chapters.length]?.id ??
 					"plan",
-				discussion: false,
 			};
-		case "scope":
-			return { ...state, planScope: action.scope };
-		case "file":
-			return Number.isInteger(action.file) && action.file >= 0 && action.file < reviewFiles.length
-				? { ...state, file: action.file, discussion: false }
-				: state;
-		case "discussion":
-			return { ...state, discussion: action.open };
-		case "flow":
-			return { ...state, flow: action.view };
-		case "proposal":
-			return { ...state, proposal: action.view };
-		case "follow":
-			return { ...state, follow: action.mode };
-		case "clarify":
-			return { ...state, clarified: !state.clarified };
 		case "motion":
 			return { ...state, paused: !state.paused };
 	}
 }
-
-export const reviewFiles = [
-	{
-		path: "src/routes/review.ts",
-		label: "Receive the request",
-		why: "Start at the entry point. This route passes the selected review to preparation.",
-		code: [
-			"export async function resumeReview(input) {",
-			"  const plan = await prepareReview(input);",
-			"  return openAtCheckpoint(plan);",
-			"}",
-		],
-	},
-	{
-		path: "src/review/prepare.ts",
-		label: "Prepare the review",
-		why: "Follow the call into preparation. The saved checkpoint determines where the review starts.",
-		code: [
-			"export async function prepareReview(input) {",
-			"  const checkpoint = await store.read(input.id);",
-			"  return { ...input, checkpoint };",
-			"}",
-		],
-	},
-	{
-		path: "src/db/review-store.ts",
-		label: "Save its progress",
-		why: "Finish at persistence. The checkpoint needs the source revision as well as the file position.",
-		code: [
-			"export async function saveCheckpoint(input) {",
-			"  await database.save({",
-			"    review: input.id, file: input.file,",
-			"    head: input.head, position: input.position,",
-			"  });",
-			"}",
-		],
-	},
-] as const;
 
 export const questions = [
 	{
@@ -176,7 +91,7 @@ export const questions = [
 	{
 		question: "Do I need to use voice?",
 		answer:
-			"Voice is available throughout the workspace, and typing is available when you prefer it. The website walkthrough is a scripted illustration; its controls do not access your microphone or connect to your accounts.",
+			"Voice is available throughout the workspace, and typing is available when you prefer it. The website shows captures from the actual desktop app using prepared demo data; its controls select screenshots and do not access your microphone or accounts.",
 	},
 	{
 		question: "Where does background work run?",
