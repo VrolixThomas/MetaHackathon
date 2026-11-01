@@ -176,8 +176,10 @@ export class RepositoryManager {
 			}
 			const baseSha = await this.resolveRevision(record.repositoryPath, baseRef, options.signal);
 			const headSha = await this.resolveRevision(record.repositoryPath, headRef, options.signal);
-			const basePath = join(runRoot, "base");
-			const headPath = join(runRoot, "head");
+			// Git derives its shared administrative directory from the destination basename.
+			// Distinct parent directories alone do not isolate simultaneous worktree additions.
+			const basePath = join(runRoot, `${runId}-base`);
+			const headPath = join(runRoot, `${runId}-head`);
 			for (const [path, sha] of [
 				[basePath, baseSha],
 				[headPath, headSha],
@@ -489,7 +491,14 @@ export class RepositoryManager {
 		}
 		if (
 			record.worktrees.some(
-				(path) => ![join(runRoot, "base"), join(runRoot, "head")].includes(path)
+				(path) =>
+					![
+						join(runRoot, `${runId}-base`),
+						join(runRoot, `${runId}-head`),
+						// Keep version-1 ownership records created before unique basenames recoverable.
+						join(runRoot, "base"),
+						join(runRoot, "head"),
+					].includes(path)
 			) ||
 			record.refs.some(
 				(ref) =>

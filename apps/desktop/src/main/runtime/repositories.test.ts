@@ -10,7 +10,7 @@ import {
 	writeFile,
 } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { basename, dirname, join } from "node:path";
 import { test } from "node:test";
 import { runProcess } from "./process";
 import { RepositoryManager } from "./repositories";
@@ -64,11 +64,27 @@ test("creates unique detached SHA-pinned versions and removes only owned worktre
 	try {
 		const foreign = join(f.directory, "foreign-worktree");
 		await git(f.repository, "worktree", "add", "--detach", foreign, f.base);
-		const [a, b] = await Promise.all([
+		const other = new RepositoryManager(join(f.directory, "other-runtime"));
+		const results = await Promise.allSettled([
 			f.manager.prepare({ repositoryPath: f.repository, baseRef: f.base, headRef: f.head }),
-			f.manager.prepare({ repositoryPath: f.repository, baseRef: f.base, headRef: f.head }),
+			other.prepare({ repositoryPath: f.repository, baseRef: f.base, headRef: f.head }),
 		]);
+		// Drain both preparations before fixture cleanup, including when either one fails.
+		const [first, second] = results;
+		assert.ok(first?.status === "fulfilled", String(first));
+		assert.ok(second?.status === "fulfilled", String(second));
+		const [a, b] = [first.value, second.value];
 		assert.notEqual(a.runId, b.runId);
+		const administrativeNames = await Promise.all(
+			[a.base, a.head, b.base, b.head].map(async (tree) =>
+				basename(await git(tree.path, "rev-parse", "--absolute-git-dir"))
+			)
+		);
+		assert.equal(new Set(administrativeNames).size, 4);
+		for (const run of [a, b]) {
+			assert.equal(basename(run.base.path), `${run.runId}-base`);
+			assert.equal(basename(run.head.path), `${run.runId}-head`);
+		}
 		assert.equal(await readFile(join(a.base.path, "price.txt"), "utf8"), "before\n");
 		assert.equal(await readFile(join(a.head.path, "price.txt"), "utf8"), "after\n");
 		assert.equal(await git(a.head.path, "rev-parse", "HEAD"), f.head);
@@ -80,9 +96,38 @@ test("creates unique detached SHA-pinned versions and removes only owned worktre
 		await f.manager.cleanup(a.runId);
 		assert.equal(await readFile(join(foreign, "price.txt"), "utf8"), "before\n");
 		assert.equal(await readFile(join(b.head.path, "price.txt"), "utf8"), "after\n");
-		await f.manager.cleanup(b.runId);
+		await other.cleanup(b.runId);
 		assert.ok((await git(f.repository, "worktree", "list", "--porcelain")).includes(foreign));
 		await assert.rejects(f.manager.cleanup("../../foreign-worktree"), /Unknown|Invalid/);
+	} finally {
+		await rm(f.directory, { recursive: true, force: true });
+	}
+});
+
+test("cleanup still recognizes version-1 records with legacy base/head paths", async () => {
+	const f = await fixture();
+	try {
+		const run = await f.manager.prepare({
+			repositoryPath: f.repository,
+			baseRef: f.base,
+			headRef: f.head,
+		});
+		const recordPath = join(dirname(run.base.path), "ownership.json");
+		const record = JSON.parse(await readFile(recordPath, "utf8"));
+		for (const side of ["base", "head"] as const) {
+			const previous = run[side].path;
+			const legacy = join(dirname(previous), side);
+			await git(f.repository, "worktree", "move", previous, legacy);
+			record.worktrees = record.worktrees.map((path: string) =>
+				path === previous ? legacy : path
+			);
+			record.worktreeIdentities[legacy] = record.worktreeIdentities[previous];
+			delete record.worktreeIdentities[previous];
+		}
+		await writeFile(recordPath, JSON.stringify(record));
+		await new RepositoryManager(join(f.directory, "runtime")).cleanup(run.runId);
+		assert.deepEqual(await readdir(join(f.directory, "runtime", "runs")), []);
+		assert.equal(await readFile(join(f.repository, "price.txt"), "utf8"), "after\n");
 	} finally {
 		await rm(f.directory, { recursive: true, force: true });
 	}
