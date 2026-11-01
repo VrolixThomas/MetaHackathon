@@ -260,6 +260,7 @@ export function CanvasWorkspace({
 					controller={reviews}
 					onInteraction={() => {}}
 					view={workspace.codeView}
+					navigationBusy={state.busy || blocked}
 					onClose={() => command({ kind: "close-canvas", id: canvas.id })}
 					onViewChange={(view) => {
 						if (view !== workspace.codeView) command({ kind: "code-view", view });

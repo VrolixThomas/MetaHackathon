@@ -96,6 +96,7 @@ export function ReviewWorkspace({
 	onViewChange,
 	onNavigate,
 	onClose,
+	navigationBusy = false,
 }: {
 	controller: PreparedController;
 	onInteraction(): void;
@@ -106,8 +107,10 @@ export function ReviewWorkspace({
 		path?: string;
 	}): void;
 	onClose?(): void;
+	navigationBusy?: boolean;
 }) {
 	const state = useStore(controller.store);
+	const controlsBusy = state.fileBusy || navigationBusy;
 	const [localView, setLocalView] = useState<"diff" | "base" | "head">("diff");
 	const view = controlledView ?? localView;
 	const content = useRef<HTMLDivElement>(null);
@@ -184,7 +187,7 @@ export function ReviewWorkspace({
 				<ReviewActionButton
 					type="button"
 					onInteraction={onInteraction}
-					disabled={state.fileBusy || state.stale || index <= 0}
+					disabled={controlsBusy || state.stale || index <= 0}
 					onClick={() =>
 						onNavigate ? onNavigate({ direction: "previous" }) : void controller.move(-1)
 					}
@@ -198,7 +201,7 @@ export function ReviewWorkspace({
 					type="button"
 					onInteraction={onInteraction}
 					disabled={
-						state.fileBusy || state.stale || index < 0 || index >= (plan?.files.length ?? 0) - 1
+						controlsBusy || state.stale || index < 0 || index >= (plan?.files.length ?? 0) - 1
 					}
 					onClick={() => (onNavigate ? onNavigate({ direction: "next" }) : void controller.move(1))}
 				>
@@ -208,7 +211,7 @@ export function ReviewWorkspace({
 					type="button"
 					onInteraction={onInteraction}
 					className="pause-review"
-					disabled={state.fileBusy || state.stale || !file}
+					disabled={controlsBusy || state.stale || !file}
 					onClick={() => {
 						if (onNavigate) onNavigate({ direction: state.paused ? "resume" : "pause" });
 						else void controller.pause(!state.paused);
@@ -234,6 +237,7 @@ export function ReviewWorkspace({
 								onInteraction={view === tab ? undefined : onInteraction}
 								key={tab}
 								aria-pressed={view === tab}
+								disabled={controlsBusy || state.stale}
 								onClick={() => (onViewChange ? onViewChange(tab) : setLocalView(tab))}
 							>
 								{{ diff: "Changes", base: "Before", head: "After" }[tab]}
@@ -357,7 +361,7 @@ export function ReviewWorkspace({
 											onInteraction={entry.path === file?.path ? undefined : onInteraction}
 											className="quiet"
 											aria-current={entry.path === file?.path ? "step" : undefined}
-											disabled={state.fileBusy || state.stale}
+											disabled={controlsBusy || state.stale}
 											onClick={() => {
 												if (entry.path !== file?.path) {
 													if (onNavigate) onNavigate({ path: entry.path });

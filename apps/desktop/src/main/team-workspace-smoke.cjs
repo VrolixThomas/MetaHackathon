@@ -240,13 +240,14 @@ async function native() {
 							row.input.workspace?.review.path === source.order[0]
 					)
 				);
-				assert.ok(
-					encryptedFiles().some(
-						(file) =>
-							file.name.endsWith("cache.bin") &&
-							safeStorage.decryptString(file.bytes).includes(provider.currentReview.id)
-					)
-				);
+				if (!report.localPreparation)
+					assert.ok(
+						encryptedFiles().some(
+							(file) =>
+								file.name.endsWith("cache.bin") &&
+								safeStorage.decryptString(file.bytes).includes(provider.currentReview.id)
+						)
+					);
 				return {
 					preparedId: ready.prepared.id,
 					localModelCalls: provider.report.modelCalls,

@@ -135,15 +135,22 @@ it("keeps complete cached notes behind closed disclosures and preserves pinned c
 				headSha: pr.headSha,
 			},
 		});
-		const html = renderToStaticMarkup(
-			<ReviewWorkspace
-				controller={{
-					...controller,
-					store: { ...controller.store, getInitialState: controller.store.getState },
-				}}
-				onInteraction={() => {}}
-			/>
-		);
+		const render = (navigationBusy = false) =>
+			renderToStaticMarkup(
+				<ReviewWorkspace
+					controller={{
+						...controller,
+						store: { ...controller.store, getInitialState: controller.store.getState },
+					}}
+					onInteraction={() => {}}
+					navigationBusy={navigationBusy}
+				/>
+			);
+		const html = render();
+		const sourceTabs = (value: string) =>
+			value.match(/<nav class="source-tabs"[^>]*>([\s\S]*?)<\/nav>/)?.[1] ?? "";
+		assert.equal((sourceTabs(render(true)).match(/disabled=""/g) ?? []).length, 3);
+		assert.equal((sourceTabs(html).match(/disabled=""/g) ?? []).length, 0);
 		assert.match(html, /What changes/);
 		assert.match(html, /Why this file now/);
 		assert.match(html, /File 1 of 1/);
