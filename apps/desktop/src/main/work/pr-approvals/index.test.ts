@@ -381,3 +381,28 @@ it("restart removes another account's saved approval notices before attention ca
 	assert.equal(h.state.notices.length, 0);
 	await reopen.dispose();
 });
+
+it("expiry at final durable admission prevents an approval attempt", async () => {
+	const h = harness();
+	const original = h.ports.update;
+	h.ports.update = async (mutate) => {
+		if (h.control.reads === 2) h.control.now = Date.parse(terms.expiresAt);
+		return original(mutate);
+	};
+	await h.service.tick();
+	assert.equal(h.p.status, "expired");
+	assert.equal(h.p.attempt, null);
+	assert.equal(h.submitted.length, 0);
+});
+it("expiry while notification evidence is in flight cannot publish satisfied notification", async () => {
+	const h = harness([policy({ terms: { ...terms, action: "notify" } })]);
+	h.provider.observe = async () => {
+		h.control.now = Date.parse(terms.expiresAt);
+		return observation();
+	};
+	await h.service.tick();
+	assert.equal(h.p.status, "expired");
+	assert.equal(h.p.evaluation, null);
+	assert.equal(h.submitted.length, 0);
+	assert.ok(h.state.notices.every((n) => !n.detail.includes("conditions hold")));
+});

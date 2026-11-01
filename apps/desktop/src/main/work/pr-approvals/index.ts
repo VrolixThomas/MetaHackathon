@@ -10,7 +10,11 @@ import {
 	type HubPersistence,
 	type PullRequest,
 } from "../../../shared/contracts";
-import type { ApprovalObservation, ApprovalProvider } from "./github";
+import {
+	ApprovalExpiredBeforePost,
+	type ApprovalObservation,
+	type ApprovalProvider,
+} from "./github";
 
 export const policyDigest = (
 	p: Pick<
@@ -499,8 +503,20 @@ export class PRApprovals {
 		this.running.set(p.id, controller);
 		const signal = AbortSignal.any([controller.signal, AbortSignal.timeout(120000)]);
 		const epoch = this.ports.epoch();
-		const current = (state: HubPersistence, attempt = false) => {
+		const beforePost = () => {
 			signal.throwIfAborted();
+			if (
+				this.stopped ||
+				epoch !== this.ports.epoch() ||
+				!this.ports.awake() ||
+				this.revoked.has(`${p.id}:${p.revision}`) ||
+				this.editing.has(`${p.id}:${p.revision}`)
+			)
+				throw new Error("Policy evaluation retired");
+			if (Date.parse(p.terms.expiresAt) <= this.now()) throw new ApprovalExpiredBeforePost();
+		};
+		const current = (state: HubPersistence, attempt = false) => {
+			beforePost();
 			const live = state.approvalPolicies?.find((r) => r.id === p.id);
 			if (
 				this.stopped ||
@@ -569,7 +585,14 @@ export class PRApprovals {
 			await this.ports.update((state) => {
 				current(state, true);
 			});
-			const receipt = await this.ports.provider.approve(p, fresh.headSha, attempt.id, signal);
+			beforePost();
+			const receipt = await this.ports.provider.approve(
+				p,
+				fresh.headSha,
+				attempt.id,
+				signal,
+				beforePost
+			);
 			await this.ports.update((state) => {
 				const live = state.approvalPolicies?.find((r) => r.id === p.id);
 				if (!live || live.attempt?.id !== attempt.id) throw new Error("Approval attempt changed");
@@ -583,11 +606,17 @@ export class PRApprovals {
 					);
 				}
 			});
-		} catch {
+		} catch (error) {
 			await this.ports.update((state) => {
 				const live = state.approvalPolicies?.find((r) => r.id === p.id);
 				if (!live || live.revision !== p.revision || live.status === "revoked") return;
-				if (live.attempt && live.status === "submitting") {
+				if (
+					error instanceof ApprovalExpiredBeforePost &&
+					(active(live) || live.status === "submitting")
+				) {
+					live.status = "expired";
+					this.notice(state, live, "The delegation expired without approving the PR.");
+				} else if (live.attempt && live.status === "submitting") {
 					live.status = "uncertain";
 					this.notice(
 						state,

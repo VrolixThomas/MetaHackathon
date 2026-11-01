@@ -60,6 +60,11 @@ export type ApprovalObservation = {
 	required: { name: string; appId: number | null }[];
 	sources: { path: string; content: string }[];
 };
+export class ApprovalExpiredBeforePost extends Error {
+	constructor() {
+		super("The approval delegation expired before dispatch");
+	}
+}
 export interface ApprovalProvider {
 	pin(pr: PullRequest, signal: AbortSignal): Promise<string>;
 	account(signal: AbortSignal): Promise<ApprovalPolicy["actor"]>;
@@ -68,7 +73,8 @@ export interface ApprovalProvider {
 		policy: ApprovalPolicy,
 		headSha: string,
 		attemptId: string,
-		signal: AbortSignal
+		signal: AbortSignal,
+		beforePost?: () => void
 	): Promise<{ id: number; url: string }>;
 }
 /** Captures one credential per bounded operation. Never switches identity halfway through a write. */
@@ -76,17 +82,21 @@ export class ApprovalGitHub implements ApprovalProvider {
 	constructor(
 		private readonly token: () => Promise<string | undefined>,
 		private readonly epoch: () => number,
-		private readonly transport: typeof fetch = fetch
+		private readonly transport: typeof fetch = fetch,
+		private readonly now: () => number = Date.now
 	) {}
-	private async session(signal: AbortSignal) {
-		const token = await this.token();
+	private async session(signal: AbortSignal, beforePost?: () => void) {
 		const epoch = this.epoch();
+		const token = await this.token();
+		if (epoch !== this.epoch()) throw new Error("GitHub account changed");
 		if (!token) throw new Error("GitHub connection required");
 		const request = async (path: string, body?: unknown): Promise<unknown> => {
 			signal.throwIfAborted();
 			if ((await this.token()) !== token || this.epoch() !== epoch)
 				throw new Error("GitHub account changed");
 			signal.throwIfAborted();
+			// Last synchronous boundary: no credential or provider await may follow this guard.
+			if (body) beforePost?.();
 			const response = await this.transport(`https://api.github.com${path}`, {
 				method: body ? "POST" : "GET",
 				redirect: "error",
@@ -412,8 +422,17 @@ export class ApprovalGitHub implements ApprovalProvider {
 			sources,
 		};
 	}
-	async approve(policy: ApprovalPolicy, headSha: string, attemptId: string, signal: AbortSignal) {
-		const { request, actor } = await this.session(signal);
+	async approve(
+		policy: ApprovalPolicy,
+		headSha: string,
+		attemptId: string,
+		signal: AbortSignal,
+		beforePost?: () => void
+	) {
+		const { request, actor } = await this.session(signal, () => {
+			beforePost?.();
+			if (Date.parse(policy.terms.expiresAt) <= this.now()) throw new ApprovalExpiredBeforePost();
+		});
 		if (actor.id !== policy.actor.id) throw new Error("GitHub account changed");
 		const root = `/repos/${policy.pr.repository.split("/").map(encodeURIComponent).join("/")}/pulls/${policy.pr.number}`;
 		const pr = pullSchema.parse(await request(root));

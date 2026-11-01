@@ -1,11 +1,16 @@
 import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
 import { it } from "node:test";
+import { PRApprovals, policyDigest } from ".";
 import { ApprovalGitHub } from "./github";
-import { actor, base, head, later, policy, terms } from "./test-support";
+import { actor, at, base, harness, head, later, policy, terms } from "./test-support";
 
 function providerHarness() {
 	const control = {
+		now: at,
+		tokenReads: 0,
+		beforeToken: () => {},
+		beforeResponse: (_path: string) => {},
 		token: "private-token",
 		epoch: 0,
 		sha: head,
@@ -118,12 +123,18 @@ function providerHarness() {
 				user: actor,
 			};
 		} else throw new Error(`Unexpected provider request ${path}`);
+		control.beforeResponse(path);
 		return Response.json(data);
 	};
 	const provider = new ApprovalGitHub(
-		async () => control.token,
+		async () => {
+			control.tokenReads++;
+			control.beforeToken();
+			return control.token;
+		},
 		() => control.epoch,
-		transport
+		transport,
+		() => control.now
 	);
 	return { control, calls, provider, transport };
 }
@@ -241,4 +252,79 @@ it("missing current GitHub access fails closed without a provider request", asyn
 	);
 	await assert.rejects(provider.observe(policy(), AbortSignal.timeout(5000)));
 	assert.equal(h.calls.length, 0);
+});
+
+it("expiry during provider PR preflight prevents POST and durably expires the admitted attempt", async () => {
+	const remote = providerHarness();
+	const h = harness();
+	h.provider.approve = remote.provider.approve.bind(remote.provider);
+	h.p.contextDigest = await remote.provider.pin(h.p.pr, AbortSignal.timeout(5000));
+	// Rebind the exact stored policy digest after pinning actual controlled provider context.
+	h.p.digest = policyDigest(h.p);
+	h.control.observation.contextDigest = h.p.contextDigest;
+	remote.control.beforeResponse = (path) => {
+		if (path === "/repos/owner/repo/pulls/1") {
+			remote.control.now = Date.parse(terms.expiresAt);
+			h.control.now = remote.control.now;
+		}
+	};
+	await h.service.tick();
+	assert.equal(remote.control.posts, 0);
+	assert.equal(h.p.status, "expired");
+	assert.ok(h.p.attempt);
+	assert.equal(h.p.attempt.receipt, null);
+	const reopened = new PRApprovals(h.ports);
+	await reopened.restore();
+	await reopened.tick();
+	assert.equal(remote.control.posts, 0);
+	assert.equal(h.p.status, "expired");
+	await reopened.dispose();
+});
+it("expiry during the final credential await fences POST independently of coordinator guards", async () => {
+	const h = providerHarness();
+	const p = policy();
+	p.contextDigest = await h.provider.pin(p.pr, AbortSignal.timeout(5000));
+	const initial = h.control.tokenReads;
+	h.control.beforeToken = () => {
+		// session token, /user, PR preflight, then the final POST credential fence.
+		if (h.control.tokenReads === initial + 4) h.control.now = Date.parse(p.terms.expiresAt);
+	};
+	await assert.rejects(
+		h.provider.approve(p, head, "attempt", AbortSignal.timeout(5000)),
+		/expired/
+	);
+	assert.equal(h.calls.filter((c) => c.path === "/repos/owner/repo/pulls/1").length, 2);
+	assert.equal(h.control.posts, 0);
+});
+it("an account epoch change while capturing the initial credential rejects the operation", async () => {
+	const h = providerHarness();
+	h.control.beforeToken = () => {
+		h.control.epoch++;
+	};
+	await assert.rejects(
+		h.provider.approve(policy(), head, "attempt", AbortSignal.timeout(5000)),
+		/account changed/
+	);
+	assert.equal(h.calls.length, 0);
+});
+
+it("revocation during final credential preflight fences the admitted write", async () => {
+	const remote = providerHarness();
+	const h = harness();
+	h.provider.approve = remote.provider.approve.bind(remote.provider);
+	h.p.contextDigest = await remote.provider.pin(h.p.pr, AbortSignal.timeout(5000));
+	h.p.digest = policyDigest(h.p);
+	h.control.observation.contextDigest = h.p.contextDigest;
+	const initial = remote.control.tokenReads;
+	let revoked: Promise<void> | undefined;
+	remote.control.beforeToken = () => {
+		if (remote.control.tokenReads === initial + 4)
+			revoked = h.service.revoke({ id: h.p.id, revision: h.p.revision });
+	};
+	await h.service.tick();
+	await revoked;
+	assert.ok(revoked);
+	assert.equal(remote.control.posts, 0);
+	assert.equal(h.p.status, "revoked");
+	assert.ok(h.p.attempt);
 });
