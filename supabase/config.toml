@@ -38,11 +38,11 @@ verify_jwt = false
 entrypoint = "./functions/muse-team-api/index.ts"
 
 [functions.muse-team-webhook]
-enabled = true
+enabled = false
 verify_jwt = false
 entrypoint = "./functions/muse-team-webhook/index.ts"
 
 [functions.muse-team-worker]
-enabled = true
+enabled = false
 verify_jwt = false
 entrypoint = "./functions/muse-team-worker/index.ts"

@@ -1,5 +1,5 @@
 import { execFile } from "node:child_process";
-import { createHash, randomUUID } from "node:crypto";
+import { createHash } from "node:crypto";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { TRPCError } from "@trpc/server";
@@ -201,27 +201,10 @@ async function prepareCurrentReview(
 	context: Parameters<typeof prepareReview>[1],
 	signal: AbortSignal
 ) {
-	const status = await teamComposition?.service.status();
-	if (
-		status?.connection === "connected" &&
-		status.scopes.some(
-			(scope) => scope.repository.toLowerCase() === context.pr.repository.toLowerCase()
-		)
-	)
-		return getTeam().prepare(context, signal);
-	return prepareReview(conversationClient, context, signal);
-}
-async function retrySharedReview(prId: string, signal: AbortSignal) {
-	const status = await teamComposition?.service.status();
-	if (status?.connection !== "connected") return;
-	const repository = prId.split("#")[0];
-	if (!status.scopes.some((scope) => scope.repository.toLowerCase() === repository?.toLowerCase()))
-		return;
-	await getTeam().retryPreparation(
-		await getRuntime().github.prContext(prId, signal),
-		randomUUID(),
-		signal
-	);
+	const localPrepare = (active: AbortSignal) => prepareReview(conversationClient, context, active);
+	return teamComposition
+		? teamComposition.service.prepare(context, signal, localPrepare)
+		: localPrepare(signal);
 }
 export const conversationService: ConversationService = new ConversationService(
 	conversationClient,
@@ -354,7 +337,6 @@ export function initializeReviews(
 		validateLocal: (path, repository, signal) =>
 			runtimeForActiveJobs().validateLocalRepository(path, repository, signal),
 		prepare: prepareCurrentReview,
-		beforeRetry: retrySharedReview,
 	});
 	void reviews
 		.initialize()
@@ -736,7 +718,6 @@ export async function initializeHub(
 				validateLocal: (path, name, signal) =>
 					runtimeForActiveJobs().validateLocalRepository(path, name, signal),
 				prepare: prepareCurrentReview,
-				beforeRetry: retrySharedReview,
 			})
 	);
 	hub = new CommandCenterService({

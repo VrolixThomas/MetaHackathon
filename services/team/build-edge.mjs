@@ -3,7 +3,7 @@ import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const root = fileURLToPath(new URL("../../", import.meta.url));
-const names = ["muse-team-api", "muse-team-webhook", "muse-team-worker"];
+const names = ["muse-team-api"];
 for (const name of names) {
 	const built = await Bun.build({
 		entrypoints: [join(root, "services/team/edge", `${name}.ts`)],

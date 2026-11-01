@@ -1,4 +1,4 @@
-name: Team database and Edge workers
+name: Team database and sharing API
 on:
   pull_request:
     paths:
