@@ -1,8 +1,8 @@
 {
 	"name": "@metahackathon/desktop",
-	"productName": "MetaHackathon",
+	"productName": "MuseFocus",
 	"version": "0.1.0",
-	"description": "MetaHackathon desktop application",
+	"description": "MuseFocus voice-first developer workspace",
 	"main": "./out/main/index.js",
 	"type": "module",
 	"private": true,

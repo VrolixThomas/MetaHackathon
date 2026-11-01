@@ -6,6 +6,7 @@ import { promisify } from "node:util";
 import {
 	net,
 	BrowserWindow,
+	Menu,
 	app,
 	dialog,
 	powerMonitor,
@@ -17,6 +18,7 @@ import electronUpdater from "electron-updater";
 import { MicrophoneStatusSchema } from "../shared/contracts";
 import { developmentEnvPath } from "./config/development-path";
 import { EnvConfiguration } from "./config/env";
+import { PRODUCT_NAME, STORAGE_IDENTITY, persistentDataPath } from "./config/identity";
 import { initializeAppConfiguration } from "./config/initialize";
 import { openDatabase } from "./db";
 import { createElectronBrowserPage } from "./runtime/browser-electron";
@@ -49,6 +51,10 @@ import {
 import { setupTRPCIPC } from "./trpc/ipc-link";
 import { startUpdateCheck } from "./updates";
 
+const selectedDataPath = persistentDataPath(app.getPath("userData"), app.getPath("appData"));
+app.setName(STORAGE_IDENTITY);
+app.setPath("userData", selectedDataPath);
+
 let mainWindow: BrowserWindow | null = null;
 const mainDirectory = dirname(fileURLToPath(import.meta.url));
 let database: ReturnType<typeof openDatabase> | undefined;
@@ -63,7 +69,7 @@ function recordAttentionActivity() {
 
 function createWindow(): void {
 	mainWindow = new BrowserWindow({
-		title: "MetaHackathon",
+		title: PRODUCT_NAME,
 		width: 1440,
 		height: 900,
 		minWidth: 800,
@@ -132,6 +138,30 @@ app.on("web-contents-created", (_event, contents) => {
 app
 	.whenReady()
 	.then(async () => {
+		app.setAboutPanelOptions({ applicationName: PRODUCT_NAME });
+		if (process.platform === "darwin")
+			Menu.setApplicationMenu(
+				Menu.buildFromTemplate([
+					{
+						label: PRODUCT_NAME,
+						submenu: [
+							{ role: "about", label: `About ${PRODUCT_NAME}` },
+							{ type: "separator" },
+							{ role: "services" },
+							{ type: "separator" },
+							{ role: "hide", label: `Hide ${PRODUCT_NAME}` },
+							{ role: "hideOthers" },
+							{ role: "unhide" },
+							{ type: "separator" },
+							{ role: "quit", label: `Quit ${PRODUCT_NAME}` },
+						],
+					},
+					{ role: "fileMenu" },
+					{ role: "editMenu" },
+					{ role: "viewMenu" },
+					{ role: "windowMenu" },
+				])
+			);
 		initializeDiagnostics(app.getPath("userData"));
 		database = openDatabase();
 		const envPath =
