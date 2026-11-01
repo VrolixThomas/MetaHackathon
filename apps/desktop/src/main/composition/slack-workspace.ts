@@ -9,6 +9,7 @@ import {
 	type SlackMembershipSyncSchema,
 } from "../../shared/contracts/chat";
 import { type DayActor, DayActorSchema } from "../../shared/contracts/day";
+import { clarificationDigest } from "../day/clarification";
 import type { DayReplyPort, DayService } from "../day/service";
 import type { DayAvailability } from "../day/supervisor";
 import {
@@ -26,6 +27,7 @@ import {
 import {
 	SlackClient,
 	type SlackClientOptions,
+	type SlackMessagePage,
 	type SlackThreadInput,
 	slackDate,
 } from "../slack/client";
@@ -193,6 +195,13 @@ export class SlackWorkspaceCoordinator {
 		this.cadence = Math.max(1000, options.cadenceMs ?? 5000);
 		if (options.initialWatches) watchSchema.parse({ conversationIds: options.initialWatches });
 		this.replyLedger = {
+			authorize: async (key, binding) => {
+				const session = this.required();
+				await this.ensure(session);
+				if (!key.startsWith(`${session.lease.connectionId}:`))
+					throw new SlackError("stale-connection");
+				await (await this.day(session)).replyLedger.authorize(key, binding);
+			},
 			reserve: async (key, binding) => {
 				const session = this.required();
 				await this.ensure(session);
@@ -217,10 +226,52 @@ export class SlackWorkspaceCoordinator {
 				now: this.now,
 			});
 		// Stable across sleep/reconnect: a retained same-actor DayService must not keep a retired session closure.
+		const clarificationPages = new Map<string, SlackMessagePage>();
 		this.replies = {
+			readClarification: async (source, signal) => {
+				const session = this.required();
+				await this.ensure(session, signal);
+				const page = await this.client.thread(
+					{
+						conversationId: source.conversationId,
+						threadTs: source.threadId ?? source.messageId,
+						limit: 15,
+					},
+					signal
+				);
+				await this.ensure(session, signal);
+				const anchor = page.items.find((m) => m.citation.source.messageId === source.messageId);
+				if (!anchor || JSON.stringify(anchor.citation.source) !== JSON.stringify(source))
+					throw new SlackError("stale-source");
+				const read = {
+					connectionId: session.lease.connectionId,
+					messages: [
+						anchor,
+						...page.items.filter((m) => m.citation.source.messageId !== source.messageId),
+					].slice(0, 15),
+					complete:
+						!page.hasMore &&
+						!page.nextCursor &&
+						page.items.length <= 15 &&
+						page.items.filter((m) => m.citation.source.messageId !== source.messageId).length < 15,
+				};
+				if (clarificationPages.size >= 20) {
+					const oldest = clarificationPages.keys().next().value;
+					if (oldest) clarificationPages.delete(oldest);
+				}
+				clarificationPages.set(clarificationDigest(read), page);
+				return read;
+			},
 			send: async (input, signal) => {
 				const session = this.required();
 				await this.ensure(session, signal);
+				if (input.clarification) {
+					const key = input.clarificationThreadDigest ?? "";
+					const page = clarificationPages.get(key);
+					clarificationPages.delete(key);
+					if (!page) throw new SlackError("stale-source");
+					return this.client.sendFromObservedThread(input, page, signal);
+				}
 				return this.client.send(input, signal);
 			},
 			reconcile: async (input, signal) => {
@@ -836,12 +887,17 @@ export class SlackWorkspaceCoordinator {
 		preferences: SlackPreferences,
 		signal: AbortSignal
 	): Promise<void> {
+		// Active delegations own the scarce replies-method budget; history ingestion continues.
+		const clarifying =
+			(await this.options.getDay()?.snapshot())?.items.some(
+				(i) => i.clarification?.status === "active"
+			) ?? false;
 		const streams = [
 			...preferences.conversationIds.map((conversationId) => ({
 				conversationId,
 				threadTs: undefined as string | undefined,
 			})),
-			...preferences.threads,
+			...(clarifying ? [] : preferences.threads),
 		];
 		let selected = -1;
 		for (let offset = 0; offset < streams.length; offset++) {

@@ -30,7 +30,9 @@ export function DayQueue({ controller, selectedId, onOpenItem }: DayQueueProps) 
 				<span className="command-item-title">{item.title}</span>
 				<span className="command-item-meta">
 					{item.acceptance === "pending" ? "Acceptance pending · " : ""}
-					{phasePresentation[item.phase].label}
+					{item.clarification?.status === "needs_user"
+						? "Clarification needs your judgment"
+						: phasePresentation[item.phase].label}
 				</span>
 				<span className="command-item-meta">{sourceVisibility(item)}</span>
 			</button>

@@ -16,6 +16,7 @@ import {
 import {
 	type DayActor,
 	DayActorSchema,
+	type DayClarification,
 	type DayOperateInput,
 	DayOperateInputSchema,
 	type DayOperationResult,
@@ -26,6 +27,14 @@ import {
 } from "../../shared/contracts/day";
 import { abortable } from "../agent/cancellation";
 import type { DayStore } from "../db/day-store";
+import { SlackError } from "../slack/types";
+import {
+	type ClarificationAnalysis,
+	ClarificationAnalysisSchema,
+	type ClarificationRead,
+	ClarificationReadSchema,
+	clarificationDigest,
+} from "./clarification";
 import {
 	type DayCapture,
 	DayCaptureSchema,
@@ -72,12 +81,15 @@ export interface DayWorkerPort {
 	): Promise<void>;
 }
 export interface DayReplyRequest {
+	clarification?: true;
+	clarificationThreadDigest?: string;
 	requestId: string;
 	source: ChatSource;
 	body: string;
 }
 /** Duck-compatible with SlackReplyLedger; provider reservation is distinct from the outer attempt. */
 export interface DayProviderReplyLedger {
+	authorize(key: string, bindingDigest: string): Promise<void>;
 	reserve(
 		key: string,
 		bindingDigest: string
@@ -89,6 +101,8 @@ export interface DayProviderReplyLedger {
 	delivered(key: string, bindingDigest: string, receipt: ChatReplyReceipt): Promise<void>;
 }
 export interface DayReplyPort {
+	/** Current identity and complete bounded original-thread read, under fresh membership checks. */
+	readClarification?(source: ChatSource, signal: AbortSignal): Promise<ClarificationRead>;
 	send(input: DayReplyRequest, signal: AbortSignal): Promise<ChatReplyReceipt>;
 	/** not_found must be authoritative. An eventually consistent search miss is uncertain. */
 	reconcile(
@@ -103,6 +117,11 @@ export interface DayPorts {
 	actor: DayActor;
 	availability(): DayAvailability;
 	worker?: DayWorkerPort;
+	analyzeClarification?(
+		clarification: DayClarification,
+		read: ClarificationRead,
+		signal: AbortSignal
+	): Promise<ClarificationAnalysis>;
 	replies?: DayReplyPort;
 	linearTicket?(issueId: string, signal: AbortSignal): Promise<LinearTicket>;
 	now?(): number;
@@ -146,6 +165,17 @@ export class DayService {
 		this.id = ports.id ?? randomUUID;
 		this.state = emptyDayState(this.iso());
 		this.replyLedger = {
+			authorize: async (key, binding) => {
+				this.assertOpen();
+				await this.initialize();
+				const { record, reply } = this.ledgerReply(this.state, key, binding);
+				if (
+					reply.providerKey !== key ||
+					reply.providerBindingDigest !== binding ||
+					!this.replyEligible(record, reply)
+				)
+					throw unavailable();
+			},
 			reserve: (key, binding) => this.reserveReply(key, binding),
 			delivered: (key, binding, receipt) => this.providerDelivered(key, binding, receipt),
 		};
@@ -426,6 +456,10 @@ export class DayService {
 						deliveredAt: null,
 					});
 				for (const reply of record.outbox) reply.superseded = true;
+				if (record.item.clarification) {
+					record.item.clarification.status = "revoked";
+					record.item.clarification.policy.revision++;
+				}
 				record.item.source = message.citation;
 				record.item.title = input.title;
 				record.item.summary = input.summary;
@@ -520,6 +554,12 @@ export class DayService {
 			};
 			record.sourceDeleted = record.sourceFence.deleted;
 			record.sourceText = null;
+			if (record.item.clarification) {
+				record.item.clarification.evidence = [];
+				record.item.clarification.summary = "";
+				record.item.clarification.missing = [];
+				record.item.clarification.policy.originalRequest = "Source no longer available";
+			}
 			record.item.title = input.deleted ? "Slack source removed" : "Slack source changed";
 			record.item.summary = "";
 			record.item.replyDraft = null;
@@ -677,6 +717,19 @@ export class DayService {
 		await this.initialize();
 		const replay = this.replay(this.state, input.requestId, digest);
 		if (replay) return this.result(input.requestId, replay);
+		let clarificationRead: ClarificationRead | undefined;
+		if (input.operation.kind === "propose_clarification") {
+			const record = this.current(input.operation.itemId);
+			if (
+				record.item.revision !== input.operation.expectedRevision ||
+				!record.item.source ||
+				record.sourceDeleted
+			)
+				throw new DayChanged();
+			const signal = AbortSignal.any([this.lifetime.signal, AbortSignal.timeout(30000)]);
+			if (input.operation.kind === "propose_clarification") record.item.clarification = undefined;
+			clarificationRead = await this.readClarification(record, signal);
+		}
 		let ticket: LinearTicket | undefined;
 		if (input.operation.kind === "link_linear") {
 			const record = this.record(this.state, input.operation.itemId);
@@ -723,6 +776,70 @@ export class DayService {
 				if (item.phase === "closed" || item.phase === "cancelled" || record.sourceDeleted)
 					throw unavailable();
 				switch (op.kind) {
+					case "propose_clarification": {
+						if (
+							!clarificationRead ||
+							!item.source ||
+							record.outbox.some(
+								(r) => r.status === "uncertain" || (r.status !== "delivered" && !r.superseded)
+							)
+						)
+							throw unavailable();
+						if (item.clarification?.status === "active")
+							throw new Error("Pause or revoke the current delegation first");
+						item.clarification = {
+							policy: {
+								id: this.id(),
+								revision: 1,
+								connectionId: clarificationRead.connectionId,
+								actor: this.actor,
+								source: item.source.source,
+								originalRequest:
+									clarificationRead.messages.find(
+										(m) => m.citation.source.messageId === item.source?.source.messageId
+									)?.text ?? "",
+								scope: op.scope,
+								maxMessages: op.maxMessages,
+								durationMinutes: op.durationMinutes,
+								sendAuthority: "clarification-only-original-thread",
+							},
+							status: "proposed",
+							confirmedAt: null,
+							expiresAt: null,
+							summary: "",
+							missing: [],
+							reason: null,
+							evidence: clarificationRead.messages,
+							attempts: [],
+						};
+						break;
+					}
+					case "confirm_clarification": {
+						const c = item.clarification;
+						if (
+							!c ||
+							c.status !== "proposed" ||
+							c.policy.id !== op.policyId ||
+							c.policy.revision !== op.policyRevision ||
+							JSON.stringify(c.policy.source) !== JSON.stringify(item.source?.source)
+						)
+							throw new DayChanged();
+						record.clarificationRetryAt = undefined;
+						c.status = "active";
+						c.confirmedAt = this.iso();
+						c.expiresAt = this.iso(c.policy.durationMinutes * 60000);
+						break;
+					}
+					case "pause_clarification":
+					case "revoke_clarification": {
+						const c = item.clarification;
+						if (!c) throw unavailable();
+						c.status = op.kind === "pause_clarification" ? "paused" : "revoked";
+						c.policy.revision++;
+						for (const reply of record.outbox)
+							if (reply.clarification && reply.status !== "delivered") reply.superseded = true;
+						break;
+					}
 					case "confirm_local_answer": {
 						const job = record.preparation?.job;
 						if (
@@ -818,7 +935,11 @@ export class DayService {
 					}
 					case "draft_reply":
 						if (item.acceptance !== "accepted" || !item.source) throw unavailable();
-						if (record.outbox.some((reply) => !reply.superseded && reply.status !== "delivered"))
+						if (
+							record.outbox.some(
+								(reply) => !reply.clarification && !reply.superseded && reply.status !== "delivered"
+							)
+						)
 							throw new DayChanged();
 						item.replyDraft = {
 							revision:
@@ -851,7 +972,11 @@ export class DayService {
 								item.reviewedHeadSha !== job.headSha)
 						)
 							throw unavailable();
-						if (record.outbox.some((reply) => !reply.superseded && reply.status !== "delivered"))
+						if (
+							record.outbox.some(
+								(reply) => !reply.clarification && !reply.superseded && reply.status !== "delivered"
+							)
+						)
 							throw new DayChanged();
 						record.outbox.push({
 							requestId: `day-reply-${sha256(JSON.stringify([this.actor, input.requestId]))}`,
@@ -886,6 +1011,10 @@ export class DayService {
 		return this.result(input.requestId, itemId);
 	}
 	private cancelRecord(record: DayRecord, requestId: string) {
+		if (record.item.clarification) {
+			record.item.clarification.status = "revoked";
+			record.item.clarification.policy.revision++;
+		}
 		if (record.item.jobId)
 			record.controls.push({
 				requestId: `day-control-${sha256(JSON.stringify([this.actor, requestId]))}`,
@@ -921,7 +1050,9 @@ export class DayService {
 		}
 		if (
 			item.acceptance === "accepted" &&
-			record.outbox.some((reply) => !reply.superseded && reply.status !== "delivered")
+			record.outbox.some(
+				(reply) => !reply.clarification && !reply.superseded && reply.status !== "delivered"
+			)
 		) {
 			item.phase = "awaiting_reply";
 			return;
@@ -1005,7 +1136,186 @@ export class DayService {
 	private current(id: string) {
 		return structuredClone(this.record(this.state, id));
 	}
+	private async readClarification(
+		record: DayRecord,
+		signal: AbortSignal
+	): Promise<ClarificationRead> {
+		const source = record.item.source?.source;
+		if (!source || !this.ports.replies?.readClarification) throw unavailable();
+		this.ensureAvailable(signal);
+		const read = ClarificationReadSchema.parse(
+			await abortable(this.ports.replies.readClarification(source, signal), signal)
+		);
+		this.ensureAvailable(signal);
+		const original = read.messages.find((m) => m.citation.source.messageId === source.messageId);
+		if (
+			!read.complete ||
+			!original ||
+			original.deletedAt ||
+			original.truncated ||
+			JSON.stringify(original.citation.source) !== JSON.stringify(source) ||
+			original.text !== record.sourceText ||
+			read.messages.some(
+				(m) =>
+					m.deletedAt ||
+					m.truncated ||
+					m.citation.source.workspaceId !== this.actor.workspaceId ||
+					m.citation.source.conversationId !== source.conversationId ||
+					(m.citation.source.threadId ?? m.citation.source.messageId) !==
+						(source.threadId ?? source.messageId) ||
+					!m.citation.audience.readerIds.includes(this.actor.userId)
+			) ||
+			(record.item.clarification &&
+				record.item.clarification.status !== "proposed" &&
+				read.connectionId !== record.item.clarification.policy.connectionId)
+		)
+			throw unavailable();
+		return read;
+	}
+	private async deferClarification(id: string, error: unknown) {
+		if (!(error instanceof SlackError) || error.code !== "rate-limited") return false;
+		await this.update((state) => {
+			this.record(state, id).clarificationRetryAt = this.iso(
+				Math.max(1, error.retryAfterSeconds ?? 60) * 1000
+			);
+		});
+		return true;
+	}
+	private async processClarification(id: string, signal: AbortSignal) {
+		const record = this.current(id);
+		const c = record.item.clarification;
+		if (
+			!c ||
+			c.status !== "active" ||
+			record.paused ||
+			["closed", "cancelled"].includes(record.item.phase)
+		)
+			return;
+
+		const change = async (reason: DayClarification["reason"]) =>
+			this.update((state) => {
+				const current = this.record(state, id);
+				if (
+					current.item.clarification?.policy.id !== c.policy.id ||
+					current.item.clarification.status !== "active"
+				)
+					return;
+				current.item.clarification.status = "needs_user";
+				current.item.clarification.reason = reason;
+				for (const reply of current.outbox)
+					if (reply.clarification && reply.status !== "delivered") reply.superseded = true;
+				this.touch(current);
+			});
+		if (c.expiresAt && Date.parse(c.expiresAt) <= this.now()) {
+			await change("unanswered");
+			return;
+		}
+		if (record.clarificationRetryAt && Date.parse(record.clarificationRetryAt) > this.now()) return;
+		if (c.attempts.some((a) => a.status === "uncertain")) {
+			await change("uncertain_send");
+			return;
+		}
+		if (c.attempts.some((a) => a.status === "pending")) return;
+		try {
+			const read = await this.readClarification(record, signal);
+			// Only a new/edited requester answer may trigger a follow-up. Our own posts and other bots cannot loop.
+			if (
+				c.attempts.length &&
+				!read.messages.some(
+					(m) =>
+						m.authorId === record.item.requestedById &&
+						m.citation.source.messageId !== c.policy.source.messageId &&
+						!c.evidence.some(
+							(old) =>
+								old.citation.source.messageId === m.citation.source.messageId &&
+								old.citation.source.revisionId === m.citation.source.revisionId &&
+								old.text === m.text
+						)
+				)
+			)
+				return;
+			if (!this.ports.analyzeClarification) throw unavailable();
+			const analysis = ClarificationAnalysisSchema.parse(
+				await abortable(this.ports.analyzeClarification(c, read, signal), signal)
+			);
+			const fresh = read; // A separate fresh provider read gates the actual send, possibly on a later paced tick.
+			await this.update((state) => {
+				this.ensureAvailable(signal);
+				const current = this.record(state, id);
+				const target = current.item.clarification;
+				if (
+					!target ||
+					target.status !== "active" ||
+					current.item.revision !== record.item.revision ||
+					target.policy.id !== c.policy.id ||
+					target.policy.revision !== c.policy.revision
+				)
+					return;
+				target.evidence = fresh.messages;
+				target.summary = analysis.summary;
+				target.missing = analysis.missing;
+				target.reason = analysis.escalation;
+				if (analysis.escalation) target.status = "needs_user";
+				else if (!analysis.missing.length && !analysis.questions.length) target.status = "complete";
+				else if (analysis.questions.length) {
+					if (
+						target.attempts.length >= target.policy.maxMessages ||
+						!target.expiresAt ||
+						Date.parse(target.expiresAt) <= this.now()
+					) {
+						target.status = "needs_user";
+						target.reason = "bounds";
+					} else {
+						const body = analysis.questions.join("\n");
+						// Duplicate bodies are never sent even if inference proposes a repeated question.
+						if (target.attempts.some((a) => a.bodyDigest === sha256(body))) {
+							target.status = "needs_user";
+							target.reason = "unanswered";
+						} else {
+							const requestId = `day-clarify-${sha256(JSON.stringify([this.actor, target.policy.id, target.policy.revision, target.attempts.length]))}`;
+							current.outbox.push({
+								requestId,
+								source: target.policy.source,
+								body,
+								bodyDigest: sha256(body),
+								draftRevision: target.policy.revision,
+								confirmedAt: target.confirmedAt ?? this.iso(),
+								status: "pending",
+								superseded: false,
+								attempts: 0,
+								lastAttemptAt: null,
+								providerKey: null,
+								providerBindingDigest: null,
+								receipt: null,
+								clarification: {
+									policyId: target.policy.id,
+									policyRevision: target.policy.revision,
+									connectionId: target.policy.connectionId,
+									threadDigest: clarificationDigest(fresh),
+								},
+							});
+							target.attempts.push({
+								requestId,
+								policyRevision: target.policy.revision,
+								body,
+								bodyDigest: sha256(body),
+								status: "pending",
+								receipt: null,
+							});
+						}
+					}
+				}
+				this.touch(current);
+			});
+		} catch (error) {
+			if (signal.aborted) throw error;
+			if (await this.deferClarification(id, error)) return;
+			await change("unavailable");
+		}
+	}
+
 	private async processRecord(id: string, signal: AbortSignal) {
+		await this.processClarification(id, signal);
 		let record = this.current(id);
 		for (const control of record.controls.filter((control) => !control.deliveredAt)) {
 			if (!this.ports.worker) throw unavailable();
@@ -1237,6 +1547,25 @@ export class DayService {
 	}
 	private replyEligible(record: DayRecord, reply: DayOutbox) {
 		const { item } = record;
+		if (reply.clarification) {
+			const c = item.clarification;
+			return (
+				!!c &&
+				c.status === "active" &&
+				c.confirmedAt !== null &&
+				c.expiresAt !== null &&
+				Date.parse(c.expiresAt) > this.now() &&
+				!reply.superseded &&
+				!record.sourceDeleted &&
+				!record.paused &&
+				!["closed", "cancelled"].includes(item.phase) &&
+				c.policy.id === reply.clarification.policyId &&
+				c.policy.revision === reply.clarification.policyRevision &&
+				c.policy.connectionId === reply.clarification.connectionId &&
+				JSON.stringify(c.policy.source) === JSON.stringify(reply.source) &&
+				JSON.stringify(item.source?.source) === JSON.stringify(reply.source)
+			);
+		}
 		const job = record.preparation?.job;
 		return (
 			!reply.superseded &&
@@ -1285,6 +1614,8 @@ export class DayService {
 			const { record, reply } = this.ledgerReply(state, key, binding);
 			if (reply.receipt) return { state: "delivered" as const, receipt: reply.receipt };
 			if (reply.providerKey) return { state: "uncertain" as const };
+			if (reply.clarification && !key.startsWith(`${reply.clarification.connectionId}:`))
+				throw new DayChanged();
 			if (reply.status !== "uncertain" || !this.replyEligible(record, reply)) throw unavailable();
 			reply.providerKey = key;
 			reply.providerBindingDigest = binding;
@@ -1322,6 +1653,11 @@ export class DayService {
 		const input = z
 			.strictObject({
 				requestId: IdSchema,
+				clarification: z.literal(true).optional(),
+				clarificationThreadDigest: z
+					.string()
+					.regex(/^[a-f0-9]{64}$/)
+					.optional(),
 				source: ChatSourceSchema,
 				body: z.string().min(1).max(4000),
 			})
@@ -1343,6 +1679,17 @@ export class DayService {
 	private recordReceipt(record: DayRecord, reply: DayOutbox, receipt: ChatReplyReceipt) {
 		reply.status = "delivered";
 		reply.receipt = receipt;
+		if (reply.clarification) {
+			const attempt = record.item.clarification?.attempts.find(
+				(a) => a.requestId === reply.requestId
+			);
+			if (attempt) {
+				attempt.status = "delivered";
+				attempt.receipt = receipt;
+			}
+			this.touch(record);
+			return;
+		}
 		if (this.replyEligible(record, reply)) {
 			record.item.answerReceipt = receipt;
 			record.item.phase = "closed";
@@ -1356,6 +1703,12 @@ export class DayService {
 			requestId: initial.requestId,
 			source: initial.source,
 			body: initial.body,
+			...(initial.clarification
+				? {
+						clarification: true as const,
+						clarificationThreadDigest: initial.clarification.threadDigest,
+					}
+				: {}),
 		};
 		this.ensureAvailable(signal);
 		if (initial.status === "uncertain") {
@@ -1367,6 +1720,39 @@ export class DayService {
 			if (result.status === "uncertain") throw unavailable();
 			if (initial.superseded) return;
 		}
+		if (initial.clarification) {
+			const retryAt = this.current(id).clarificationRetryAt;
+			if (retryAt && Date.parse(retryAt) > this.now()) return;
+			let read: ClarificationRead;
+			try {
+				read = await this.readClarification(this.current(id), signal);
+			} catch (error) {
+				if (await this.deferClarification(id, error)) return;
+				await this.update((state) => {
+					const record = this.record(state, id);
+					const reply = record.outbox.find((r) => r.requestId === initial.requestId);
+					if (reply) reply.superseded = true;
+					if (record.item.clarification?.status === "active") {
+						record.item.clarification.status = "needs_user";
+						record.item.clarification.reason = "unavailable";
+						this.touch(record);
+					}
+				});
+				return;
+			}
+			if (clarificationDigest(read) !== initial.clarification.threadDigest) {
+				await this.update((state) => {
+					const record = this.record(state, id);
+					const reply = record.outbox.find((r) => r.requestId === initial.requestId);
+					if (reply) reply.superseded = true;
+					if (record.item.clarification) record.item.clarification.status = "needs_user";
+					if (record.item.clarification) record.item.clarification.evidence = read.messages;
+					if (record.item.clarification) record.item.clarification.reason = "source_changed";
+					this.touch(record);
+				});
+				return;
+			}
+		}
 		// Mark uncertain before calling the provider. A crash after network acceptance must never resend blindly.
 		const admitted = await this.update((state) => {
 			this.ensureAvailable(signal);
@@ -1376,6 +1762,10 @@ export class DayService {
 			reply.status = "uncertain";
 			reply.attempts++;
 			reply.lastAttemptAt = this.iso();
+			const attempt = record.item.clarification?.attempts.find(
+				(a) => a.requestId === reply.requestId
+			);
+			if (attempt) attempt.status = "uncertain";
 			return true;
 		});
 		if (!admitted) return;

@@ -1,6 +1,7 @@
 import { useLayoutEffect, useRef } from "react";
 import { useStore } from "zustand";
 import type { WorkspaceCommand } from "../../shared/contracts/workspace";
+import { DayClarification } from "./DayClarification";
 import { DayFeedback } from "./DayFeedback";
 import { DayQuestions } from "./DayQuestions";
 import { DayReply } from "./DayReply";
@@ -191,6 +192,7 @@ export function DayWorkItem({
 					<p className="day-hint">Background supervision is {snapshot.supervisor}.</p>
 				)}
 			</section>
+			<DayClarification item={item} controller={controller} busy={busy} />
 			<DaySourceThread item={item} thread={thread} onLoad={onLoadThread} command={command} />
 			<DayReply
 				key={`${item.id}:${item.replyDraft?.revision ?? 0}`}

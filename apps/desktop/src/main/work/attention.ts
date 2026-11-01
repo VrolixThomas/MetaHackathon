@@ -116,6 +116,23 @@ export class AttentionScheduler {
 		for (const notice of [...state.notices].sort(
 			(a, b) => timestamp(b.createdAt) - timestamp(a.createdAt)
 		)) {
+			if (notice.clarification && !notice.seenAt && !notice.announcedAt) {
+				const item: AttentionItem = {
+					noticeId: notice.id,
+					kind: "clarification",
+					jobId: null,
+					dayItemId: notice.clarification.itemId,
+					repository: null,
+					label: "Slack clarification needs your judgment",
+					headSha: null,
+					decisionId: null,
+					question: "Please inspect the clarification in My day.",
+					changedFileCount: 0,
+					applied: false,
+				};
+				candidates.push({ item, key: fingerprint(item) });
+				continue;
+			}
 			if (!notice.jobId || used.has(notice.jobId) || notice.seenAt || notice.announcedAt) continue;
 			const job = jobs.get(notice.jobId);
 			if (!job || (notice.headSha !== undefined && notice.headSha !== job.headSha)) continue;
@@ -153,7 +170,7 @@ export class AttentionScheduler {
 			used.add(job.id);
 			candidates.push({ item, key: fingerprint(item) });
 		}
-		const priority = { decision: 0, "work-failed": 1, "work-ready": 2 };
+		const priority = { clarification: 0, decision: 0, "work-failed": 1, "work-ready": 2 };
 		return candidates.sort((a, b) => priority[a.item.kind] - priority[b.item.kind]);
 	}
 	private fresh(lease: Lease, state: State) {

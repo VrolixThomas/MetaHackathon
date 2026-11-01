@@ -122,3 +122,47 @@ delivery before MET-67 can be Done.
 
 Storage bounds (1000 retained items, 100 replies per item, 10000 operation IDs, 32 MiB total) reject
 new oversized writes without evicting pending work, delivery proof or idempotency history.
+
+
+## MET-76: delegated original-thread clarification
+
+`DayWorkItem.clarification` is additive private state. `propose_clarification` reads the actual
+complete bounded Slack thread and records the original request, connected grant, owner, exact source
+revision, permitted scope and message/time bounds. `confirm_clarification` activates that inspected
+proposal; foreground tools require a distinct actual user turn and inspection. Voice and typing use
+the same operations. My day exposes proposal inspection/authorization, pause and revoke, evidence,
+inferred brief, missing context, exact outbound questions and verified/uncertain receipts.
+
+Authority is only for clarification in the original thread: at most three messages/rounds, three
+questions per message and 5–120 minutes from confirmation. Preparation/ownership/execution/final
+answer authorization retain their existing independent gates. Clarification receipts never become
+`answerReceipt` or close a commitment. Resuming a paused/revoked policy requires a new proposal and
+confirmation. The immutable body/digest and original policy revision remain in every durable outbox
+attempt; revocation fences admission while retaining already dispatched uncertain effects.
+
+Muse inference uses only attributed original-thread evidence and no tools. It must omit already
+answered/repeated questions and escalate contradictions, sensitive data or expanded scope. Only new
+requester replies trigger follow-ups. Unknown sends never retry blindly; unanswered/expired/bounded
+work escalates. The source read and send recheck account, source revision, complete membership and
+thread. Partial/oversized contexts fail closed. Long threads beyond the complete 15-message budget
+require user judgment rather than assuming omitted replies are absent.
+
+Commercial history/replies pacing and HTTP 429 Retry-After remain authoritative. A paced read defers
+the saved policy/attempt. The eventual send compares a fresh complete thread digest with the evidence
+used for the proposed questions. The actual SlackClient observation is a main-only, single-use
+10-second capability (not serialized audience metadata); fresh membership and the durable Day policy
+are checked before POST. Ordinary replies continue to use exact-draft confirmation and source reads.
+Active clarification takes priority over automatic thread polling for the scarce replies-method
+budget, while history intake continues.
+
+Escalations enter the existing durable attention ledger with generic text, no fabricated job or
+repository, and no private source text. Current Day policy/account status fences attention claims;
+quiet/focus/modal/playback rules remain owned by AttentionScheduler. No navigation occurs.
+
+Controlled checks include the clarification lifecycle, voice/typing tool admission, actual SlackClient
+HTTP transport/observation admission, outbox reload, policy fencing, bounds, pacing, privacy attribution,
+My day SSR and attention leases. They are not native app, live Slack, real speech or full process
+restart evidence. Integration acceptance remains required: exercise the actual default Electron UI/IPC
+and SQLite, including proposal/confirm/pause/revoke, late source changes and restart, then an explicitly
+authorized question and actual requester answer in an owned Slack test thread. Existing `test:day`
+and `test:slack-oauth` remain regression suites, not proof of this new native clarification workflow.

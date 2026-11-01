@@ -12,18 +12,27 @@ export const AttentionPresenceSchema = z.strictObject({
 	obscured: z.boolean(),
 	activitySequence: z.int().nonnegative(),
 });
-export const AttentionItemSchema = z.strictObject({
-	noticeId: IdSchema,
-	kind: z.enum(["decision", "work-failed", "work-ready"]),
-	jobId: IdSchema,
-	repository: GitHubRepositorySchema,
-	label: z.string().min(1).max(300),
-	headSha: CommitShaSchema.nullable(),
-	decisionId: IdSchema.nullable(),
-	question: z.string().max(2000).nullable(),
-	changedFileCount: z.int().nonnegative(),
-	applied: z.boolean(),
-});
+export const AttentionItemSchema = z
+	.strictObject({
+		noticeId: IdSchema,
+		kind: z.enum(["decision", "work-failed", "work-ready", "clarification"]),
+		jobId: IdSchema.nullable(),
+		repository: GitHubRepositorySchema.nullable(),
+		dayItemId: IdSchema.optional(),
+		label: z.string().min(1).max(300),
+		headSha: CommitShaSchema.nullable(),
+		decisionId: IdSchema.nullable(),
+		question: z.string().max(2000).nullable(),
+		changedFileCount: z.int().nonnegative(),
+		applied: z.boolean(),
+	})
+	.refine(
+		(item) =>
+			item.kind === "clarification"
+				? !!item.dayItemId && item.jobId === null && item.repository === null
+				: item.jobId !== null && item.repository !== null && item.dayItemId === undefined,
+		"Attention must distinguish actual jobs from source-only Day clarification"
+	);
 export const AttentionClaimSchema = z
 	.strictObject({
 		id: IdSchema,
@@ -32,9 +41,13 @@ export const AttentionClaimSchema = z
 		createdAt: z.iso.datetime(),
 		expiresAt: z.iso.datetime(),
 	})
-	.refine((claim) => new Set(claim.items.map((item) => item.jobId)).size === claim.items.length, {
-		message: "One attention item per job",
-	});
+	.refine(
+		(claim) =>
+			new Set(claim.items.map((item) => item.dayItemId ?? item.jobId)).size === claim.items.length,
+		{
+			message: "One attention item per job",
+		}
+	);
 export const AttentionPollResultSchema = z.strictObject({ claim: AttentionClaimSchema.nullable() });
 /** Assistant initiative has an explicit entry point and never invents a user utterance. */
 export const ConversationAttentionInputSchema = z.strictObject({

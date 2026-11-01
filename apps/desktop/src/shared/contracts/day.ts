@@ -1,5 +1,10 @@
 import { z } from "zod";
-import { ChatCitationSchema, ChatReplyReceiptSchema } from "./chat";
+import {
+	ChatCitationSchema,
+	ChatMessageSchema,
+	ChatReplyReceiptSchema,
+	ChatSourceSchema,
+} from "./chat";
 import { CommitShaSchema, DateTimeSchema, IdSchema } from "./common";
 
 export const DayActorSchema = z.strictObject({ workspaceId: IdSchema, userId: IdSchema });
@@ -20,8 +25,56 @@ export const DayQuestionSchema = z.strictObject({
 	answer: z.string().max(12000).nullable(),
 	answeredAt: DateTimeSchema.nullable(),
 });
+/** Explicit, private, thread-only send authority. Never execution or ownership authority. */
+export const ClarificationPolicySchema = z.strictObject({
+	id: IdSchema,
+	revision: z.int().positive(),
+	connectionId: IdSchema,
+	actor: DayActorSchema,
+	source: ChatSourceSchema,
+	originalRequest: z.string().min(1).max(40000),
+	scope: z.string().min(1).max(1000),
+	maxMessages: z.int().min(1).max(3),
+	durationMinutes: z.int().min(5).max(120),
+	sendAuthority: z.literal("clarification-only-original-thread"),
+});
+export const DayClarificationSchema = z.strictObject({
+	policy: ClarificationPolicySchema,
+	status: z.enum(["proposed", "active", "paused", "revoked", "needs_user", "complete"]),
+	confirmedAt: DateTimeSchema.nullable(),
+	expiresAt: DateTimeSchema.nullable(),
+	summary: z.string().max(4000),
+	missing: z.array(z.string().min(1).max(500)).max(5),
+	reason: z
+		.enum([
+			"unanswered",
+			"contradiction",
+			"sensitive",
+			"expanded_scope",
+			"bounds",
+			"source_changed",
+			"uncertain_send",
+			"unavailable",
+		])
+		.nullable(),
+	evidence: z.array(ChatMessageSchema).max(15),
+	attempts: z
+		.array(
+			z.strictObject({
+				requestId: IdSchema,
+				policyRevision: z.int().positive(),
+				body: z.string().min(1).max(2000),
+				bodyDigest: z.string().regex(/^[a-f0-9]{64}$/),
+				status: z.enum(["pending", "uncertain", "delivered"]),
+				receipt: ChatReplyReceiptSchema.nullable(),
+			})
+		)
+		.max(3),
+});
+export type DayClarification = z.infer<typeof DayClarificationSchema>;
 export const DayWorkItemSchema = z
 	.strictObject({
+		clarification: DayClarificationSchema.optional(),
 		id: IdSchema,
 		revision: z.int().positive(),
 		workspaceId: IdSchema,
@@ -60,6 +113,47 @@ export const DayWorkItemSchema = z
 	})
 	.superRefine((row, ctx) => {
 		const invalid = (message: string) => ctx.addIssue({ code: "custom", message });
+		const c = row.clarification;
+		if (c) {
+			const policy = c.policy;
+			if (
+				!row.source ||
+				policy.actor.workspaceId !== row.workspaceId ||
+				policy.actor.userId !== row.ownerUserId ||
+				policy.source.workspaceId !== row.workspaceId ||
+				policy.source.conversationId !== row.source.source.conversationId ||
+				policy.source.messageId !== row.source.source.messageId ||
+				(policy.source.threadId ?? policy.source.messageId) !==
+					(row.source.source.threadId ?? row.source.source.messageId)
+			)
+				invalid("Clarification must belong to the work owner and original thread");
+			if (c.attempts.length > policy.maxMessages) invalid("Clarification message budget exceeded");
+			if (
+				["proposed", "active"].includes(c.status) &&
+				policy.source.revisionId !== row.source?.source.revisionId
+			)
+				invalid("Current clarification policy requires the current source revision");
+			if (
+				c.status === "active" &&
+				(!c.confirmedAt ||
+					!c.expiresAt ||
+					Date.parse(c.expiresAt) - Date.parse(c.confirmedAt) !== policy.durationMinutes * 60000)
+			)
+				invalid("Active clarification requires explicit bounded confirmation");
+			if (c.status === "proposed" && (c.confirmedAt || c.expiresAt || c.attempts.length))
+				invalid("A proposal cannot hold send authority or attempts");
+			if (
+				c.evidence.some(
+					(m) =>
+						m.citation.source.workspaceId !== row.workspaceId ||
+						m.citation.source.conversationId !== policy.source.conversationId ||
+						(m.citation.source.threadId ?? m.citation.source.messageId) !==
+							(policy.source.threadId ?? policy.source.messageId) ||
+						!m.citation.audience.readerIds.includes(row.ownerUserId)
+				)
+			)
+				invalid("Clarification evidence must retain original thread and audience");
+		}
 		if (row.source && row.source.source.workspaceId !== row.workspaceId)
 			invalid("Work item source belongs to another workspace");
 		if (row.acceptance === "accepted" && (!row.acceptedAt || row.acceptanceBasis === "none"))
@@ -115,6 +209,21 @@ export const DaySnapshotSchema = z
 	);
 const versioned = { itemId: IdSchema, expectedRevision: z.int().positive() };
 export const DayOperationSchema = z.discriminatedUnion("kind", [
+	z.strictObject({
+		kind: z.literal("propose_clarification"),
+		...versioned,
+		scope: z.string().min(1).max(1000),
+		maxMessages: z.int().min(1).max(3),
+		durationMinutes: z.int().min(5).max(120),
+	}),
+	z.strictObject({
+		kind: z.literal("confirm_clarification"),
+		...versioned,
+		policyId: IdSchema,
+		policyRevision: z.int().positive(),
+	}),
+	z.strictObject({ kind: z.literal("pause_clarification"), ...versioned }),
+	z.strictObject({ kind: z.literal("revoke_clarification"), ...versioned }),
 	z.strictObject({
 		kind: z.literal("confirm_local_answer"),
 		...versioned,

@@ -81,6 +81,7 @@ export interface SlackReplyRequest {
 }
 /** Atomic durable reserve precedes the send. Existing pending/uncertain records must not reserve again. */
 export interface SlackReplyLedger {
+	authorize?(key: string, bindingDigest: string): Promise<void>;
 	reserve(
 		key: string,
 		bindingDigest: string
@@ -169,6 +170,10 @@ export class SlackClient {
 	readonly transport: SlackTransport;
 	private readonly now: () => number;
 	private readonly profileLabels: SlackProfileLabels;
+	private readonly observedThreads = new WeakMap<
+		SlackMessagePage,
+		{ credential: SlackCredential; at: number; digest: string }
+	>();
 	private readonly sends = new Map<
 		string,
 		{ binding: string; promise: Promise<ChatReplyReceipt> }
@@ -206,11 +211,13 @@ export class SlackClient {
 		credential: SlackCredential,
 		method: Parameters<SlackTransport["call"]>[0],
 		fields: Record<string, string | number | boolean>,
-		parentSignal?: AbortSignal
+		parentSignal?: AbortSignal,
+		beforeRequest?: () => Promise<void>
 	): Promise<unknown> {
 		const signal = operationSignal(parentSignal);
 		if (signal?.aborted) throw new SlackError("cancelled");
 		await this.assertCurrent(credential, signal);
+		await beforeRequest?.();
 		const result = await this.transport.call(method, {
 			token: credential.accessToken,
 			fields,
@@ -467,7 +474,7 @@ export class SlackClient {
 				return slackMessage(row, audience);
 			});
 		const nextCursor = value.response_metadata?.next_cursor || null;
-		return {
+		const page = {
 			items,
 			nextCursor,
 			hasMore: !!nextCursor || !!value.has_more,
@@ -479,6 +486,56 @@ export class SlackClient {
 				),
 			],
 		};
+		if (input.threadTs)
+			this.observedThreads.set(page, {
+				credential,
+				at: this.now(),
+				digest: slackDigest(JSON.stringify(page)),
+			});
+		return page;
+	}
+	/** Main-only, single-use actual complete thread observation, never a serialized audience snapshot. */
+	async sendFromObservedThread(
+		input: SlackReplyRequest,
+		page: SlackMessagePage,
+		signal?: AbortSignal
+	): Promise<ChatReplyReceipt> {
+		const observed = this.observedThreads.get(page);
+		this.observedThreads.delete(page);
+		if (
+			!observed ||
+			this.now() - observed.at > 10000 ||
+			page.hasMore ||
+			page.nextCursor ||
+			observed.digest !== slackDigest(JSON.stringify(page))
+		)
+			throw new SlackError("stale-source");
+		const original = page.items.find((m) => m.citation.source.messageId === input.source.messageId);
+		if (
+			!original ||
+			original.deletedAt ||
+			original.truncated ||
+			JSON.stringify(original.citation.source) !== JSON.stringify(input.source)
+		)
+			throw new SlackError("stale-source");
+		parsed(ChatSourceSchema, input.source);
+		parsed(z.string().min(1).max(200), input.requestId);
+		parsed(z.string().min(1).max(4000), input.body);
+		return this.sendOnce(
+			input,
+			slackDigest(JSON.stringify([input.source, input.body])),
+			signal,
+			async (credential) => {
+				await this.assertCurrent(observed.credential, signal);
+				if (credential.connectionId !== observed.credential.connectionId)
+					throw new SlackError("stale-connection");
+				const audience = await this.audience(input.source.conversationId, signal, credential);
+				if (!audience.readerIds.includes(credential.userId)) throw new SlackError("access-denied");
+			},
+			() => {
+				if (this.now() - observed.at > 10000) throw new SlackError("stale-source");
+			}
+		);
 	}
 	send(input: SlackReplyRequest, signal?: AbortSignal): Promise<ChatReplyReceipt> {
 		const source = parsed(ChatSourceSchema, input.source);
@@ -502,14 +559,17 @@ export class SlackClient {
 	private async sendOnce(
 		input: SlackReplyRequest,
 		binding: string,
-		parentSignal?: AbortSignal
+		parentSignal?: AbortSignal,
+		verifySource?: (credential: SlackCredential) => Promise<void>,
+		verifyFresh?: () => void
 	): Promise<ChatReplyReceipt> {
 		const signal = operationSignal(parentSignal);
 		const credential = await this.credential(signal);
 		if (input.source.workspaceId !== credential.workspaceId) throw new SlackError("access-denied");
 		if (!credential.scopes.includes("chat:write")) throw new SlackError("missing-scope");
 		if (!this.options.replyLedger) throw new SlackError("capacity");
-		await this.sourceMessage(input.source, signal);
+		if (verifySource) await verifySource(credential);
+		else await this.sourceMessage(input.source, signal);
 		const key = `${credential.connectionId}:${input.requestId}`;
 		let reservation: Awaited<ReturnType<SlackReplyLedger["reserve"]>>;
 		try {
@@ -544,7 +604,12 @@ export class SlackClient {
 					reply_broadcast: false,
 					parse: "none",
 				},
-				signal
+				signal,
+				async () => {
+					verifyFresh?.();
+					await this.options.replyLedger?.authorize?.(key, binding);
+					verifyFresh?.();
+				}
 			);
 		} catch {
 			throw new SlackError("uncertain-delivery");

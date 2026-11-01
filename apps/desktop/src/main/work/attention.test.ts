@@ -350,3 +350,35 @@ it("a lost final renderer receipt is recovered from exact spoken proof and flush
 		assert.ok(h.state.attentionRecords?.[0]?.deliveredAt);
 	}
 });
+
+it("clarification judgments use the existing quiet attention lease and stale removal fences delivery", async () => {
+	const h = harness();
+	h.state.notices = [
+		{
+			id: "clarification-notice",
+			kind: "decision",
+			title: "Slack clarification needs judgment",
+			detail: "Inspect My day",
+			jobId: null,
+			prId: null,
+			createdAt: iso(),
+			announcedAt: null,
+			seenAt: null,
+			clarification: { itemId: "day-item", policyId: "policy", policyRevision: 1 },
+		},
+	];
+	h.presence.obscured = true;
+	assert.equal(await h.claim(), null);
+	h.presence.obscured = false;
+	const claim = await h.claim();
+	assert.ok(claim);
+	assert.equal(claim.items[0]?.kind, "clarification");
+	assert.equal(claim.items[0]?.repository, null);
+	assert.equal(claim.items[0]?.dayItemId, "day-item");
+	await h.scheduler.resolve(turn(claim.id), new AbortController().signal);
+	h.state.notices = [];
+	await h.scheduler.changed();
+	await assert.rejects(h.scheduler.validate(turn(claim.id), new AbortController().signal));
+	assert.equal(h.state.attentionRecords?.[0]?.deliveredAt, null);
+	await h.scheduler.dispose();
+});
