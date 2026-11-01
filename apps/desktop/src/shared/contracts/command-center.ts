@@ -156,6 +156,9 @@ export const WorkJobSchema = z.strictObject({
 	error: z.string().max(1000).nullable(),
 });
 export const WorkNoticeSchema = z.strictObject({
+	clarification: z
+		.strictObject({ itemId: IdSchema, policyId: IdSchema, policyRevision: z.int().positive() })
+		.optional(),
 	id: IdSchema,
 	kind: z.enum(["work-ready", "decision", "work-failed", "feedback", "connection", "pr-approval"]),
 	title: z.string().min(1).max(300),

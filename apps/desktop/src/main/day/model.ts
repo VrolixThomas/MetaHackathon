@@ -25,6 +25,14 @@ export const DayCaptureSchema = z.strictObject({
 });
 export type DayCapture = z.input<typeof DayCaptureSchema>;
 export const DayOutboxSchema = z.strictObject({
+	clarification: z
+		.strictObject({
+			policyId: IdSchema,
+			policyRevision: z.int().positive(),
+			connectionId: IdSchema,
+			threadDigest: z.string(),
+		})
+		.optional(),
 	requestId: IdSchema,
 	source: ChatSourceSchema,
 	body: z.string().min(1).max(40000),
@@ -46,6 +54,7 @@ export const DayOutboxSchema = z.strictObject({
 export type DayOutbox = z.infer<typeof DayOutboxSchema>;
 export const DayRecordSchema = z.strictObject({
 	item: DayWorkItemSchema,
+	clarificationRetryAt: time.optional(),
 	sourceUpdatedAt: time.nullable(),
 	sourceDigest: z.string().nullable(),
 	sourceFence: z
@@ -180,6 +189,29 @@ export function parseDayState(raw: unknown): DayState {
 			throw new Error("Unknown day request item");
 	for (const record of state.records) {
 		const { item, preparation } = record;
+		const clarification = item.clarification;
+		if (clarification) {
+			const policy = clarification.policy;
+			if (
+				policy.actor.workspaceId !== item.workspaceId ||
+				policy.actor.userId !== item.ownerUserId ||
+				!item.source ||
+				sourceKey(policy.source) !== sourceKey(item.source.source)
+			)
+				throw new Error("Clarification owner/source mismatch");
+			for (const attempt of clarification.attempts) {
+				const outbox = record.outbox.find((reply) => reply.requestId === attempt.requestId);
+				if (
+					!outbox?.clarification ||
+					outbox.clarification.policyId !== policy.id ||
+					outbox.bodyDigest !== attempt.bodyDigest ||
+					sha256(attempt.body) !== attempt.bodyDigest ||
+					outbox.status !== attempt.status ||
+					JSON.stringify(outbox.receipt) !== JSON.stringify(attempt.receipt)
+				)
+					throw new Error("Clarification ledger mismatch");
+			}
+		}
 		if (
 			item.acceptanceBasis === "own_explicit_promise" &&
 			(item.acceptance !== "accepted" ||
@@ -257,6 +289,7 @@ export function parseDayState(raw: unknown): DayState {
 			item.answerReceipt &&
 			!record.outbox.some(
 				(reply) =>
+					!reply.clarification &&
 					!reply.superseded &&
 					reply.status === "delivered" &&
 					reply.source.revisionId === item.source?.source.revisionId &&

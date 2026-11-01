@@ -218,7 +218,7 @@ it("reveals item Q&A only after explicit durable coverage and sends no random qu
 		onCoverItem: (id: string) => covering.push(id),
 	};
 	const before = controls(() => DayWorkItem(props));
-	assert.doesNotMatch(before.html, /Which exact outcome|<textarea|Your answer for Muse/);
+	assert.doesNotMatch(before.html, /Which exact outcome|Your answer for Muse/);
 	assert.deepEqual(operations, []);
 	before.click("Cover this item with Muse");
 	await Promise.resolve();
@@ -360,4 +360,42 @@ it("requires an explicit exact-body reply action and keeps drafts distinct from 
 	);
 	assert.match(disabled, /<button[^>]*disabled=""[^>]*>Send this exact reply/);
 	base.dispose();
+});
+
+it("shows exact clarification scope and a separate authorization control without acceptance or automatic send", () => {
+	const item = workItem();
+	assert.ok(item.source);
+	item.clarification = {
+		policy: {
+			id: "policy",
+			revision: 1,
+			connectionId: "connection",
+			actor: { workspaceId: item.workspaceId, userId: item.ownerUserId },
+			source: item.source.source,
+			originalRequest: "The website doesn't load",
+			scope: "Ask for URL and observed error",
+			maxMessages: 2,
+			durationMinutes: 30,
+			sendAuthority: "clarification-only-original-thread",
+		},
+		status: "proposed",
+		confirmedAt: null,
+		expiresAt: null,
+		summary: "",
+		missing: [],
+		reason: null,
+		evidence: [],
+		attempts: [],
+	};
+	const controller = supplied([item]);
+	const html = renderToStaticMarkup(
+		<DayWorkItem controller={controller} itemId={item.id} command={() => {}} />
+	);
+	assert.match(html, /The website doesn&#x27;t load/);
+	assert.match(html, /Ask for URL and observed error/);
+	assert.match(html, /Up to 2 messages/);
+	assert.match(html, /Authorize this clarification delegation/);
+	assert.match(html, /Acceptance pending/);
+	assert.doesNotMatch(html, /Verified Slack receipt/);
+	controller.dispose();
 });

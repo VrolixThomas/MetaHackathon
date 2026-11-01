@@ -34,6 +34,7 @@ import { WorkspaceCoordinator } from "./composition/workspace";
 import { createWorkspaceStore } from "./composition/workspace-store";
 import type { EnvConfiguration } from "./config/env";
 import type { AppConfigurationPorts } from "./config/router";
+import { analyzeClarification } from "./day/clarification";
 import { type DayReplyPort, DayService } from "./day/service";
 import type { DayStore } from "./db/day-store";
 import type { HubStore } from "./db/hub-store";
@@ -386,6 +387,8 @@ export async function initializeDay(
 		store,
 		actor: currentActor,
 		replies,
+		analyzeClarification: (c, read, signal) =>
+			analyzeClarification(conversationClient, c, read, signal),
 		cadenceMs: 2000,
 		availability: () => ({ awake: dayAwake, online: availability().online }),
 		linearTicket: (id, signal) => getHub().ticket(id, signal),
@@ -436,6 +439,59 @@ export async function initializeDay(
 				} else if (["paused", "failed"].includes(job.state)) await getWorkJobs().resume(id);
 			},
 		},
+	});
+	const activeDay = day;
+	let noticeSync = Promise.resolve();
+	let lastClarificationNotices: string | undefined;
+	activeDay.subscribe(() => {
+		noticeSync = noticeSync
+			.catch(() => {})
+			.then(async () => {
+				if (day !== activeDay || closing || !hub) return;
+				const snapshot = await activeDay.snapshot();
+				const fingerprint = JSON.stringify(
+					snapshot.items
+						.filter((i) => i.clarification?.status === "needs_user")
+						.map((i) => [i.id, i.clarification?.policy.id, i.clarification?.policy.revision])
+				);
+				if (fingerprint === lastClarificationNotices) return;
+				await getHub().update((state) => {
+					if (day !== activeDay) return;
+					const wanted = snapshot.items.filter((i) => i.clarification?.status === "needs_user");
+					const ids = new Set(
+						wanted.map(
+							(i) =>
+								`clarification-${i.clarification?.policy.id}-${i.clarification?.policy.revision}`
+						)
+					);
+					state.notices = state.notices.filter((n) => !n.clarification || ids.has(n.id));
+					for (const item of wanted) {
+						const c = item.clarification;
+						if (!c) continue;
+						const id = `clarification-${c.policy.id}-${c.policy.revision}`;
+						if (state.notices.some((n) => n.id === id)) continue;
+						state.notices.push({
+							id,
+							kind: "decision",
+							title: "Slack clarification needs your judgment",
+							detail:
+								"Inspect the original thread, clarification evidence and missing context in My day.",
+							jobId: null,
+							prId: null,
+							createdAt: new Date().toISOString(),
+							announcedAt: null,
+							seenAt: null,
+							clarification: {
+								itemId: item.id,
+								policyId: c.policy.id,
+								policyRevision: c.policy.revision,
+							},
+						});
+					}
+				});
+				lastClarificationNotices = fingerprint;
+				await attention?.changed();
+			});
 	});
 	await day.start();
 }
@@ -861,8 +917,43 @@ export async function initializeHub(
 	});
 	hub.attachJobs(workJobs);
 	attention = new AttentionScheduler({
-		read: () => getHub().attentionState(),
-		update: (mutator) => getHub().update(mutator),
+		read: async () => {
+			const state = await getHub().attentionState();
+			const items = (await day?.snapshot())?.items ?? [];
+			return {
+				...state,
+				notices: state.notices.filter(
+					(n) =>
+						!n.clarification ||
+						items.some(
+							(i) =>
+								i.id === n.clarification?.itemId &&
+								i.clarification?.status === "needs_user" &&
+								i.clarification.policy.id === n.clarification.policyId &&
+								i.clarification.policy.revision === n.clarification.policyRevision
+						)
+				),
+			};
+		},
+		update: async (mutator) => {
+			const activeDay = day;
+			const items = (await activeDay?.snapshot())?.items ?? [];
+			await getHub().update((state) => {
+				state.notices = state.notices.filter(
+					(n) =>
+						!n.clarification ||
+						(day === activeDay &&
+							items.some(
+								(i) =>
+									i.id === n.clarification?.itemId &&
+									i.clarification?.status === "needs_user" &&
+									i.clarification.policy.id === n.clarification.policyId &&
+									i.clarification.policy.revision === n.clarification.policyRevision
+							))
+				);
+				mutator(state);
+			});
+		},
 		isBusy: (sessionId) => conversationService.isBusy(sessionId),
 		completed: (turn, claimId) => conversationService.attentionCompleted(turn, claimId, "spoken"),
 		interrupt: (turn) => {

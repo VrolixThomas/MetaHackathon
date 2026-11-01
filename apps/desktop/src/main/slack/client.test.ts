@@ -606,3 +606,61 @@ test("cancellation aborts metadata and author requests even if controlled fetch 
 		);
 	}
 });
+
+test("thread-observation sends consume actual short-lived pages and recheck membership without duplicate history reads", async () => {
+	const h = harness();
+	const page = await h.client.thread({
+		conversationId: source.conversationId,
+		threadTs: source.messageId,
+	});
+	const input = { requestId: "clarification-post", source, body: "Which URL is affected?" };
+	await assert.rejects(h.client.sendFromObservedThread(input, structuredClone(page)));
+	const receipt = await h.client.sendFromObservedThread(input, page);
+	assert.equal(receipt.bodyDigest.length, 64);
+	assert.equal(h.requests.filter((r) => r.method === "conversations.replies").length, 1);
+	assert.equal(h.requests.filter((r) => r.method === "conversations.history").length, 0);
+	assert.equal(h.requests.filter((r) => r.method === "conversations.members").length, 2);
+	await assert.rejects(h.client.sendFromObservedThread(input, page));
+	assert.equal(h.requests.filter((r) => r.method === "chat.postMessage").length, 1);
+});
+
+for (const mode of ["membership", "account", "mutation", "partial", "final-authority"] as const)
+	test(`observation send rejects ${mode} before POST`, async () => {
+		let member = true;
+		let active = credential;
+		const ledger = new TestReplyLedger();
+		const h = harness(
+			(method) => {
+				if (method === "conversations.members")
+					return { ok: true, members: member ? ["U123", "U456"] : ["U456"] };
+				if (mode === "partial" && method === "conversations.replies")
+					return { ok: true, has_more: true, messages: [rawMessage] };
+				return undefined;
+			},
+			async () => active,
+			{
+				reserve: ledger.reserve.bind(ledger),
+				delivered: ledger.delivered.bind(ledger),
+				authorize: async () => {
+					if (mode === "final-authority") throw new Error("Delegation revoked after reserve");
+				},
+			}
+		);
+		const page = await h.client.thread({
+			conversationId: source.conversationId,
+			threadTs: source.messageId,
+		});
+		if (mode === "membership") member = false;
+		if (mode === "account") active = { ...credential, connectionId: "new-connection" };
+		if (mode === "mutation") {
+			assert.ok(page.items[0]);
+			page.items[0].text = "forged source";
+		}
+		await assert.rejects(
+			h.client.sendFromObservedThread(
+				{ requestId: `rejected-${mode}`, source, body: "Which URL?" },
+				page
+			)
+		);
+		assert.equal(h.requests.filter((r) => r.method === "chat.postMessage").length, 0);
+	});

@@ -7,6 +7,7 @@ import {
 	WorkJobSchema,
 } from "../../shared/contracts";
 import { type AttentionPorts, AttentionScheduler } from "./attention";
+import { policy } from "./pr-approvals/test-support";
 const base = Date.parse("2026-10-30T15:00:00Z");
 const first = <T>(items: T[]) => {
 	const item = items[0];
@@ -349,4 +350,84 @@ it("a lost final renderer receipt is recovered from exact spoken proof and flush
 		assert.ok(h.state.notices[0]?.announcedAt);
 		assert.ok(h.state.attentionRecords?.[0]?.deliveredAt);
 	}
+});
+
+it("clarification judgments use the existing quiet attention lease and stale removal fences delivery", async () => {
+	const h = harness();
+	h.state.notices = [
+		{
+			id: "clarification-notice",
+			kind: "decision",
+			title: "Slack clarification needs judgment",
+			detail: "Inspect My day",
+			jobId: null,
+			prId: null,
+			createdAt: iso(),
+			announcedAt: null,
+			seenAt: null,
+			clarification: { itemId: "day-item", policyId: "policy", policyRevision: 1 },
+		},
+	];
+	h.presence.obscured = true;
+	assert.equal(await h.claim(), null);
+	h.presence.obscured = false;
+	const claim = await h.claim();
+	assert.ok(claim);
+	assert.equal(claim.items[0]?.kind, "clarification");
+	assert.equal(claim.items[0]?.repository, null);
+	assert.equal(claim.items[0]?.dayItemId, "day-item");
+	await h.scheduler.resolve(turn(claim.id), new AbortController().signal);
+	h.state.notices = [];
+	await h.scheduler.changed();
+	await assert.rejects(h.scheduler.validate(turn(claim.id), new AbortController().signal));
+	assert.equal(h.state.attentionRecords?.[0]?.deliveredAt, null);
+	await h.scheduler.dispose();
+});
+
+it("keeps Slack clarification and conditional PR approval attention valid in the same queue", async () => {
+	const h = harness();
+	const approval = policy({ status: "needs-review" });
+	h.state.approvalPolicies = [approval];
+	h.state.notices = [
+		{
+			id: "clarification-notice",
+			kind: "decision",
+			title: "Slack clarification needs judgment",
+			detail: "Inspect My day",
+			jobId: null,
+			prId: null,
+			createdAt: iso(),
+			announcedAt: null,
+			seenAt: null,
+			clarification: { itemId: "day-item", policyId: "slack-policy", policyRevision: 1 },
+		},
+		{
+			id: `pr-approval-${approval.id}-${approval.revision}-${approval.status}`,
+			kind: "pr-approval",
+			title: "PR approval needs review",
+			detail: "Inspect the PR conditions",
+			jobId: approval.id,
+			prId: approval.pr.id,
+			headSha: approval.pr.headSha,
+			createdAt: iso(),
+			announcedAt: null,
+			seenAt: null,
+		},
+	];
+	const firstClaim = await h.claim();
+	assert.ok(firstClaim);
+	assert.equal(firstClaim.items[0]?.kind, "clarification");
+	assert.equal(firstClaim.items[0]?.jobId, null);
+	await h.scheduler.release({ sessionId: h.presence.sessionId, claimId: firstClaim.id });
+	h.state.notices.shift();
+	const secondClaim = (await h.scheduler.poll(h.presence)).claim;
+	assert.ok(secondClaim);
+	assert.equal(secondClaim.items[0]?.kind, "pr-approval");
+	assert.equal(secondClaim.items[0]?.jobId, approval.id);
+	assert.equal(secondClaim.items[0]?.repository, approval.pr.repository);
+	await h.scheduler.resolve(turn(secondClaim.id), new AbortController().signal);
+	h.state.approvalPolicies[0] = { ...approval, status: "revoked", revision: 2 };
+	await h.scheduler.changed();
+	await assert.rejects(h.scheduler.validate(turn(secondClaim.id), new AbortController().signal));
+	await h.scheduler.dispose();
 });
