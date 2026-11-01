@@ -1,7 +1,7 @@
 # Shared team reviews and proposed fixes
 
 The shared database is deployed to the selected `muse` Supabase project (`vmydpscnfgvbciotoaln`).
-The HTTP API/consumer still need a hosting target, and GitHub identity-provider setup is pending.
+GitHub identity sign-in and the actual PKCE callback pass; HTTP API/consumer hosting is pending.
 The desktop remains useful with its existing local providers. No coding subscription credential or
 private conversation is uploaded to the team service. See [deployment evidence](supabase-deployment-2026-11-01.md).
 
@@ -75,6 +75,12 @@ Never put a service-role key in the desktop configuration. Choose **Connect team
 Supabase GitHub login in your browser, then select an organization and repository for shared
 preparation. You can create an organization and register a repository from this panel. Registration
 requires current GitHub administration rights and the actual GitHub App installation.
+
+The configured identity OAuth app is **Muse Team Sign-in** (GitHub app `3982722`, public client ID
+`Ov23lip27BYD7idL1jvn`). Its callback is `https://vmydpscnfgvbciotoaln.supabase.co/auth/v1/callback`.
+The client secret stays in Supabase's managed provider settings. Do not replace the desktop's
+separate repository OAuth client with this identity client. When connecting the app, use the same
+GitHub user for the Supabase identity and repository-access grant.
 
 For the POC, a trusted administrator adds other already-signed-in users to `team_memberships` using
 their Supabase user UUID and the organization UUID. Membership alone grants no repository access:

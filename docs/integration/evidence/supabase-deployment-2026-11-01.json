@@ -128,9 +128,40 @@
 		"credentialValuesCommitted": false
 	},
 	"remaining": [
-		"GitHub identity-provider credentials and loopback callback allowlist",
 		"GitHub App installation and secrets",
 		"Hosted HTTP API/consumer",
+		"Installed-app team connection with hosted API and matching repository identity",
 		"Two real authorized app users sharing artifacts and proposals"
-	]
+	],
+	"authentication": {
+		"provider": {
+			"projectRef": "vmydpscnfgvbciotoaln",
+			"githubEnabled": true,
+			"anonymousUsersEnabled": false,
+			"liveCheck": true,
+			"checkedAt": "2026-11-01T10:51:13.420Z"
+		},
+		"oauthApp": {
+			"name": "Muse Team Sign-in",
+			"owner": "thomasaltacc-a11y",
+			"applicationId": "3982722",
+			"clientId": "Ov23lip27BYD7idL1jvn",
+			"callback": "https://vmydpscnfgvbciotoaln.supabase.co/auth/v1/callback"
+		},
+		"desktopRedirectAllowlist": "http://127.0.0.1:43189/team-auth/**",
+		"liveLogin": {
+			"status": "passed",
+			"liveSupabase": true,
+			"liveGitHub": true,
+			"actualAppAuthModules": true,
+			"actualPKCEExchange": true,
+			"freshUserValidated": true,
+			"githubIdentity": true,
+			"loopbackPort": 43189,
+			"persistedSession": false,
+			"actualInstalledAppSession": false,
+			"hostedApiTested": false,
+			"finishedAt": "2026-11-01T10:55:03.629Z"
+		}
+	}
 }

@@ -2,7 +2,7 @@
 
 These modules are real Supabase/PostgREST adapters and executable migration paths. The selected
 `muse` database (`vmydpscnfgvbciotoaln`) has migrations 001–004 deployed through the CLI; HTTP API/consumer
-hosting and GitHub identity login remain pending. No product fixture fallback exists. Root owns desktop
+hosting remains pending. Live GitHub identity/PKCE login passes; no product fixture fallback exists. Root owns desktop
 composition, shared DTO publication, manifests and combined acceptance. Lane-local protocol schemas
 are in `services/team/protocol.ts` and reuse the existing PreparedReview contract.
 
