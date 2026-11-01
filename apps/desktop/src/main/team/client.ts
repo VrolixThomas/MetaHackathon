@@ -17,10 +17,15 @@ import {
 	TeamError,
 	type TeamProgress,
 	artifact,
-	boundedJson,
 	digest,
 	secureServiceUrl,
 } from "../../../../../services/team/protocol";
+import { abortableJson, requestWithTimeout } from "../../../../../services/team/supabase";
+import {
+	type LocalReviewSubmission,
+	LocalReviewSubmissionSchema,
+} from "../../shared/contracts/team";
+import { abortable } from "../agent/cancellation";
 import type { TeamAuth } from "./auth";
 import type { TeamStore } from "./storage";
 
@@ -63,15 +68,22 @@ export class TeamClient {
 		this.base = secureServiceUrl(options.url, options.allowLocal).href.replace(/\/$/, "");
 	}
 
-	private async stamp() {
+	private async stamp(signal?: AbortSignal) {
+		signal?.throwIfAborted();
 		const revision = this.options.getAccountRevision?.() ?? this.options.auth.revision ?? 0;
 		const session = await this.options.auth.session();
+		signal?.throwIfAborted();
 		if (revision !== (this.options.getAccountRevision?.() ?? this.options.auth.revision ?? 0))
 			throw new TeamError("unauthorized");
 		return { userId: session.user.id, token: session.access_token, revision };
 	}
-	private async assertStamp(stamp: { userId: string; token: string; revision: number }) {
+	private async assertStamp(
+		stamp: { userId: string; token: string; revision: number },
+		signal?: AbortSignal
+	) {
+		signal?.throwIfAborted();
 		const session = await this.options.auth.session();
+		signal?.throwIfAborted();
 		if (
 			session.user.id !== stamp.userId ||
 			session.access_token !== stamp.token ||
@@ -102,8 +114,9 @@ export class TeamClient {
 			}
 		);
 	}
-	private async persist(local: z.infer<typeof LocalSchema>) {
+	private async persist(local: z.infer<typeof LocalSchema>, signal?: AbortSignal) {
 		const all = await this.cacheData();
+		signal?.throwIfAborted();
 		all.accounts[local.userId] = local;
 		const oldest = Object.keys(local.artifacts);
 		while (Buffer.byteLength(JSON.stringify(all)) > 32000000 && oldest.length) {
@@ -118,59 +131,67 @@ export class TeamClient {
 	private async request(
 		path: string,
 		body: unknown,
-		expectedUserId?: string
+		expectedUserId?: string,
+		caller?: AbortSignal
 	): Promise<{ userId: string; value: unknown }> {
-		const revision = this.options.getAccountRevision?.() ?? this.options.auth.revision ?? 0;
-		const session = await this.options.auth.session();
-		if (expectedUserId && session.user.id !== expectedUserId) throw new TeamError("unauthorized");
-		const token = await this.options.getGitHubToken();
-		if (!token) throw new TeamError("unauthorized");
-		const before = await this.options.auth.session();
-		if (
-			(this.options.getAccountRevision?.() ?? this.options.auth.revision ?? 0) !== revision ||
-			before.user.id !== session.user.id ||
-			before.access_token !== session.access_token
-		)
-			throw new TeamError("unauthorized");
-		let response: Response;
-		try {
-			response = await (this.options.fetch ?? fetch)(`${this.base}/v1/${path}`, {
-				method: "POST",
-				redirect: "error",
-				signal: AbortSignal.timeout(20000),
-				headers: {
-					Authorization: `Bearer ${session.access_token}`,
-					"X-GitHub-Token": token,
-					"Content-Type": "application/json",
-				},
-				body: JSON.stringify(body),
-			});
-		} catch {
-			throw new TeamError("offline");
-		}
-		const value = response.ok ? await boundedJson(response) : null;
-		const current = await this.options.auth.session();
-		if (
-			(this.options.getAccountRevision?.() ?? this.options.auth.revision ?? 0) !== revision ||
-			current.user.id !== session.user.id ||
-			current.access_token !== session.access_token ||
-			(await this.options.getGitHubToken()) !== token
-		)
-			throw new TeamError("unauthorized");
-		if (!response.ok)
-			throw new TeamError(
-				response.status === 401
-					? "unauthorized"
-					: response.status === 403
-						? "forbidden"
-						: response.status === 409
-							? "conflict"
-							: response.status >= 500
-								? "unavailable"
-								: "invalid",
-				response.status
-			);
-		return { userId: session.user.id, value };
+		return requestWithTimeout(20000, caller, async (signal) => {
+			const revision = this.options.getAccountRevision?.() ?? this.options.auth.revision ?? 0;
+			const session = await abortable(this.options.auth.session(), signal);
+			if (expectedUserId && session.user.id !== expectedUserId) throw new TeamError("unauthorized");
+			const token = await abortable(this.options.getGitHubToken(), signal);
+			if (!token) throw new TeamError("unauthorized");
+			const before = await abortable(this.options.auth.session(), signal);
+			if (
+				(this.options.getAccountRevision?.() ?? this.options.auth.revision ?? 0) !== revision ||
+				before.user.id !== session.user.id ||
+				before.access_token !== session.access_token
+			)
+				throw new TeamError("unauthorized");
+			let response: Response;
+			try {
+				response = await abortable(
+					(this.options.fetch ?? fetch)(`${this.base}/v1/${path}`, {
+						method: "POST",
+						redirect: "error",
+						signal,
+						headers: {
+							Authorization: `Bearer ${session.access_token}`,
+							"X-GitHub-Token": token,
+							"Content-Type": "application/json",
+						},
+						body: JSON.stringify(body),
+					}),
+					signal
+				);
+			} catch {
+				signal.throwIfAborted();
+				throw new TeamError("offline");
+			}
+			const value = response.ok ? await abortableJson(response, 4_000_000, signal) : null;
+			const currentToken = await abortable(this.options.getGitHubToken(), signal);
+			const current = await abortable(this.options.auth.session(), signal);
+			if (
+				(this.options.getAccountRevision?.() ?? this.options.auth.revision ?? 0) !== revision ||
+				current.user.id !== session.user.id ||
+				current.access_token !== session.access_token ||
+				currentToken !== token
+			)
+				throw new TeamError("unauthorized");
+			if (!response.ok)
+				throw new TeamError(
+					response.status === 401
+						? "unauthorized"
+						: response.status === 403
+							? "forbidden"
+							: response.status === 409
+								? "conflict"
+								: response.status >= 500
+									? "unavailable"
+									: "invalid",
+					response.status
+				);
+			return { userId: session.user.id, value };
+		});
 	}
 	private serialize<T>(run: () => Promise<T>): Promise<T> {
 		const next = this.pending.then(run);
@@ -178,36 +199,56 @@ export class TeamClient {
 		return next;
 	}
 	async load(
-		raw: ReviewKey
+		raw: ReviewKey,
+		caller?: AbortSignal
 	): Promise<{ status: "current" | "offline-cache" | "pending"; artifact: TeamArtifact | null }> {
 		const key = ReviewKeySchema.parse(raw);
-		const stamp = await this.stamp();
-		const userId = stamp.userId;
-		try {
-			const response = await this.request("reviews/read", { key }, userId);
-			if (response.value === null) {
-				await this.assertStamp(stamp);
-				return { status: "pending", artifact: null };
+		return requestWithTimeout(20000, caller, async (signal) => {
+			const stamp = await this.stamp(signal);
+			const userId = stamp.userId;
+			try {
+				const response = await this.request("reviews/read", { key }, userId, signal);
+				if (response.value === null) {
+					await this.assertStamp(stamp, signal);
+					return { status: "pending", artifact: null };
+				}
+				const value = artifact(response.value);
+				if (digest(value.key) !== digest(key)) throw new TeamError("invalid");
+				await this.serialize(async () => {
+					await this.assertStamp(stamp, signal);
+					const local = await this.local(response.userId);
+					await this.assertStamp(stamp, signal);
+					local.artifacts[digest(key)] = value;
+					const ids = Object.keys(local.artifacts);
+					for (const id of ids.slice(0, Math.max(0, ids.length - 100))) delete local.artifacts[id];
+					await this.persist(local, signal);
+				});
+				await this.assertStamp(stamp, signal);
+				return { status: "current", artifact: value };
+			} catch (error) {
+				signal.throwIfAborted();
+				if (!(error instanceof TeamError) || error.code !== "offline") throw error;
+				if ((await this.options.auth.session()).user.id !== userId)
+					throw new TeamError("unauthorized");
+				const cached = (await this.local(userId)).artifacts[digest(key)];
+				await this.assertStamp(stamp, signal);
+				return { status: "offline-cache", artifact: cached ? artifact(cached) : null };
 			}
-			const value = artifact(response.value);
-			if (digest(value.key) !== digest(key)) throw new TeamError("invalid");
-			await this.serialize(async () => {
-				const local = await this.local(response.userId);
-				local.artifacts[digest(key)] = value;
-				const ids = Object.keys(local.artifacts);
-				for (const id of ids.slice(0, Math.max(0, ids.length - 100))) delete local.artifacts[id];
-				await this.persist(local);
-			});
-			await this.assertStamp(stamp);
-			return { status: "current", artifact: value };
-		} catch (error) {
-			if (!(error instanceof TeamError) || error.code !== "offline") throw error;
-			if ((await this.options.auth.session()).user.id !== userId)
-				throw new TeamError("unauthorized");
-			const cached = (await this.local(userId)).artifacts[digest(key)];
-			await this.assertStamp(stamp);
-			return { status: "offline-cache", artifact: cached ? artifact(cached) : null };
-		}
+		});
+	}
+	async publishReview(raw: LocalReviewSubmission, signal?: AbortSignal): Promise<TeamArtifact> {
+		const input = LocalReviewSubmissionSchema.parse(raw);
+		artifact({ key: input.key, review: input.review, digest: input.digest });
+		signal?.throwIfAborted();
+		const response = await this.request("reviews/publish", input, undefined, signal);
+		signal?.throwIfAborted();
+		const canonical = artifact(response.value);
+		if (
+			digest(canonical.key) !== digest(input.key) ||
+			canonical.review.pr.repository !== input.review.pr.repository
+		)
+			throw new TeamError("invalid");
+		return canonical;
 	}
 	async readProgress(key: ReviewKey): Promise<TeamProgress | null> {
 		const response = await this.request("progress/read", { key: ReviewKeySchema.parse(key) });
@@ -378,13 +419,13 @@ export class TeamClient {
 		).value;
 	}
 
-	async organizations() {
+	async organizations(signal?: AbortSignal) {
 		return z
 			.object({
 				analysisVersion: z.string().min(1).max(160),
 				items: z.array(z.object({ id: z.uuid(), name: z.string().min(1).max(160) })).max(100),
 			})
-			.parse((await this.request("organizations", {})).value);
+			.parse((await this.request("organizations", {}, undefined, signal)).value);
 	}
 	async repositories(orgId: string, offset = 0) {
 		z.uuid().parse(orgId);
