@@ -380,7 +380,7 @@ Muse Image (`muse-image-1.0`) with the existing main-only `MODEL_API_KEY`, throu
 Meta API. Legacy image-provider settings never route requests elsewhere. Image canvases
 persist metadata in Recent; actual bytes are read by opaque ID and verified before display. Workspace
 acceptance waits for image decode, natural dimensions and committed frames as well as native layout.
-Missing raster credentials affect generation only. Production packages contain only app output,
+Image-specific provider errors leave unrelated workspace actions available. Production packages contain only app output,
 production dependencies and frozen voice resources; exclude test reports/screenshots and demos.
 
 `test:comment-conversation`, `test:image-workspace` and `test:team-workspace` run the actual built
