@@ -1,0 +1,798 @@
+{
+	"auditedAgainst": "4a5599bc4df8bf080ccf0c551fb63bcc88e147b7",
+	"date": "2026-11-01",
+	"worktreeCount": 80,
+	"uncommittedWorkAtStart": false,
+	"activeBuildingAgentsAtStart": 0,
+	"classificationCounts": {
+		"direct-or-patch-equivalent": 71,
+		"integrated-with-later-adaptations": 6,
+		"final-assets-integrated; explorations-archived": 1,
+		"adapted-runtime; retired-fixture-work-archived": 2
+	},
+	"method": "Git ancestry and patch equivalence; remaining app commit subjects and paths matched to integration adaptations. Selected final design handoffs reviewed separately. Historic demo-only work explicitly archived, not blindly merged.",
+	"worktrees": [
+		{
+			"worktree": "main",
+			"branch": "main",
+			"headAtAudit": "727ac62189e50bba2596ce930ca6b047c2eb2bb3",
+			"cleanAtAudit": true,
+			"classification": "direct-or-patch-equivalent",
+			"patchEquivalentCommits": 0,
+			"adaptedOrArchivedCommitCount": 0
+		},
+		{
+			"worktree": "agent",
+			"branch": "hack/agent",
+			"headAtAudit": "f432b3f9a46a23a4a5edf7abc519d79e14f2a321",
+			"cleanAtAudit": true,
+			"classification": "integrated-with-later-adaptations",
+			"patchEquivalentCommits": 2,
+			"adaptedOrArchivedCommitCount": 11
+		},
+		{
+			"worktree": "conditional-pr-approval",
+			"branch": "conditional-pr-approval",
+			"headAtAudit": "20c859e45efd2a63c3f21dccc8d41fe3923eb665",
+			"cleanAtAudit": true,
+			"classification": "direct-or-patch-equivalent",
+			"patchEquivalentCommits": 0,
+			"adaptedOrArchivedCommitCount": 0
+		},
+		{
+			"worktree": "demo-story",
+			"branch": "demo-story",
+			"headAtAudit": "f0a20268cce882c4276be3a13ec1f0b38a085d76",
+			"cleanAtAudit": true,
+			"classification": "direct-or-patch-equivalent",
+			"patchEquivalentCommits": 0,
+			"adaptedOrArchivedCommitCount": 0
+		},
+		{
+			"worktree": "design/muse-logo-motion",
+			"branch": "design/muse-logo-motion",
+			"headAtAudit": "14f9d6afbd4478db63cfb6dacbb3d0a4dd641ece",
+			"cleanAtAudit": true,
+			"classification": "final-assets-integrated; explorations-archived",
+			"patchEquivalentCommits": 0,
+			"adaptedOrArchivedCommitCount": 12
+		},
+		{
+			"worktree": "hack/agent-review-evidence",
+			"branch": "hack/agent-review-evidence",
+			"headAtAudit": "9c594707fe3b0bc63e8f7b0d498fc1f42c08a967",
+			"cleanAtAudit": true,
+			"classification": "direct-or-patch-equivalent",
+			"patchEquivalentCommits": 1,
+			"adaptedOrArchivedCommitCount": 0
+		},
+		{
+			"worktree": "hack/agent-review-turns",
+			"branch": "hack/agent-review-turns",
+			"headAtAudit": "cc244405a89e6a131e78a2531276d5352fbc227a",
+			"cleanAtAudit": true,
+			"classification": "direct-or-patch-equivalent",
+			"patchEquivalentCommits": 1,
+			"adaptedOrArchivedCommitCount": 0
+		},
+		{
+			"worktree": "hack/browser-pane-polish",
+			"branch": "hack/browser-pane-polish",
+			"headAtAudit": "ebd56ec0a572a8faad38476c27b849e2faa3331c",
+			"cleanAtAudit": true,
+			"classification": "direct-or-patch-equivalent",
+			"patchEquivalentCommits": 2,
+			"adaptedOrArchivedCommitCount": 0
+		},
+		{
+			"worktree": "hack/browser-workspace-composition",
+			"branch": "hack/browser-workspace-composition",
+			"headAtAudit": "e7df1eb2320b60c54bbc47714120f4a77a354eb8",
+			"cleanAtAudit": true,
+			"classification": "direct-or-patch-equivalent",
+			"patchEquivalentCommits": 1,
+			"adaptedOrArchivedCommitCount": 0
+		},
+		{
+			"worktree": "hack/coding-provider-routing",
+			"branch": "hack/coding-provider-routing",
+			"headAtAudit": "a57c4690442943347419132e1e639526d1ae886c",
+			"cleanAtAudit": true,
+			"classification": "direct-or-patch-equivalent",
+			"patchEquivalentCommits": 2,
+			"adaptedOrArchivedCommitCount": 0
+		},
+		{
+			"worktree": "hack/coding-provider-ui",
+			"branch": "hack/coding-provider-ui",
+			"headAtAudit": "34e59d433aae571b92f4e02336cb194a4f62325a",
+			"cleanAtAudit": true,
+			"classification": "direct-or-patch-equivalent",
+			"patchEquivalentCommits": 1,
+			"adaptedOrArchivedCommitCount": 0
+		},
+		{
+			"worktree": "hack/executive-agent",
+			"branch": "hack/met-50-attention-native",
+			"headAtAudit": "f5654c854cf7b0fe45153a121ac1fb16a020a3a3",
+			"cleanAtAudit": true,
+			"classification": "direct-or-patch-equivalent",
+			"patchEquivalentCommits": 1,
+			"adaptedOrArchivedCommitCount": 0
+		},
+		{
+			"worktree": "hack/executive-coding",
+			"branch": "hack/met-50-voice-startup",
+			"headAtAudit": "b54c5009724945f004236913b6cf72281c18b9c9",
+			"cleanAtAudit": true,
+			"classification": "direct-or-patch-equivalent",
+			"patchEquivalentCommits": 1,
+			"adaptedOrArchivedCommitCount": 0
+		},
+		{
+			"worktree": "hack/executive-providers",
+			"branch": "hack/executive-providers",
+			"headAtAudit": "1957616234c9e8d7118cc4566fffa528fa16e052",
+			"cleanAtAudit": true,
+			"classification": "direct-or-patch-equivalent",
+			"patchEquivalentCommits": 5,
+			"adaptedOrArchivedCommitCount": 0
+		},
+		{
+			"worktree": "hack/executive-ui",
+			"branch": "hack/met-50-attention-ui",
+			"headAtAudit": "0e713d2ea8d147207b014a4f8e485d979afa628d",
+			"cleanAtAudit": true,
+			"classification": "direct-or-patch-equivalent",
+			"patchEquivalentCommits": 5,
+			"adaptedOrArchivedCommitCount": 0
+		},
+		{
+			"worktree": "hack/executive-work-runtime",
+			"branch": "hack/executive-work-runtime",
+			"headAtAudit": "4c949ffbec2d4e2725a042ab0544a3fc898c9fbd",
+			"cleanAtAudit": true,
+			"classification": "direct-or-patch-equivalent",
+			"patchEquivalentCommits": 5,
+			"adaptedOrArchivedCommitCount": 0
+		},
+		{
+			"worktree": "hack/finish-foreground-20261101",
+			"branch": "hack/local-sharing-native-author-20261101",
+			"headAtAudit": "5c757447d537332331436dea8b27c7c789b2955c",
+			"cleanAtAudit": true,
+			"classification": "direct-or-patch-equivalent",
+			"patchEquivalentCommits": 1,
+			"adaptedOrArchivedCommitCount": 0
+		},
+		{
+			"worktree": "hack/finish-release-20261101",
+			"branch": "hack/musefocus-release-identity-20261101",
+			"headAtAudit": "625e89882d6110c6c31b7d777f62943af90accb4",
+			"cleanAtAudit": true,
+			"classification": "direct-or-patch-equivalent",
+			"patchEquivalentCommits": 2,
+			"adaptedOrArchivedCommitCount": 0
+		},
+		{
+			"worktree": "hack/finish-team-20261101",
+			"branch": "hack/local-review-sharing-api-20261101",
+			"headAtAudit": "419d273c4db11c4f8d27017b9d3d3fc169b2b4c3",
+			"cleanAtAudit": true,
+			"classification": "direct-or-patch-equivalent",
+			"patchEquivalentCommits": 1,
+			"adaptedOrArchivedCommitCount": 0
+		},
+		{
+			"worktree": "hack/integration-agent-composition",
+			"branch": "hack/integration-agent-composition",
+			"headAtAudit": "4dbe5b4a5dde1d66e01e8d01a7aaa7e3cd1860ef",
+			"cleanAtAudit": true,
+			"classification": "integrated-with-later-adaptations",
+			"patchEquivalentCommits": 1,
+			"adaptedOrArchivedCommitCount": 2
+		},
+		{
+			"worktree": "hack/integration-agent-composition-impl",
+			"branch": "hack/integration-agent-composition-impl",
+			"headAtAudit": "7109321e9dff796ec209d7b995b85097eadd1e0d",
+			"cleanAtAudit": true,
+			"classification": "integrated-with-later-adaptations",
+			"patchEquivalentCommits": 3,
+			"adaptedOrArchivedCommitCount": 2
+		},
+		{
+			"worktree": "hack/integration-agent-contracts",
+			"branch": "hack/integration-agent-contracts",
+			"headAtAudit": "19278e4d26e36fb1c55bec93c897f1b7ecc49abc",
+			"cleanAtAudit": true,
+			"classification": "direct-or-patch-equivalent",
+			"patchEquivalentCommits": 6,
+			"adaptedOrArchivedCommitCount": 0
+		},
+		{
+			"worktree": "hack/integration-review-packaging",
+			"branch": "hack/integration-review-packaging",
+			"headAtAudit": "9976fab2bf081f8e26c872fe48890087ed6d01e9",
+			"cleanAtAudit": true,
+			"classification": "direct-or-patch-equivalent",
+			"patchEquivalentCommits": 0,
+			"adaptedOrArchivedCommitCount": 0
+		},
+		{
+			"worktree": "hack/integration-review-runtime",
+			"branch": "hack/integration-review-runtime",
+			"headAtAudit": "b9bf43b4dab977b8489e239f70cc5fe99646b23f",
+			"cleanAtAudit": true,
+			"classification": "integrated-with-later-adaptations",
+			"patchEquivalentCommits": 1,
+			"adaptedOrArchivedCommitCount": 12
+		},
+		{
+			"worktree": "hack/integration-review-runtime-service",
+			"branch": "hack/integration-review-runtime-service",
+			"headAtAudit": "8cf7e9b328b61fca3822f3c8a09353975f227784",
+			"cleanAtAudit": true,
+			"classification": "direct-or-patch-equivalent",
+			"patchEquivalentCommits": 8,
+			"adaptedOrArchivedCommitCount": 0
+		},
+		{
+			"worktree": "hack/integration-review-ui",
+			"branch": "hack/integration-review-ui",
+			"headAtAudit": "706508b55c13f92a9256f521695b5533035e5fd4",
+			"cleanAtAudit": true,
+			"classification": "direct-or-patch-equivalent",
+			"patchEquivalentCommits": 1,
+			"adaptedOrArchivedCommitCount": 0
+		},
+		{
+			"worktree": "hack/integration-review-ui-followup",
+			"branch": "hack/integration-review-ui-followup",
+			"headAtAudit": "223c19242d27fa5406e98d7be11cd6c357db9ef8",
+			"cleanAtAudit": true,
+			"classification": "direct-or-patch-equivalent",
+			"patchEquivalentCommits": 4,
+			"adaptedOrArchivedCommitCount": 0
+		},
+		{
+			"worktree": "hack/integration-review-voice",
+			"branch": "hack/integration-review-voice",
+			"headAtAudit": "8752b68d396aa4fbdcc0f4c99cdb7b02dd677d7b",
+			"cleanAtAudit": true,
+			"classification": "direct-or-patch-equivalent",
+			"patchEquivalentCommits": 0,
+			"adaptedOrArchivedCommitCount": 0
+		},
+		{
+			"worktree": "hack/met-51-deep-latency",
+			"branch": "hack/met-51-preconnect",
+			"headAtAudit": "3344114a026652d420a2431a9118ad2965a3b36c",
+			"cleanAtAudit": true,
+			"classification": "direct-or-patch-equivalent",
+			"patchEquivalentCommits": 2,
+			"adaptedOrArchivedCommitCount": 0
+		},
+		{
+			"worktree": "hack/met-52-sidebar-direct",
+			"branch": "hack/met-52-sidebar-direct",
+			"headAtAudit": "2526ed5fb76c0cea7a850f886dae096c9d3d64cf",
+			"cleanAtAudit": true,
+			"classification": "direct-or-patch-equivalent",
+			"patchEquivalentCommits": 1,
+			"adaptedOrArchivedCommitCount": 0
+		},
+		{
+			"worktree": "hack/met-53-oauth-core",
+			"branch": "hack/met-53-oauth-core",
+			"headAtAudit": "b7ce7b2aae8200fa14169f5f8f819a0235380d34",
+			"cleanAtAudit": true,
+			"classification": "direct-or-patch-equivalent",
+			"patchEquivalentCommits": 3,
+			"adaptedOrArchivedCommitCount": 0
+		},
+		{
+			"worktree": "hack/met-53-oauth-native",
+			"branch": "hack/met-53-oauth-native",
+			"headAtAudit": "8ec6b0a24f04dddf166770de94ac08f57e4db559",
+			"cleanAtAudit": true,
+			"classification": "direct-or-patch-equivalent",
+			"patchEquivalentCommits": 1,
+			"adaptedOrArchivedCommitCount": 0
+		},
+		{
+			"worktree": "hack/met-53-oauth-ui",
+			"branch": "hack/met-53-oauth-ui",
+			"headAtAudit": "c95b8e05a86eb5fb421d18b46e147e52608441ae",
+			"cleanAtAudit": true,
+			"classification": "direct-or-patch-equivalent",
+			"patchEquivalentCommits": 1,
+			"adaptedOrArchivedCommitCount": 0
+		},
+		{
+			"worktree": "hack/met-66-follow-all",
+			"branch": "hack/met-66-follow-all",
+			"headAtAudit": "e7afac9af509b9b65aded20ed405c8c18da78d40",
+			"cleanAtAudit": true,
+			"classification": "direct-or-patch-equivalent",
+			"patchEquivalentCommits": 2,
+			"adaptedOrArchivedCommitCount": 0
+		},
+		{
+			"worktree": "hack/met-66-slack",
+			"branch": "hack/met-66-slack",
+			"headAtAudit": "dfd3dc37dedcc9134f1346a063fd8f8789d6316f",
+			"cleanAtAudit": true,
+			"classification": "direct-or-patch-equivalent",
+			"patchEquivalentCommits": 7,
+			"adaptedOrArchivedCommitCount": 0
+		},
+		{
+			"worktree": "hack/met-66-slack-coordinator",
+			"branch": "hack/met-66-slack-coordinator",
+			"headAtAudit": "d62716effa5142a411b3abbb403b163fbe0a82f7",
+			"cleanAtAudit": true,
+			"classification": "direct-or-patch-equivalent",
+			"patchEquivalentCommits": 3,
+			"adaptedOrArchivedCommitCount": 0
+		},
+		{
+			"worktree": "hack/met-66-slack-follow-native",
+			"branch": "hack/met-66-slack-follow-native",
+			"headAtAudit": "467b206bc74812455b3207b2810a1a43ae5a878e",
+			"cleanAtAudit": true,
+			"classification": "direct-or-patch-equivalent",
+			"patchEquivalentCommits": 1,
+			"adaptedOrArchivedCommitCount": 0
+		},
+		{
+			"worktree": "hack/met-66-slack-oauth-core",
+			"branch": "hack/met-66-slack-reader-sdk",
+			"headAtAudit": "dd1259658014cfd7e8dccf65485956027ea98794",
+			"cleanAtAudit": true,
+			"classification": "direct-or-patch-equivalent",
+			"patchEquivalentCommits": 1,
+			"adaptedOrArchivedCommitCount": 0
+		},
+		{
+			"worktree": "hack/met-66-slack-oauth-native",
+			"branch": "hack/met-66-slack-oauth-native",
+			"headAtAudit": "5c900f657651d3574b15d346bcfb4b1d91fbbd35",
+			"cleanAtAudit": true,
+			"classification": "direct-or-patch-equivalent",
+			"patchEquivalentCommits": 2,
+			"adaptedOrArchivedCommitCount": 0
+		},
+		{
+			"worktree": "hack/met-66-slack-oauth-ui",
+			"branch": "hack/met-66-slack-oauth-ui",
+			"headAtAudit": "c7d9d2f8685d7bd2171780e06ec63e4f731d7d08",
+			"cleanAtAudit": true,
+			"classification": "direct-or-patch-equivalent",
+			"patchEquivalentCommits": 2,
+			"adaptedOrArchivedCommitCount": 0
+		},
+		{
+			"worktree": "hack/met-66-slack-reader-native",
+			"branch": "hack/met-66-slack-reader-native",
+			"headAtAudit": "c7a9ae82b39f6164dc8ec71ace10096606e77deb",
+			"cleanAtAudit": true,
+			"classification": "direct-or-patch-equivalent",
+			"patchEquivalentCommits": 1,
+			"adaptedOrArchivedCommitCount": 0
+		},
+		{
+			"worktree": "hack/met-66-slack-reader-ui",
+			"branch": "hack/met-66-slack-reader-ui",
+			"headAtAudit": "acfefaf7507f6e55b8bdc21bdbba27af352cad33",
+			"cleanAtAudit": true,
+			"classification": "direct-or-patch-equivalent",
+			"patchEquivalentCommits": 2,
+			"adaptedOrArchivedCommitCount": 0
+		},
+		{
+			"worktree": "hack/met-67-commitments",
+			"branch": "hack/met-67-commitments",
+			"headAtAudit": "66a5d2c440a3fe56a748dd016c42d95ca4615974",
+			"cleanAtAudit": true,
+			"classification": "direct-or-patch-equivalent",
+			"patchEquivalentCommits": 6,
+			"adaptedOrArchivedCommitCount": 0
+		},
+		{
+			"worktree": "hack/met-67-intake-classifier",
+			"branch": "hack/met-67-intake-classifier",
+			"headAtAudit": "8a94e85ecc1d165e27d0d7d44fd5104786164dfe",
+			"cleanAtAudit": true,
+			"classification": "direct-or-patch-equivalent",
+			"patchEquivalentCommits": 1,
+			"adaptedOrArchivedCommitCount": 0
+		},
+		{
+			"worktree": "hack/met-67-worker-bridge",
+			"branch": "hack/met-67-worker-bridge",
+			"headAtAudit": "4d827629b4c666849dd4632cd52098b1e7321daf",
+			"cleanAtAudit": true,
+			"classification": "direct-or-patch-equivalent",
+			"patchEquivalentCommits": 1,
+			"adaptedOrArchivedCommitCount": 0
+		},
+		{
+			"worktree": "hack/met-68-day-ui",
+			"branch": "hack/met-68-day-native",
+			"headAtAudit": "38675d46319aa3cdf0fd26d001f41a7d34ba2319",
+			"cleanAtAudit": true,
+			"classification": "direct-or-patch-equivalent",
+			"patchEquivalentCommits": 1,
+			"adaptedOrArchivedCommitCount": 0
+		},
+		{
+			"worktree": "hack/met-69-knowledge",
+			"branch": "hack/met-69-knowledge",
+			"headAtAudit": "5e8b927dbe8c263c415621d6a1605f022e849196",
+			"cleanAtAudit": true,
+			"classification": "direct-or-patch-equivalent",
+			"patchEquivalentCommits": 4,
+			"adaptedOrArchivedCommitCount": 0
+		},
+		{
+			"worktree": "hack/met-69-knowledge-auth",
+			"branch": "hack/met-69-knowledge-auth",
+			"headAtAudit": "233978f55d4d59ffbddb3472cda3905a0a4c62e9",
+			"cleanAtAudit": true,
+			"classification": "direct-or-patch-equivalent",
+			"patchEquivalentCommits": 1,
+			"adaptedOrArchivedCommitCount": 0
+		},
+		{
+			"worktree": "hack/met-69-knowledge-store",
+			"branch": "hack/met-69-knowledge-store",
+			"headAtAudit": "bce53c0971240380604c2ba4a73f2c8ba5cb6f7c",
+			"cleanAtAudit": true,
+			"classification": "direct-or-patch-equivalent",
+			"patchEquivalentCommits": 1,
+			"adaptedOrArchivedCommitCount": 0
+		},
+		{
+			"worktree": "hack/met-70-review-followup",
+			"branch": "hack/met-51-warm-composition",
+			"headAtAudit": "2058d299efd7cdfddab286abb5972eaf24a920fa",
+			"cleanAtAudit": true,
+			"classification": "direct-or-patch-equivalent",
+			"patchEquivalentCommits": 1,
+			"adaptedOrArchivedCommitCount": 0
+		},
+		{
+			"worktree": "hack/met-71-day-tools",
+			"branch": "hack/met-71-day-tools",
+			"headAtAudit": "2a826cdcd4fdd6048c00ae691df0617ff8afc9f2",
+			"cleanAtAudit": true,
+			"classification": "direct-or-patch-equivalent",
+			"patchEquivalentCommits": 1,
+			"adaptedOrArchivedCommitCount": 0
+		},
+		{
+			"worktree": "hack/met-71-memory-tools",
+			"branch": "hack/met-71-memory-tools",
+			"headAtAudit": "c9d565d5c6ab903534e3690c5d87b909f50c248d",
+			"cleanAtAudit": true,
+			"classification": "direct-or-patch-equivalent",
+			"patchEquivalentCommits": 2,
+			"adaptedOrArchivedCommitCount": 0
+		},
+		{
+			"worktree": "hack/met-slack-foreground-tools",
+			"branch": "hack/met-slack-foreground-tools",
+			"headAtAudit": "238e8deb7f9e77d4fa68acc7444828819c96b6b4",
+			"cleanAtAudit": true,
+			"classification": "direct-or-patch-equivalent",
+			"patchEquivalentCommits": 1,
+			"adaptedOrArchivedCommitCount": 0
+		},
+		{
+			"worktree": "hack/muse-code-runtime",
+			"branch": "hack/muse-code-runtime",
+			"headAtAudit": "b6006537cbc37729ede167ab66db1f2fb56f8dc8",
+			"cleanAtAudit": true,
+			"classification": "direct-or-patch-equivalent",
+			"patchEquivalentCommits": 1,
+			"adaptedOrArchivedCommitCount": 0
+		},
+		{
+			"worktree": "hack/pr-comment-compose",
+			"branch": "hack/pr-comment-compose",
+			"headAtAudit": "cfa253f18f8ce87dfd7dd7731fc2a6845bee1a38",
+			"cleanAtAudit": true,
+			"classification": "direct-or-patch-equivalent",
+			"patchEquivalentCommits": 1,
+			"adaptedOrArchivedCommitCount": 0
+		},
+		{
+			"worktree": "hack/pr-comment-fixes",
+			"branch": "hack/pr-comment-fixes",
+			"headAtAudit": "f053caebc01294682fdecb48d74593ad613a0e5d",
+			"cleanAtAudit": true,
+			"classification": "direct-or-patch-equivalent",
+			"patchEquivalentCommits": 1,
+			"adaptedOrArchivedCommitCount": 0
+		},
+		{
+			"worktree": "hack/pr-file-keys",
+			"branch": "hack/pr-file-keys",
+			"headAtAudit": "3d490ffba882a05c31a6a8061c514e39a0a84dbc",
+			"cleanAtAudit": true,
+			"classification": "direct-or-patch-equivalent",
+			"patchEquivalentCommits": 1,
+			"adaptedOrArchivedCommitCount": 0
+		},
+		{
+			"worktree": "hack/pr-fix-conversation-native",
+			"branch": "hack/pr-fix-conversation-native",
+			"headAtAudit": "93ac19eec53d60536a57eed78ac74417fb26bc45",
+			"cleanAtAudit": true,
+			"classification": "direct-or-patch-equivalent",
+			"patchEquivalentCommits": 1,
+			"adaptedOrArchivedCommitCount": 0
+		},
+		{
+			"worktree": "hack/pr-fix-native",
+			"branch": "hack/pr-fix-native",
+			"headAtAudit": "f1a29061a46927f308eaf8238ab57966d754c9a5",
+			"cleanAtAudit": true,
+			"classification": "direct-or-patch-equivalent",
+			"patchEquivalentCommits": 1,
+			"adaptedOrArchivedCommitCount": 0
+		},
+		{
+			"worktree": "hack/pr-fix-review-ui",
+			"branch": "hack/pr-fix-review-ui",
+			"headAtAudit": "b220845f0f7d2abb57f9607727eb9fe06360d479",
+			"cleanAtAudit": true,
+			"classification": "direct-or-patch-equivalent",
+			"patchEquivalentCommits": 3,
+			"adaptedOrArchivedCommitCount": 0
+		},
+		{
+			"worktree": "hack/pr-fix-supervision",
+			"branch": "hack/pr-fix-supervision",
+			"headAtAudit": "f77220fb808c33d1105b301e7e04ed69c6029d59",
+			"cleanAtAudit": true,
+			"classification": "direct-or-patch-equivalent",
+			"patchEquivalentCommits": 2,
+			"adaptedOrArchivedCommitCount": 0
+		},
+		{
+			"worktree": "hack/pr-prepared-comments-main",
+			"branch": "hack/pr-prepared-comments-main",
+			"headAtAudit": "4e2830b5c8b6f3b2cbcda8fc8a46a7a3a3934c3a",
+			"cleanAtAudit": true,
+			"classification": "direct-or-patch-equivalent",
+			"patchEquivalentCommits": 1,
+			"adaptedOrArchivedCommitCount": 0
+		},
+		{
+			"worktree": "hack/pr-work-native",
+			"branch": "hack/pr-work-native",
+			"headAtAudit": "dd3f5f0a8fc3fe6e3048506fb4b0de9577bd0f8c",
+			"cleanAtAudit": true,
+			"classification": "direct-or-patch-equivalent",
+			"patchEquivalentCommits": 1,
+			"adaptedOrArchivedCommitCount": 0
+		},
+		{
+			"worktree": "hack/ui-diagram",
+			"branch": "hack/ui-diagram",
+			"headAtAudit": "7d1e148aeeecb383eb8b5221126f7c49ccd7b321",
+			"cleanAtAudit": true,
+			"classification": "direct-or-patch-equivalent",
+			"patchEquivalentCommits": 1,
+			"adaptedOrArchivedCommitCount": 0
+		},
+		{
+			"worktree": "hack/ui-signoff",
+			"branch": "hack/ui-signoff",
+			"headAtAudit": "d1ef53a9e4183fe8e83cc7162e779658c3796c72",
+			"cleanAtAudit": true,
+			"classification": "direct-or-patch-equivalent",
+			"patchEquivalentCommits": 1,
+			"adaptedOrArchivedCommitCount": 0
+		},
+		{
+			"worktree": "hack/voice-python",
+			"branch": "hack/voice-python",
+			"headAtAudit": "11a4850733bc2eac4079b23a22d657f9e01b40d4",
+			"cleanAtAudit": true,
+			"classification": "direct-or-patch-equivalent",
+			"patchEquivalentCommits": 2,
+			"adaptedOrArchivedCommitCount": 0
+		},
+		{
+			"worktree": "hack/voice-renderer",
+			"branch": "hack/voice-renderer",
+			"headAtAudit": "7b306026813b517aa4471fea179265774ba69f39",
+			"cleanAtAudit": true,
+			"classification": "direct-or-patch-equivalent",
+			"patchEquivalentCommits": 1,
+			"adaptedOrArchivedCommitCount": 0
+		},
+		{
+			"worktree": "hack/workspace-acceptance",
+			"branch": "hack/workspace-acceptance",
+			"headAtAudit": "c7a09924a59e04e9e301aac99e877a697850edbb",
+			"cleanAtAudit": true,
+			"classification": "direct-or-patch-equivalent",
+			"patchEquivalentCommits": 2,
+			"adaptedOrArchivedCommitCount": 0
+		},
+		{
+			"worktree": "hack/workspace-coordination",
+			"branch": "hack/workspace-coordination",
+			"headAtAudit": "f5686dd4063b66430bf7ca8087ac5fe4354d3937",
+			"cleanAtAudit": true,
+			"classification": "direct-or-patch-equivalent",
+			"patchEquivalentCommits": 2,
+			"adaptedOrArchivedCommitCount": 0
+		},
+		{
+			"worktree": "integration",
+			"branch": "hack/integration",
+			"headAtAudit": "727ac62189e50bba2596ce930ca6b047c2eb2bb3",
+			"cleanAtAudit": true,
+			"classification": "direct-or-patch-equivalent",
+			"patchEquivalentCommits": 0,
+			"adaptedOrArchivedCommitCount": 0
+		},
+		{
+			"worktree": "rate-idea",
+			"branch": "rate-idea",
+			"headAtAudit": "46f2201713f1464541308d7f28c19d079e833e53",
+			"cleanAtAudit": true,
+			"classification": "direct-or-patch-equivalent",
+			"patchEquivalentCommits": 0,
+			"adaptedOrArchivedCommitCount": 0
+		},
+		{
+			"worktree": "runtime",
+			"branch": "hack/runtime",
+			"headAtAudit": "7bb285f6511035630be794ccdfdf6f1319b97fb8",
+			"cleanAtAudit": true,
+			"classification": "adapted-runtime; retired-fixture-work-archived",
+			"patchEquivalentCommits": 2,
+			"adaptedOrArchivedCommitCount": 35
+		},
+		{
+			"worktree": "runtime-package-validation",
+			"branch": "detached",
+			"headAtAudit": "2735b86ec620046b1119937f0a087347691dc575",
+			"cleanAtAudit": true,
+			"classification": "adapted-runtime; retired-fixture-work-archived",
+			"patchEquivalentCommits": 19,
+			"adaptedOrArchivedCommitCount": 2
+		},
+		{
+			"worktree": "runtime-repositories",
+			"branch": "hack/runtime-repositories",
+			"headAtAudit": "a2b4c8de278b67d18a60252ac18e5b2d17eb4837",
+			"cleanAtAudit": true,
+			"classification": "direct-or-patch-equivalent",
+			"patchEquivalentCommits": 2,
+			"adaptedOrArchivedCommitCount": 0
+		},
+		{
+			"worktree": "runtime-signing",
+			"branch": "hack/runtime-signing",
+			"headAtAudit": "6d122c4365a35f611767cafffc9ffeabcc05c66d",
+			"cleanAtAudit": true,
+			"classification": "direct-or-patch-equivalent",
+			"patchEquivalentCommits": 2,
+			"adaptedOrArchivedCommitCount": 0
+		},
+		{
+			"worktree": "slack-delegation",
+			"branch": "slack-delegation",
+			"headAtAudit": "5d26137c37f74521ea8d22620ffd62468a869b04",
+			"cleanAtAudit": true,
+			"classification": "direct-or-patch-equivalent",
+			"patchEquivalentCommits": 0,
+			"adaptedOrArchivedCommitCount": 0
+		},
+		{
+			"worktree": "ui",
+			"branch": "hack/ui",
+			"headAtAudit": "a76a49575b88bd2eef58463c6ebfcf41f2fdaa4b",
+			"cleanAtAudit": true,
+			"classification": "integrated-with-later-adaptations",
+			"patchEquivalentCommits": 3,
+			"adaptedOrArchivedCommitCount": 23
+		},
+		{
+			"worktree": "ui-preview",
+			"branch": "hack/ui-preview",
+			"headAtAudit": "df4182dce86a01f7ed0d92c7a18e89de90ad7525",
+			"cleanAtAudit": true,
+			"classification": "direct-or-patch-equivalent",
+			"patchEquivalentCommits": 1,
+			"adaptedOrArchivedCommitCount": 0
+		},
+		{
+			"worktree": "ui-scenario",
+			"branch": "hack/ui-scenario",
+			"headAtAudit": "7d12892ada71952b5049f39ceb9619e4c1e9a937",
+			"cleanAtAudit": true,
+			"classification": "direct-or-patch-equivalent",
+			"patchEquivalentCommits": 1,
+			"adaptedOrArchivedCommitCount": 0
+		},
+		{
+			"worktree": "voice",
+			"branch": "hack/voice",
+			"headAtAudit": "ff8efa5f6ff08442a2fc5623c05ebc57ec4148ac",
+			"cleanAtAudit": true,
+			"classification": "integrated-with-later-adaptations",
+			"patchEquivalentCommits": 1,
+			"adaptedOrArchivedCommitCount": 15
+		}
+	],
+	"additionalBranches": [
+		{
+			"branch": "design/musefocus-app-identity",
+			"sourceCommit": "cc0c0a98cad0cab250f15ec5dfb087ef6dde3c69",
+			"integratedAs": "981e3fc",
+			"classification": "desktop identity integrated with canonical icon path and privacy preserved"
+		},
+		{
+			"branch": "design/pr-review-workspace",
+			"sourceCommit": "f8bb0a69f5d2201c2186a58e222b708cdd5b4c7b",
+			"classification": "archived historical prototype; superseded by current real workspace"
+		}
+	],
+	"validation": {
+		"unit": {
+			"files": 194,
+			"passed": 1919,
+			"skipped": 13,
+			"failed": 0,
+			"runner": "bun run test:unit; each file in a fresh Bun process"
+		},
+		"nativeApproval": {
+			"status": "passed",
+			"controlledProviders": true,
+			"liveGitHub": false,
+			"phases": 7
+		},
+		"nativeSlackClarification": {
+			"status": "passed",
+			"controlledProviders": true,
+			"liveSlack": false,
+			"phases": 7
+		},
+		"nativeOAuth": {
+			"status": "passed",
+			"actualCallbackHTTP": true,
+			"actualSafeStorage": true,
+			"liveProviders": false,
+			"checks": 5
+		},
+		"nativeDayRegression": "passed on final branded app",
+		"assetKitPoses": 606,
+		"siteControlledDOM": "passed",
+		"websiteBrowserVisualQA": "not-run; Chrome computer-use entry timed out",
+		"signedLatestCandidate": "not-run",
+		"liveSpeechAndPosting": "not-run",
+		"packaging": {
+			"status": "passed",
+			"kind": "unsigned-local",
+			"directory": "apps/desktop/dist/acceptance-unsigned-1793558253953",
+			"selectedICNSAndExtraPNGMatch": true,
+			"sdk": "1.4.14",
+			"voiceMachOBinaries": 274,
+			"signed": false
+		},
+		"frozenAssetHashesMatched": 210,
+		"typeCheck": "passed",
+		"lint": "passed",
+		"build": "passed",
+		"frozenInstall": "passed; no dependency or lockfile changes"
+	},
+	"acceptedSourceHead": "b915fadfab551ae239d0b2e943b505f7c573d1aa"
+}
