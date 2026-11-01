@@ -37,7 +37,11 @@
 		"team:db:link": "supabase link",
 		"team:db:plan": "supabase db push --dry-run",
 		"team:db:migrate": "supabase db push",
-		"team:db:history": "supabase migration list"
+		"team:db:history": "supabase migration list",
+		"team:edge:build": "bun run services/team/build-edge.mjs",
+		"team:edge:deploy": "bun run team:edge:build && supabase functions deploy muse-team-api --use-api && supabase functions deploy muse-team-webhook --use-api && supabase functions deploy muse-team-worker --use-api",
+		"team:worker:enable": "bun run services/team/configure-edge-worker.ts --enable",
+		"team:worker:disable": "bun run services/team/configure-edge-worker.ts --disable"
 	},
 	"devDependencies": {
 		"@biomejs/biome": "1.9.4",

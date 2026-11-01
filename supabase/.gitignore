@@ -2,6 +2,9 @@
 .branches
 .temp
 
+# Deployment bundles are generated from services/team/edge by team:edge:build.
+functions/*/index.ts
+
 # dotenvx
 .env.keys
 .env.local

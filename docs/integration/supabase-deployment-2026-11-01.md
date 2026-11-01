@@ -8,6 +8,10 @@ deployed versioned SQL from `supabase/migrations/`. No migration was executed fr
 browser editor. Remote history matches 001–004, and a final dry run reports up to date. Migration
 004 corrects the exact-bundle validator's timestamp-dependent volatility; applied files stay unchanged.
 
+Subsequent [Supabase-only Edge deployment](supabase-edge-acceptance.md) adds migration 005 for
+administrator-controlled scheduling; current history matches 001–005. The three Edge Functions are
+deployed, with preparation and scheduling gated on the actual GitHub App configuration.
+
 The database contains 13 public application tables with RLS and four non-exposed private ledger
 tables. A team is represented by a Muse organization. Database access requires the authenticated
 user's active membership and repository grant, independent of any team ID supplied by the app.
@@ -43,7 +47,7 @@ and acceptance scope. [CLI/operator commands](team-setup.md#versioned-database-w
 for later migrations. [Hosted role/RLS screenshot](screenshots/supabase-rls-deployed-2026-11-01.jpg)
 shows the deployed table controls. Linux CI runs the SQL policy suite on schema/test changes.
 
-GitHub App installation, hosted HTTP API/consumer, installed-app connection with that service and
+GitHub App installation/provider activation, installed-app connection with the hosted service and
 real two-user exchange remain pending. The Supabase dashboard account, app Supabase identity and
 repository-access grant are separate; team requests require the latter two to represent the same
 GitHub user. This database/auth deployment does not claim the full team review service is live.

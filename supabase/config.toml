@@ -29,3 +29,20 @@ additional_redirect_urls = ["http://127.0.0.1:43189/team-auth/**"]
 enable_signup = true
 enable_anonymous_sign_ins = false
 enable_refresh_token_rotation = true
+
+# Each handler authenticates its own route: fresh user identity, GitHub HMAC, or scoped worker key.
+# Webhooks/Cron cannot use the platform's user-JWT gate. Public client keys grant no handler access.
+[functions.muse-team-api]
+enabled = true
+verify_jwt = false
+entrypoint = "./functions/muse-team-api/index.ts"
+
+[functions.muse-team-webhook]
+enabled = true
+verify_jwt = false
+entrypoint = "./functions/muse-team-webhook/index.ts"
+
+[functions.muse-team-worker]
+enabled = true
+verify_jwt = false
+entrypoint = "./functions/muse-team-worker/index.ts"

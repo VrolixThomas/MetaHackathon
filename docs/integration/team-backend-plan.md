@@ -2,8 +2,9 @@
 
 Implementation update (2026-11-01): the backend, desktop onboarding, shared preparation, proposal
 review and explicit local application are now integrated and locally verified. This document retains
-the original design context. The Supabase database is now deployed; HTTP API/consumer hosting and
-live team login remain pending. See [deployment](supabase-deployment-2026-11-01.md), [setup](team-setup.md) and
+the original design context. Supabase database/Auth and Edge API/webhook/worker are deployed; App
+credentials/install, scheduler enable and live prepared review acceptance remain pending. See
+[Edge deployment](supabase-edge-acceptance.md), [setup](team-setup.md) and
 [acceptance evidence](all-features-acceptance.md) for the implemented behavior and remaining inputs.
 
 Current checkpoint: `d4207f7`. The desktop runs coding commands locally in app-owned Git checkouts.

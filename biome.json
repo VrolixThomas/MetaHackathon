@@ -16,6 +16,7 @@
 			".turbo",
 			"**/.venv/**",
 			"*.min.js",
+			"supabase/functions/*/index.ts",
 			"**/db/migrations/**"
 		]
 	},

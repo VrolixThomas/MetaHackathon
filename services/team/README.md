@@ -1,8 +1,9 @@
 # Shared team review service (MET-72, MET-73, MET-41)
 
 These modules are real Supabase/PostgREST adapters and executable migration paths. The selected
-`muse` database (`vmydpscnfgvbciotoaln`) has migrations 001–004 deployed through the CLI; HTTP API/consumer
-hosting remains pending. Live GitHub identity/PKCE login passes; no product fixture fallback exists. Root owns desktop
+`muse` database (`vmydpscnfgvbciotoaln`) has migrations 001–005 deployed through the CLI, plus three
+deployed Edge Functions. Live GitHub identity/PKCE login passes. The GitHub App credentials/install
+still gate preparation and the scheduler is off. No product fixture fallback exists. Root owns desktop
 composition, shared DTO publication, manifests and combined acceptance. Lane-local protocol schemas
 are in `services/team/protocol.ts` and reuse the existing PreparedReview contract.
 
@@ -102,6 +103,10 @@ reload/retry/discard controls. Final generation/user checks run after encrypted 
 late online or offline result cannot return another account's artifact as current.
 
 ## Executable hosting and exact proposal exchange
+
+The selected production target is now Supabase Edge; use [the Edge operations guide](../../docs/integration/supabase-edge-acceptance.md).
+The supervised Bun commands below remain the development/alternative runtime. Edge adapters reuse
+the same routes, leases and source checks with a 100-second total budget and separate wakeup key.
 
 Run from a clean repository root with its supplied frozen manifests (`bun install --frozen-lockfile
 --ignore-scripts` is sufficient for this standalone service; no Electron is needed):

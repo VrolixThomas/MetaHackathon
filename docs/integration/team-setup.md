@@ -1,7 +1,8 @@
 # Shared team reviews and proposed fixes
 
 The shared database is deployed to the selected `muse` Supabase project (`vmydpscnfgvbciotoaln`).
-GitHub identity sign-in and the actual PKCE callback pass; HTTP API/consumer hosting is pending.
+GitHub identity sign-in/PKCE and the deployed Supabase Edge endpoints pass their checks. Hosted
+preparation is waiting for the GitHub App ID/private key and repository installation; Cron is off.
 The desktop remains useful with its existing local providers. No coding subscription credential or
 private conversation is uploaded to the team service. See [deployment evidence](supabase-deployment-2026-11-01.md).
 
@@ -15,20 +16,29 @@ private conversation is uploaded to the team service. See [deployment evidence](
 3. Create/install the GitHub App for the intended repositories, with read access to PR metadata,
    repository content and review feedback. Point its signed webhook at the service's webhook route
    described in [the server guide](../../services/team/README.md). Register the webhook secret.
-4. Configure the **server-only** variables from `services/team/.env.example`. Keep the service-role
-   key, GitHub App private key and preparation model key on the server. `TEAM_ANALYSIS_VERSION`
+4. Keep operator Supabase credentials in private `services/team/.env`; Edge custom secrets live in
+   private `services/team/.env.edge`. Supabase injects its own server keys. Keep the GitHub App
+   private key and Muse `MODEL_API_KEY` server-only. `TEAM_ANALYSIS_VERSION`
    identifies the deployed prompt/model/context policy; change it when those inputs change.
-5. Run and supervise both processes from a clean repository install:
+5. Build/deploy the three Edge Functions, then explicitly enable the scheduler after provider
+   configuration passes. See [the Edge acceptance/operations guide](supabase-edge-acceptance.md).
 
 ```sh
 bun install --frozen-lockfile
-bun run team:serve
-bun run team:consume
+bun run team:edge:build
+supabase secrets set --project-ref vmydpscnfgvbciotoaln --env-file services/team/.env.edge
+bun run team:edge:deploy
+bun run team:worker:enable
 ```
 
-Expose the API over HTTPS. Webhook ingress verifies the raw HMAC; consumers use durable leases,
+Supabase serves HTTPS. Webhook ingress verifies the raw HMAC; consumers use durable leases,
 heartbeats and fencing. Duplicate events reuse the preparation input. A crash after a model call
 can still require another paid call; only the canonical stored result is deduplicated.
+
+`team:worker:enable` verifies function configuration and the dedicated wakeup key before storing it
+in Vault and scheduling the two queues. It refuses the current missing-App configuration.
+`team:worker:disable` removes only Muse's two schedules. The existing `team:serve` / `team:consume`
+Bun entrypoints remain available for local development; production uses Supabase Edge.
 
 ## Versioned database workflow
 
@@ -68,7 +78,7 @@ Add these values to the active desktop `.env`, then open **Settings → Team rev
 ```dotenv
 SUPABASE_URL=https://your-project.supabase.co
 SUPABASE_PUBLISHABLE_KEY=your-public-key
-MUSE_TEAM_SERVICE_URL=https://your-team-api.example
+MUSE_TEAM_SERVICE_URL=https://vmydpscnfgvbciotoaln.supabase.co/functions/v1/muse-team-api
 ```
 
 Never put a service-role key in the desktop configuration. Choose **Connect team**, finish the

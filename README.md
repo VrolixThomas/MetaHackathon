@@ -135,8 +135,8 @@ without configured validation commands.
 
 Coding runs on this Mac. SQLite and local private files hold prepared review plans and proposed
 fixes; published comments and branches are shared through GitHub. A shared organization backend
-is implemented as an optional Supabase-backed service. Deployment and real team onboarding still
-need configuration; see [team setup](docs/integration/team-setup.md).
+uses Supabase DB/Auth and deployed Edge API, webhook and finite preparation workers. The worker
+scheduler remains off until the GitHub App is installed/configured; see [team setup](docs/integration/team-setup.md).
 
 ## My day and Slack
 

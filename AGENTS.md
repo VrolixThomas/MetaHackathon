@@ -403,3 +403,17 @@ scoped even inside a shared organization. Desktop receives only the public clien
 credentials bypass RLS and stay server-only, behind fresh HTTP authorization. Tests include disjoint
 organizations with the same repository ID, forged keys, revocation and multi-org users. The SQL CI
 workflow runs all policy tests against isolated PostgreSQL; live two-user OAuth remains separate.
+
+The hosted target is Supabase-only: `services/team/edge/` sources build to ignored generated
+`supabase/functions/*/index.ts` via `team:edge:build`; deploy only the three named Muse functions.
+Each handler owns authentication: user JWT + GitHub identity, raw webhook HMAC, or dedicated worker
+invocation key. `verify_jwt=false` is not permission to accept a public API key as authentication.
+Modern Supabase `sb_*` API keys use only `apikey`; user JWTs stay separate on Authorization.
+API bases preserve the trusted function prefix; Supabase/Auth URLs remain origin-only.
+
+One worker invocation has a 100-second total deadline, including transport/body/claim/terminal
+operations. HTTP 202 means accepted, not completed. Job leases and fenced results remain authoritative;
+there is no continuation of a half-generated model response. Cron/Vault management is server-only,
+installed unscheduled by migration 005. Enable only explicitly through the preflight command after
+real App credentials/install; never fabricate App IDs or mark live preparation from an empty tick.
+Git/build/terminal coding workers remain app-owned local processes, outside Supabase Edge.
