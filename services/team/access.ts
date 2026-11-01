@@ -6,7 +6,7 @@ export const RepositorySchema = z.object({
 	org_id: z.uuid(),
 	repository_id: RepositoryId,
 	full_name: z.string().regex(/^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+$/),
-	installation_id: RepositoryId,
+	installation_id: RepositoryId.nullable(),
 	enabled: z.boolean(),
 });
 export type TeamRepository = z.infer<typeof RepositorySchema>;

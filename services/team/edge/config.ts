@@ -89,11 +89,13 @@ export function edgeConfiguration(env: EdgeEnvironment, role: EdgeRole) {
 		if (config.publicKey.startsWith("sb_secret_")) status.invalid.push("SUPABASE_PUBLISHABLE_KEY");
 	}
 	if (role !== "webhook") {
+		requireValue("analysisVersion", "TEAM_ANALYSIS_VERSION");
+		if (config.analysisVersion.length > 160) status.invalid.push("TEAM_ANALYSIS_VERSION");
+	}
+	if (role === "worker") {
 		requireValue("appId", "GITHUB_APP_ID");
 		requireValue("privateKey", "GITHUB_APP_PRIVATE_KEY");
-		requireValue("analysisVersion", "TEAM_ANALYSIS_VERSION");
 		if (config.appId && !/^[1-9][0-9]*$/.test(config.appId)) status.invalid.push("GITHUB_APP_ID");
-		if (config.analysisVersion.length > 160) status.invalid.push("TEAM_ANALYSIS_VERSION");
 		if (config.privateKey) {
 			try {
 				if (createPrivateKey(config.privateKey).asymmetricKeyType !== "rsa") throw new Error();

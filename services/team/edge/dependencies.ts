@@ -3,6 +3,7 @@ import { TeamAccess } from "../access";
 import { TeamConsumer } from "../consumer";
 import { HostedGitHub } from "../github";
 import { SupabaseRest } from "../supabase";
+import { UserGitHub } from "../user-github";
 import type { EdgeConfiguration } from "./config";
 
 export function adminDatabase(config: EdgeConfiguration, transport: typeof fetch) {
@@ -16,11 +17,7 @@ export function apiDependencies(config: EdgeConfiguration, transport: typeof fet
 		user: (token) =>
 			new SupabaseRest({ url: config.url, key: config.publicKey, token, fetch: transport }),
 	});
-	const github = new HostedGitHub({
-		appId: config.appId,
-		privateKey: config.privateKey,
-		fetch: transport,
-	});
+	const github = new UserGitHub(transport);
 	return { admin, access, github, analysisVersion: config.analysisVersion };
 }
 
@@ -37,11 +34,14 @@ export function workerConsumer(
 	createConsumer: ConsumerFactory = (options) => new TeamConsumer(options),
 	recordUsage: (record: UsageRecord) => void = () => {}
 ) {
-	const deps = apiDependencies(config, transport);
 	return createConsumer({
-		db: deps.admin,
-		github: deps.github,
-		analysisVersion: deps.analysisVersion,
+		db: adminDatabase(config, transport),
+		github: new HostedGitHub({
+			appId: config.appId,
+			privateKey: config.privateKey,
+			fetch: transport,
+		}),
+		analysisVersion: config.analysisVersion,
 		model: new MetaClient({
 			getApiKey: async () => config.modelKey,
 			recordUsage,

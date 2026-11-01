@@ -7,16 +7,17 @@ import { createTeamApi } from "./api";
 import { TeamConsumer } from "./consumer";
 import { HostedGitHub } from "./github";
 import { SupabaseRest } from "./supabase";
-import { receiveWebhook } from "./webhook";
+import { UserGitHub } from "./user-github";
 
 const help = `Muse organization review service (MET-72/73/41)
 Usage: bun services/team/entry.ts serve|consume [--once]
 Required: SUPABASE_URL SUPABASE_PUBLISHABLE_KEY SUPABASE_SERVICE_ROLE_KEY
-          GITHUB_APP_ID GITHUB_APP_PRIVATE_KEY TEAM_ANALYSIS_VERSION
-Serve:    GITHUB_WEBHOOK_SECRET TEAM_HOST(default 127.0.0.1) TEAM_PORT(default 8787)
-Consume:  META_API_KEY (server preparation only; no coding subscription sessions)
+          TEAM_ANALYSIS_VERSION
+Serve:    TEAM_HOST(default 127.0.0.1) TEAM_PORT(default 8787)
+          Local findings/proposal sharing only. No hosted preprocessing or webhooks.
+Archived consume: GITHUB_APP_ID GITHUB_APP_PRIVATE_KEY META_API_KEY (explicit legacy mode)
 No credentials, database, provider calls or sockets are used by --help.
-Serve behind HTTPS. Only /health is public; /webhooks/github requires HMAC and /v1 requires user authorization.
+Serve behind HTTPS. Only /health is public; /v1 requires matched Supabase and end-user GitHub authorization.
 `;
 function required(env: NodeJS.ProcessEnv, key: string) {
 	const value = env[key]?.trim();
@@ -32,10 +33,7 @@ export function dependencies(env: NodeJS.ProcessEnv) {
 		key: required(env, "SUPABASE_SERVICE_ROLE_KEY"),
 		allowLocal,
 	});
-	const github = new HostedGitHub({
-		appId: required(env, "GITHUB_APP_ID"),
-		privateKey: required(env, "GITHUB_APP_PRIVATE_KEY").replace(/\\n/g, "\n"),
-	});
+	const github = new UserGitHub();
 	const analysisVersion = required(env, "TEAM_ANALYSIS_VERSION");
 	const access = new TeamAccess({
 		admin,
@@ -45,7 +43,6 @@ export function dependencies(env: NodeJS.ProcessEnv) {
 }
 export function serverHandler(env: NodeJS.ProcessEnv) {
 	const deps = dependencies(env);
-	const secret = required(env, "GITHUB_WEBHOOK_SECRET");
 	const api = createTeamApi(deps.access, {
 		admin: deps.admin,
 		github: deps.github,
@@ -54,7 +51,6 @@ export function serverHandler(env: NodeJS.ProcessEnv) {
 	return async (request: Request): Promise<Response> => {
 		const path = new URL(request.url).pathname;
 		if (path === "/health" && request.method === "GET") return Response.json({ status: "ok" });
-		if (path === "/webhooks/github") return receiveWebhook(request, { secret, db: deps.admin });
 		if (path.startsWith("/v1/")) return api(request);
 		return Response.json({ error: "not-found" }, { status: 404 });
 	};
@@ -114,6 +110,10 @@ export async function main(args: string[], env = process.env): Promise<void> {
 		for (const signal of ["SIGINT", "SIGTERM"] as const) process.once(signal, () => server.close());
 	} else {
 		const deps = dependencies(env);
+		const github = new HostedGitHub({
+			appId: required(env, "GITHUB_APP_ID"),
+			privateKey: required(env, "GITHUB_APP_PRIVATE_KEY").replace(/\\n/g, "\n"),
+		});
 		const apiKey = required(env, "META_API_KEY");
 		const model = new MetaClient({
 			getApiKey: async () => apiKey,
@@ -123,7 +123,7 @@ export async function main(args: string[], env = process.env): Promise<void> {
 		});
 		const consumer = new TeamConsumer({
 			db: deps.admin,
-			github: deps.github,
+			github,
 			analysisVersion: deps.analysisVersion,
 			model,
 		});

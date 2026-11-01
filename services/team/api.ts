@@ -1,6 +1,5 @@
 import { z } from "zod";
 import type { TeamAccess, TeamRepository } from "./access";
-import type { HostedGitHub } from "./github";
 import { onboard } from "./onboarding";
 import {
 	type ProposalBundle,
@@ -9,14 +8,41 @@ import {
 	validateBundle,
 } from "./proposals";
 import {
+	LocalReviewSubmissionSchema,
 	ProgressWriteSchema,
+	type ReviewKey,
 	ReviewKeySchema,
 	TeamError,
 	artifact,
 	boundedJson,
+	canonical,
 	digest,
 } from "./protocol";
 import { type SupabaseRest, query } from "./supabase";
+import type { UserGitHub } from "./user-github";
+
+// Database attribution is never taken from a submission. Legacy rows remain unattributed.
+const ArtifactRowSchema = z.object({
+	key: ReviewKeySchema,
+	review: z.unknown(),
+	digest: z.string(),
+	origin: z.literal("local").nullable().optional(),
+	prepared_by: z.uuid().nullable().optional(),
+});
+function storedArtifact(raw: unknown) {
+	const row = ArtifactRowSchema.parse(raw);
+	return artifact({
+		key: row.key,
+		review: row.review,
+		digest: row.digest,
+		...(row.origin === "local"
+			? {
+					provenance: "reported-local-analysis",
+					...(row.prepared_by ? { preparedBy: row.prepared_by } : {}),
+				}
+			: {}),
+	});
+}
 
 /** Every operation revalidates source access. All GitHub operations are reads. */
 export function createTeamApi(
@@ -24,11 +50,31 @@ export function createTeamApi(
 		Partial<Pick<TeamAccess, "identify">>,
 	options?: {
 		admin: SupabaseRest;
-		github: Pick<HostedGitHub, "context"> &
-			Partial<Pick<HostedGitHub, "installation" | "authorize">>;
+		github: Pick<UserGitHub, "context">;
 		analysisVersion: string;
 	}
 ) {
+	const currentContext = async (
+		repository: TeamRepository,
+		key: ReviewKey,
+		signal: AbortSignal,
+		token: string
+	) => {
+		if (!options) throw new TeamError("unavailable");
+		if (key.analysisVersion !== options.analysisVersion) throw new TeamError("conflict");
+		const current = await options.github.context(repository, key.prNumber, signal, token);
+		if (
+			current.contextDigest !== key.contextDigest ||
+			digest(current.context) !== key.contextDigest ||
+			current.context.pr.baseSha !== key.baseSha ||
+			current.context.pr.headSha !== key.headSha ||
+			current.context.pr.number !== key.prNumber ||
+			current.context.pr.repository !== repository.full_name ||
+			current.context.pr.id !== `${repository.full_name}#${key.prNumber}`
+		)
+			throw new TeamError("conflict");
+		return current.context;
+	};
 	const verifyFeedback = async (
 		bundle: ProposalBundle,
 		github: string,
@@ -84,6 +130,8 @@ export function createTeamApi(
 			const github = request.headers.get("x-github-token");
 			if (!jwt || !github || github.length > 32768) throw new TeamError("unauthorized");
 			const path = new URL(request.url).pathname;
+			if (path === "/v1/reviews/request" || path === "/v1/reviews/retry")
+				return Response.json({ error: "hosted-preparation-disabled" }, { status: 410 });
 			const body = (await boundedJson(new Response(request.body), 4000000)) as {
 				key?: unknown;
 				progress?: { key?: unknown };
@@ -91,16 +139,11 @@ export function createTeamApi(
 			};
 
 			if (path === "/v1/organizations/create" || path === "/v1/repositories/register") {
-				if (!options?.github.installation || !options.github.authorize || !access.identify)
-					throw new TeamError("unavailable");
+				if (!options || !access.identify) throw new TeamError("unavailable");
 				return Response.json(
 					await onboard(path, body, jwt, github, {
 						access: { identify: access.identify.bind(access), github: access.github.bind(access) },
 						admin: options.admin,
-						github: {
-							installation: options.github.installation.bind(options.github),
-							authorize: options.github.authorize.bind(options.github),
-						},
 					})
 				);
 			}
@@ -193,24 +236,104 @@ export function createTeamApi(
 			const key = ReviewKeySchema.parse(body?.key ?? body?.progress?.key ?? body?.bundle?.key);
 			const actor = await access.authorize(jwt, github, key.orgId, key.repositoryId);
 			const { db, userId, repository } = actor;
+			if (path === "/v1/reviews/publish") {
+				if (!options) throw new TeamError("unavailable");
+				const input = LocalReviewSubmissionSchema.parse(body);
+				const submitted = artifact({ key: input.key, review: input.review, digest: input.digest });
+				const context = await currentContext(repository, key, request.signal, github);
+				if (
+					canonical(submitted.review.pr) !== canonical(context.pr) ||
+					submitted.review.files.length !== context.files.length ||
+					submitted.review.files.some(
+						(file) => !context.files.some((source) => source.path === file.path)
+					) ||
+					((context.truncated || context.files.some((file) => !file.patch)) &&
+						submitted.review.coverage !== "partial")
+				)
+					throw new TeamError("conflict");
+				for (const file of submitted.review.files)
+					for (const comment of file.suggestedComments) {
+						const ref = comment.location;
+						if (
+							ref &&
+							(ref.repository !== context.pr.repository ||
+								ref.path !== file.path ||
+								ref.commitSha !== (ref.revision === "base" ? key.baseSha : key.headSha))
+						)
+							throw new TeamError("conflict");
+					}
+				// A fresh user-token read supplies the stable author subject for the SQL head fence.
+				const pr = z
+					.object({
+						number: z.int(),
+						title: z.string(),
+						html_url: z.string(),
+						body: z.string().nullable(),
+						user: z.object({ id: z.int().positive(), login: z.string() }),
+						head: z.object({ sha: z.string() }),
+						base: z.object({ sha: z.string(), repo: z.object({ id: z.int().positive() }) }),
+					})
+					.parse(
+						await access.github(`/repos/${repository.full_name}/pulls/${key.prNumber}`, github)
+					);
+				if (
+					pr.number !== key.prNumber ||
+					String(pr.base.repo.id) !== key.repositoryId ||
+					pr.base.sha !== key.baseSha ||
+					pr.head.sha !== key.headSha ||
+					pr.title !== context.pr.title ||
+					pr.html_url !== context.pr.url ||
+					pr.user.login !== context.pr.author ||
+					(pr.body ?? "").slice(0, 32000) !== context.description
+				)
+					throw new TeamError("conflict");
+				request.signal.throwIfAborted();
+				await options.admin.request(
+					"/rest/v1/team_pr_heads?on_conflict=org_id,repository_id,pr_number",
+					{
+						method: "POST",
+						prefer: "resolution=merge-duplicates,return=minimal",
+						body: {
+							org_id: key.orgId,
+							repository_id: key.repositoryId,
+							pr_number: key.prNumber,
+							head_sha: key.headSha,
+							base_sha: key.baseSha,
+							context_digest: key.contextDigest,
+							github_author_id: String(pr.user.id),
+							checked_at: new Date().toISOString(),
+						},
+					},
+					request.signal
+				);
+				return Response.json(
+					storedArtifact(
+						await options.admin.rpc(
+							"team_publish_local_review",
+							{
+								p_actor: userId,
+								p_key: key,
+								p_review: submitted.review,
+								p_digest: input.digest,
+								p_request: input.requestId,
+							},
+							request.signal
+						)
+					)
+				);
+			}
 			if (path === "/v1/reviews/read") {
 				if (options && key.analysisVersion !== options.analysisVersion)
 					throw new TeamError("conflict");
 				const rows = z
-					.array(z.object({ key: ReviewKeySchema, review: z.unknown(), digest: z.string() }))
+					.array(ArtifactRowSchema)
 					.max(1)
 					.parse(await db.request(query("team_review_artifacts", { key: JSON.stringify(key) })));
 				if (rows[0]) {
-					if (!options) throw new TeamError("unavailable");
-					const current = await options.github.context(repository, key.prNumber, request.signal);
-					if (
-						current.contextDigest !== key.contextDigest ||
-						current.context.pr.headSha !== key.headSha ||
-						current.context.pr.baseSha !== key.baseSha
-					)
-						throw new TeamError("conflict");
+					if (canonical(rows[0].key) !== canonical(key)) throw new TeamError("conflict");
+					await currentContext(repository, key, request.signal, github);
 				}
-				return Response.json(rows[0] ? artifact(rows[0]) : null);
+				return Response.json(rows[0] ? storedArtifact(rows[0]) : null);
 			}
 
 			if (path === "/v1/reviews/status") {
@@ -237,28 +360,6 @@ export function createTeamApi(
 						? { status: rows[0].state, errorCode: rows[0].error_code, attempts: rows[0].attempts }
 						: { status: "missing", errorCode: null, attempts: 0 }
 				);
-			}
-			if (path === "/v1/reviews/retry") {
-				const input = z.object({ requestId: z.uuid() }).parse(body);
-				await db.rpc("team_retry_preparation", { p_key: key, p_request: input.requestId });
-				return Response.json({ status: "queued" });
-			}
-			if (path === "/v1/reviews/request") {
-				if (!options) throw new TeamError("unavailable");
-				if (key.analysisVersion !== options.analysisVersion) throw new TeamError("conflict");
-				const { context, contextDigest } = await options.github.context(
-					repository,
-					key.prNumber,
-					request.signal
-				);
-				if (
-					contextDigest !== key.contextDigest ||
-					context.pr.baseSha !== key.baseSha ||
-					context.pr.headSha !== key.headSha
-				)
-					throw new TeamError("conflict");
-				await options.admin.rpc("team_request_preparation", { p_key: key, p_context: context });
-				return Response.json({ status: "queued", key }, { status: 202 });
 			}
 			if (path === "/v1/progress/read") {
 				const rows = z

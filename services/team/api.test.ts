@@ -101,7 +101,7 @@ test("two-user HTTP exchange shares exact source/patch/check bundle and only cur
 					org_id: org,
 					repository_id: "42",
 					full_name: "test/repo",
-					installation_id: "7",
+					installation_id: null,
 					enabled: true,
 				},
 			]);
@@ -123,7 +123,8 @@ test("two-user HTTP exchange shares exact source/patch/check bundle and only cur
 		if (url.pathname.endsWith("team_proposal_decisions"))
 			return Response.json(
 				decisionRecord &&
-					url.searchParams.get("request_id") === `eq.${decisionRecord["request_id"]}`
+					(url.searchParams.get("request_id") === `eq.${decisionRecord["request_id"]}` ||
+						url.searchParams.get("proposal_id") === `eq.${decisionRecord["proposal_id"]}`)
 					? [decisionRecord]
 					: []
 			);
@@ -152,6 +153,8 @@ test("two-user HTTP exchange shares exact source/patch/check bundle and only cur
 				proposal_id: input.p_id,
 				bundle_digest: input.p_digest,
 				decision: input.p_decision,
+				author_id: input.p_actor,
+				github_author_id: input.p_actor === ids.b ? "102" : input.p_actor === ids.a ? "101" : "103",
 			};
 			return Response.json({
 				id: decisionRecord["id"],
@@ -222,7 +225,16 @@ test("two-user HTTP exchange shares exact source/patch/check bundle and only cur
 	);
 	assert.equal((await call("b", "proposals/decide", decision)).status, 200);
 	assert.equal(decisions, 1);
+	const apply = {
+		key,
+		proposalId: shared?.["id"],
+		bundleDigest: share.bundleDigest,
+		confirmed: true,
+	};
+	assert.equal((await call("b", "proposals/authorize-apply", apply)).status, 200);
+	assert.equal((await call("a", "proposals/authorize-apply", apply)).status, 403);
 	head = "e".repeat(40);
+	assert.equal((await call("b", "proposals/authorize-apply", apply)).status, 409);
 	assert.equal((await call("b", "proposals/decide", decision)).status, 200);
 	assert.equal(
 		(await call("b", "proposals/decide", { ...decision, requestId: randomUUID() })).status,

@@ -138,7 +138,9 @@ test("API unknown paths, method and missing auth never reach services; health is
 	);
 	const health = await handler(new Request("https://edge.example/muse-team-api/health"));
 	assert.equal(health.status, 503);
-	assert.ok((await health.json()).missing.includes("GITHUB_APP_ID"));
+	const status = (await health.json()) as { missing: string[] };
+	assert.ok(status.missing.includes("TEAM_ANALYSIS_VERSION"));
+	assert.ok(!status.missing.includes("GITHUB_APP_ID"));
 });
 
 test("config aliases are deliberate; invalid credentials return only fixed setting names", async () => {
@@ -158,8 +160,9 @@ test("config aliases are deliberate; invalid credentials return only fixed setti
 	const health = await handler(new Request("https://edge.example/health"));
 	assert.equal(health.status, 503);
 	const text = await health.text();
-	assert.ok(text.includes("GITHUB_APP_ID"));
-	assert.ok(text.includes("GITHUB_APP_PRIVATE_KEY"));
+	assert.ok(text.includes("SUPABASE_URL"));
+	assert.ok(!text.includes("GITHUB_APP_ID"));
+	assert.ok(!text.includes("GITHUB_APP_PRIVATE_KEY"));
 	for (const secret of ["secret-invalid-private-key-value", "secret-password", env.MODEL_API_KEY])
 		assert.ok(!text.includes(secret));
 	assert.equal(

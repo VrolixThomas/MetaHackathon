@@ -18,6 +18,7 @@ const paths = new Set([
 	"/v1/repositories/resolve",
 	"/v1/repositories/register",
 	"/v1/reviews/read",
+	"/v1/reviews/publish",
 	"/v1/reviews/status",
 	"/v1/reviews/retry",
 	"/v1/reviews/request",

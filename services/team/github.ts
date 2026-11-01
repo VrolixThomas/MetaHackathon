@@ -79,7 +79,8 @@ export class HostedGitHub {
 
 	async authorize(repository: TeamRepository, signal?: AbortSignal): Promise<string> {
 		signal?.throwIfAborted();
-		if (!repository.enabled) throw new TeamError("forbidden");
+		if (!repository.enabled || repository.installation_id === null)
+			throw new TeamError("forbidden");
 		const jwt = this.jwt();
 		const installation = z
 			.object({ id: z.number().int(), suspended_at: z.string().nullable() })

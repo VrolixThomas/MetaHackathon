@@ -1,7 +1,6 @@
 import { z } from "zod";
 import type { TeamAccess } from "./access";
 import { CreateOrganizationSchema, RegisterRepositorySchema } from "./desktop-schemas";
-import type { HostedGitHub } from "./github";
 import { TeamError } from "./protocol";
 import { type SupabaseRest, query } from "./supabase";
 
@@ -13,7 +12,6 @@ export async function onboard(
 	options: {
 		access: Pick<TeamAccess, "identify" | "github">;
 		admin: SupabaseRest;
-		github: Pick<HostedGitHub, "installation" | "authorize">;
 	}
 ) {
 	const actor = await options.access.identify(jwt, githubToken);
@@ -47,20 +45,12 @@ export async function onboard(
 		source.full_name.toLowerCase() !== input.repository.toLowerCase()
 	)
 		throw new TeamError("forbidden");
-	const installation = await options.github.installation(source.full_name, input.installationId);
-	await options.github.authorize({
-		org_id: input.orgId,
-		repository_id: String(source.id),
-		full_name: source.full_name,
-		installation_id: installation,
-		enabled: true,
-	});
 	return options.admin.rpc("team_register_repository", {
 		p_user: actor.userId,
 		p_org: input.orgId,
 		p_repository: String(source.id),
 		p_name: source.full_name,
-		p_installation: installation,
+		p_installation: null,
 		p_request: input.requestId,
 	});
 }
