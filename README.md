@@ -125,6 +125,14 @@ real draft; this does not accept or merge it. Supported direct feedback suggesti
 to your own PR branch after actual successful checks and a separate inferred assessment. Product
 ambiguity asks for a decision. Disable automatic suggestions in **Manage connections** if desired.
 
+For an inspected PR, **PR follow-up** can monitor explicit conditions and either notify you or
+submit a GitHub approval after you confirm the exact delegation. Source changes must match the
+authorized complete file contents; conditions requiring judgment return to you. Notification-only
+policies also support your own PRs and repositories you can only read. Approval requires the
+appropriate permission, a different PR author, fresh checks and an unexpired policy. Monitoring
+runs locally while the app and Mac are awake; uncertain submissions retain their identity without
+automatic retries. It never merges the PR.
+
 The default API worker runs with your OS permissions. The Muse Code worker requires the vendor's
 sandboxed human-review permission profile and a restricted coding toolset; unsupported configurations
 block execution. Approval requests become saved decisions rather than automatic approvals.
@@ -146,6 +154,12 @@ remain pending until accepted; a source-bound explicit promise from your own acc
 acceptance. Muse can prepare isolated work while acceptance is pending, but execution waits for it.
 Questions are covered with you when you open the item. Source-backed work closes only after a
 confirmed answer in the original thread; personal items use an explicit **I have answered this**.
+
+For a Slack-backed item, **Delegate clarification** lets Muse ask a bounded set of questions in
+the original thread after you authorize its scope and duration. Pause or revoke it from the item.
+It does not accept the task or start coding. **Inspect current clarification** checks current source
+access before showing thread evidence, delivery receipts and the inferred brief. Missing context,
+scope changes and uncertain sends return to you for judgment.
 
 In **Settings → Slack**, choose **Sign in with Slack** and approve in your browser. The one-time app
 registration uses [this manifest](docs/integration/slack-app-manifest.json), enables PKCE, and registers

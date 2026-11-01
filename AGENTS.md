@@ -435,3 +435,24 @@ fences do not establish current hosted capability. Cron/Vault management stays s
 migration 005 installed it unscheduled, and current deployment keeps it disabled. No App/model
 secret or hosted queue is required. Git/build/terminal coding workers remain app-owned local
 processes, outside Supabase Edge.
+
+## Reviewed delegations and worktree audit (2026-11-01)
+
+MET-75 conditional PR approvals and MET-76 original-thread Slack clarification are integrated from
+the user's main pushes. Approval consent is an exact policy, not a merge or local-work acceptance;
+expiry/account/revocation checks extend through provider preflight to POST. Provider GitHub account
+envelopes normalize into strict actor DTOs. Notify-only may cover own/read-only PRs; approving may not.
+
+Clarification delivery and coding-worker replies have independent outbox supersession. Proven
+unsent attempts can reconcile under the same identity; ambiguous reserved writes never blindly
+retry. Confirmed time and expiry derive from one clock sample. Ordinary public Day snapshots expose
+`clarificationMetadata`, withholding stored thread/derived text. `day.clarification` and foreground
+inspection reauthorize current source/actor/revisions; new proposal receipts expose only their freshly
+read target, while replayed receipts remain redacted. Private stored state and send authority are
+unchanged. Renderer/controller and agent both use this main-owned boundary.
+
+The final Pull forward asset kit and MuseFocus website are integrated; earlier design explorations
+stay archived on their branch. Hash-pinned generated asset copies use narrow Biome exclusions and
+their own source/DOM verification. Production includes the selected icon, not design proofs/archives.
+Historical seeded preparation/judge proxy and old packaging probes are superseded test/demo work,
+not missing live functionality. See `docs/integration/worktree-audit-2026-11-01.md` for the audit.
