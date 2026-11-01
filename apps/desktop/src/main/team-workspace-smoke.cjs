@@ -1,4 +1,5 @@
 // ROOT ONLY after complete integration build: env -u ELECTRON_RUN_AS_NODE electron src/main/team-workspace-smoke.cjs [built-main]
+// Optional ROOT mode: TEAM_SMOKE_LOCAL_PREPARATION=1 uses controlled Responses SSE and exact local publication.
 // Author: node --check this-file; node this-file --self-check. No native/provider/DB launch in self-check.
 const assert = require("node:assert/strict");
 const fs = require("node:fs");
@@ -147,7 +148,9 @@ async function native() {
 			}
 		);
 		await step(
-			"root ReviewCoordinator reuses exact shared PreparedReview with no local preparation model call",
+			report.localPreparation
+				? "root ReviewCoordinator prepares locally through actual MetaClient and publishes exact inferred analysis"
+				: "root ReviewCoordinator reuses exact shared PreparedReview with no local preparation model call",
 			async () => {
 				await rpc("mutation", "reviews.connect", {
 					repository: source.repository,
@@ -162,10 +165,34 @@ async function native() {
 						return entry?.status === "ready" ? entry : null;
 					}
 				);
-				assert.equal(ready.prepared.id, provider.review.id);
-				assert.deepEqual(ready.prepared, provider.review);
-				assert.equal(provider.report.modelCalls, 0);
+				assert.equal(ready.prepared.id, provider.currentReview.id);
+				assert.deepEqual(ready.prepared, provider.currentReview);
+				assert.equal(provider.report.modelCalls, report.localPreparation ? 1 : 0);
+				assert.equal(provider.report.publications.length, report.localPreparation ? 1 : 0);
 				assert.ok(provider.report.team.some((row) => row.path === "/v1/reviews/read"));
+				if (report.localPreparation) {
+					assert.match(ready.prepared.summary, /^CONTROLLED LOCAL/);
+					assert.deepEqual(provider.report.publications[0].review, ready.prepared);
+					assert.equal(
+						provider.report.team.some((row) =>
+							["/v1/reviews/request", "/v1/reviews/status", "/v1/reviews/retry"].includes(row.path)
+						),
+						false
+					);
+				}
+				const Database = require("better-sqlite3");
+				const database = new Database(join(userData, "metahackathon.db"), { readonly: true });
+				try {
+					const stored = await wait("canonical SQLite prepared body", () =>
+						database
+							.prepare("SELECT data_json FROM review_prepared WHERE review_id = ?")
+							.get(ready.prepared.id)
+					);
+					assert.ok(stored, "Canonical prepared review must be durable in SQLite");
+					assert.deepEqual(JSON.parse(stored.data_json), ready.prepared);
+				} finally {
+					database.close();
+				}
 				await click('[data-testid="repository-selector"]');
 				await wait("actual inbox ready button", () =>
 					js(
@@ -173,19 +200,27 @@ async function native() {
 					)
 				);
 				await click(`[data-pr-id="${source.prId}"] button.review-inbox-select`);
+				await button('[aria-label="Prepared review"] .source-tabs', "After");
 				const shown = await wait(
 					"actual pinned shared-review source displayed and acknowledged",
 					async () => {
 						const state = await js(
 							`(()=>{const r=document.querySelector('[aria-label="Prepared review"]'),m=document.querySelector('main[data-session-id]'),w=document.querySelector('.canvas-workspace');return r?{reviewId:r.dataset.reviewId,path:r.dataset.reviewPath,head:r.dataset.headSha,base:r.dataset.baseSha,loading:r.dataset.reviewLoading,sessionId:m?.dataset.sessionId,sequence:Number(w?.dataset.workspaceSequence),text:[...r.querySelectorAll('.source-row code')].map(e=>e.textContent).join(String.fromCharCode(10))}:null})()`
 						);
-						if (!state || state.reviewId !== provider.review.id || state.loading !== "false")
+						if (
+							!state ||
+							state.reviewId !== provider.currentReview.id ||
+							state.loading !== "false" ||
+							state.text !== source.head[source.order[0]].replace(/\n$/, "")
+						)
 							return null;
 						const observation = await rpc("query", "workspace.observe", {
 							sessionId: state.sessionId,
 						});
 						return observation.workspace.sequence === state.sequence &&
-							observation.workspace.review.reviewId === provider.review.id
+							observation.workspace.codeView === "head" &&
+							observation.workspace.review.path === source.order[0] &&
+							observation.workspace.review.reviewId === provider.currentReview.id
 							? state
 							: null;
 					}
@@ -193,20 +228,23 @@ async function native() {
 				assert.equal(shown.head, fixture.headSha);
 				assert.equal(shown.base, fixture.baseSha);
 				assert.equal(shown.path, source.order[0]);
+				assert.equal(shown.text, source.head[source.order[0]].replace(/\n$/, ""));
 				assert.ok(
 					report.ipc.some(
 						(row) =>
 							row.path === "workspace.applied" &&
 							row.input.status === "applied" &&
 							row.result?.result?.data?.json?.status === "accepted" &&
-							row.input.workspace?.review.reviewId === provider.review.id
+							row.input.workspace?.review.reviewId === provider.currentReview.id &&
+							row.input.workspace?.codeView === "head" &&
+							row.input.workspace?.review.path === source.order[0]
 					)
 				);
 				assert.ok(
 					encryptedFiles().some(
 						(file) =>
 							file.name.endsWith("cache.bin") &&
-							safeStorage.decryptString(file.bytes).includes(provider.review.id)
+							safeStorage.decryptString(file.bytes).includes(provider.currentReview.id)
 					)
 				);
 				return {
@@ -388,7 +426,8 @@ async function native() {
 					encryptedFiles().some((file) => file.name.endsWith("session.bin")),
 					false
 				);
-				assert.equal(provider.report.modelCalls, 0);
+				assert.equal(provider.report.modelCalls, report.localPreparation ? 1 : 0);
+				assert.equal(provider.report.publications.length, report.localPreparation ? 1 : 0);
 				assert.equal(report.providerError, undefined);
 				assert.deepEqual(report.blocked, []);
 				assert.deepEqual(report.permissions, []);

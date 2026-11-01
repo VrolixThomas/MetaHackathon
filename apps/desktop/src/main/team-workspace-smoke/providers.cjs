@@ -15,6 +15,7 @@ const SECRET = {
 	access: "controlled-team-access-token",
 	refresh: "controlled-team-refresh-token",
 	publishable: "sb_publishable_controlled_team",
+	model: "controlled-team-dummy-model-key",
 };
 const canonical = (value) =>
 	value === null || typeof value !== "object"
@@ -86,9 +87,13 @@ function makeBundle(fixture, key) {
 		provenance: "reported-local-candidate",
 	};
 }
-function createProvider(fixture) {
-	const report = { auth: [], github: [], team: [], decisions: [], modelCalls: 0 };
+function createProvider(fixture, { localPreparation = false } = {}) {
+	const report = { auth: [], github: [], team: [], decisions: [], publications: [], modelCalls: 0 };
 	const review = prepared(fixture);
+	let currentReview = localPreparation ? null : review;
+	let modelContext;
+	let modelAnalysis;
+	let readCount = 0;
 	const expectedContext = {
 		pr: review.pr,
 		description: "Test fixture; never live review data.",
@@ -144,6 +149,29 @@ function createProvider(fixture) {
 	return {
 		report,
 		review,
+		get currentReview() {
+			return currentReview;
+		},
+		model(url, body, rawHeaders) {
+			assert.equal(localPreparation, true);
+			assert.equal(url.toString(), "https://api.meta.ai/v1/responses");
+			assert.equal(new Headers(rawHeaders).get("authorization"), `Bearer ${SECRET.model}`);
+			assert.equal(++report.modelCalls, 1);
+			assert.equal(body.stream, true);
+			assert.deepEqual(
+				body.tools.map((tool) => tool.name),
+				["submit_prepared_review"]
+			);
+			modelContext = JSON.parse(body.input[0].content[0].text);
+			assert.deepEqual(modelContext, expectedContext);
+			const { summary: _summary, orderRationale, files } = review;
+			modelAnalysis = {
+				summary: "CONTROLLED LOCAL analysis from the supplied pinned source context",
+				orderRationale,
+				files,
+			};
+			return `data: ${JSON.stringify({ type: "response.completed", response: { id: "controlled-local-preparation", model: body.model, status: "completed", output: [{ type: "function_call", call_id: "controlled-prepare", name: "submit_prepared_review", status: "completed", arguments: JSON.stringify(modelAnalysis) }] } })}\n\n`;
+		},
 		expectedContext,
 		get proposal() {
 			return proposal;
@@ -242,8 +270,49 @@ function createProvider(fixture) {
 			}
 			if (url.pathname === "/v1/reviews/read") {
 				const selected = selectKey(body.key);
-				return { key: selected, review, digest: digest({ key: selected, review }) };
+				if (localPreparation && ++readCount === 1) return null;
+				assert.ok(currentReview);
+				return {
+					key: selected,
+					review: currentReview,
+					digest: digest({ key: selected, review: currentReview }),
+				};
 			}
+			if (url.pathname === "/v1/reviews/publish") {
+				assert.equal(localPreparation, true);
+				assert.equal(report.modelCalls, 1);
+				assert.equal(report.publications.length, 0);
+				assert.deepEqual(Object.keys(body).sort(), ["digest", "key", "requestId", "review"]);
+				assert.match(body.requestId, /^[a-f0-9-]{36}$/);
+				selectKey(body.key);
+				assert.equal(body.digest, digest({ key, review: body.review }));
+				const expectedId = `review-${sha(JSON.stringify([sha(JSON.stringify(modelContext)), modelAnalysis]))}`;
+				assert.equal(body.review.id, expectedId);
+				assert.equal(new Date(body.review.createdAt).toISOString(), body.review.createdAt);
+				assert.deepEqual(body.review, {
+					id: expectedId,
+					version: 1,
+					pr: expectedContext.pr,
+					createdAt: body.review.createdAt,
+					...modelAnalysis,
+					coverage: "complete",
+					evidence: "inferred-from-github",
+				});
+				currentReview = structuredClone(body.review);
+				report.publications.push(structuredClone(body));
+				return {
+					key,
+					review: currentReview,
+					digest: body.digest,
+					provenance: "reported-local-analysis",
+					preparedBy: USER,
+				};
+			}
+			if (
+				localPreparation &&
+				["/v1/reviews/request", "/v1/reviews/status", "/v1/reviews/retry"].includes(url.pathname)
+			)
+				assert.fail("Local preparation must not enqueue or poll a hosted worker");
 			if (url.pathname === "/v1/reviews/status") {
 				selectKey(body.key);
 				return { status: "ready", attempts: 1, errorCode: null };
@@ -348,6 +417,72 @@ function selfCheck() {
 			h
 		)
 	);
+	const local = createProvider(fixture, { localPreparation: true });
+	assert.equal(local.team(new URL(`${TEAM_ORIGIN}/v1/reviews/read`), { key }, h), null);
+	const events = local.model(
+		new URL("https://api.meta.ai/v1/responses"),
+		{
+			model: "muse-wonder-1.0",
+			stream: true,
+			tools: [{ name: "submit_prepared_review" }],
+			input: [
+				{
+					role: "user",
+					content: [{ type: "input_text", text: JSON.stringify(local.expectedContext) }],
+				},
+			],
+		},
+		{ authorization: `Bearer ${SECRET.model}` }
+	);
+	const terminal = JSON.parse(events.trim().slice("data: ".length));
+	assert.equal(terminal.type, "response.completed");
+	const analysis = JSON.parse(terminal.response.output[0].arguments);
+	assert.deepEqual(
+		analysis.files.map((file) => file.path),
+		source.order
+	);
+	const localReview = {
+		id: `review-${sha(JSON.stringify([sha(JSON.stringify(local.expectedContext)), analysis]))}`,
+		version: 1,
+		pr: local.expectedContext.pr,
+		createdAt: "2026-11-01T00:00:00.000Z",
+		...analysis,
+		coverage: "complete",
+		evidence: "inferred-from-github",
+	};
+	const submission = {
+		requestId: "60000000-0000-4000-8000-000000000001",
+		key,
+		review: localReview,
+		digest: digest({ key, review: localReview }),
+	};
+	const publishURL = new URL(`${TEAM_ORIGIN}/v1/reviews/publish`);
+	assert.throws(() => local.team(publishURL, { ...submission, digest: "0".repeat(64) }, h));
+	const wrongBody = { ...localReview, summary: "Changed controlled analysis" };
+	assert.throws(() =>
+		local.team(
+			publishURL,
+			{ ...submission, review: wrongBody, digest: digest({ key, review: wrongBody }) },
+			h
+		)
+	);
+	assert.throws(() =>
+		local.team(publishURL, { ...submission, key: { ...key, headSha: fixture.baseSha } }, h)
+	);
+	for (const path of ["request", "status", "retry"])
+		assert.throws(() => local.team(new URL(`${TEAM_ORIGIN}/v1/reviews/${path}`), { key }, h));
+	const published = local.team(publishURL, submission, h);
+	assert.equal(published.provenance, "reported-local-analysis");
+	assert.equal(published.preparedBy, USER);
+	assert.deepEqual(published.review, local.currentReview);
+	assert.deepEqual(local.report.publications, [submission]);
+	assert.equal(local.report.modelCalls, 1);
+	assert.deepEqual(
+		local.team(new URL(`${TEAM_ORIGIN}/v1/reviews/read`), { key }, h).review,
+		localReview
+	);
+	assert.equal(provider.report.modelCalls, 0);
+	assert.deepEqual(provider.report.publications, []);
 	console.log(
 		"TEAM_WORKSPACE_PROVIDER_SELF_CHECK_PASS: controlled DTO/digest/header guards only; NO Electron/Git/HTTP/provider/DB launched"
 	);

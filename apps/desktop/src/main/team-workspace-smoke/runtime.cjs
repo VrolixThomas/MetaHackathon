@@ -17,7 +17,11 @@ async function wait(label, read, milliseconds = 30000) {
 	}
 	throw new Error(`Timed out: ${label}`);
 }
-async function launch() {
+async function launch({
+	localPreparation = process.env.TEAM_SMOKE_LOCAL_PREPARATION === "1",
+} = {}) {
+	// biome-ignore lint/performance/noDelete: Remove the harness option before importing product code.
+	delete process.env.TEAM_SMOKE_LOCAL_PREPARATION;
 	assert.ok(
 		process.versions.electron && !process.env.ELECTRON_RENDERER_URL,
 		"Root must run built Electron; author may run --self-check only"
@@ -40,7 +44,7 @@ async function launch() {
 	const envPath = join(owned, ".env");
 	fs.writeFileSync(
 		envPath,
-		`GITHUB_TOKEN=${SECRET.github}\nSUPABASE_URL=${AUTH_ORIGIN}\nSUPABASE_PUBLISHABLE_KEY=${SECRET.publishable}\nMUSE_TEAM_SERVICE_URL=${TEAM_ORIGIN}\nCODING_PROVIDER=muse-code\nMUSE_CODE_PATH=/controlled/missing-muse-cli\n`,
+		`${localPreparation ? `MODEL_API_KEY=${SECRET.model}\n` : ""}GITHUB_TOKEN=${SECRET.github}\nSUPABASE_URL=${AUTH_ORIGIN}\nSUPABASE_PUBLISHABLE_KEY=${SECRET.publishable}\nMUSE_TEAM_SERVICE_URL=${TEAM_ORIGIN}\nCODING_PROVIDER=muse-code\nMUSE_CODE_PATH=/controlled/missing-muse-cli\n`,
 		{ mode: 0o600 }
 	);
 	process.env.METAHACKATHON_ENV_FILE = envPath;
@@ -52,12 +56,13 @@ async function launch() {
 		}),
 		"check.cjs": `const fs=require('node:fs');if(!fs.readFileSync('a-logic.ts','utf8').includes('Math.max(0, quote.discount)'))process.exit(1);console.log('CONTROLLED declared check passed');\n`,
 	});
-	const provider = createProvider(fixture);
+	const provider = createProvider(fixture, { localPreparation });
 	const out = join(__dirname, "../../../out");
 	fs.mkdirSync(out, { recursive: true });
 	const reportPath = join(out, "team-workspace-smoke-report.json");
 	const report = {
 		status: "running",
+		localPreparation,
 		actualAppIPC: true,
 		actualTeamService: true,
 		controlledHTTP: true,
@@ -80,7 +85,14 @@ async function launch() {
 	const server = http.createServer(async (request, response) => {
 		try {
 			const target = new URL(request.headers["x-controlled-target"]);
-			assert.ok([AUTH_ORIGIN, TEAM_ORIGIN, "https://api.github.com"].includes(target.origin));
+			assert.ok(
+				[
+					AUTH_ORIGIN,
+					TEAM_ORIGIN,
+					"https://api.github.com",
+					...(localPreparation ? ["https://api.meta.ai"] : []),
+				].includes(target.origin)
+			);
 			const chunks = [];
 			let count = 0;
 			for await (const chunk of request) {
@@ -91,6 +103,16 @@ async function launch() {
 			const body = count ? JSON.parse(Buffer.concat(chunks).toString("utf8")) : null;
 			if (target.origin === "https://api.github.com")
 				assert.equal(request.headers.authorization, `Bearer ${SECRET.github}`);
+			if (target.origin === "https://api.meta.ai") {
+				assert.equal(request.method, "POST");
+				const events = provider.model(target, body, request.headers);
+				response.writeHead(200, {
+					"Content-Type": "text/event-stream",
+					"Cache-Control": "no-store",
+				});
+				response.end(events);
+				return;
+			}
 			const value =
 				target.origin === AUTH_ORIGIN
 					? provider.auth(target, body, request.headers)
@@ -110,12 +132,19 @@ async function launch() {
 	const originalHandle = ipcMain.handle;
 	globalThis.fetch = (input, options = {}) => {
 		const url = new URL(String(input.url ?? input));
-		if (url.origin === "https://api.meta.ai") {
+		if (url.origin === "https://api.meta.ai" && !localPreparation) {
 			provider.report.modelCalls++;
 			report.blocked.push(url.origin);
 			return Promise.reject(new Error("A shared review must never invoke a second local model"));
 		}
-		if ([AUTH_ORIGIN, TEAM_ORIGIN, "https://api.github.com"].includes(url.origin)) {
+		if (
+			[
+				AUTH_ORIGIN,
+				TEAM_ORIGIN,
+				"https://api.github.com",
+				...(localPreparation ? ["https://api.meta.ai"] : []),
+			].includes(url.origin)
+		) {
 			const headers = new Headers(options.headers);
 			headers.set("x-controlled-target", url.toString());
 			return originalFetch(`${origin}/controlled`, { ...options, headers, redirect: "error" });
