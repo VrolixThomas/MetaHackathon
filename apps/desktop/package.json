@@ -23,6 +23,7 @@
 		"test:executive": "electron-vite build && env -u ELECTRON_RUN_AS_NODE electron src/main/executive-smoke.cjs",
 		"test:attention": "VITE_MUSE_VOICE_PRECONNECT=0 electron-vite build && env -u ELECTRON_RUN_AS_NODE electron src/main/attention-smoke.cjs",
 		"test:oauth": "electron-vite build && env -u ELECTRON_RUN_AS_NODE electron src/main/oauth-smoke.cjs",
+		"test:pr-approvals": "electron-vite build && env -u ELECTRON_RUN_AS_NODE electron src/main/pr-approval-smoke.cjs",
 		"test:pr-work": "electron-vite build && env -u ELECTRON_RUN_AS_NODE electron src/main/pr-work-smoke.cjs",
 		"test:pr-fixes": "electron-vite build && env -u ELECTRON_RUN_AS_NODE electron src/main/pr-fix-smoke.cjs",
 		"test:coding-provider": "electron-vite build && env -u ELECTRON_RUN_AS_NODE electron src/main/coding-provider-smoke.cjs",
