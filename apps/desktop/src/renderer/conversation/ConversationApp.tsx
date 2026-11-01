@@ -7,6 +7,7 @@ import type { HubController } from "../command-center/controller";
 import { SlackConnections } from "../day/SlackConnections";
 import type { DayController } from "../day/controller";
 import { OAuthConnections, useOAuth } from "../oauth";
+import { ApprovalControl } from "../pr-approvals/ApprovalControl";
 import { PRCommentControl, type PRCommentController, presentPRComment } from "../pr-comments";
 import type { PRFixController } from "../pr-fixes";
 import { ReviewInbox } from "../prepared/Inbox";
@@ -231,6 +232,7 @@ export function ConversationApp({
 	};
 	const [conversationOpen, setConversationOpen] = useState(false);
 	const [commentOpen, setCommentOpen] = useState(false);
+	const [approvalOpen, setApprovalOpen] = useState(false);
 	const commentUnsubscribe = useRef<(() => void) | undefined>(undefined);
 	const adoptingComment = useRef(false);
 	const bindCommentController = useCallback(
@@ -361,6 +363,17 @@ export function ConversationApp({
 					<span aria-hidden="true">⌄</span>
 				</button>
 				{apiCall && (
+					<ApprovalControl
+						key={`approvals-${prCommentEpoch}`}
+						call={apiCall}
+						sessionId={controller.sessionId}
+						beforeOpen={hideNativePage}
+						onOpenChange={setApprovalOpen}
+						canOpen={overlay === null && !commentOpen}
+						canCreate={reviewOpen && prepared.detail?.status === "ready" && !!prepared.file}
+					/>
+				)}
+				{apiCall && (
 					<PRCommentControl
 						onController={bindCommentController}
 						key={prCommentEpoch}
@@ -413,7 +426,7 @@ export function ConversationApp({
 				)}
 				<WorkSplit
 					browser={!workspace && local.page ? browser : undefined}
-					obscured={overlay !== null || commentOpen}
+					obscured={overlay !== null || commentOpen || approvalOpen}
 				>
 					<main
 						className={`conversation-main work-area ${workspace ? "canvas-conversation" : reviewOpen ? "review-open" : ""}`}
@@ -546,7 +559,7 @@ export function ConversationApp({
 									controller={workspace}
 									reviews={reviews}
 									browser={browser}
-									obscured={overlay !== null || commentOpen}
+									obscured={overlay !== null || commentOpen || approvalOpen}
 									onOpenRepository={openRepository}
 									onOpenSettings={() => setOverlay("configuration")}
 								/>

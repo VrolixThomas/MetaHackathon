@@ -110,10 +110,16 @@ export class CommandCenterService {
 			this.listeners.delete(listener);
 		};
 	}
+	async approvalPolicies() {
+		await this.initialize();
+		await this.writes;
+		return structuredClone(this.state.approvalPolicies ?? []);
+	}
 	async attentionState() {
 		await this.initialize();
 		return structuredClone({
 			jobs: this.state.jobs,
+			approvalPolicies: this.state.approvalPolicies,
 			notices: this.state.notices,
 			attentionRecords: this.state.attentionRecords,
 		});

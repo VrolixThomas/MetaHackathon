@@ -1,6 +1,7 @@
 import { z } from "zod";
 import { CodingProviderSettingsSchema } from "./coding-provider";
 import { CodeLocationSchema, CommitShaSchema, IdSchema, RepositoryPathSchema } from "./common";
+import { ApprovalPolicySchema } from "./pr-approval";
 import { GitHubRepositorySchema, ReviewCacheSchema, ReviewFileSchema } from "./prepared-review";
 import { PullRequestSchema } from "./review";
 
@@ -159,7 +160,7 @@ export const WorkNoticeSchema = z.strictObject({
 		.strictObject({ itemId: IdSchema, policyId: IdSchema, policyRevision: z.int().positive() })
 		.optional(),
 	id: IdSchema,
-	kind: z.enum(["work-ready", "decision", "work-failed", "feedback", "connection"]),
+	kind: z.enum(["work-ready", "decision", "work-failed", "feedback", "connection", "pr-approval"]),
 	title: z.string().min(1).max(300),
 	detail: z.string().max(3000),
 	jobId: IdSchema.nullable(),
@@ -198,6 +199,7 @@ export const HubPreferencesSchema = z.strictObject({
 });
 export const HubPersistenceSchema = z.strictObject({
 	version: z.literal(1),
+	approvalPolicies: z.array(ApprovalPolicySchema).max(100).optional(),
 	repositories: z.array(WatchedRepositorySchema).max(30),
 	preferences: HubPreferencesSchema,
 	tickets: z.array(LinearTicketSchema).max(500),

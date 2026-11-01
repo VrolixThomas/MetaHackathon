@@ -2,6 +2,13 @@ import { TRPCError } from "@trpc/server";
 import { z } from "zod";
 import { mergeRouters, publicProcedure, router } from "..";
 import {
+	ApprovalConfirmInputSchema,
+	ApprovalDraftInputSchema,
+	ApprovalIdentitySchema,
+	ApprovalPolicySchema,
+	ApprovalPresentationSchema,
+} from "../../../shared/contracts";
+import {
 	AgentActionReceiptResultSchema,
 	AgentActionSchema,
 	AttentionPollResultSchema,
@@ -66,6 +73,7 @@ import { createReviewRouter } from "../../composition/reviews-router";
 import { createConfiguredVoiceRouter } from "../../composition/voice";
 import { createAppConfigurationRouter } from "../../config/router";
 import { createRuntimeRouter } from "../../runtime/router";
+import { approvalConfirmation, getPRApprovals } from "../../services";
 import {
 	agentComposition,
 	commentPresentations,
@@ -233,6 +241,46 @@ export const appRouter = router({
 			.input(z.strictObject({}))
 			.output(z.void())
 			.mutation(() => getCodingProvider().openLogin()),
+	}),
+	prApprovals: router({
+		beginEdit: publicProcedure
+			.input(ApprovalIdentitySchema)
+			.output(z.void())
+			.mutation(({ input }) => getPRApprovals().beginEdit(input)),
+		list: publicProcedure
+			.input(z.strictObject({}))
+			.output(z.array(ApprovalPolicySchema).max(100))
+			.query(() => getPRApprovals().list()),
+		draft: publicProcedure
+			.input(ApprovalDraftInputSchema)
+			.output(ApprovalPolicySchema)
+			.mutation(({ input }) => getPRApprovals().draft(input)),
+		confirm: publicProcedure
+			.input(ApprovalConfirmInputSchema)
+			.output(ApprovalPolicySchema)
+			.mutation(({ input }) => getPRApprovals().confirm(input)),
+		revoke: publicProcedure
+			.input(ApprovalIdentitySchema)
+			.output(z.void())
+			.mutation(({ input }) => getPRApprovals().revoke(input)),
+		pending: publicProcedure
+			.input(z.strictObject({ sessionId: IdSchema }))
+			.output(ApprovalPresentationSchema.nullable())
+			.query(({ input }) => approvalConfirmation.pending(input.sessionId)),
+		presented: publicProcedure
+			.input(ApprovalPresentationSchema)
+			.output(z.void())
+			.mutation(async ({ input }) => {
+				const p = (await getPRApprovals().list()).find((p) => p.id === input.id);
+				if (
+					!p ||
+					p.status !== "draft" ||
+					p.revision !== input.revision ||
+					p.digest !== input.digest
+				)
+					throw new Error("Stale delegation presentation");
+				approvalConfirmation.presented(input);
+			}),
 	}),
 	prComments: router({
 		presented: publicProcedure

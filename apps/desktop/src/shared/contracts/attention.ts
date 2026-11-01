@@ -15,7 +15,7 @@ export const AttentionPresenceSchema = z.strictObject({
 export const AttentionItemSchema = z
 	.strictObject({
 		noticeId: IdSchema,
-		kind: z.enum(["decision", "work-failed", "work-ready", "clarification"]),
+		kind: z.enum(["decision", "work-failed", "work-ready", "clarification", "pr-approval"]),
 		jobId: IdSchema.nullable(),
 		repository: GitHubRepositorySchema.nullable(),
 		dayItemId: IdSchema.optional(),

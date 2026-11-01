@@ -22,3 +22,4 @@ export * from "./pr-work";
 export * from "./coding-provider";
 export * from "./images";
 export * from "./team";
+export * from "./pr-approval";

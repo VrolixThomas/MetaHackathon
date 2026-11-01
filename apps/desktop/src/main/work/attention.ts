@@ -13,7 +13,7 @@ import {
 	type TurnIdentity,
 } from "../../shared/contracts";
 
-type State = Pick<HubPersistence, "jobs" | "notices" | "attentionRecords">;
+type State = Pick<HubPersistence, "jobs" | "notices" | "attentionRecords" | "approvalPolicies">;
 type Candidate = { item: AttentionItem; key: string };
 type Presence = { input: AttentionPresence; since: number; received: number };
 type Lease = {
@@ -134,6 +134,31 @@ export class AttentionScheduler {
 				continue;
 			}
 			if (!notice.jobId || used.has(notice.jobId) || notice.seenAt || notice.announcedAt) continue;
+			if (notice.kind === "pr-approval") {
+				const p = state.approvalPolicies?.find((p) => p.id === notice.jobId);
+				if (
+					!p ||
+					!["needs-review", "notified", "approved", "uncertain", "expired"].includes(p.status) ||
+					notice.headSha !== (p.evaluation?.headSha ?? p.pr.headSha) ||
+					notice.id !== `pr-approval-${p.id}-${p.revision}-${p.status}`
+				)
+					continue;
+				const item: AttentionItem = {
+					noticeId: notice.id,
+					kind: "pr-approval",
+					jobId: p.id,
+					repository: p.pr.repository,
+					label: notice.title,
+					headSha: notice.headSha ?? null,
+					decisionId: null,
+					question: notice.detail.slice(0, 2000),
+					changedFileCount: 0,
+					applied: false,
+				};
+				used.add(p.id);
+				candidates.push({ item, key: fingerprint(item) });
+				continue;
+			}
 			const job = jobs.get(notice.jobId);
 			if (!job || (notice.headSha !== undefined && notice.headSha !== job.headSha)) continue;
 			const decision =
@@ -170,7 +195,13 @@ export class AttentionScheduler {
 			used.add(job.id);
 			candidates.push({ item, key: fingerprint(item) });
 		}
-		const priority = { clarification: 0, decision: 0, "work-failed": 1, "work-ready": 2 };
+		const priority = {
+			clarification: 0,
+			"pr-approval": 0,
+			decision: 0,
+			"work-failed": 1,
+			"work-ready": 2,
+		};
 		return candidates.sort((a, b) => priority[a.item.kind] - priority[b.item.kind]);
 	}
 	private fresh(lease: Lease, state: State) {

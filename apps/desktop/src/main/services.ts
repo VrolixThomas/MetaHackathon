@@ -59,6 +59,9 @@ import { SlackError } from "./slack/types";
 import { AttentionScheduler } from "./work/attention";
 import { CommandCenterService } from "./work/hub";
 import { WorkJobCoordinator } from "./work/jobs";
+import { PRApprovals } from "./work/pr-approvals";
+import { ApprovalConfirmation } from "./work/pr-approvals/confirmation";
+import { ApprovalGitHub } from "./work/pr-approvals/github";
 import { PRFixService } from "./work/pr-fixes";
 import { ReviewRegistry } from "./work/review-registry";
 
@@ -125,10 +128,22 @@ export const commentPresentations: CommentPresentationCoordinator =
 			conversationService.narrateProposal(input, `${input.requestId}-speech`, text, signal),
 	});
 let prFixes: PRFixService | undefined;
+let prApprovals: PRApprovals | undefined;
+export function getPRApprovals() {
+	if (closing || !prApprovals) throw new Error("PR delegations are unavailable");
+	return prApprovals;
+}
+export const approvalConfirmation = new ApprovalConfirmation({
+	narrate: (turn, requestId, text, signal) =>
+		conversationService.narrateProposal(turn, `${requestId}-speech`, text, signal),
+	voice: (turn) => conversationService.isVoiceTurn(turn),
+});
 let prWorkEpoch = 0;
 let githubCredentialIdentity: string | undefined;
 function retirePRWork() {
 	prWorkEpoch++;
+	approvalConfirmation.clear();
+	void prApprovals?.accountChanged().catch(() => {});
 	teamComposition?.abortApplications();
 	commentPresentations.clear();
 	conversationService.resetSessions();
@@ -212,14 +227,19 @@ export const conversationService: ConversationService = new ConversationService(
 	{
 		onUserTurn: (input) => {
 			commentPresentations.confirmation.acceptUserTurn(input, input.inputMode ?? "typed");
+			approvalConfirmation.acceptUserTurn(input);
 		},
-		onSessionRelease: (sessionId) => commentPresentations.invalidate(sessionId),
+		onSessionRelease: (sessionId) => {
+			commentPresentations.invalidate(sessionId);
+			approvalConfirmation.invalidate(sessionId);
+		},
 		narrationCheckpoints: true,
 		attention: {
 			resolve: (input, signal) => getAttention().resolve(input, signal),
 			validate: (input, signal) => getAttention().validate(input, signal),
 		},
 		hub: {
+			approvals: { service: getPRApprovals, confirmation: approvalConfirmation },
 			prComments: {
 				observe: async (sessionId, signal) => {
 					const screen = await getReviews().getScreen(sessionId);
@@ -483,7 +503,11 @@ export function getDay(): DayService {
 }
 export function setDayAwake(awake: boolean) {
 	dayAwake = awake;
-	if (!awake) prFixes?.invalidate();
+	if (!awake) {
+		prFixes?.invalidate();
+		prApprovals?.fence();
+	}
+	void prApprovals?.tick().catch(() => {});
 	void day?.availabilityChanged().catch(() => {});
 	void slackWorkspace?.availabilityChanged().catch(() => {});
 }
@@ -945,6 +969,36 @@ export async function initializeHub(
 	stopAttentionObserver = hub.subscribe(() => {
 		void attention?.changed().catch(() => {});
 	});
+	prApprovals = new PRApprovals({
+		read: () => getHub().approvalPolicies(),
+		update: (mutator) => getHub().update(mutator),
+		epoch: () => prWorkEpoch,
+		connection: async () => {
+			const token = await getGitHubToken();
+			return token && githubCredentialIdentity
+				? createHash("sha256").update(githubCredentialIdentity).digest("hex")
+				: null;
+		},
+		awake: () => dayAwake && !closing,
+		provider: new ApprovalGitHub(getGitHubToken, () => prWorkEpoch),
+		reviewed: async (sessionId, signal) => {
+			const screen = await getReviews().getScreen(sessionId);
+			if (screen.mode !== "review" || !screen.prId || !screen.path)
+				throw new Error("Display an actual reviewed PR file first");
+			await getReviews().getReady(screen.prId, signal);
+			const detail = await getReviews().get(screen.prId);
+			const pr = await readCurrentPR(screen.prId, signal);
+			if (
+				!detail.prepared ||
+				screen.headSha !== pr.headSha ||
+				detail.pr.headSha !== pr.headSha ||
+				detail.pr.baseSha !== pr.baseSha
+			)
+				throw new Error("Review the current PR head first");
+			return { pr, reviewId: detail.prepared.id };
+		},
+	});
+	await prApprovals.restore();
 	await workJobs.restore();
 	void hub.refresh().catch(() => {});
 }
@@ -1228,6 +1282,8 @@ export async function disposeRuntime(): Promise<void> {
 	images?.dispose();
 	await codingProvider?.dispose();
 	preparedComments?.invalidate();
+	approvalConfirmation.clear();
+	await prApprovals?.dispose();
 	await prFixes?.dispose();
 	await preparedComments?.dispose();
 	const stoppingOAuth = oauth?.dispose().catch(() => {
