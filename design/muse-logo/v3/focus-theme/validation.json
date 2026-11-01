@@ -1,0 +1,27 @@
+{
+  "pose_samples": 2844,
+  "maximum_simultaneously_highlighted_surfaces": 1,
+  "minimum_control_point_margin": 41,
+  "tour_sequence": [
+    0,
+    1,
+    2,
+    0
+  ],
+  "checks": [
+    "held focus surface is geometrically and materially stationary",
+    "background surfaces continue moving",
+    "never two highlighted items during handoff",
+    "convex surfaces throughout perspective interpolation",
+    "continuous handoff and exact 9.6s tour seam",
+    "reduced motion is fixed with immediate manual Next",
+    "actual controller updates surface/clip/light and paint order",
+    "Next advances once and holds until requested",
+    "optional auto demo with manual takeover",
+    "pause freezes pose",
+    "layout/palette preserve focus",
+    "system/manual reduction and hidden/page-exit suspension",
+    "offline HTML and unique SVG IDs"
+  ],
+  "scope": "Node model and actual preview attribute/event adapter only. Browser layout, native controls, gradient/clipping/playback and accessibility remain unverified."
+}
