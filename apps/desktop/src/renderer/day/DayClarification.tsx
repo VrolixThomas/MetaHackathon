@@ -10,8 +10,14 @@ export function DayClarification({
 	const [scope, setScope] = useState("");
 	const [maxMessages, setMaxMessages] = useState(2);
 	const [durationMinutes, setDurationMinutes] = useState(30);
+	const [inspection, setInspection] = useState<{ key: string; item: DayWorkItem } | null>(null);
+	const [reading, setReading] = useState(false);
+	const [readError, setReadError] = useState("");
 	if (!item.source) return null;
-	const c = item.clarification;
+	const inspectionKey = `${item.workspaceId}:${item.ownerUserId}:${item.id}:${item.revision}`;
+	const c =
+		item.clarification ??
+		(inspection?.key === inspectionKey ? inspection.item.clarification : undefined);
 	const version = { itemId: item.id, expectedRevision: item.revision };
 	const terminal = ["closed", "cancelled"].includes(item.phase);
 	return (
@@ -21,6 +27,35 @@ export function DayClarification({
 				Muse can ask bounded questions in the original Slack thread. Ownership, coding work and
 				final delivery need separate authority.
 			</p>
+			{item.clarificationMetadata && !c && (
+				<>
+					<output>Clarification: {item.clarificationMetadata.status.replaceAll("_", " ")}</output>
+					<p>
+						Read the current source to inspect the delegation, thread evidence and inferred brief.
+					</p>
+					<button
+						type="button"
+						disabled={busy || reading}
+						onClick={() => {
+							setReading(true);
+							setReadError("");
+							void controller
+								.inspectClarification(item)
+								.then((value) => setInspection({ key: inspectionKey, item: value }))
+								.catch(() => {
+									setInspection(null);
+									setReadError(
+										"The current thread could not be authorized. Retry when source access is available."
+									);
+								})
+								.finally(() => setReading(false));
+						}}
+					>
+						Inspect current clarification
+					</button>
+				</>
+			)}
+			{readError && <p role="alert">{readError}</p>}
 			{c && (
 				<>
 					<output>
@@ -141,7 +176,7 @@ export function DayClarification({
 					</p>
 				</>
 			)}
-			{!terminal && c?.status !== "active" && (
+			{!terminal && (c?.status ?? item.clarificationMetadata?.status) !== "active" && (
 				<details>
 					<summary>Prepare a new delegation</summary>
 					<form

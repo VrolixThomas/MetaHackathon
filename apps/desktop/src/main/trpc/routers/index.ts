@@ -24,6 +24,7 @@ import {
 	DayOperateInputSchema,
 	DayOperationResultSchema,
 	DaySnapshotSchema,
+	DayWorkItemSchema,
 	DraftedCommentSchema,
 	GitHubRepositorySchema,
 	HUB_ERROR_MESSAGES,
@@ -68,12 +69,14 @@ import { createAgentScreenRouter } from "../../agent/screen-context";
 import { createCompositionRouters } from "../../composition";
 import { createBrowserRouter } from "../../composition/browser-router";
 import { createLocalBrowserRouter } from "../../composition/browser-surface";
+import { operatePublicDay, publicDaySnapshot } from "../../composition/day-clarification";
 import { createDiagnosticsRouter } from "../../composition/diagnostics";
 import { createReviewRouter } from "../../composition/reviews-router";
 import { createConfiguredVoiceRouter } from "../../composition/voice";
 import { createAppConfigurationRouter } from "../../config/router";
 import { createRuntimeRouter } from "../../runtime/router";
 import { approvalConfirmation, getPRApprovals } from "../../services";
+import { readCurrentDayClarification } from "../../services";
 import {
 	agentComposition,
 	commentPresentations,
@@ -438,6 +441,10 @@ export const appRouter = router({
 			.query(({ input }) => searchCurrentKnowledge(input, AbortSignal.timeout(30_000))),
 	}),
 	day: router({
+		clarification: publicProcedure
+			.input(z.strictObject({ itemId: IdSchema, expectedRevision: z.int().positive() }))
+			.output(DayWorkItemSchema)
+			.query(({ input }) => readCurrentDayClarification(input, AbortSignal.timeout(30_000))),
 		thread: publicProcedure
 			.input(z.strictObject({ itemId: IdSchema, expectedRevision: z.int().positive() }))
 			.output(z.array(ChatMessageSchema).max(15))
@@ -450,17 +457,13 @@ export const appRouter = router({
 				const snapshot = await current.snapshot();
 				if (getDay() !== current)
 					throw new TRPCError({ code: "CONFLICT", message: "The active source account changed" });
-				return snapshot;
+				return publicDaySnapshot(snapshot);
 			}),
 		operate: publicProcedure
 			.input(DayOperateInputSchema)
 			.output(DayOperationResultSchema)
 			.mutation(async ({ input }) => {
-				const current = getDay();
-				const result = await hubCall(() => current.operate(input));
-				if (getDay() !== current)
-					throw new TRPCError({ code: "CONFLICT", message: "The active source account changed" });
-				return result;
+				return hubCall(() => operatePublicDay(getDay, input));
 			}),
 	}),
 	oauth: router({

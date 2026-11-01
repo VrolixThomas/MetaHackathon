@@ -75,6 +75,16 @@ export type DayClarification = z.infer<typeof DayClarificationSchema>;
 export const DayWorkItemSchema = z
 	.strictObject({
 		clarification: DayClarificationSchema.optional(),
+		/** Public polling metadata; source-derived text requires an explicitly authorized read. */
+		clarificationMetadata: z
+			.strictObject({
+				policyId: IdSchema,
+				policyRevision: z.int().positive(),
+				status: DayClarificationSchema.shape.status,
+				confirmedAt: DateTimeSchema.nullable(),
+				expiresAt: DateTimeSchema.nullable(),
+			})
+			.optional(),
 		id: IdSchema,
 		revision: z.int().positive(),
 		workspaceId: IdSchema,

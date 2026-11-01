@@ -17,6 +17,8 @@
 			"**/.venv/**",
 			"*.min.js",
 			"supabase/functions/*/index.ts",
+			"design/muse-logo/v3/pull-forward/**",
+			"design/muse-logo/v3/musefocus-site/**",
 			"**/db/migrations/**"
 		]
 	},

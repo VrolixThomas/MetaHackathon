@@ -1,9 +1,15 @@
 import { createStore } from "zustand/vanilla";
-import type { DayOperation, DayOperationResult, DaySnapshot } from "../../shared/contracts/day";
+import type {
+	DayOperation,
+	DayOperationResult,
+	DaySnapshot,
+	DayWorkItem,
+} from "../../shared/contracts/day";
 
 /** The API validates shared schemas; the controller never manufactures items or worker state. */
 export interface DayApi {
 	snapshot(): Promise<DaySnapshot>;
+	inspectClarification?(input: { itemId: string; expectedRevision: number }): Promise<DayWorkItem>;
 	operate(operation: DayOperation): Promise<DayOperationResult>;
 }
 
@@ -91,6 +97,17 @@ export function createDayController(api: DayApi, options: { pollIntervalMs?: num
 	}
 	return {
 		store,
+		async inspectClarification(item: DayWorkItem) {
+			if (disposed || !api.inspectClarification)
+				throw new Error("Fresh source access is unavailable");
+			const result = await api.inspectClarification({
+				itemId: item.id,
+				expectedRevision: item.revision,
+			});
+			if (disposed || result.id !== item.id || result.revision !== item.revision)
+				throw new Error("This clarification changed");
+			return result;
+		},
 		start,
 		refresh,
 		operate,

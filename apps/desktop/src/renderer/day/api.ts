@@ -4,6 +4,7 @@ import {
 	DayOperationResultSchema,
 	DayOperationSchema,
 	DaySnapshotSchema,
+	DayWorkItemSchema,
 } from "../../shared/contracts/day";
 import type { ConversationApi } from "../conversation/api";
 import type { DayApi } from "./controller";
@@ -13,6 +14,8 @@ export function createDayApi(call: ConversationApi["call"]): DayApi {
 	const unconfirmed = new Map<string, DayOperateInput>();
 	return {
 		snapshot: async () => DaySnapshotSchema.parse(await call("query", "day.snapshot", {})),
+		inspectClarification: async (input) =>
+			DayWorkItemSchema.parse(await call("query", "day.clarification", input)),
 		operate: async (operation) => {
 			const parsed = DayOperationSchema.parse(operation);
 			const key = JSON.stringify(parsed);

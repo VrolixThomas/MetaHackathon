@@ -20,6 +20,11 @@ import { createAgentComposition } from "./composition";
 import { LocalBrowserSurface } from "./composition/browser-surface";
 import { CodingProviderService } from "./composition/coding-provider-service";
 import { CommentPresentationCoordinator } from "./composition/comment-presentation";
+import {
+	operatePublicDay,
+	publicDaySnapshot,
+	readDayClarification,
+} from "./composition/day-clarification";
 import { readDaySource } from "./composition/day-source";
 import { ConversationDiagnostics } from "./composition/diagnostics";
 import { createKnowledgeService } from "./composition/knowledge";
@@ -286,8 +291,11 @@ export const conversationService: ConversationService = new ConversationService(
 			daySource: (input, signal) =>
 				readCurrentDaySource(input, signal ?? AbortSignal.timeout(30_000)),
 			day: {
-				snapshot: () => getDay().snapshot(),
-				operate: (operation, requestId) => getDay().operate({ requestId, operation }),
+				snapshot: async () => publicDaySnapshot(await getDay().snapshot()),
+				inspectClarification: readCurrentDayClarification,
+				operate: async (operation, requestId) => {
+					return operatePublicDay(getDay, { requestId, operation });
+				},
 			},
 			snapshot: () => getHub().snapshot(),
 			operate: (operation, requestId, signal) => getHub().operate(operation, requestId, signal),
@@ -709,6 +717,9 @@ export function getKnowledge() {
 }
 export async function readCurrentDaySource(input: unknown, signal: AbortSignal) {
 	return readDaySource({ getDay, client: getSlackWorkspace().client }, input, signal);
+}
+export async function readCurrentDayClarification(input: unknown, signal: AbortSignal) {
+	return readDayClarification({ getDay, readSource: readCurrentDaySource }, input, signal);
 }
 export async function searchCurrentKnowledge(
 	input: { brain: "company" | "private"; text: string },

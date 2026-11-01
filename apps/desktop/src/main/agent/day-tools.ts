@@ -19,6 +19,10 @@ import { WorkspaceArgumentError } from "./workspace-tools";
 /** Root binds the authenticated actor, live source access and independent worker lifecycle. */
 export interface ConversationDayPorts {
 	snapshot(signal?: AbortSignal): Promise<DaySnapshot>;
+	inspectClarification?(
+		input: { itemId: string; expectedRevision: number },
+		signal: AbortSignal
+	): Promise<DayWorkItem>;
 	operate(
 		operation: DayOperation,
 		requestId: string,
@@ -142,7 +146,7 @@ function summary(item: DayWorkItem) {
 		reviewedAt: item.reviewedAt,
 		reviewedHeadSha: item.reviewedHeadSha,
 		replyDraftRevision: item.replyDraft?.revision ?? null,
-		clarificationStatus: item.clarification?.status ?? null,
+		clarificationStatus: item.clarification?.status ?? item.clarificationMetadata?.status ?? null,
 		answerReceipt: item.answerReceipt,
 		source: source(item),
 	};
@@ -268,6 +272,7 @@ export class ConversationDayTools {
 				questions,
 				replyDraft: draft,
 				clarification: item.clarification,
+				clarificationMetadata: item.clarificationMetadata,
 			},
 			questionCount: item.questions.length,
 			draftOmitted: item.replyDraft !== null && draft === null,
@@ -323,6 +328,25 @@ export class ConversationDayTools {
 			const day = await this.refresh();
 			const item = day.items.find((row) => row.id === args["itemId"]);
 			if (!item) throw new GuidedReviewError("That Day item is no longer available.");
+			if (item.clarificationMetadata) {
+				if (!this.ports.inspectClarification)
+					throw new GuidedReviewError("Fresh clarification source access is unavailable.");
+				const inspected = await abortable(
+					this.ports.inspectClarification(
+						{ itemId: item.id, expectedRevision: item.revision },
+						this.signal
+					),
+					this.signal
+				);
+				if (
+					inspected.id !== item.id ||
+					inspected.revision !== item.revision ||
+					inspected.clarification?.policy.id !== item.clarificationMetadata.policyId ||
+					inspected.clarification.policy.revision !== item.clarificationMetadata.policyRevision
+				)
+					throw new GuidedReviewError("This clarification changed.");
+				return this.detail(inspected);
+			}
 			return this.detail(item);
 		}
 		if (!tool) throw new GuidedReviewError("That Day operation is unavailable.");
@@ -531,11 +555,13 @@ export class ConversationDayTools {
 			);
 		if (
 			operation.kind === "confirm_clarification" &&
-			(returned.clarification?.status !== "active" ||
-				returned.clarification.policy.id !== operation.policyId ||
-				returned.clarification.policy.revision !== operation.policyRevision ||
-				!returned.clarification.confirmedAt ||
-				!returned.clarification.expiresAt)
+			((returned.clarification?.status ?? returned.clarificationMetadata?.status) !== "active" ||
+				(returned.clarification?.policy.id ?? returned.clarificationMetadata?.policyId) !==
+					operation.policyId ||
+				(returned.clarification?.policy.revision ??
+					returned.clarificationMetadata?.policyRevision) !== operation.policyRevision ||
+				!(returned.clarification?.confirmedAt ?? returned.clarificationMetadata?.confirmedAt) ||
+				!(returned.clarification?.expiresAt ?? returned.clarificationMetadata?.expiresAt))
 		)
 			throw new GuidedReviewError("Clarification delegation was not confirmed.");
 		if (operation.kind === "send_reply") {

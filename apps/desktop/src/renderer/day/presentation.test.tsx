@@ -399,3 +399,25 @@ it("shows exact clarification scope and a separate authorization control without
 	assert.doesNotMatch(html, /Verified Slack receipt/);
 	controller.dispose();
 });
+
+it("requires an explicit current-source inspection for metadata-only clarification views", () => {
+	const item = workItem();
+	item.clarificationMetadata = {
+		policyId: "policy",
+		policyRevision: 1,
+		status: "active",
+		confirmedAt: "2026-11-01T12:00:00.000Z",
+		expiresAt: "2026-11-01T12:30:00.000Z",
+	};
+	const controller = supplied([item]);
+	const html = renderToStaticMarkup(
+		<DayWorkItem controller={controller} itemId={item.id} command={() => {}} />
+	);
+	assert.match(html, /Inspect current clarification/);
+	assert.match(html, /Read the current source/);
+	assert.doesNotMatch(
+		html,
+		/Authorize this clarification delegation|Prepare a new delegation|Observed thread evidence/
+	);
+	controller.dispose();
+});
