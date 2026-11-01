@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { BrandMark } from "../brand/Brand";
 import { Icon } from "./Icons";
 import { useReview } from "./controller";
 import { cancelRuntimeAction, loadLocalDemo, useRuntimeAction } from "./runtime-actions";
@@ -30,11 +31,9 @@ export function Sidebar({
 	return (
 		<aside className="sidebar" aria-label="Review sidebar">
 			<div className="sidebar-brand">
-				<span className="brand-mark">
-					<Icon name="code" size={18} />
-				</span>
-				<strong>Review</strong>
-				<span className="brand-tag">VOICE FIRST</span>
+				<BrandMark size={24} />
+				<strong>MuseFocus</strong>
+				<span className="brand-tag">REVIEW</span>
 			</div>
 			<div className="sidebar-scroll">
 				{runtime && (

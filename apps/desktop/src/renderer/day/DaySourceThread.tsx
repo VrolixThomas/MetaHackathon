@@ -25,7 +25,9 @@ export function DaySourceThread({
 }) {
 	if (!item.source)
 		return (
-			<p className="day-hint">Captured directly in Muse. No external source thread is linked.</p>
+			<p className="day-hint">
+				Captured directly in MuseFocus. No external source thread is linked.
+			</p>
 		);
 	const source = item.source.source;
 	const permalink = source.permalink;

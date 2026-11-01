@@ -24,7 +24,7 @@ export function DayClarification({
 		<section className="day-section" aria-label="Slack clarification">
 			<h2>Delegate clarification</h2>
 			<p>
-				Muse can ask bounded questions in the original Slack thread. Ownership, coding work and
+				MuseFocus can ask bounded questions in the original Slack thread. Ownership, coding work and
 				final delivery need separate authority.
 			</p>
 			{item.clarificationMetadata && !c && (
@@ -167,7 +167,7 @@ export function DayClarification({
 					<p>
 						Next:{" "}
 						{c.status === "active"
-							? "Muse will check the original thread while this delegation is active."
+							? "MuseFocus will check the original thread while this delegation is active."
 							: c.status === "complete"
 								? "Review the brief and authorize any work separately."
 								: c.status === "needs_user"

@@ -42,7 +42,7 @@ export function DayWorkspace({
 		return (
 			<section className="hub-empty" aria-label="My day">
 				<h1>My day</h1>
-				<p>Choose a commitment in the sidebar, or tell Muse what you want to remember.</p>
+				<p>Choose a commitment in the sidebar, or tell MuseFocus what you want to remember.</p>
 				{state.snapshot?.currentItemId && (
 					<button
 						type="button"

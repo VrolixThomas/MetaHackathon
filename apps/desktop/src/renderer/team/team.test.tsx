@@ -73,7 +73,7 @@ test("TeamCard renders real controller data, exact escaped sources and separate 
 	assert.match(html, /data-team-source-side="before"/);
 	assert.match(html, /data-team-source-side="after"/);
 	assert.match(html, /Exact patch/);
-	assert.match(html, /Muse prepares reviews locally/);
+	assert.match(html, /MuseFocus prepares reviews locally/);
 	assert.match(html, /Local findings sharing selected/);
 	assert.ok(!html.includes("GitHub App"));
 	assert.ok(!html.includes("Use shared preparation"));

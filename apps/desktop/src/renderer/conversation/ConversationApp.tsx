@@ -1,5 +1,6 @@
 import { type RefObject, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useStore } from "zustand";
+import { BrandLockup } from "../brand/Brand";
 import { CodingProviderCard } from "../coding";
 import { HubConnections } from "../command-center/Connections";
 import { CommandSidebar } from "../command-center/Sidebar";
@@ -76,6 +77,7 @@ export function Configuration({
 			onOpenError={onOpenError}
 			returnFocus={returnFocus}
 		>
+			<BrandLockup size={32} />
 			<p>Manage connected accounts and your local API keys.</p>
 			{oauth ? <OAuthConnections /> : hub && <HubConnections hub={hub} />}
 			<SlackConnections />
@@ -449,7 +451,9 @@ export function ConversationApp({
 							hidden={!conversationOpen}
 						>
 							<header className="conversation-panel-header">
-								<strong>Conversation</strong>
+								<strong>
+									<BrandLockup size={20} />
+								</strong>
 								<button
 									type="button"
 									className="quiet"
@@ -500,7 +504,9 @@ export function ConversationApp({
 											</div>
 											{entry.answer && (
 												<div className="assistant-message">
-													<span className="message-label">Assistant</span>
+													<span className="message-label">
+														<BrandLockup size={16} />
+													</span>
 													<p>{entry.answer}</p>
 												</div>
 											)}

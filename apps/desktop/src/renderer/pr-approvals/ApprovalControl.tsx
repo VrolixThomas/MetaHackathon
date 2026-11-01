@@ -167,8 +167,8 @@ export function ApprovalControl({
 				>
 					<div className="pr-approvals" aria-busy={busy}>
 						<p>
-							Muse follows this PR while the app is running and your Mac is awake. Approving a PR
-							never merges, publishes work or completes Linear.
+							MuseFocus follows this PR while the app is running and your Mac is awake. Approving a
+							PR never merges, publishes work or completes Linear.
 						</p>
 						{error && <p role="alert">{error}</p>}
 						{connectionError && <output>{connectionError}</output>}
@@ -479,8 +479,8 @@ export function ApprovalControl({
 									{p.attempt && (
 										<p>
 											Approval attempt {p.attempt.id} at head <code>{p.attempt.headSha}</code>.
-											Revoking this delegation stops future Muse actions; it does not withdraw a
-											submitted GitHub review.{" "}
+											Revoking this delegation stops future MuseFocus actions; it does not withdraw
+											a submitted GitHub review.{" "}
 											{p.attempt.receipt ? (
 												<a href={p.attempt.receipt.url} target="_blank" rel="noreferrer">
 													GitHub approval receipt #{p.attempt.receipt.id}

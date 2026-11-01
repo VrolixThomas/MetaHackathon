@@ -218,9 +218,9 @@ it("reveals item Q&A only after explicit durable coverage and sends no random qu
 		onCoverItem: (id: string) => covering.push(id),
 	};
 	const before = controls(() => DayWorkItem(props));
-	assert.doesNotMatch(before.html, /Which exact outcome|Your answer for Muse/);
+	assert.doesNotMatch(before.html, /Which exact outcome|Your answer for MuseFocus/);
 	assert.deepEqual(operations, []);
-	before.click("Cover this item with Muse");
+	before.click("Cover this item with MuseFocus");
 	await Promise.resolve();
 	assert.deepEqual(operations, [{ kind: "cover", itemId: "item", expectedRevision: 3 }]);
 	assert.deepEqual(covering, ["item"]);
@@ -228,7 +228,7 @@ it("reveals item Q&A only after explicit durable coverage and sends no random qu
 	const covered = renderToStaticMarkup(<DayWorkItem {...props} />);
 	assert.match(covered, /Which exact outcome/);
 	assert.match(covered, /<details><summary>Type an answer<\/summary>/);
-	assert.match(covered, /Your answer for Muse/);
+	assert.match(covered, /Your answer for MuseFocus/);
 	assert.doesNotMatch(covered, /Ask requester|Send question|<details open/);
 	base.dispose();
 });

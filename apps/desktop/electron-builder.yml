@@ -13,6 +13,8 @@ files:
   - node_modules/@muse-code/sdk/**/*
 
 extraResources:
+  - from: resources/branding/icon.png
+    to: branding/icon.png
   - from: ../../services/voice/dist/metahackathon-voice
     to: voice
 
@@ -34,17 +36,23 @@ publish:
   releaseType: draft
 
 mac:
-  icon: resources/icon.icns
+  icon: resources/branding/icon.icns
   category: public.app-category.developer-tools
   hardenedRuntime: true
   notarize: true
   entitlements: resources/entitlements.mac.plist
   entitlementsInherit: resources/entitlements.mac.plist
   extendInfo:
-    NSMicrophoneUsageDescription: Start a hands-free voice conversation with Muse. End the session to stop listening.
+    NSMicrophoneUsageDescription: Start a hands-free voice conversation with MuseFocus. End the session to stop listening.
   target:
     - dmg
     - zip
 
 dmg:
   sign: true
+
+win:
+  icon: resources/branding/icon.ico
+
+linux:
+  icon: resources/branding/icon.png

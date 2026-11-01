@@ -1,7 +1,7 @@
-# Muse — voice command center
+# MuseFocus — voice command center
 
-Talk with Muse about your requested reviews, feedback on your own PRs, and assigned Linear tickets.
-The Home brief and left sidebar show your real work. Muse can run independent coding jobs while
+Talk with MuseFocus about your requested reviews, feedback on your own PRs, and assigned Linear tickets.
+The Home brief and left sidebar show your real work. MuseFocus can run independent coding jobs while
 you review, ask about product decisions, and bring completed work back for review. Voice is available
 everywhere; text is optional. Startup contains no sample repositories, tickets or scripted answers.
 
@@ -57,7 +57,7 @@ Voice prepares automatically once Meta, ElevenLabs and a voice ID are configured
 ## Talk
 
 Wait for **Voice ready**, then click **Start conversation** once. Speak normally; a short pause
-ends your utterance, Muse replies, and the microphone stays ready for your next question. Speaking
+ends your utterance, MuseFocus replies, and the microphone stays ready for your next question. Speaking
 over a reply interrupts it. **Stop response** stops the current answer while keeping listening on.
 **End conversation** or **Command–Shift–Space** turns the microphone off; the shortcut also starts
 it when off. **Escape** dismisses an open workspace dialog first, otherwise ends the conversation.
@@ -66,7 +66,7 @@ No PR selection or button-holding is required.
 The session uses one microphone stream. Speech detection and a bounded pre-roll buffer run locally;
 utterances are sent through the existing speech/model providers. Source navigation can interrupt a
 reply without ending the microphone session. Stop, error and app shutdown release capture.
-While listening, Muse prepares one bounded speech connection before the next utterance. It expires
+While listening, MuseFocus prepares one bounded speech connection before the next utterance. It expires
 after 20 seconds and falls back to the ordinary connection path. To disable this optimization for a
 diagnostic build, set `VITE_MUSE_VOICE_PRECONNECT=0` when building.
 
@@ -93,7 +93,7 @@ If GitHub is unconfigured, the workspace offers **Connect GitHub** directly.
 
 Choose **Sign in with Linear** in Settings or Manage connections, authorize your workspace in the
 browser, then select teams or projects. A personal `LINEAR_API_KEY` in `.env` is also supported.
-Muse fetches tickets assigned to your Linear user; selected team and
+MuseFocus fetches tickets assigned to your Linear user; selected team and
 project scopes form a union. With no selected scopes, all of your assigned active tickets are shown.
 
 Say **“What needs my attention?”**, **“Start work on MET-123 in owner/repo”**, or open a ticket and
@@ -114,7 +114,7 @@ and actual check results come back for review.
 
 Closing the app pauses active processes and saves checkpoints. Reopening resumes work interrupted
 by shutdown; explicitly paused jobs stay paused. Foreground speech interruption never cancels a
-background job. **Activity queue** holds decisions, completed outcomes and failures. Muse can initiate a short spoken update while hands-free listening is on and the app is focused.
+background job. **Activity queue** holds decisions, completed outcomes and failures. MuseFocus can initiate a short spoken update while hands-free listening is on and the app is focused.
 It defers during speech, replies, dialogs and recent interaction, preserves the current review/panes,
 and keeps listening when you interrupt an update. The queue remains available manually.
 
@@ -143,7 +143,7 @@ without configured validation commands.
 
 Coding runs on this Mac. SQLite and local private files hold prepared review plans and proposed
 fixes; published comments and branches are shared through GitHub. The optional shared organization
-backend uses Supabase DB/Auth and a sharing API. Analysis remains desktop-initiated through Muse;
+backend uses Supabase DB/Auth and a sharing API. Analysis remains desktop-initiated through MuseFocus;
 there are no remote preparation workers. See [team setup](docs/integration/team-setup.md).
 
 ## My day and Slack
@@ -151,7 +151,7 @@ there are no remote preparation workers. See [team setup](docs/integration/team-
 **My day** holds personal follow-ups, accepted requests, missing-context questions and reviewable
 outcomes. You can add a real item yourself without connecting a provider. Incoming Slack requests
 remain pending until accepted; a source-bound explicit promise from your own account can count as
-acceptance. Muse can prepare isolated work while acceptance is pending, but execution waits for it.
+acceptance. MuseFocus can prepare isolated work while acceptance is pending, but execution waits for it.
 Questions are covered with you when you open the item. Source-backed work closes only after a
 confirmed answer in the original thread; personal items use an explicit **I have answered this**.
 
@@ -164,7 +164,7 @@ scope changes and uncertain sends return to you for judgment.
 In **Settings → Slack**, choose **Sign in with Slack** and approve in your browser. The one-time app
 registration uses [this manifest](docs/integration/slack-app-manifest.json), enables PKCE, and registers
 `http://localhost:43187/oauth/slack/callback`. Configure `SLACK_OAUTH_CLIENT_ID` in the active `.env`.
-See the [login setup guide](docs/integration/oauth-setup.md). Muse saves and refreshes the user grant
+See the [login setup guide](docs/integration/oauth-setup.md). MuseFocus saves and refreshes the user grant
 in its OS-encrypted account store; no client secret or hosted callback is required.
 
 The optional **Developer connection methods** disclosure can instead import a manual user token:
@@ -176,7 +176,7 @@ SLACK_APP_ID=
 SLACK_APP_TOKEN=
 ```
 
-After connecting, Muse automatically follows all active channels and DMs you belong to, discovers
+After connecting, MuseFocus automatically follows all active channels and DMs you belong to, discovers
 new memberships, and stops following conversations you leave. Settings → Conversations and exclusions
 lets you mute individual conversations. Polling is bounded; edits/deletions can have gaps. DM/private-channel knowledge stays private;
 company knowledge uses public channels, with fresh source access checked before retrieval. This
@@ -186,7 +186,7 @@ GitHub/Linear accounts. Replacing a Slack account clears its foreground context 
 
 Open **Slack** in the left sidebar to browse channels and DMs. Select a conversation to read its
 actual messages, load older pages, refresh, or open a thread. The reader is read-only; confirmed
-replies remain in the work-item flow. Ask Muse to show a Slack conversation or explain a thread;
+replies remain in the work-item flow. Ask MuseFocus to show a Slack conversation or explain a thread;
 it reads the same provider data and waits for the requested canvas to display before narrating it.
 No background history polling runs from the reader itself.
 
@@ -198,14 +198,14 @@ Tier 3 pacing. Leave it unset for commercial distribution; server Retry-After al
 With a prepared PR open, use **j / k** to move through its reading order. Typing, dialogs and menus
 keep their own keys. **Add PR comment** opens a draft: review its exact wording and optional head-side
 line, then explicitly confirm posting. Editing the body or changing the source invalidates consent.
-You can also ask Muse to draft or edit a comment. It opens the same composer and reads the exact
+You can also ask MuseFocus to draft or edit a comment. It opens the same composer and reads the exact
 proposal aloud in voice mode. In a separate turn, say **“Post this comment”** to confirm. Drafting
 alone never posts; a changed target or interrupted proposal needs another confirmation.
 
-Under **Own PR feedback**, choose **Prepare suggested fix**, or ask Muse to prepare the inspected
-feedback. Muse works in a separate app-owned checkout. Open **Suggested fixes** to inspect the original
+Under **Own PR feedback**, choose **Prepare suggested fix**, or ask MuseFocus to prepare the inspected
+feedback. MuseFocus works in a separate app-owned checkout. Open **Suggested fixes** to inspect the original
 comment, explanation, changed files, syntax-highlighted diff, **Before**, **Proposed after**, and actual
-check results. Previous/Next file uses the same acknowledged navigation as Muse. Source line controls
+check results. Previous/Next file uses the same acknowledged navigation as MuseFocus. Source line controls
 open the exact candidate revision.
 
 **Mark fix reviewed** records the local candidate revision you inspected. This workflow leaves the
@@ -217,16 +217,16 @@ See [PR work acceptance](docs/integration/pr-work-acceptance.md) for controlled-
 
 ## Prepared reviews
 
-Add repositories through the sidebar and choose a PR from **Incoming reviews** or **Own PR feedback**. The top-left selector remains available for direct local review access. Muse fetches
+Add repositories through the sidebar and choose a PR from **Incoming reviews** or **Own PR feedback**. The top-left selector remains available for direct local review access. MuseFocus fetches
 open PRs and prepares a reading order, explanations and suggested comments in the background.
 Preparation is inferred from the PR description and available patches; it is not execution
 proof or a claim about the author's intent. Partial source coverage is labeled.
 
-Select a ready PR and say **“Walk me through this review”**. Muse takes the initiative through
+Select a ready PR and say **“Walk me through this review”**. MuseFocus takes the initiative through
 a logical section of consecutive files in the prepared reading order, then pauses for a question or **“Continue”**.
 Each file stays on screen until its spoken explanation finishes. Speaking interrupts the walkthrough
 while keeping the microphone available. You can also say **“Next file”**, **“Show me
-`path/to/file`”**, **“Pause the review”**, or **“Resume”**. Muse opens the pinned source before
+`path/to/file`”**, **“Pause the review”**, or **“Resume”**. MuseFocus opens the pinned source before
 narrating. Changes, Before and After views use the PR's actual base/head commits. When those
 commits exist in the selected local clone, reads use Git objects without changing your branch,
 index or working files. Missing local commits use GitHub's pinned content API.
@@ -244,11 +244,11 @@ local preparation. SQLite retains local reviews. No hosted preparation worker or
 required. See [team setup](docs/integration/team-setup.md).
 
 If preparation is still running, its status is shown before opening. Failed preparation has an
-explicit retry action. A ready review in any watched repository can be opened by Muse.
+explicit retry action. A ready review in any watched repository can be opened by MuseFocus.
 
 ## Canvases and browser
 
-Ask Muse to **“Create an explanation document”**, **“Make a checkout mockup beside it”**,
+Ask MuseFocus to **“Create an explanation document”**, **“Make a checkout mockup beside it”**,
 **“Show me the code”**, or **“Open https://example.com”**. It manages code, document, visual and
 browser canvases in the same conversation, chooses the primary/secondary panes, and waits for
 each change to display before describing it. Tabs and **Split panes** remain available manually.
@@ -258,7 +258,7 @@ excerpts, including unchanged files. Source text and locations remain exact; ord
 are labeled inference. Local repository search is available when the pinned commit exists locally.
 
 The browser is an actual persistent native page. Give an explicit HTTPS address or a running
-local HTTP URL. Muse observes the page you see and can click, type, scroll, navigate, and change
+local HTTP URL. MuseFocus observes the page you see and can click, type, scroll, navigate, and change
 desktop/phone viewport. Desktop follows the available pane size; Phone keeps a centered fixed
 viewport. Tabs use actual page titles, with navigation/address/viewport in one compact row.
 Optional conversation opens on the left of the canvases. You can interact normally too. Drag the divider or use its arrow keys
@@ -266,7 +266,7 @@ to resize a split. **More → Open website** opens an address manually. Voice st
 **More → Conversation and typing** reveals text only when needed.
 
 Generated documents and SVG mockups are labeled drafts. Real raster generation uses Muse Image
-(`muse-image-1.0`) with the existing `MODEL_API_KEY`; no separate image key is needed. Ask Muse to
+(`muse-image-1.0`) with the existing `MODEL_API_KEY`; no separate image key is needed. Ask MuseFocus to
 generate an image. PNG/JPEG artifacts
 are validated and saved privately; the workspace waits for actual decoding before acknowledging
 display. Closed images reopen through Recent without generation. Image access or generation errors

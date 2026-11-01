@@ -1,6 +1,7 @@
 import { join } from "node:path";
+import { PRODUCT_NAME } from "../../shared/brand";
 
-export const PRODUCT_NAME = "MuseFocus";
+export { PRODUCT_NAME };
 // Keep the established encryption/storage identity while the distribution brand changes.
 export const STORAGE_IDENTITY = "MetaHackathon";
 

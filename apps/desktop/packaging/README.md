@@ -9,6 +9,13 @@ The internal `@metahackathon` namespace and frozen voice executable keep their
 existing names. Root coordinates package `productName`, main/window branding and
 preservation of existing user data before integrated acceptance.
 
+The finalized Pull forward / Blue–Ice icon is configured for macOS ICNS,
+Windows ICO and Linux PNG. The window PNG is also copied to
+`Resources/branding/icon.png`; development uses the same art for the macOS Dock.
+See [`resources/branding/README.md`](../resources/branding/README.md) for identity
+sources and renderer usage. Native icon appearance still needs installed-package
+acceptance; policy and build checks do not establish that.
+
 `musefocus.app` is planned and not owned. It is not an authentication callback,
 update feed or download host. Release/update hosting remains the GitHub repository
 `VrolixThomas/MetaHackathon` below; domain purchase/configuration is separate work.

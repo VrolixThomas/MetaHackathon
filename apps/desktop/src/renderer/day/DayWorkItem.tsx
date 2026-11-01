@@ -92,7 +92,7 @@ export function DayWorkItem({
 				<h2>{covered && !terminal ? "Covering this item" : "Current focus"}</h2>
 				<p>
 					{covered && item.phase === "needs_context"
-						? "Discuss the missing context with Muse."
+						? "Discuss the missing context with MuseFocus."
 						: phase.focus}
 				</p>
 				{item.acceptance === "pending" && !terminal && (
@@ -122,7 +122,7 @@ export function DayWorkItem({
 				<div className="day-actions">
 					{!covered && !terminal && (
 						<button type="button" disabled={busy} onClick={cover}>
-							Cover this item with Muse
+							Cover this item with MuseFocus
 						</button>
 					)}
 					{jobId && (

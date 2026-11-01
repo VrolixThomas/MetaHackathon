@@ -120,9 +120,9 @@ export function TeamCard({
 				)}
 			</div>
 			<p className="small">
-				Muse prepares reviews locally. Optionally share inferred findings with your organization for
-				selected repositories. Private conversations are excluded from shared findings. Local review
-				works without a team connection.
+				MuseFocus prepares reviews locally. Optionally share inferred findings with your
+				organization for selected repositories. Private conversations are excluded from shared
+				findings. Local review works without a team connection.
 			</p>
 			{state.error && (
 				<p className="inline-error" role="alert">

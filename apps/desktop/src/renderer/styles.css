@@ -1606,13 +1606,8 @@ summary:focus-visible {
 .command-rail .hub-brand.quiet {
 	display: flex;
 	justify-content: center;
-	gap: 1px;
+	padding: 3px;
 	margin-bottom: 15px;
-	color: #eee;
-	font: 600 27px Georgia, serif;
-}
-.hub-brand span {
-	color: #b9ccef;
 }
 .command-rail-bottom {
 	display: flex;

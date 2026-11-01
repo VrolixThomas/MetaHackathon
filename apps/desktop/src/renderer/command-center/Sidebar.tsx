@@ -1,5 +1,6 @@
 import { useStore } from "zustand";
 import type { CenterSection, WorkspaceCommand } from "../../shared/contracts";
+import { BrandMark } from "../brand/Brand";
 import { DayQueue } from "../day";
 import type { DayController } from "../day/controller";
 import { type PRFixController, PRFixList } from "../pr-fixes";
@@ -79,11 +80,11 @@ export function CommandSidebar({
 				<button
 					type="button"
 					className="hub-brand quiet"
-					title="Open Home"
+					title="MuseFocus · Open Home"
 					aria-label="Open Home"
 					onClick={() => select("home")}
 				>
-					m<span>·</span>
+					<BrandMark size={32} />
 				</button>
 				{centerSections
 					.flatMap((item) =>

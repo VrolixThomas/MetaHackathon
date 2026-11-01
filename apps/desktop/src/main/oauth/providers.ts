@@ -244,7 +244,7 @@ export async function profile(
 	const headers = {
 		Authorization: `Bearer ${token}`,
 		Accept: "application/json",
-		"User-Agent": "Muse-Desktop",
+		"User-Agent": "MuseFocus-Desktop",
 	};
 	if (provider === "github") {
 		const value = GitHubProfileSchema.safeParse(

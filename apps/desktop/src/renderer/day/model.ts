@@ -16,7 +16,7 @@ export const phasePresentation: Record<DayPhase, { label: string; tone: Tone; fo
 	needs_context: {
 		label: "Needs Q&A",
 		tone: "attention",
-		focus: "Cover this item with Muse to provide the missing context.",
+		focus: "Cover this item with MuseFocus to provide the missing context.",
 	},
 	ready: {
 		label: "Prepared",

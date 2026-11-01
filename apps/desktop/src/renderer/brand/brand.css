@@ -1,0 +1,23 @@
+.musefocus-mark {
+	display: inline-block;
+	flex: none;
+	object-fit: contain;
+	vertical-align: middle;
+	user-select: none;
+}
+
+.musefocus-lockup {
+	display: inline-flex;
+	align-items: center;
+	gap: 7px;
+	white-space: nowrap;
+	text-transform: none;
+	letter-spacing: normal;
+}
+
+.configuration .workspace-dialog-content > .musefocus-lockup {
+	margin-bottom: 8px;
+	color: #d8e8ff;
+	font-size: 16px;
+	font-weight: 600;
+}

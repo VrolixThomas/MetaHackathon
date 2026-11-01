@@ -9,6 +9,7 @@ import {
 	Menu,
 	app,
 	dialog,
+	nativeImage,
 	powerMonitor,
 	safeStorage,
 	shell,
@@ -57,6 +58,9 @@ app.setPath("userData", selectedDataPath);
 
 let mainWindow: BrowserWindow | null = null;
 const mainDirectory = dirname(fileURLToPath(import.meta.url));
+const applicationIconPath = app.isPackaged
+	? join(process.resourcesPath, "branding/icon.png")
+	: join(mainDirectory, "../../resources/branding/icon.png");
 let database: ReturnType<typeof openDatabase> | undefined;
 let shuttingDown = false;
 let shutdownFinished = false;
@@ -70,6 +74,7 @@ function recordAttentionActivity() {
 function createWindow(): void {
 	mainWindow = new BrowserWindow({
 		title: PRODUCT_NAME,
+		icon: applicationIconPath,
 		width: 1440,
 		height: 900,
 		minWidth: 800,
@@ -139,6 +144,12 @@ app
 	.whenReady()
 	.then(async () => {
 		app.setAboutPanelOptions({ applicationName: PRODUCT_NAME });
+		// Packaged macOS uses its native multi-resolution ICNS. Development otherwise
+		// inherits Electron's Dock icon, so give that process the same selected identity.
+		if (process.platform === "darwin" && !app.isPackaged) {
+			const icon = nativeImage.createFromPath(applicationIconPath);
+			if (!icon.isEmpty()) app.dock?.setIcon(icon);
+		}
 		if (process.platform === "darwin")
 			Menu.setApplicationMenu(
 				Menu.buildFromTemplate([

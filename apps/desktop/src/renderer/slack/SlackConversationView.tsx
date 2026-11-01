@@ -83,10 +83,10 @@ export function SlackConversationView({
 				<span className="slack-empty-symbol" aria-hidden="true">
 					#
 				</span>
-				<h1>Your Slack, in Muse</h1>
+				<h1>Your Slack, in MuseFocus</h1>
 				<p>Select a channel or direct message in the sidebar.</p>
 				<p className="slack-muted">
-					Messages and threads open here. Your conversation with Muse stays available.
+					Messages and threads open here. Your conversation with MuseFocus stays available.
 				</p>
 			</div>
 		);

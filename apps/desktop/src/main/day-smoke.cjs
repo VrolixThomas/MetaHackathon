@@ -659,7 +659,7 @@ async function native() {
 		report.checks.push(
 			"unknown day item rejects in actual main before any positive display receipt or day mutation"
 		);
-		await clickText(".day-item button", "Cover this item with Muse");
+		await clickText(".day-item button", "Cover this item with MuseFocus");
 		await wait(
 			"explicit cover persisted",
 			async () => (await daySnapshot()).currentItemId === itemId

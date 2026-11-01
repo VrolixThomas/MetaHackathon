@@ -1,5 +1,6 @@
 import { createHash, randomBytes, randomUUID, timingSafeEqual } from "node:crypto";
 import { type IncomingMessage, type Server, type ServerResponse, createServer } from "node:http";
+import { PRODUCT_NAME } from "../../shared/brand";
 import {
 	OAUTH_CALLBACK_PORT,
 	OAUTH_CALLBACK_URLS,
@@ -45,8 +46,7 @@ interface Flow {
 // One foreground browser login per process, even when two service instances are constructed.
 let globalFlow: Flow | undefined;
 const providers = OAuthProviderSchema.options;
-const callbackHtml =
-	'<!doctype html><html lang="en"><meta charset="utf-8"><title>Muse login</title><p>Return to Muse to continue. You can close this window.</p></html>';
+const callbackHtml = `<!doctype html><html lang="en"><meta charset="utf-8"><title>${PRODUCT_NAME} login</title><p>Return to ${PRODUCT_NAME} to continue. You can close this window.</p></html>`;
 
 export class OAuthService {
 	private readonly store: OAuthStore;

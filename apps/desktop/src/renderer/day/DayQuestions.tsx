@@ -38,7 +38,7 @@ function AnswerQuestion({
 					}}
 				>
 					<label>
-						Your answer for Muse
+						Your answer for MuseFocus
 						<textarea
 							required
 							maxLength={12000}
@@ -73,7 +73,7 @@ export function DayQuestions({
 			<h2>Context for this item · {pending.length}</h2>
 			{covered ? (
 				<>
-					<p className="day-hint">Answer Muse in voice, or choose typing below.</p>
+					<p className="day-hint">Answer MuseFocus in voice, or choose typing below.</p>
 					{pending.map((question) => (
 						<AnswerQuestion
 							key={`${item.id}:${question.id}`}

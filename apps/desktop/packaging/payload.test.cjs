@@ -46,6 +46,9 @@ test("release configuration matches the installed builder schema and keeps produ
 	assert.equal(config.forceCodeSigning, true);
 	assert.equal(config.mac.hardenedRuntime, true);
 	assert.equal(config.mac.notarize, true);
+	assert.equal(config.mac.icon, "resources/branding/icon.icns");
+	assert.equal(config.win.icon, "resources/branding/icon.ico");
+	assert.equal(config.linux.icon, "resources/branding/icon.png");
 	assert.equal(config.dmg.sign, true);
 	assert.equal(config.npmRebuild, true);
 	assert.equal(config.asar, true);
@@ -54,6 +57,7 @@ test("release configuration matches the installed builder schema and keeps produ
 	assert.equal(config.mac.entitlementsInherit, "resources/entitlements.mac.plist");
 	assert.match(config.mac.extendInfo.NSMicrophoneUsageDescription, /hands-free/);
 	assert.deepEqual(config.extraResources, [
+		{ from: "resources/branding/icon.png", to: "branding/icon.png" },
 		{ from: "../../services/voice/dist/metahackathon-voice", to: "voice" },
 	]);
 	assert.ok(config.files.includes("node_modules/@muse-code/sdk/**/*"));
