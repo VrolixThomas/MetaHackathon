@@ -21,6 +21,6 @@ jobs:
       - run: bun run type-check
       - run: bun run lint
       - run: bun run test:contracts
-      - run: bun test apps/desktop/src/main/runtime
+      - run: bun run test:unit
       - run: node --test apps/desktop/packaging/*.test.cjs
       - run: bun run build
