@@ -375,7 +375,9 @@ drained narration checkpoint and a distinct actual user turn. `inputMode` comes 
 never a model argument. Posting state mirrors the same canonical attempt; stale/unknown attempts
 retain identity. Source, provider text, mocks and worker output cannot grant consent.
 
-MET-74 adds bounded private PNG/JPEG assets through an explicit Gemini provider. Image canvases
+Use Muse for model capabilities; do not add alternate model providers or fallback keys. MET-74 uses
+Muse Image (`muse-image-1.0`) with the existing main-only `MODEL_API_KEY`, through the fixed official
+Meta API. Legacy image-provider settings never route requests elsewhere. Image canvases
 persist metadata in Recent; actual bytes are read by opaque ID and verified before display. Workspace
 acceptance waits for image decode, natural dimensions and committed frames as well as native layout.
 Missing raster credentials affect generation only. Production packages contain only app output,

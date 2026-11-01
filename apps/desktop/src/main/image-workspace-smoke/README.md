@@ -11,17 +11,18 @@ success/failure screenshots are written under `apps/desktop/out/image-workspace-
 The harness owns and removes an isolated temporary user-data directory and a dummy
 0600 environment file. It never opens the repository environment. Ambient provider
 credentials are cleared in the test process; Chromium permissions and remote network
-are denied. Real fixed-endpoint Gemini/model fetches are mapped to an owned loopback
+are denied. Real fixed-endpoint Muse Image/model fetches use the same dummy MODEL_API_KEY and map to an owned loopback
 HTTP server. No product service, app result or receipt is fabricated.
 
 The actual default App receives typed user input and uses the real foreground model
-tool loop, ImageService, Gemini request parser, private PNG store, IPC and Chromium
+tool loop, ImageService, Muse Image request parser, private PNG store, IPC and Chromium
 image decoding. The controlled HTTP response contains a real 2×2 RGB PNG with checked
 CRC and compressed pixels. Acceptance checks exact SHA/bytes, natural dimensions,
 two actual visible animation frames and the genuine matching workspace receipt;
 persisted private files and Recent close/reopen without another generation; a held
 HTTP response cancelled through the real foreground RPC with no late canvas; and
-missing image credentials followed by successful ordinary conversation. It does not
+an image-specific provider denial followed by successful ordinary conversation using the same key. Missing
+MODEL_API_KEY is covered by adapter tests and prevents new model requests, including conversation. The harness does not
 establish live-provider generation, microphone/speaker behavior or full process restart.
 Private file reopen and Recent restoration occur within the actual app process.
 

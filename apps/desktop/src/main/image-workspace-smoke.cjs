@@ -1,6 +1,6 @@
 // ROOT ONLY after integration build: env -u ELECTRON_RUN_AS_NODE electron src/main/image-workspace-smoke.cjs [built-main]
 // Author checks only: node --check this-file; node this-file --self-check.
-// Actual default App/IPC/ImageService/Gemini adapter/files/Chromium decode. Only providers are controlled HTTP.
+// Actual default App/IPC/ImageService/Muse Image adapter/files/Chromium decode. Only providers are controlled HTTP.
 const assert = require("node:assert/strict");
 const fs = require("node:fs");
 const http = require("node:http");
@@ -42,13 +42,7 @@ async function native() {
 	fs.mkdirSync(userData);
 	app.setPath("userData", userData);
 	const envPath = join(owned, ".env");
-	const writeEnvironment = (withImages) =>
-		fs.writeFileSync(
-			envPath,
-			`MODEL_API_KEY=controlled-image-model-only\n${withImages ? "IMAGE_PROVIDER=gemini\nGEMINI_API_KEY=controlled-image-provider-only\n" : ""}`,
-			{ mode: 0o600 }
-		);
-	writeEnvironment(true);
+	fs.writeFileSync(envPath, "MODEL_API_KEY=controlled-image-and-model\n", { mode: 0o600 });
 	process.env.METAHACKATHON_ENV_FILE = envPath;
 	const out = join(__dirname, "../../out");
 	fs.mkdirSync(out, { recursive: true });
@@ -75,6 +69,7 @@ async function native() {
 	let cancellationEntered = false;
 	let cancellationClosed = false;
 	let stopping = false;
+	let rejectImages = false;
 	const server = http.createServer(async (request, response) => {
 		try {
 			assert.equal(request.method, "POST");
@@ -87,15 +82,21 @@ async function native() {
 				chunks.push(chunk);
 			}
 			const body = JSON.parse(Buffer.concat(chunks).toString("utf8"));
+			assert.equal(request.headers.authorization, "Bearer controlled-image-and-model");
+			assert.equal(request.headers["x-goog-api-key"], undefined);
 			if (request.url === "/model") {
 				response.writeHead(200, { "content-type": "text/event-stream" });
 				response.end(modelResult(body, ++report.modelCalls));
 				return;
 			}
-			assert.equal(request.headers["x-goog-api-key"], "controlled-image-provider-only");
 			const result = imageResult(body);
-			const prompt = body.contents[0].parts[0].text;
+			const prompt = body.prompt;
 			report.imageRequests.push({ prompt, actualHTTP: true });
+			if (rejectImages) {
+				response.writeHead(403, { "content-type": "application/json" });
+				response.end(JSON.stringify({ error: { message: "Controlled image access unavailable" } }));
+				return;
+			}
 			if (prompt === "Generate cancelled image") {
 				cancellationEntered = true;
 				cancelledResponse = { response, result };
@@ -300,7 +301,7 @@ async function native() {
 		let asset;
 		let canvasId;
 		await step(
-			"actual typed tool, ImageService, Gemini controlled HTTP, private PNG and decoded canvas receipt",
+			"actual typed tool, ImageService, Muse Image controlled HTTP, private PNG and decoded canvas receipt",
 			async () => {
 				const turn = await start("Generate controlled image");
 				assert.equal((await settle(turn.turnId)).phase, "complete");
@@ -313,6 +314,8 @@ async function native() {
 				assert.equal(asset.width, 2);
 				assert.equal(asset.height, 2);
 				assert.equal(asset.provenance, "provider-generated");
+				assert.equal(asset.provider, "meta");
+				assert.equal(asset.model, "muse-image-1.0");
 				assert.equal(observed.workspace.primaryId, canvas.id);
 				const frames = await js(
 					`new Promise(resolve=>requestAnimationFrame(()=>{const a=${DOM};requestAnimationFrame(()=>resolve([a,${DOM}]))}))`
@@ -412,15 +415,14 @@ async function native() {
 			}
 		);
 		await step(
-			"missing Gemini key blocks only image generation and leaves ordinary conversation available",
+			"image-specific access failure leaves ordinary conversation available with the same Muse key",
 			async () => {
-				writeEnvironment(false);
-				await rpc("mutation", "app.reloadConfig");
+				rejectImages = true;
 				const before = await observe();
 				const calls = report.imageRequests.length;
-				const missing = await start("Generate missing-key image");
+				const missing = await start("Generate denied image");
 				await settle(missing.turnId);
-				assert.equal(report.imageRequests.length, calls);
+				assert.equal(report.imageRequests.length, calls + 1);
 				assert.deepEqual((await observe()).workspace.canvases, before.workspace.canvases);
 				const ordinary = await start("Ordinary conversation after image failure");
 				assert.equal((await settle(ordinary.turnId)).phase, "complete");

@@ -211,13 +211,6 @@ export class EnvConfiguration {
 			});
 		});
 	}
-	/** Main-only optional providers. No raw values are returned by renderer configuration RPCs. */
-	imageSettings(): Promise<Record<string, string | undefined>> {
-		return this.serialize(async () => {
-			const values = (await this.read())?.values ?? {};
-			return { IMAGE_PROVIDER: values["IMAGE_PROVIDER"], GEMINI_API_KEY: values["GEMINI_API_KEY"] };
-		});
-	}
 	teamSettings(): Promise<{ url?: string; publishableKey?: string; serviceUrl?: string }> {
 		return this.serialize(async () => {
 			const values = (await this.read())?.values ?? {};

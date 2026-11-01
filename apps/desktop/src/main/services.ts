@@ -40,10 +40,10 @@ import type { HubStore } from "./db/hub-store";
 import type { KnowledgeStore } from "./db/knowledge-store";
 import type { SlackWorkspaceStore } from "./db/slack-store";
 import {
-	GEMINI_IMAGE_MODEL,
 	ImageService,
+	MUSE_IMAGE_MODEL,
 	PrivateImageStore,
-	createGeminiImageProvider,
+	createMuseImageProvider,
 } from "./images";
 import { type KnowledgeService, chatSourceId, sourceFromChatMessage } from "./knowledge";
 import { FactSchema } from "./knowledge/types";
@@ -895,10 +895,10 @@ export function noteAttentionActivity() {
 export function initializeWorkspace(userDataPath: string): void {
 	images = new ImageService(
 		{
-			provider: "gemini",
-			model: GEMINI_IMAGE_MODEL,
+			provider: "meta",
+			model: MUSE_IMAGE_MODEL,
 			generate: async (prompt, signal) =>
-				createGeminiImageProvider(await getConfiguration().imageSettings()).generate(
+				createMuseImageProvider({ MODEL_API_KEY: await getConfiguration().get("meta") }).generate(
 					prompt,
 					signal
 				),

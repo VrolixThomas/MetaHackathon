@@ -1,0 +1,71 @@
+{
+	"date": "2026-11-01",
+	"baseCheckpoint": "bfaf4f4",
+	"adapterCheckpoint": "6c6b441",
+	"policy": "Muse-only model capabilities; existing MODEL_API_KEY; no alternate image provider/key/fallback.",
+	"officialReference": "https://dev.meta.ai/docs/image-generation",
+	"targetedTests": {
+		"passed": 82,
+		"failed": 0,
+		"files": 13
+	},
+	"typeCheck": "passed",
+	"lint": "passed",
+	"build": "passed",
+	"native": {
+		"status": "passed",
+		"actualAppIPC": true,
+		"actualImageService": true,
+		"controlledHTTP": true,
+		"liveProviders": false,
+		"microphone": false,
+		"steps": [
+			{
+				"label": "actual typed tool, ImageService, Muse Image controlled HTTP, private PNG and decoded canvas receipt",
+				"passed": true
+			},
+			{
+				"label": "persisted descriptor closes into actual Recent and reopens same decoded bytes without regeneration",
+				"passed": true
+			},
+			{
+				"label": "foreground cancellation aborts actual provider HTTP and rejects any late canvas",
+				"passed": true
+			},
+			{
+				"label": "image-specific access failure leaves ordinary conversation available with the same Muse key",
+				"passed": true
+			}
+		],
+		"cleanup": {
+			"ownedRemoved": true,
+			"serverClosed": true
+		},
+		"reportSha256": "6993e2caa6832d831b388d815800bb536617980bb5e37673feb607efaed1d0a0"
+	},
+	"liveProvider": {
+		"status": "passed",
+		"liveProvider": true,
+		"microphone": false,
+		"actualImageService": true,
+		"existingModelKey": true,
+		"model": "muse-image-1.0",
+		"provider": "meta",
+		"mime": "image/png",
+		"width": 1600,
+		"height": 1600,
+		"byteLength": 679220,
+		"sha256": "932d2c3a6fff16f2857bd34dfdda5962846921704a5c91160501e57e7fefbe0d",
+		"exactPrivateReadback": true,
+		"sourceContentSent": false,
+		"requestCount": 1,
+		"finishedAt": "2026-11-01T09:59:31.818Z",
+		"elapsedMs": 7235
+	},
+	"limitations": [
+		"Live provider check generated one inert prompt through the real ImageService; no repository/private source was sent.",
+		"Native renderer/canvas acceptance uses controlled HTTP PNG, not the live-generated image.",
+		"No live microphone, new GitHub post, cloud deployment, signing or updater check was run in this follow-up.",
+		"Previous unsigned distribution artifacts predate this provider correction; rebuild before distributing."
+	]
+}

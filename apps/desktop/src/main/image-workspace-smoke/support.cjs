@@ -2,8 +2,7 @@ const assert = require("node:assert/strict");
 const { createHash } = require("node:crypto");
 const { deflateSync, inflateSync } = require("node:zlib");
 const MODEL_URL = "https://api.meta.ai/v1/responses";
-const IMAGE_URL =
-	"https://generativelanguage.googleapis.com/v1/models/gemini-2.5-flash-image:generateContent";
+const IMAGE_URL = "https://api.meta.ai/v1/images/generations";
 const TITLE = "CONTROLLED_IMAGE_SMOKE";
 function crc(bytes) {
 	let value = 0xffffffff;
@@ -35,20 +34,15 @@ const PNG = Buffer.concat([
 ]);
 const SHA = createHash("sha256").update(PNG).digest("hex");
 function imageResult(body) {
-	assert.equal(body.contents.length, 1);
-	assert.equal(body.contents[0].parts.length, 1);
-	assert.equal(typeof body.contents[0].parts[0].text, "string");
-	assert.deepEqual(body.generationConfig.responseModalities, ["TEXT", "IMAGE"]);
-	return {
-		candidates: [
-			{
-				finishReason: "STOP",
-				content: {
-					parts: [{ inlineData: { mimeType: "image/png", data: PNG.toString("base64") } }],
-				},
-			},
-		],
-	};
+	assert.deepEqual(body, {
+		model: "muse-image-1.0",
+		prompt: body.prompt,
+		n: 1,
+		response_format: "b64_json",
+		output_format: "png",
+	});
+	assert.equal(typeof body.prompt, "string");
+	return { data: [{ b64_json: PNG.toString("base64") }], output_format: "png" };
 }
 function modelResult(body, serial) {
 	assert.equal(body.stream, true);
@@ -76,11 +70,9 @@ function modelResult(body, serial) {
 			"Actual image tool missing"
 		);
 		assert.ok(
-			[
-				"Generate controlled image",
-				"Generate cancelled image",
-				"Generate missing-key image",
-			].includes(question)
+			["Generate controlled image", "Generate cancelled image", "Generate denied image"].includes(
+				question
+			)
 		);
 		output = [
 			{
@@ -99,7 +91,7 @@ function modelResult(body, serial) {
 				content: [
 					{
 						type: "output_text",
-						text: question.includes("missing-key")
+						text: question.includes("denied")
 							? "Image configuration is unavailable; ordinary conversation remains available."
 							: "The controlled generated image is displayed.",
 					},
@@ -138,9 +130,12 @@ function selfCheck() {
 	assert.equal(offset, PNG.length);
 	assert.equal(
 		imageResult({
-			contents: [{ parts: [{ text: "controlled" }] }],
-			generationConfig: { responseModalities: ["TEXT", "IMAGE"] },
-		}).candidates[0].content.parts[0].inlineData.data,
+			model: "muse-image-1.0",
+			prompt: "controlled",
+			n: 1,
+			response_format: "b64_json",
+			output_format: "png",
+		}).data[0].b64_json,
 		PNG.toString("base64")
 	);
 	const body = {

@@ -250,11 +250,12 @@ Optional conversation opens on the left of the canvases. You can interact normal
 to resize a split. **More → Open website** opens an address manually. Voice stays available;
 **More → Conversation and typing** reveals text only when needed.
 
-Generated documents and SVG mockups are labeled drafts. For real raster generation, configure
-`IMAGE_PROVIDER=gemini` and `GEMINI_API_KEY`, then ask Muse to generate an image. PNG/JPEG artifacts
+Generated documents and SVG mockups are labeled drafts. Real raster generation uses Muse Image
+(`muse-image-1.0`) with the existing `MODEL_API_KEY`; no separate image key is needed. Ask Muse to
+generate an image. PNG/JPEG artifacts
 are validated and saved privately; the workspace waits for actual decoding before acknowledging
-display. Closed images reopen through Recent without generation. Missing image configuration affects
-only image generation. Browser pages
+display. Closed images reopen through Recent without generation. Image access or generation errors
+leave the rest of the workspace available. Browser pages
 carry unverified revision provenance. Opening a URL does not start a development server or prove
 which PR revision is running. GitHub comments still require explicit confirmation before posting;
 the prepared-review suggested comments remain unposted.
