@@ -54,7 +54,7 @@ export function evaluatePolicy(
 		o.actor.id !== p.actor.id ||
 		o.baseSha !== p.pr.baseSha ||
 		!o.open ||
-		!o.permitted ||
+		(p.terms.action === "approve" && !o.permitted) ||
 		!o.descendant
 	)
 		return result(

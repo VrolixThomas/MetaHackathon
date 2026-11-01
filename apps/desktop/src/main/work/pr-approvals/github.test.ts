@@ -18,6 +18,8 @@ function providerHarness() {
 		app: 42,
 		state: "open",
 		draft: false,
+		author: { id: 8, login: "author" },
+		push: true,
 		base,
 		branchRequired: [] as { context: string; app_id: number | null }[],
 		rulesRequired: [] as { context: string; integration_id: number | null }[],
@@ -33,7 +35,7 @@ function providerHarness() {
 		body: "PR intent",
 		state: control.state,
 		draft: control.draft,
-		user: { id: 8, login: "author" },
+		user: control.author,
 		base: { sha: control.base, ref: "main", repo: { full_name: "owner/repo" } },
 		head: { sha: control.sha },
 	});
@@ -50,7 +52,7 @@ function providerHarness() {
 		assert.equal(init?.redirect, "error");
 		let data: unknown;
 		if (path === "/user") data = actor;
-		else if (path === "/repos/owner/repo") data = { permissions: { push: true } };
+		else if (path === "/repos/owner/repo") data = { permissions: { push: control.push } };
 		else if (path === "/repos/owner/repo/pulls/1") data = remotePR();
 		else if (path.endsWith("/rules/branches/main"))
 			data = control.rulesRequired.length
@@ -327,4 +329,53 @@ it("revocation during final credential preflight fences the admitted write", asy
 	assert.equal(remote.control.posts, 0);
 	assert.equal(h.p.status, "revoked");
 	assert.ok(h.p.attempt);
+});
+
+it("own and read-only PRs notify on actual observed checks while automatic approval stays blocked", async () => {
+	for (const access of ["own", "read-only"] as const) {
+		for (const action of ["notify", "approve"] as const) {
+			const remote = providerHarness();
+			if (access === "own") remote.control.author = actor;
+			else remote.control.push = false;
+			const h = harness([
+				policy({
+					pr: { ...policy().pr, author: remote.control.author.login },
+					terms: { ...terms, action },
+				}),
+			]);
+			h.p.contextDigest = await remote.provider.pin(h.p.pr, AbortSignal.timeout(5000));
+			h.p.digest = policyDigest(h.p);
+			h.provider.observe = remote.provider.observe.bind(remote.provider);
+			h.provider.approve = remote.provider.approve.bind(remote.provider);
+			await h.service.tick();
+			assert.equal(h.p.status, action === "notify" ? "notified" : "needs-review");
+			assert.equal(remote.control.posts, 0);
+			assert.equal(h.p.attempt, null);
+			assert.equal(h.state.notices.length, 1);
+			if (action === "notify") {
+				assert.equal(h.p.evaluation?.outcome, "satisfied");
+				assert.equal(h.p.evaluation.evidence[0]?.providerId, 1);
+				assert.match(h.state.notices[0]?.detail ?? "", /Notification only/);
+			}
+		}
+	}
+});
+it("notify-only still blocks failed checks, changed scope and a foreign account without approval permission", async () => {
+	for (const change of ["failed-check", "scope", "account"] as const) {
+		const remote = providerHarness();
+		remote.control.push = false;
+		if (change === "failed-check") remote.control.check = "failure";
+		const h = harness([policy({ terms: { ...terms, action: "notify" } })]);
+		h.p.contextDigest = await remote.provider.pin(h.p.pr, AbortSignal.timeout(5000));
+		h.p.digest = policyDigest(h.p);
+		if (change === "scope") h.p.contextDigest = "f".repeat(64);
+		if (change === "account") h.p.actor = { id: 99, login: "foreign" };
+		h.p.digest = policyDigest(h.p);
+		h.provider.observe = remote.provider.observe.bind(remote.provider);
+		await h.service.tick();
+		assert.equal(h.p.status, change === "failed-check" ? "monitoring" : "needs-review");
+		assert.equal(remote.control.posts, 0);
+		assert.equal(h.p.attempt, null);
+		assert.ok(h.state.notices.every((n) => !n.detail.includes("conditions hold")));
+	}
 });
