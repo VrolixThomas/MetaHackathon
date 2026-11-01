@@ -57,6 +57,10 @@
 	padding-top: 14px;
 	min-width: 0;
 }
+.workspace-dialog.configuration:has(.team-proposal-review) {
+	width: min(1180px, calc(100vw - 48px));
+	max-width: calc(100vw - 48px);
+}
 .team-source-pair {
 	display: grid;
 	grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -80,6 +84,11 @@
 }
 .team-card pre code {
 	overflow-wrap: normal;
+}
+.team-source-pair pre,
+.team-source-pair pre code {
+	white-space: pre-wrap;
+	overflow-wrap: anywhere;
 }
 .team-card blockquote {
 	margin: 0;
