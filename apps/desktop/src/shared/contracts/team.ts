@@ -23,8 +23,18 @@ export const ArtifactSchema = z.strictObject({
 	key: ReviewKeySchema,
 	review: PreparedReviewSchema,
 	digest: Digest,
+	/** Server-derived attribution; the analysis is a reported local inference, not execution proof. */
+	provenance: z.literal("reported-local-analysis").optional(),
+	preparedBy: z.uuid().optional(),
 });
 export type TeamArtifact = z.infer<typeof ArtifactSchema>;
+export const LocalReviewSubmissionSchema = z.strictObject({
+	requestId: z.uuid(),
+	key: ReviewKeySchema,
+	review: PreparedReviewSchema,
+	digest: Digest,
+});
+export type LocalReviewSubmission = z.infer<typeof LocalReviewSubmissionSchema>;
 export const ProgressSchema = z.strictObject({
 	key: ReviewKeySchema,
 	cursor: RepositoryPathSchema.nullable(),
