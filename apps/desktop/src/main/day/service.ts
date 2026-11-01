@@ -827,7 +827,9 @@ export class DayService {
 						record.clarificationRetryAt = undefined;
 						c.status = "active";
 						c.confirmedAt = this.iso();
-						c.expiresAt = this.iso(c.policy.durationMinutes * 60000);
+						c.expiresAt = new Date(
+							Date.parse(c.confirmedAt) + c.policy.durationMinutes * 60000
+						).toISOString();
 						break;
 					}
 					case "pause_clarification":
@@ -1315,6 +1317,11 @@ export class DayService {
 	}
 
 	private async processRecord(id: string, signal: AbortSignal) {
+		// Resolve dispatch uncertainty before clarification policy can escalate it.
+		for (const reply of this.current(id).outbox.filter(
+			(reply) => reply.clarification && reply.status === "uncertain"
+		))
+			await this.reconcileOutbox(id, reply, signal);
 		await this.processClarification(id, signal);
 		let record = this.current(id);
 		for (const control of record.controls.filter((control) => !control.deliveredAt)) {
@@ -1510,7 +1517,7 @@ export class DayService {
 				item.reviewedAt = null;
 				item.reviewedHeadSha = null;
 				for (const reply of record.outbox)
-					if (reply.status !== "delivered") reply.superseded = true;
+					if (!reply.clarification && reply.status !== "delivered") reply.superseded = true;
 			}
 			record.preparation.job = job;
 			if (
@@ -1697,6 +1704,46 @@ export class DayService {
 			this.touch(record);
 		}
 	}
+	private async reconcileOutbox(id: string, initial: DayOutbox, signal: AbortSignal) {
+		if (!this.ports.replies) throw unavailable();
+		this.ensureAvailable(signal);
+		const result = await abortable(
+			this.ports.replies.reconcile(
+				{
+					requestId: initial.requestId,
+					source: initial.source,
+					body: initial.body,
+					...(initial.clarification
+						? {
+								clarification: true as const,
+								clarificationThreadDigest: initial.clarification.threadDigest,
+							}
+						: {}),
+				},
+				signal
+			),
+			signal
+		);
+		if (result.status === "delivered") {
+			await this.settleReply(id, initial, result.receipt, signal);
+			return true;
+		}
+		if (result.status === "uncertain") return false;
+		return this.update((state) => {
+			this.ensureAvailable(signal);
+			const record = this.record(state, id);
+			const reply = record.outbox.find((r) => r.requestId === initial.requestId);
+			if (!reply || reply.status !== "uncertain") return true;
+			// A durable reservation still represents ambiguous dispatch, even on a search miss.
+			if (reply.providerKey) return false;
+			reply.status = "pending";
+			const attempt = record.item.clarification?.attempts.find(
+				(a) => a.requestId === reply.requestId
+			);
+			if (attempt) attempt.status = "pending";
+			return true;
+		});
+	}
 	private async deliver(id: string, initial: DayOutbox, signal: AbortSignal) {
 		if (!this.ports.replies) throw unavailable();
 		const input: DayReplyRequest = {
@@ -1712,13 +1759,9 @@ export class DayService {
 		};
 		this.ensureAvailable(signal);
 		if (initial.status === "uncertain") {
-			const result = await abortable(this.ports.replies.reconcile(input, signal), signal);
-			if (result.status === "delivered") {
-				await this.settleReply(id, initial, result.receipt, signal);
-				return;
-			}
-			if (result.status === "uncertain") throw unavailable();
-			if (initial.superseded) return;
+			if (!(await this.reconcileOutbox(id, initial, signal))) throw unavailable();
+			const reply = this.current(id).outbox.find((r) => r.requestId === initial.requestId);
+			if (!reply || reply.status === "delivered" || reply.superseded) return;
 		}
 		if (initial.clarification) {
 			const retryAt = this.current(id).clarificationRetryAt;

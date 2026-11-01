@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
+import { WorkJobSchema } from "../../shared/contracts";
 import type { ChatMessage, ChatReplyReceipt } from "../../shared/contracts/chat";
 import type { DayOperation } from "../../shared/contracts/day";
 import { ConversationDayTools } from "../agent/day-tools";
@@ -42,7 +43,7 @@ function message(
 		},
 	};
 }
-async function harness() {
+async function harness(overrides: Partial<DayPorts> = {}, repositoryId?: string) {
 	let state: DayState | null = null;
 	let now = Date.parse(start);
 	let sequence = 0;
@@ -108,6 +109,7 @@ async function harness() {
 			reconcile: async (input) => service.reconcileReply(input),
 		},
 	};
+	Object.assign(ports, overrides);
 	let service = new DayService(ports);
 	const item = async () => {
 		const value = (await service.snapshot()).items[0];
@@ -123,6 +125,7 @@ async function harness() {
 	};
 	await service.capture({
 		requestId: "capture",
+		repositoryId,
 		message: message(),
 		title: "Website problem",
 		summary: "Actual requester needs context",
@@ -358,6 +361,12 @@ test("uncertain provider reservation survives restart and is never blindly retri
 		await assert.rejects(h.tick(10000));
 		assert.equal(h.counts().sends, 1);
 		assert.equal((await h.item()).clarification?.reason, "uncertain_send");
+		assert.ok(h.ports.replies);
+		h.ports.replies.reconcile = async () => ({ status: "not_found" });
+		await assert.rejects(h.tick(10000));
+		assert.equal(h.counts().sends, 1);
+		assert.equal(h.state()?.records[0]?.outbox[0]?.status, "uncertain");
+		assert.equal((await h.item()).clarification?.attempts[0]?.status, "uncertain");
 		await assert.rejects(h.propose());
 	} finally {
 		await h.close();
@@ -583,6 +592,168 @@ for (const inputMode of ["voice", "typed"] as const)
 			);
 			assert.equal((await h.item()).clarification?.status, "active");
 			assert.equal((await h.item()).acceptance, "pending");
+		} finally {
+			await h.close();
+		}
+	});
+
+for (const change of ["initial", "head", "status"] as const)
+	test(`worker ${change} observation preserves an independent paced clarification`, async () => {
+		const job = WorkJobSchema.parse({
+			id: "worker",
+			ticket: null,
+			repositoryId: "repo",
+			repository: "test/repo",
+			state: "ready",
+			branch: "muse/test",
+			worktreePath: "/test/isolated",
+			baseSha: "a".repeat(40),
+			headSha: "b".repeat(40),
+			brief: "Controlled brief",
+			summary: "Controlled result",
+			createdAt: start,
+			updatedAt: start,
+			decisions: [],
+			checks: [],
+			changedFiles: [],
+			pullRequest: null,
+			error: null,
+		});
+		const h = await harness(
+			{
+				worker: {
+					prepare: async (input) => {
+						job.internal = {
+							workspaceId: actor.workspaceId,
+							ownerUserId: actor.userId,
+							itemId: input.itemId,
+							requestId: input.requestId,
+							bindingDigest: sha256("worker"),
+							stage: "prepared",
+						};
+						return { jobId: job.id };
+					},
+					observe: async () => structuredClone(job),
+					execute: async () => {
+						throw new Error("No execution authorized");
+					},
+					answer: async () => {
+						throw new Error("No answer authorized");
+					},
+					control: async () => {},
+				},
+			},
+			"repo"
+		);
+		try {
+			if (change !== "initial") await h.tick();
+			await h.propose();
+			await h.confirm();
+			let reads = 0;
+			h.beforeRead(async () => {
+				if (++reads === 2) throw new SlackError("rate-limited", 60);
+			});
+			await h.tick();
+			const staged = h.state()?.records[0]?.outbox[0];
+			assert.equal(staged?.status, "pending");
+			assert.equal(staged?.superseded, false);
+			if (change === "head") job.headSha = "c".repeat(40);
+			if (change === "status") job.state = "running";
+			await h.reopen();
+			await h.tick(61000);
+			assert.equal(h.counts().sends, 1);
+			assert.equal((await h.item()).clarification?.attempts[0]?.requestId, staged?.requestId);
+			assert.equal((await h.item()).clarification?.attempts[0]?.status, "delivered");
+			assert.equal((await h.item()).answerReceipt, null);
+		} finally {
+			await h.close();
+		}
+	});
+
+test("authoritative pre-reservation absence restores both ledgers and retries exact identity after pacing", async () => {
+	const h = await harness();
+	try {
+		await h.propose();
+		await h.confirm();
+		const replies = h.ports.replies;
+		assert.ok(replies);
+		const send = replies.send;
+		const attempted: Parameters<typeof send>[0][] = [];
+		replies.send = async (input, signal) => {
+			attempted.push(structuredClone(input));
+			if (attempted.length === 1) throw new SlackError("rate-limited", 60);
+			return send(input, signal);
+		};
+		await assert.rejects(h.tick());
+		const original = h.state()?.records[0]?.outbox[0];
+		assert.equal(original?.providerKey, null);
+		assert.equal(original?.status, "uncertain");
+		await h.reopen();
+		let limited = true;
+		h.beforeRead(async () => {
+			if (limited) throw new SlackError("rate-limited", 60);
+		});
+		await h.tick(10000);
+		assert.equal(h.state()?.records[0]?.outbox[0]?.status, "pending");
+		assert.equal((await h.item()).clarification?.attempts[0]?.status, "pending");
+		assert.equal((await h.item()).clarification?.status, "active");
+		assert.equal(attempted.length, 1);
+		limited = false;
+		await h.tick(30000);
+		assert.equal(attempted.length, 1);
+		await h.reopen();
+		await h.tick(31000);
+		assert.equal(attempted.length, 2);
+		assert.deepEqual(attempted[1], attempted[0]);
+		assert.equal((await h.item()).clarification?.attempts.length, 1);
+		assert.equal((await h.item()).clarification?.attempts[0]?.status, "delivered");
+		assert.equal((await h.item()).clarification?.reason, null);
+	} finally {
+		await h.close();
+	}
+});
+
+test("confirmation expiry derives exactly from its captured instant even while the clock advances", async () => {
+	let clock = Date.parse(start);
+	const h = await harness({ now: () => clock++ });
+	try {
+		await h.propose();
+		await h.confirm();
+		const c = (await h.item()).clarification;
+		assert.ok(c?.confirmedAt && c.expiresAt);
+		assert.equal(
+			Date.parse(c.expiresAt) - Date.parse(c.confirmedAt),
+			c.policy.durationMinutes * 60000
+		);
+	} finally {
+		await h.close();
+	}
+});
+
+for (const gate of ["account", "membership", "expiry", "revoke"] as const)
+	test(`pre-reservation absence cannot bypass ${gate} on retry`, async () => {
+		const h = await harness();
+		try {
+			await h.propose();
+			await h.confirm();
+			assert.ok(h.ports.replies);
+			const send = h.ports.replies.send;
+			let dispatches = 0;
+			h.ports.replies.send = async (...args) => {
+				if (++dispatches === 1) throw new Error("Before reservation");
+				return send(...args);
+			};
+			await assert.rejects(h.tick());
+			if (gate === "account") h.connect("connection-2");
+			if (gate === "membership") h.access(false);
+			if (gate === "revoke") await h.operate({ kind: "revoke_clarification" });
+			await h.reopen();
+			await h.tick(gate === "expiry" ? 31 * 60000 : 10000);
+			assert.equal(dispatches, 1);
+			assert.equal(h.counts().sends, 0);
+			assert.equal(h.state()?.records[0]?.outbox[0]?.status, "pending");
+			assert.equal((await h.item()).clarification?.attempts[0]?.status, "pending");
+			assert.equal((await h.item()).clarification?.attempts.length, 1);
 		} finally {
 			await h.close();
 		}
