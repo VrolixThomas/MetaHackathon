@@ -69,7 +69,7 @@ are sanitized. No App ID, repository binding, model response or review is fabric
 | Setting | Required by / mapping |
 | --- | --- |
 | `SUPABASE_URL` | All; HTTPS origin only. `TEAM_SUPABASE_URL` may explicitly override. |
-| `SUPABASE_SERVICE_ROLE_KEY` | All; existing legacy service-role Bearer key, kept server-only. `TEAM_SUPABASE_SERVICE_ROLE_KEY` may override. New `sb_secret_` keys are deliberately rejected because the existing REST adapter's admin Bearer semantics have not been changed. |
+| `SUPABASE_SERVICE_ROLE_KEY` | All; backend-only legacy service-role JWT or modern `sb_secret_` key. `TEAM_SUPABASE_SERVICE_ROLE_KEY` may override; injected `SUPABASE_SECRET_KEYS.default` is also supported. Modern keys use only the apikey header; user JWTs remain separate. |
 | Public key | API: first `TEAM_SUPABASE_PUBLISHABLE_KEY`, then `SUPABASE_PUBLISHABLE_KEY`, then injected `SUPABASE_PUBLISHABLE_KEYS` JSON's `default`, then legacy injected `SUPABASE_ANON_KEY`. User JWT remains the REST Authorization header. |
 | `GITHUB_APP_ID`, `GITHUB_APP_PRIVATE_KEY` | API and worker; actual numeric App ID and parseable RSA private key. Escaped PEM newlines are accepted. OAuth identity login does not create an App installation. |
 | `TEAM_ANALYSIS_VERSION` | API and worker; explicit shared analysis identity. |

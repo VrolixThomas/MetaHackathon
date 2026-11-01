@@ -108,3 +108,28 @@ test(
 		assert.equal(cancelled, true);
 	}
 );
+
+test("new admin/public API keys never masquerade as JWTs, while user and legacy Bearer auth stays separate", async () => {
+	for (const [key, token, expectedBearer] of [
+		["sb_secret_controlled", undefined, undefined],
+		["sb_publishable_controlled", undefined, undefined],
+		["sb_publishable_controlled", "controlled-user-jwt", "Bearer controlled-user-jwt"],
+		["controlled-legacy-jwt", undefined, "Bearer controlled-legacy-jwt"],
+	] as const) {
+		let calls = 0;
+		const db = new SupabaseRest({
+			url: "https://db.example",
+			key,
+			...(token ? { token } : {}),
+			fetch: async (_url, init) => {
+				calls++;
+				const headers = new Headers(init?.headers);
+				assert.equal(headers.get("apikey"), key);
+				assert.equal(headers.get("authorization") ?? undefined, expectedBearer);
+				return Response.json([]);
+			},
+		});
+		assert.deepEqual(await db.request("/rest/v1/team_organizations"), []);
+		assert.equal(calls, 1);
+	}
+});

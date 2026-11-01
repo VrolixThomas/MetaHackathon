@@ -163,7 +163,8 @@ test("config aliases are deliberate; invalid credentials return only fixed setti
 	for (const secret of ["secret-invalid-private-key-value", "secret-password", env.MODEL_API_KEY])
 		assert.ok(!text.includes(secret));
 	assert.equal(
-		edgeConfiguration({ ...env, SUPABASE_SERVICE_ROLE_KEY: "sb_secret_unsupported" }, "api").ready,
+		edgeConfiguration({ ...env, SUPABASE_SERVICE_ROLE_KEY: "sb_publishable_not_admin" }, "api")
+			.ready,
 		false
 	);
 	assert.equal(
@@ -278,6 +279,7 @@ test("one worker invocation calls exactly one finite tick; true means attempted,
 				tick: async (queue, signal) => {
 					calls++;
 					assert.equal(queue, "preparation");
+					assert.ok(signal);
 					assert.equal(signal.aborted, false);
 					return true;
 				},
@@ -478,4 +480,21 @@ test("scoped fetch cancels ignored late responses and body readers on abort", as
 	const reading = response.text();
 	second.abort();
 	await assert.rejects(reading);
+});
+
+test("modern injected secret dictionaries configure only backend access and cannot act as worker wake keys", () => {
+	const secret = "sb_secret_controlled_backend_only_1234567890";
+	const dictionary = {
+		...env,
+		SUPABASE_SERVICE_ROLE_KEY: undefined,
+		SUPABASE_SECRET_KEYS: JSON.stringify({ default: secret }),
+	};
+	const configured = edgeConfiguration(dictionary, "api");
+	assert.equal(configured.ready, true);
+	assert.equal(configured.config.adminKey, secret);
+	assert.equal(
+		edgeConfiguration({ ...dictionary, TEAM_WORKER_INVOKE_SECRET: secret }, "worker").ready,
+		false
+	);
+	assert.equal(edgeConfiguration({ ...env, SUPABASE_SERVICE_ROLE_KEY: secret }, "api").ready, true);
 });

@@ -19,7 +19,7 @@ import {
 	artifact,
 	boundedJson,
 	digest,
-	secureUrl,
+	secureServiceUrl,
 } from "../../../../../services/team/protocol";
 import type { TeamAuth } from "./auth";
 import type { TeamStore } from "./storage";
@@ -60,7 +60,7 @@ export class TeamClient {
 			allowLocal?: boolean;
 		}
 	) {
-		this.base = secureUrl(options.url, options.allowLocal).origin;
+		this.base = secureServiceUrl(options.url, options.allowLocal).href.replace(/\/$/, "");
 	}
 
 	private async stamp() {

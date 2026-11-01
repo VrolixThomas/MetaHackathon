@@ -65,6 +65,9 @@ export class SupabaseRest {
 		caller?: AbortSignal
 	): Promise<unknown> {
 		if (!/^\/(?:rest|auth)\/v1\//.test(path)) throw new TeamError("invalid");
+		// New API keys are not JWTs. User sessions still supply their own separate Bearer token.
+		const bearer =
+			this.options.token ?? (this.options.key.startsWith("sb_") ? null : this.options.key);
 		return requestWithTimeout(15000, caller, async (signal) => {
 			let response: Response;
 			try {
@@ -75,7 +78,7 @@ export class SupabaseRest {
 						signal,
 						headers: {
 							apikey: this.options.key,
-							Authorization: `Bearer ${this.options.token ?? this.options.key}`,
+							...(bearer ? { Authorization: `Bearer ${bearer}` } : {}),
 							"Content-Type": "application/json",
 							...(init.prefer ? { Prefer: init.prefer } : {}),
 						},

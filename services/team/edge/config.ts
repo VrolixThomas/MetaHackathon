@@ -24,6 +24,8 @@ export function edgeConfiguration(env: EdgeEnvironment, role: EdgeRole) {
 	const value = (key: string) => env[key]?.trim() ?? "";
 	let dictionaryKey = "";
 	let dictionaryValues: string[] = [];
+	let secretDictionaryKey = "";
+	let secretDictionaryValues: string[] = [];
 	try {
 		const keys: unknown = JSON.parse(value("SUPABASE_PUBLISHABLE_KEYS") || "{}");
 		if (keys && typeof keys === "object") {
@@ -36,6 +38,18 @@ export function edgeConfiguration(env: EdgeEnvironment, role: EdgeRole) {
 	} catch {
 		// The explicit/legacy public key still takes precedence over a malformed dictionary.
 	}
+	try {
+		const keys: unknown = JSON.parse(value("SUPABASE_SECRET_KEYS") || "{}");
+		if (keys && typeof keys === "object" && !Array.isArray(keys)) {
+			secretDictionaryValues = Object.values(keys).filter(
+				(key): key is string => typeof key === "string"
+			);
+			if ("default" in keys && typeof keys.default === "string")
+				secretDictionaryKey = keys.default.trim();
+		}
+	} catch {
+		// Explicit or injected legacy admin keys still take precedence.
+	}
 	const config: EdgeConfiguration = {
 		url: value("TEAM_SUPABASE_URL") || value("SUPABASE_URL"),
 		publicKey:
@@ -43,7 +57,10 @@ export function edgeConfiguration(env: EdgeEnvironment, role: EdgeRole) {
 			value("SUPABASE_PUBLISHABLE_KEY") ||
 			dictionaryKey ||
 			value("SUPABASE_ANON_KEY"),
-		adminKey: value("TEAM_SUPABASE_SERVICE_ROLE_KEY") || value("SUPABASE_SERVICE_ROLE_KEY"),
+		adminKey:
+			value("TEAM_SUPABASE_SERVICE_ROLE_KEY") ||
+			value("SUPABASE_SERVICE_ROLE_KEY") ||
+			secretDictionaryKey,
 		appId: value("GITHUB_APP_ID"),
 		privateKey: value("GITHUB_APP_PRIVATE_KEY").replace(/\\n/g, "\n"),
 		analysisVersion: value("TEAM_ANALYSIS_VERSION"),
@@ -64,8 +81,9 @@ export function edgeConfiguration(env: EdgeEnvironment, role: EdgeRole) {
 			status.invalid.push("SUPABASE_URL");
 		}
 	}
-	// SupabaseRest's existing admin path uses the legacy service-role JWT as Bearer.
-	if (config.adminKey.startsWith("sb_")) status.invalid.push("SUPABASE_SERVICE_ROLE_KEY");
+	// New secret keys travel only on apikey; legacy service-role JWTs retain Bearer support.
+	if (config.adminKey.startsWith("sb_") && !config.adminKey.startsWith("sb_secret_"))
+		status.invalid.push("SUPABASE_SERVICE_ROLE_KEY");
 	if (role === "api") {
 		requireValue("publicKey", "SUPABASE_PUBLISHABLE_KEYS.default or SUPABASE_ANON_KEY");
 		if (config.publicKey.startsWith("sb_secret_")) status.invalid.push("SUPABASE_PUBLISHABLE_KEY");
@@ -100,6 +118,7 @@ export function edgeConfiguration(env: EdgeEnvironment, role: EdgeRole) {
 					value("SUPABASE_ANON_KEY"),
 					value("SUPABASE_PUBLISHABLE_KEY"),
 					...dictionaryValues.map((key) => key.trim()),
+					...secretDictionaryValues.map((key) => key.trim()),
 				].includes(config.workerSecret))
 		)
 			status.invalid.push("TEAM_WORKER_INVOKE_SECRET");

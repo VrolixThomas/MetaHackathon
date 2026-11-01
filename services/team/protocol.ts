@@ -59,6 +59,22 @@ export function secureUrl(raw: string, local = false): URL {
 		throw new Error("HTTPS service URL required");
 	return url;
 }
+/** A trusted API base may include a function prefix. Auth/database origins stay origin-only. */
+export function secureServiceUrl(raw: string, local = false): URL {
+	const url = new URL(raw);
+	if (
+		/[\s\\%]/.test(raw) ||
+		/\/\.{1,2}(?:\/|$)/.test(raw) ||
+		url.username ||
+		url.password ||
+		url.search ||
+		url.hash ||
+		!/^\/(?:[A-Za-z0-9._~-]+\/?)*$/.test(url.pathname)
+	)
+		throw new Error("HTTPS service URL required");
+	secureUrl(url.origin, local);
+	return url;
+}
 export async function boundedJson(response: Response, limit = 4_000_000): Promise<unknown> {
 	const reader = response.body?.getReader();
 	if (!reader) throw new TeamError("invalid");
