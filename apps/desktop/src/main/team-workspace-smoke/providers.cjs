@@ -264,6 +264,14 @@ function createProvider(fixture) {
 				assert.equal(body.proposalId, PROPOSAL);
 				return { ...proposal, decision };
 			}
+			if (url.pathname === "/v1/proposals/authorize-apply") {
+				selectKey(body.key);
+				assert.equal(body.proposalId, PROPOSAL);
+				assert.equal(body.bundleDigest, proposal.bundle_digest);
+				assert.equal(body.confirmed, true);
+				assert.equal(decision?.decision, "accept");
+				return { proposal: { ...proposal, decision }, decision, userId: USER };
+			}
 			if (url.pathname === "/v1/proposals/decide") {
 				selectKey(body.key);
 				assert.equal(body.proposalId, PROPOSAL);

@@ -1,8 +1,41 @@
 import { useEffect, useState } from "react";
 import { useStore } from "zustand";
 import type { ProposalBundle } from "../../../../../services/team/schemas";
+import { exactSourceRows } from "../command-center/SourceCanvas";
+import { SyntaxText } from "../prepared/ReviewWorkspace";
+import { type HighlightedSource, highlightSource } from "../prepared/highlighting";
 import type { TeamController } from "./controller";
 import "./team.css";
+
+function TeamSourceCode({ path, sha, text }: { path: string; sha: string; text: string }) {
+	const [syntax, setSyntax] = useState<HighlightedSource | null>(null);
+	useEffect(() => {
+		let active = true;
+		setSyntax(null);
+		void highlightSource({ path, commitSha: sha, status: "available", content: text }).then(
+			(value) => {
+				if (active) setSyntax(value);
+			}
+		);
+		return () => {
+			active = false;
+		};
+	}, [path, sha, text]);
+	return (
+		<code>
+			{exactSourceRows(text).map((raw, index) => {
+				const line = index + 1;
+				const body = raw.endsWith("\n") ? raw.slice(0, -1) : raw;
+				return (
+					<span key={line}>
+						<SyntaxText text={body} tokens={syntax?.lines[index]} />
+						{raw.endsWith("\n") ? "\n" : ""}
+					</span>
+				);
+			})}
+		</code>
+	);
+}
 
 export interface TeamCardProps {
 	controller: TeamController;
@@ -459,7 +492,11 @@ function ProposalSources({ bundle }: { bundle: ProposalBundle }) {
 								data-team-source-sha={bundle.baseSha}
 								data-team-source-side="before"
 							>
-								<code>{file.before?.text ?? "File absent"}</code>
+								<TeamSourceCode
+									path={file.path}
+									sha={bundle.baseSha}
+									text={file.before?.text ?? "File absent"}
+								/>
 							</pre>
 						</div>
 						<div>
@@ -469,7 +506,11 @@ function ProposalSources({ bundle }: { bundle: ProposalBundle }) {
 								data-team-source-sha={bundle.candidateSha}
 								data-team-source-side="after"
 							>
-								<code>{file.after?.text ?? "File absent"}</code>
+								<TeamSourceCode
+									path={file.path}
+									sha={bundle.candidateSha}
+									text={file.after?.text ?? "File absent"}
+								/>
 							</pre>
 						</div>
 					</div>
