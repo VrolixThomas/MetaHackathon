@@ -74,7 +74,14 @@ function verifyApp(appPath, expectedTeam, run = command) {
 	}
 	if (!/flags=.*\bruntime\b/.test(appSignature)) throw new Error("App is missing Hardened Runtime");
 	const entitlements = run("/usr/bin/codesign", ["--display", "--entitlements", "-", appPath]);
-	if (!/<key>com\.apple\.security\.device\.audio-input<\/key>\s*<true\s*\/>/.test(entitlements)) {
+	const audioInputXML = /<key>com\.apple\.security\.device\.audio-input<\/key>\s*<true\s*\/>/.test(
+		entitlements
+	);
+	const audioInputStructured =
+		/\[Key\] com\.apple\.security\.device\.audio-input\s*\[Value\]\s*\[Bool\] true(?:\s|$)/.test(
+			entitlements
+		);
+	if (!audioInputXML && !audioInputStructured) {
 		throw new Error("App is missing its microphone audio-input entitlement");
 	}
 	const binaries = [];
