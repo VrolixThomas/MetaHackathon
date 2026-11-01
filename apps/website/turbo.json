@@ -1,0 +1,9 @@
+{
+	"extends": ["//"],
+	"tasks": {
+		"build": {
+			"outputs": [".next/**", "!.next/cache/**"],
+			"env": ["WEBSITE_SITE_URL", "NEXT_TELEMETRY_DISABLED"]
+		}
+	}
+}

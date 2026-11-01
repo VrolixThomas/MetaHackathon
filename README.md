@@ -18,6 +18,21 @@ bun run --filter @metahackathon/desktop preview
 On another checkout, install Node 22.12+ and Bun 1.3.9+, then run
 `bun install --frozen-lockfile`. Installation rebuilds SQLite for Electron.
 
+## Website
+
+The MuseFocus website is a **Next.js App Router / React / TypeScript / Tailwind / Motion**
+workspace in [`apps/website`](apps/website/README.md), using the same resolved framework
+versions as SuperiorSwarm. Run it independently of the desktop app:
+
+```sh
+bun install --frozen-lockfile --ignore-scripts
+bun run website:dev
+```
+
+Open `http://localhost:3000`. For production, run `bun run website:build`, then
+`bun run website:start`. The old files in `apps/site` and the design studies remain
+archived references. The Next app is the current website source.
+
 ## Configure
 
 Development worktrees reuse `.env` in the main repository checkout when that file exists.

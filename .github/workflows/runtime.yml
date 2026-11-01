@@ -24,4 +24,5 @@ jobs:
       - run: bun run test:unit
       - run: node --test apps/desktop/packaging/*.test.cjs
       - run: node apps/site/verify.cjs
+      - run: bun run --filter @metahackathon/website test
       - run: bun run build

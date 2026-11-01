@@ -23,7 +23,8 @@
 			"apps/site/assets/pull-forward.js",
 			"apps/site/assets/pull-forward.css",
 			"apps/site/focus.css",
-			"**/db/migrations/**"
+			"**/db/migrations/**",
+			"apps/website/src/lib/identity/**"
 		]
 	},
 	"formatter": {

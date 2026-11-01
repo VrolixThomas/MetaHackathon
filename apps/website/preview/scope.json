@@ -1,0 +1,10 @@
+{
+	"source": ".next/server/app/index.html",
+	"renderer": "Pillow/PyMuPDF, shared prior study canvas and exact brand art/fonts",
+	"isBrowserScreenshot": false,
+	"browserChecks": false,
+	"layouts": {
+		"desktop": [1440, 1649],
+		"mobile": [390, 1751]
+	}
+}

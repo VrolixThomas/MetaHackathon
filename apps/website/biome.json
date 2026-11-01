@@ -1,0 +1,6 @@
+{
+	"extends": ["../../biome.json"],
+	"files": {
+		"ignore": ["src/lib/identity/**", "public/**", ".next/**", "node_modules/**", "next-env.d.ts"]
+	}
+}

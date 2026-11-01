@@ -43,7 +43,10 @@
 		"team:db:history": "supabase migration list",
 		"team:edge:build": "bun run services/team/build-edge.mjs",
 		"team:edge:deploy": "bun run team:edge:build && supabase functions deploy muse-team-api --use-api",
-		"team:worker:disable": "bun run services/team/configure-edge-worker.ts --disable"
+		"team:worker:disable": "bun run services/team/configure-edge-worker.ts --disable",
+		"website:dev": "bun run --filter @metahackathon/website dev",
+		"website:build": "bun run --filter @metahackathon/website build",
+		"website:start": "bun run --filter @metahackathon/website start"
 	},
 	"devDependencies": {
 		"@biomejs/biome": "1.9.4",

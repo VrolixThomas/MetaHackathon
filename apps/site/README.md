@@ -1,4 +1,11 @@
-# MuseFocus landing site
+# MuseFocus static prototype (archived)
+
+The current website is the Next.js app in [`apps/website`](../website/README.md).
+From the repository root, run `bun run website:dev` and open `http://localhost:3000`.
+The files here are retained as the earlier static prototype and its validation
+history; they are no longer the main website source or deployment target.
+
+## Earlier static implementation
 
 The actual homepage adopts the final static design in
 [`design/muse-logo/v3/musefocus-site/dist`](../../design/muse-logo/v3/musefocus-site/dist).
