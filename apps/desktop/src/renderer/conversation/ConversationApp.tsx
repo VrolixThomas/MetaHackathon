@@ -1,4 +1,4 @@
-import { type RefObject, useCallback, useEffect, useRef, useState } from "react";
+import { type RefObject, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useStore } from "zustand";
 import { CodingProviderCard } from "../coding";
 import { HubConnections } from "../command-center/Connections";
@@ -13,6 +13,7 @@ import { ReviewInbox } from "../prepared/Inbox";
 import { ReviewWorkspace } from "../prepared/ReviewWorkspace";
 import type { PreparedController } from "../prepared/controller";
 import type { SlackBrowseController } from "../slack";
+import { TeamCard, type TeamController, createTeamController } from "../team";
 import { CanvasWorkspace } from "../workspace/CanvasWorkspace";
 import { WorkSplit } from "../workspace/WorkSplit";
 import { WorkspaceDialog } from "../workspace/WorkspaceDialog";
@@ -30,6 +31,11 @@ export function Configuration({
 	returnFocus,
 	hub,
 	apiCall,
+	team,
+	repository,
+	prNumber,
+	candidateId,
+	onReviewApplied,
 }: {
 	controller: ConversationController;
 	onClose(): void;
@@ -38,6 +44,11 @@ export function Configuration({
 	returnFocus?: RefObject<HTMLButtonElement | null>;
 	hub?: HubController;
 	apiCall?: ConversationApi["call"];
+	team?: TeamController;
+	repository?: string;
+	prNumber?: number;
+	candidateId?: string;
+	onReviewApplied?: (jobId: string) => void;
 }) {
 	const state = useStore(controller.store);
 	const oauth = useOAuth();
@@ -68,6 +79,15 @@ export function Configuration({
 			{oauth ? <OAuthConnections /> : hub && <HubConnections hub={hub} />}
 			<SlackConnections />
 			{apiCall && <CodingProviderCard call={apiCall} />}
+			{team && (
+				<TeamCard
+					controller={team}
+					repository={repository}
+					prNumber={prNumber}
+					candidateId={candidateId}
+					onReviewApplied={onReviewApplied}
+				/>
+			)}
 			<code className="env-path" data-testid="env-path">
 				{state.config?.envPath ??
 					state.envPath ??
@@ -197,6 +217,8 @@ export function ConversationApp({
 }) {
 	const state = useStore(controller.store);
 	const prepared = useStore(reviews.store);
+	const team = useMemo(() => (apiCall ? createTeamController(apiCall) : undefined), [apiCall]);
+	useEffect(() => () => team?.dispose(), [team]);
 	const local = useStore(browser.store);
 	const reviewOpen = prepared.screen.mode === "review";
 	const [overlay, setOverlay] = useState<
@@ -659,6 +681,32 @@ export function ConversationApp({
 			)}
 			{overlay === "configuration" && (
 				<Configuration
+					team={team}
+					repository={prepared.detail?.pr.repository}
+					prNumber={prepared.detail?.pr.number}
+					candidateId={
+						workspace?.store
+							.getState()
+							.workspace?.canvases.some(
+								(canvas) =>
+									canvas.id === workspace.store.getState().workspace?.primaryId &&
+									canvas.kind === "center" &&
+									canvas.section === "fixes"
+							)
+							? fixes?.store.getState().detail?.fix.id
+							: undefined
+					}
+					onReviewApplied={(jobId) => {
+						closeOverlay();
+						requestAnimationFrame(() => {
+							workspace?.setObscured(false);
+							void workspace?.command({
+								kind: "open-center",
+								section: "completed",
+								selectedId: jobId,
+							});
+						});
+					}}
 					apiCall={apiCall}
 					hub={hub}
 					controller={controller}

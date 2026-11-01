@@ -185,7 +185,37 @@ function createProvider(fixture) {
 			assert.equal(method, "GET", "No GitHub writes allowed");
 			report.github.push(url.pathname);
 			if (url.pathname === "/repositories/42") return { id: 42, full_name: source.repository };
-			if (url.pathname === "/user") return { id: Number(author), login: "controlled-pr-reviewer" };
+			if (url.pathname === "/user") return { id: Number(author), login: review.pr.author };
+			if (url.pathname === "/search/issues") {
+				assert.equal(url.searchParams.get("q")?.split(" ")[0], `repo:${source.repository}`);
+				const items = url.searchParams.get("q").includes("author:")
+					? [
+							{
+								number: 7,
+								repository_url: source.apiRoot,
+								pull_request: { url: `${source.apiRoot}/pulls/7` },
+							},
+						]
+					: [];
+				return { total_count: items.length, incomplete_results: false, items };
+			}
+			if (url.pathname.endsWith("/pulls/7/comments"))
+				return [
+					{
+						id: 9,
+						body: "CONTROLLED FEEDBACK: preserve the zero-discount case",
+						html_url: `${source.prURL}#discussion_r9`,
+						created_at: "2026-11-01T00:00:00Z",
+						updated_at: "2026-11-01T00:00:00Z",
+						user: { login: "reviewer" },
+						path: source.order[1],
+						line: 2,
+						original_line: 2,
+						side: "RIGHT",
+						commit_id: fixture.headSha,
+						original_commit_id: fixture.headSha,
+					},
+				];
 			const value = source.githubGET(url.toString(), fixture, fixture.headSha);
 			if (url.pathname.endsWith("/pulls/7")) {
 				value.user = { id: Number(author), login: review.pr.author };
@@ -204,6 +234,11 @@ function createProvider(fixture) {
 					items: [{ orgId: ORG, repositoryId: "42", fullName: source.repository }],
 					nextOffset: null,
 				};
+			}
+			if (url.pathname === "/v1/repositories/resolve") {
+				assert.equal(body.orgId, ORG);
+				assert.equal(body.repositoryId, "42");
+				return { orgId: ORG, repositoryId: "42", fullName: source.repository };
 			}
 			if (url.pathname === "/v1/reviews/read") {
 				const selected = selectKey(body.key);

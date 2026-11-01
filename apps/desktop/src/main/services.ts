@@ -28,6 +28,7 @@ import { ReviewCoordinator } from "./composition/reviews";
 import { SlackConnection } from "./composition/slack-connection";
 import { SlackReader } from "./composition/slack-reader";
 import { SlackWorkspaceCoordinator } from "./composition/slack-workspace";
+import { createTeamComposition } from "./composition/team";
 import { type VoiceCompositionOptions, createVoiceComposition } from "./composition/voice";
 import { WorkspaceCoordinator } from "./composition/workspace";
 import { createWorkspaceStore } from "./composition/workspace-store";
@@ -96,6 +97,12 @@ export function getImages(): ImageService {
 }
 let hub: CommandCenterService | undefined;
 let workJobs: WorkJobCoordinator | undefined;
+let workRuntime: WorkJobRuntime | undefined;
+let teamComposition: ReturnType<typeof createTeamComposition> | undefined;
+export function getTeam() {
+	if (closing || !teamComposition) throw new Error("Team reviews are unavailable");
+	return teamComposition.service;
+}
 let codingProvider: CodingProviderService | undefined;
 export function getCodingProvider() {
 	if (closing || !codingProvider) throw new Error("Coding provider is unavailable");
@@ -121,6 +128,7 @@ let prWorkEpoch = 0;
 let githubCredentialIdentity: string | undefined;
 function retirePRWork() {
 	prWorkEpoch++;
+	teamComposition?.abortApplications();
 	commentPresentations.clear();
 	conversationService.resetSessions();
 	preparedComments?.invalidate();
@@ -189,6 +197,20 @@ const conversationClient = new MetaClient({
 	recordUsage: (record) => agentComposition.usage.record("conversation", record),
 	recordTiming: (record) => diagnostics?.recordModelTiming(record),
 });
+async function prepareCurrentReview(
+	context: Parameters<typeof prepareReview>[1],
+	signal: AbortSignal
+) {
+	const status = await teamComposition?.service.status();
+	if (
+		status?.connection === "connected" &&
+		status.scopes.some(
+			(scope) => scope.repository.toLowerCase() === context.pr.repository.toLowerCase()
+		)
+	)
+		return getTeam().prepare(context, signal);
+	return prepareReview(conversationClient, context, signal);
+}
 export const conversationService: ConversationService = new ConversationService(
 	conversationClient,
 	{
@@ -319,7 +341,7 @@ export function initializeReviews(
 			runtimeForActiveJobs().reviewFile(input, signal, localPath ?? undefined),
 		validateLocal: (path, repository, signal) =>
 			runtimeForActiveJobs().validateLocalRepository(path, repository, signal),
-		prepare: (context, signal) => prepareReview(conversationClient, context, signal),
+		prepare: prepareCurrentReview,
 	});
 	void reviews
 		.initialize()
@@ -700,7 +722,7 @@ export async function initializeHub(
 					runtimeForActiveJobs().reviewFile(input, signal, localPath ?? undefined),
 				validateLocal: (path, name, signal) =>
 					runtimeForActiveJobs().validateLocalRepository(path, name, signal),
-				prepare: (context, signal) => prepareReview(conversationClient, context, signal),
+				prepare: prepareCurrentReview,
 			})
 	);
 	hub = new CommandCenterService({
@@ -749,6 +771,7 @@ export async function initializeHub(
 		directory: join(userDataPath, "work", "git"),
 		getToken: getGitHubToken,
 	});
+	workRuntime = runtime;
 	let prAccount: { epoch: number; login: string; expires: number } | undefined;
 	const currentPRAccount = async () => {
 		if (!(await getGitHubToken())) return null;
@@ -962,6 +985,23 @@ export function initializeOAuth(
 			} else await hub?.connectionChanged(provider);
 		},
 	});
+	teamComposition = createTeamComposition({
+		userDataPath,
+		encryption,
+		getSettings: () => getConfiguration().teamSettings(),
+		getGitHubToken,
+		getAccountRevision: () => prWorkEpoch,
+		openExternal,
+		hub: getHub,
+		runtime: () => {
+			if (!workRuntime) throw new Error("Work runtime is unavailable");
+			return workRuntime;
+		},
+		fix: (id) => getPRFixes().detail(id),
+		context: (id, signal) => getRuntime().github.prContext(id, signal),
+		readPR: readCurrentPR,
+		account: (signal) => new HubGitHubClient({ getToken: getGitHubToken }).account(signal),
+	});
 }
 export function getOAuth() {
 	if (closing || !oauth) throw new Error("Account connections are unavailable");
@@ -1097,6 +1137,7 @@ function runtimeForActiveJobs(): RuntimeService {
 export async function disposeRuntime(): Promise<void> {
 	const current = runtime;
 	closing = true;
+	teamComposition?.dispose();
 	images?.dispose();
 	await codingProvider?.dispose();
 	preparedComments?.invalidate();

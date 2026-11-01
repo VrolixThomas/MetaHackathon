@@ -2,6 +2,7 @@
 // Author: node --check this-file; node this-file --self-check. No native/provider/DB launch in self-check.
 const assert = require("node:assert/strict");
 const fs = require("node:fs");
+const { randomUUID } = require("node:crypto");
 const { join, resolve } = require("node:path");
 const { launch } = require("./team-workspace-smoke/runtime.cjs");
 const {
@@ -31,10 +32,16 @@ async function native() {
 		userData,
 		safeStorage,
 	} = context;
-	const button = (container, text) =>
-		js(
+	const button = async (container, text) => {
+		await wait(`enabled Team control: ${text}`, () =>
+			js(
+				`[...document.querySelectorAll(${JSON.stringify(`${container} button`)})].some(e=>e.textContent.trim()===${JSON.stringify(text)}&&!e.disabled)`
+			)
+		);
+		return js(
 			`(()=>{const e=[...document.querySelectorAll(${JSON.stringify(`${container} button`)})].find(e=>e.textContent.trim()===${JSON.stringify(text)});if(!e||e.disabled)throw Error('Missing enabled Team control: '+${JSON.stringify(text)});e.click();})()`
 		);
+	};
 	const openSettings = async () => {
 		await click('[data-testid="workspace-more"]');
 		await wait("More dialog", () => js(`document.querySelector('#workspace-more')?.open`));
@@ -170,7 +177,7 @@ async function native() {
 					"actual pinned shared-review source displayed and acknowledged",
 					async () => {
 						const state = await js(
-							`(()=>{const r=document.querySelector('[aria-label="Prepared review"]'),m=document.querySelector('main[data-session-id]'),w=document.querySelector('.canvas-workspace');return r?{reviewId:r.dataset.reviewId,path:r.dataset.reviewPath,head:r.dataset.headSha,base:r.dataset.baseSha,loading:r.dataset.reviewLoading,sessionId:m?.dataset.sessionId,sequence:Number(w?.dataset.workspaceSequence),text:[...r.querySelectorAll('.source-row code')].map(e=>e.textContent).join('\n')}:null})()`
+							`(()=>{const r=document.querySelector('[aria-label="Prepared review"]'),m=document.querySelector('main[data-session-id]'),w=document.querySelector('.canvas-workspace');return r?{reviewId:r.dataset.reviewId,path:r.dataset.reviewPath,head:r.dataset.headSha,base:r.dataset.baseSha,loading:r.dataset.reviewLoading,sessionId:m?.dataset.sessionId,sequence:Number(w?.dataset.workspaceSequence),text:[...r.querySelectorAll('.source-row code')].map(e=>e.textContent).join(String.fromCharCode(10))}:null})()`
 						);
 						if (!state || state.reviewId !== provider.review.id || state.loading !== "false")
 							return null;
@@ -284,6 +291,54 @@ async function native() {
 					exactVisibleFrames: frames.length,
 					decisionId: decision.id,
 					requestId: decision.request_id,
+				};
+			}
+		);
+		await step(
+			"accepted exact proposal applies through actual isolated runtime checks and enters Completed work",
+			async () => {
+				await rpc("mutation", "hub.operate", {
+					requestId: randomUUID(),
+					operation: {
+						kind: "add-repository",
+						repository: source.repository,
+						localPath: fixture.localPath,
+					},
+				});
+				await js(
+					`(()=>{const label=[...document.querySelectorAll('[data-team-proposal] label')].find(e=>e.textContent.includes('Apply this accepted fix locally.'));if(!label)throw Error('Application consent missing');label.querySelector('input').click();})()`
+				);
+				await button("[data-team-proposal]", "Apply accepted fix locally");
+				const result = await wait(
+					"actual local apply receipt",
+					async () => {
+						const attempt = report.ipc.find(
+							(row) => row.path === "team.applyProposal" && row.completed
+						);
+						if (!attempt) return null;
+						assert.ok(!attempt.result.error, JSON.stringify(attempt.result.error));
+						const value = attempt.result.result.data.json;
+						assert.equal(value.status, "applied", JSON.stringify(value));
+						return value;
+					},
+					60000
+				);
+				assert.ok(result.jobId);
+				const applied = await rpc("query", "hub.reviewWork", { jobId: result.jobId });
+				assert.equal(applied.job.headSha, result.appliedHeadSha);
+				assert.ok(applied.job.checks.length > 0);
+				assert.ok(
+					applied.job.checks.every(
+						(check) => check.exitCode === 0 && check.commitSha === result.appliedHeadSha
+					)
+				);
+				assert.equal(applied.files[0].head.content, provider.proposal.bundle.files[0].after.text);
+				assert.equal(source.git(fixture.localPath, "status", "--porcelain=v1"), fixture.status);
+				assert.equal(fs.readFileSync(join(fixture.localPath, "a-logic.ts"), "utf8"), fixture.dirty);
+				return {
+					appliedHeadSha: result.appliedHeadSha,
+					checks: applied.job.checks.length,
+					retainedOriginal: true,
 				};
 			}
 		);

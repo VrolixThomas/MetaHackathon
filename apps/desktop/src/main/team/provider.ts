@@ -14,7 +14,9 @@ export function sharedReviewKey(
 ): ReviewKey {
 	const approved = ConversationPRContextSchema.parse(context);
 	return ReviewKeySchema.parse({
-		...scope,
+		orgId: scope.orgId,
+		repositoryId: scope.repositoryId,
+		analysisVersion: scope.analysisVersion,
 		prNumber: approved.pr.number,
 		baseSha: approved.pr.baseSha,
 		headSha: approved.pr.headSha,

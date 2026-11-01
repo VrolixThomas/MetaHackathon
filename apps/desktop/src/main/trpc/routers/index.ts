@@ -89,6 +89,7 @@ import {
 	getSlackConnection,
 	getSlackReader,
 	getSlackWorkspace,
+	getTeam,
 	getVoice,
 	getWorkJobs,
 	getWorkspace,
@@ -98,6 +99,30 @@ import {
 	screenContexts,
 	searchCurrentKnowledge,
 } from "../../services";
+import {
+	ApplyTeamProposalSchema,
+	CreateOrganizationSchema,
+	DecideTeamProposalSchema,
+	PreviewLocalProposalSchema,
+	ProgressConflictListSchema,
+	ProposalsInputSchema,
+	ReadProposalInputSchema,
+	RegisterRepositorySchema,
+	ResolveProgressConflictSchema,
+	SelectScopeSchema,
+	ShareLocalProposalSchema,
+	TeamApplyReceiptSchema,
+	TeamLocalPreviewSchema,
+	TeamMutationResultSchema,
+	TeamOrganizationSchema,
+	TeamOrganizationsSchema,
+	TeamProposalDetailSchema,
+	TeamProposalPageSchema,
+	TeamRepositoriesSchema,
+	TeamRepositorySchema,
+	TeamScopeSchema,
+	TeamStatusSchema,
+} from "../../team/service";
 import { HubFailure } from "../../work/hub";
 import { bootstrapRouter } from "./bootstrap";
 
@@ -113,6 +138,78 @@ const hubCall = async <T>(work: () => Promise<T>): Promise<T> => {
 };
 // Register feature routers here as the application grows.
 export const appRouter = router({
+	team: router({
+		progressConflicts: publicProcedure
+			.input(z.strictObject({}).optional())
+			.output(ProgressConflictListSchema)
+			.query(() => getTeam().progressConflicts()),
+		resolveProgressConflict: publicProcedure
+			.input(ResolveProgressConflictSchema)
+			.output(ProgressConflictListSchema)
+			.mutation(({ input }) => getTeam().resolveProgressConflict(input)),
+		flushProgress: publicProcedure
+			.input(z.strictObject({}).optional())
+			.output(
+				z.strictObject({ saved: z.int().nonnegative(), conflicts: ProgressConflictListSchema })
+			)
+			.mutation(() => getTeam().flushProgress()),
+		status: publicProcedure
+			.input(z.strictObject({}).optional())
+			.output(TeamStatusSchema)
+			.query(() => getTeam().status()),
+		login: publicProcedure
+			.input(z.strictObject({}).optional())
+			.output(TeamStatusSchema)
+			.mutation(() => getTeam().login()),
+		logout: publicProcedure
+			.input(z.strictObject({}).optional())
+			.output(TeamStatusSchema)
+			.mutation(() => getTeam().logout()),
+		organizations: publicProcedure
+			.input(z.strictObject({}).optional())
+			.output(TeamOrganizationsSchema)
+			.query(() => getTeam().organizations()),
+		createOrganization: publicProcedure
+			.input(CreateOrganizationSchema)
+			.output(TeamOrganizationSchema)
+			.mutation(({ input }) => getTeam().createOrganization(input)),
+		repositories: publicProcedure
+			.input(z.strictObject({ orgId: z.uuid(), offset: z.int().min(0).max(10000).optional() }))
+			.output(TeamRepositoriesSchema)
+			.query(({ input }) => getTeam().repositories(input)),
+		registerRepository: publicProcedure
+			.input(RegisterRepositorySchema)
+			.output(TeamRepositorySchema)
+			.mutation(({ input }) => getTeam().registerRepository(input)),
+		selectScope: publicProcedure
+			.input(SelectScopeSchema)
+			.output(TeamScopeSchema)
+			.mutation(({ input }) => getTeam().selectScope(input)),
+		proposals: publicProcedure
+			.input(ProposalsInputSchema)
+			.output(TeamProposalPageSchema)
+			.query(({ input }) => getTeam().proposals(input)),
+		readProposal: publicProcedure
+			.input(ReadProposalInputSchema)
+			.output(TeamProposalDetailSchema)
+			.query(({ input }) => getTeam().readProposal(input)),
+		previewProposal: publicProcedure
+			.input(PreviewLocalProposalSchema)
+			.output(TeamLocalPreviewSchema)
+			.query(({ input }) => getTeam().previewProposal(input)),
+		shareProposal: publicProcedure
+			.input(ShareLocalProposalSchema)
+			.output(TeamMutationResultSchema)
+			.mutation(({ input }) => getTeam().shareProposal(input)),
+		decideProposal: publicProcedure
+			.input(DecideTeamProposalSchema)
+			.output(TeamMutationResultSchema)
+			.mutation(({ input }) => getTeam().decideProposal(input)),
+		applyProposal: publicProcedure
+			.input(ApplyTeamProposalSchema)
+			.output(TeamApplyReceiptSchema)
+			.mutation(({ input }) => getTeam().applyProposal(input)),
+	}),
 	images: router({
 		read: publicProcedure
 			.input(z.strictObject({ id: IdSchema.max(200) }))

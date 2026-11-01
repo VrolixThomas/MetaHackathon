@@ -44,7 +44,14 @@ async function launch() {
 		{ mode: 0o600 }
 	);
 	process.env.METAHACKATHON_ENV_FILE = envPath;
-	const fixture = source.createRepository(owned);
+	const fixture = source.createRepository(owned, {
+		"package.json": JSON.stringify({
+			name: "controlled-team-application",
+			private: true,
+			scripts: { test: "node check.cjs" },
+		}),
+		"check.cjs": `const fs=require('node:fs');if(!fs.readFileSync('a-logic.ts','utf8').includes('Math.max(0, quote.discount)'))process.exit(1);console.log('CONTROLLED declared check passed');\n`,
+	});
 	const provider = createProvider(fixture);
 	const out = join(__dirname, "../../../out");
 	fs.mkdirSync(out, { recursive: true });
@@ -220,7 +227,14 @@ async function launch() {
 		await import(pathToFileURL(builtMain).href);
 		win = await wait("actual default App", () => BrowserWindow.getAllWindows()[0]);
 		await wait("built renderer loaded", () => !win.webContents.isLoadingMainFrame());
-		const js = (code) => win.webContents.executeJavaScript(code);
+		const js = async (code) => {
+			try {
+				return await win.webContents.executeJavaScript(code);
+			} catch (error) {
+				report.failedScript = code;
+				throw error;
+			}
+		};
 		const raw = (type, path, input = {}) =>
 			js(`window.electron.trpc.request(${JSON.stringify({ type, path, input: { json: input } })})`);
 		const rpc = async (...args) => {

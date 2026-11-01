@@ -47,10 +47,12 @@ function git(cwd, ...args) {
 		}
 	);
 }
-function createRepository(root) {
+function createRepository(root, extraSources = {}) {
 	const localPath = join(root, "repository");
 	fs.mkdirSync(localPath);
 	git(localPath, "init", "-b", "main");
+	for (const [name, text] of Object.entries(extraSources))
+		fs.writeFileSync(join(localPath, name), text);
 	const moved = {
 		...head,
 		"a-logic.ts": head["a-logic.ts"].replace("quote.discount;", "quote.discount - 1;"),
@@ -62,7 +64,7 @@ function createRepository(root) {
 		["moved", moved],
 	]) {
 		for (const path of order) fs.writeFileSync(join(localPath, path), sources[path]);
-		git(localPath, "add", "--", ...order);
+		git(localPath, "add", "--", ...order, ...Object.keys(extraSources));
 		git(localPath, "commit", "-m", `CONTROLLED ONLY: ${label}`);
 		commits.push(git(localPath, "rev-parse", "HEAD").trim());
 	}
