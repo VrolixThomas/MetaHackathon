@@ -1,3 +1,4 @@
+import Image from "next/image";
 import type { CSSProperties } from "react";
 
 export type IconName =
@@ -15,7 +16,7 @@ export type IconName =
 	| "github"
 	| "slack"
 	| "chevron";
-const paths: Record<IconName, string> = {
+const paths: Record<Exclude<IconName, "slack" | "linear">, string> = {
 	arrow: "M4 12h15m-6-6 6 6-6 6",
 	code: "m8 7-5 5 5 5m8-10 5 5-5 5m-3-13-2 20",
 	layers: "m12 3 9 5-9 5-9-5 9-5Zm-9 9 9 5 9-5M3 16l9 5 9-5",
@@ -26,11 +27,8 @@ const paths: Record<IconName, string> = {
 	clock: "M12 3a9 9 0 1 0 0 18 9 9 0 0 0 0-18Zm0 4v5l3 2",
 	play: "m8 4 12 8-12 8V4Z",
 	pause: "M8 4v16M16 4v16",
-	linear: "m6 4 14 14M3 8l13 13M2 13l9 9M11 2l11 11M17 3l4 4",
 	github:
 		"M9 20c-4 1-4-2-6-2m12 4v-3.5c0-1 .1-1.5-.5-2 3-.4 5.5-1.5 5.5-6a4.7 4.7 0 0 0-1.3-3.3c.2-.5.6-2-.2-3.2 0 0-1.2-.4-3.5 1a12 12 0 0 0-6 0C6.2 3.6 5 4 5 4c-.8 1.2-.4 2.7-.2 3.2A4.7 4.7 0 0 0 3.5 10c0 4.5 2.5 5.6 5.5 6-.6.5-.5 1-.5 2V22",
-	slack:
-		"M10 3v6M15 15v6M3 14h6M15 9h6M6 3v2M3 6h2M18 21v-2M21 18h-2M21 6h-2M18 3v2M3 18h2M6 21v-2",
 	chevron: "m6 9 6 6 6-6",
 };
 export function Icon({
@@ -39,6 +37,20 @@ export function Icon({
 	style,
 	className = "",
 }: { name: IconName; size?: number; style?: CSSProperties; className?: string }) {
+	if (name === "slack" || name === "linear") {
+		return (
+			<Image
+				src={`/integrations/${name}.svg`}
+				width={size}
+				height={size}
+				className={`icon ${className}`}
+				style={style}
+				alt=""
+				aria-hidden="true"
+				unoptimized
+			/>
+		);
+	}
 	return (
 		<svg
 			className={`icon ${className}`}
