@@ -2,10 +2,22 @@ import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
 import { it } from "node:test";
 import { PRApprovals, policyDigest } from ".";
+import { ApprovalPolicySchema } from "../../../shared/contracts";
 import { ApprovalGitHub } from "./github";
 import { actor, at, base, harness, head, later, policy, terms } from "./test-support";
 
-function providerHarness() {
+function githubUser(identity: typeof actor) {
+	return {
+		...identity,
+		name: "GitHub User",
+		avatar_url: `https://avatars.githubusercontent.com/u/${identity.id}?v=4`,
+		node_id: `U_${identity.id}`,
+		html_url: `https://github.com/${identity.login}`,
+		type: "User",
+		site_admin: false,
+	};
+}
+function providerHarness(mapResponse = (_path: string, data: unknown): unknown => data) {
 	const control = {
 		now: at,
 		tokenReads: 0,
@@ -35,9 +47,16 @@ function providerHarness() {
 		body: "PR intent",
 		state: control.state,
 		draft: control.draft,
-		user: control.author,
-		base: { sha: control.base, ref: "main", repo: { full_name: "owner/repo" } },
-		head: { sha: control.sha },
+		user: githubUser(control.author),
+		base: {
+			sha: control.base,
+			ref: "main",
+			repo: { full_name: "owner/repo", owner: githubUser(control.author), private: false },
+		},
+		head: { sha: control.sha, ref: "fix", user: githubUser(control.author) },
+		html_url: "https://github.com/owner/repo/pull/1",
+		merged: false,
+		labels: [],
 	});
 	const transport: typeof fetch = async (input, init) => {
 		const url = new URL(String(input));
@@ -51,7 +70,7 @@ function providerHarness() {
 		assert.equal(url.origin, "https://api.github.com");
 		assert.equal(init?.redirect, "error");
 		let data: unknown;
-		if (path === "/user") data = actor;
+		if (path === "/user") data = githubUser(actor);
 		else if (path === "/repos/owner/repo") data = { permissions: { push: control.push } };
 		else if (path === "/repos/owner/repo/pulls/1") data = remotePR();
 		else if (path.endsWith("/rules/branches/main"))
@@ -122,11 +141,15 @@ function providerHarness() {
 				html_url: "https://github.com/owner/repo/pull/1#pullrequestreview-99",
 				commit_id: control.sha,
 				state: "APPROVED",
-				user: actor,
+				user: githubUser(actor),
+				body: "Approved under MuseFocus delegation",
+				author_association: "MEMBER",
+				submitted_at: "2026-11-01T12:00:00Z",
+				_links: { html: { href: "https://github.com/owner/repo/pull/1#pullrequestreview-99" } },
 			};
 		} else throw new Error(`Unexpected provider request ${path}`);
 		control.beforeResponse(path);
-		return Response.json(data);
+		return Response.json(mapResponse(path, data));
 	};
 	const provider = new ApprovalGitHub(
 		async () => {
@@ -140,6 +163,56 @@ function providerHarness() {
 	);
 	return { control, calls, provider, transport };
 }
+it("normalizes realistic GitHub user, PR and review envelopes while keeping shared actors strict", async () => {
+	const h = providerHarness();
+	assert.equal(ApprovalPolicySchema.shape.actor.safeParse(githubUser(actor)).success, false);
+	assert.deepEqual(await h.provider.account(AbortSignal.timeout(5000)), actor);
+	const p = policy();
+	p.contextDigest = await h.provider.pin(p.pr, AbortSignal.timeout(5000));
+	const observed = await h.provider.observe(p, AbortSignal.timeout(5000));
+	assert.deepEqual(observed.actor, actor);
+	assert.equal(observed.permitted, true);
+	assert.deepEqual(await h.provider.approve(p, head, "attempt", AbortSignal.timeout(5000)), {
+		id: 99,
+		url: "https://github.com/owner/repo/pull/1#pullrequestreview-99",
+	});
+	assert.equal(h.control.posts, 1);
+});
+it("rejects invalid actor identities inside permissive provider envelopes", async () => {
+	for (const invalid of [
+		{ id: 0 },
+		{ id: "7" },
+		{ id: null },
+		{ id: 1.5 },
+		{ login: "" },
+		{ login: null },
+		{ login: "x".repeat(101) },
+	]) {
+		for (const boundary of ["account", "pull", "review"] as const) {
+			const h = providerHarness((path, data) => {
+				if (boundary === "account" && path === "/user") return { ...githubUser(actor), ...invalid };
+				if (
+					(boundary === "pull" && path === "/repos/owner/repo/pulls/1") ||
+					(boundary === "review" && path.endsWith("/reviews"))
+				)
+					return { ...(data as object), user: { ...githubUser(actor), ...invalid } };
+				return data;
+			});
+			const p = policy();
+			if (boundary === "review")
+				p.contextDigest = await h.provider.pin(p.pr, AbortSignal.timeout(5000));
+			await assert.rejects(
+				boundary === "account"
+					? h.provider.account(AbortSignal.timeout(5000))
+					: boundary === "pull"
+						? h.provider.pin(p.pr, AbortSignal.timeout(5000))
+						: h.provider.approve(p, head, "attempt", AbortSignal.timeout(5000)),
+				{ name: "ZodError" }
+			);
+			assert.equal(h.control.posts, boundary === "review" ? 1 : 0);
+		}
+	}
+});
 it("reads actual account, permissions, branch rules, head checks and source, then sends head-bound APPROVE", async () => {
 	const h = providerHarness();
 	h.control.sha = later;

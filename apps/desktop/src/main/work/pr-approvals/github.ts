@@ -8,7 +8,8 @@ import {
 	RepositoryPathSchema,
 } from "../../../shared/contracts";
 
-const actorSchema = ApprovalPolicySchema.shape.actor;
+// GitHub envelopes include profile metadata; only validated identity crosses into the strict DTO.
+const actorSchema = ApprovalPolicySchema.shape.actor.strip().pipe(ApprovalPolicySchema.shape.actor);
 const fileSchema = z.object({
 	filename: RepositoryPathSchema,
 	status: z.string(),
