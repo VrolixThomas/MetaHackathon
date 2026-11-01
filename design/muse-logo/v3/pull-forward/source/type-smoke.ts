@@ -1,0 +1,10 @@
+import PullForward = require('../motion/pull-forward');
+import PullForwardController = require('../motion/controller');
+const options: PullForward.Options = { theme: 'dark', focusIndex: 1, background: true };
+const svg: string = PullForward.svg(options);
+const pose: PullForward.Pose = PullForward.pose(options);
+const host = document.createElement('span');
+const controller = new PullForwardController(host, { size: 96, onStateChange: state => { const index: number = state.focusIndex; void index; } });
+const advanced: boolean = controller.advance();
+controller.setTheme('light');controller.setReducedMotion(true);controller.setBackgroundMotion(false);controller.pause();controller.resume();controller.reset();controller.destroy();
+void svg;void pose;void advanced;

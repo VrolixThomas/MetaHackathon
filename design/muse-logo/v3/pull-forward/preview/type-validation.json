@@ -1,0 +1,5 @@
+{
+  "TypeScript": "CommonJS .d.ts and native ESM .d.mts passed strict noEmit compilation with DOM/ES2022 libs using the locally available compiler.",
+  "ESM": "Generated model imported successfully; six timed poses equal CommonJS; controller module imported; native SVG IDs use a separate -esm namespace.",
+  "scope": "Compile-time and module-level validation, not native browser integration."
+}

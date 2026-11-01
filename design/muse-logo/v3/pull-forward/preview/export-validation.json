@@ -1,0 +1,184 @@
+{
+  "primary_reference_RGBA_max_difference": [
+    0,
+    0,
+    0,
+    0
+  ],
+  "static_svgs_rasterized": 38,
+  "pngs_verified": 131,
+  "ICNS": {
+    "largest_decoded_size": [
+      1024,
+      1024
+    ],
+    "source_iconset_pngs": 10,
+    "Pillow_decoded_sizes": [
+      [
+        512,
+        512,
+        2
+      ],
+      [
+        512,
+        512,
+        1
+      ],
+      [
+        256,
+        256,
+        2
+      ],
+      [
+        256,
+        256,
+        1
+      ],
+      [
+        128,
+        128,
+        2
+      ],
+      [
+        128,
+        128,
+        1
+      ],
+      [
+        32,
+        32,
+        2
+      ],
+      [
+        16,
+        16,
+        2
+      ]
+    ],
+    "native_iconutil_roundtrip": [
+      {
+        "file": "icon_16x16.png",
+        "size": [
+          16,
+          16
+        ]
+      },
+      {
+        "file": "icon_16x16@2x.png",
+        "size": [
+          32,
+          32
+        ]
+      },
+      {
+        "file": "icon_32x32.png",
+        "size": [
+          32,
+          32
+        ]
+      },
+      {
+        "file": "icon_32x32@2x.png",
+        "size": [
+          64,
+          64
+        ]
+      },
+      {
+        "file": "icon_128x128.png",
+        "size": [
+          128,
+          128
+        ]
+      },
+      {
+        "file": "icon_128x128@2x.png",
+        "size": [
+          256,
+          256
+        ]
+      },
+      {
+        "file": "icon_256x256.png",
+        "size": [
+          256,
+          256
+        ]
+      },
+      {
+        "file": "icon_256x256@2x.png",
+        "size": [
+          512,
+          512
+        ]
+      },
+      {
+        "file": "icon_512x512.png",
+        "size": [
+          512,
+          512
+        ]
+      },
+      {
+        "file": "icon_512x512@2x.png",
+        "size": [
+          1024,
+          1024
+        ]
+      }
+    ]
+  },
+  "ICO": {
+    "sizes": [
+      16,
+      20,
+      24,
+      32,
+      40,
+      48,
+      64,
+      128,
+      256
+    ],
+    "decoded_RGBA": "All embedded images exactly match the purpose-sized PNG exports."
+  },
+  "handoff_GIF": {
+    "source_frames": 192,
+    "encoded_frames": 171,
+    "duration_ms": 9600
+  },
+  "handoff_WebP": {
+    "source_frames": 192,
+    "encoded_frames": 174,
+    "duration_ms": 9600,
+    "alpha_extrema": [
+      0,
+      255
+    ],
+    "lossless": true
+  },
+  "MP4": {
+    "codec": "h264",
+    "size": [
+      512,
+      512
+    ],
+    "frames": 192,
+    "duration_seconds": 9.6,
+    "audio_streams": 0
+  },
+  "standalone_working_SVG": "XML and exact sampled model geometry validated; native CSS/SMIL playback unverified.",
+  "colour": "sRGB ICC embedded in PNG/WebP exports; RGB SVG colour tokens retained.",
+  "scope": "Non-browser SVG/Pillow rendering, decoded image/container checks, iconutil/ffmpeg exports. Browser/native OS app integration, CSS/SMIL playback and actual audio/hardware are not tested.",
+  "working_media": {
+    "pull-forward-working-dark.gif": {
+      "encoded_frames": 58,
+      "duration_ms": 3200
+    },
+    "pull-forward-working-transparent.webp": {
+      "encoded_frames": 58,
+      "duration_ms": 3200
+    }
+  },
+  "named_PNG_dimensions": "Verified actual pixel sizes and @2x sizes in transparent, UI and app-icon PNG families."
+}

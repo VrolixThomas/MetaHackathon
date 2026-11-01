@@ -1,0 +1,7 @@
+{
+  "archive": "pull-forward-assets.zip",
+  "members": 211,
+  "hashed_files": 210,
+  "verified": "Every delivered file is byte-identical to its workspace source, all listed SHA-256 values are verified, ZIP CRCs pass, and member paths are safe and relative.",
+  "note": "The report and SHA256SUMS.txt are inside the ZIP. The ZIP digest is a separate .sha256 sidecar to avoid a checksum cycle."
+}

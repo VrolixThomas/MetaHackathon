@@ -1,0 +1,41 @@
+{
+  "identity": "Pull forward",
+  "designTheme": "Focus",
+  "primaryPalette": "Blue / Ice",
+  "viewBox": [
+    0,
+    0,
+    256,
+    256
+  ],
+  "colors": {
+    "name": "Blue / Ice",
+    "far": "#142C50",
+    "near": "#285080",
+    "active": "#4B8FE9",
+    "light": "#E0F4FF",
+    "ice": "#F4FBFF",
+    "ambient": "#437BFF",
+    "bg": "#0A101E"
+  },
+  "spacing": {
+    "minimumOutsideClearSpaceRatio": 0.125,
+    "minimumMicroOutsidePixels": 2
+  },
+  "usage": {
+    "microSizes": [
+      16,
+      20,
+      24,
+      32
+    ],
+    "richRecommendedMinimumPixels": 48
+  },
+  "motion": {
+    "handoffMilliseconds": 800,
+    "backgroundCycleMilliseconds": 3200,
+    "illustrativeHoldMilliseconds": 2400,
+    "illustrativeTourMilliseconds": 9600,
+    "automaticFocusAdvance": false
+  }
+}
