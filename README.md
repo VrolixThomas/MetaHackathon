@@ -135,7 +135,8 @@ without configured validation commands.
 
 Coding runs on this Mac. SQLite and local private files hold prepared review plans and proposed
 fixes; published comments and branches are shared through GitHub. A shared organization backend
-is planned in [the team backend proposal](docs/integration/team-backend-plan.md), and is not deployed.
+is implemented as an optional Supabase-backed service. Deployment and real team onboarding still
+need configuration; see [team setup](docs/integration/team-setup.md).
 
 ## My day and Slack
 
@@ -183,6 +184,9 @@ Tier 3 pacing. Leave it unset for commercial distribution; server Retry-After al
 With a prepared PR open, use **j / k** to move through its reading order. Typing, dialogs and menus
 keep their own keys. **Add PR comment** opens a draft: review its exact wording and optional head-side
 line, then explicitly confirm posting. Editing the body or changing the source invalidates consent.
+You can also ask Muse to draft or edit a comment. It opens the same composer and reads the exact
+proposal aloud in voice mode. In a separate turn, say **“Post this comment”** to confirm. Drafting
+alone never posts; a changed target or interrupted proposal needs another confirmation.
 
 Under **Own PR feedback**, choose **Prepare suggested fix**, or ask Muse to prepare the inspected
 feedback. Muse works in a separate app-owned checkout. Open **Suggested fixes** to inspect the original
@@ -219,8 +223,10 @@ The repository connection, prepared plans and visited-file progress live in SQLi
 user-data directory. A 60-second refresh runs while the app is open; changed PR revisions invalidate
 old plans. **Refresh** checks now, and failed preparation can be explicitly retried. No fixture
 fallback is used. Suggested comments remain unposted; the current review flow does not submit them.
-The storage interface is separated from orchestration for a later Supabase adapter. Team accounts,
-GitHub App/webhook ingestion and preparation while the desktop is closed are future work.
+The optional team service shares one immutable analysis per PR/context/version. Select a connected
+team repository in Settings to use it. A cache miss queues the hosted consumer; it does not start a
+duplicate local model preparation. GitHub App webhooks can prepare while desktops are closed once
+the backend is deployed. A local-only setup continues to use SQLite.
 
 If preparation is still running, its status is shown before opening. Failed preparation has an
 explicit retry action. A ready review in any watched repository can be opened by Muse.
@@ -244,8 +250,11 @@ Optional conversation opens on the left of the canvases. You can interact normal
 to resize a split. **More → Open website** opens an address manually. Voice stays available;
 **More → Conversation and typing** reveals text only when needed.
 
-Generated documents and SVG mockups are labeled drafts. Visual generation currently uses typed
-rectangle/text/line scenes; a raster image generation provider is not connected. Browser pages
+Generated documents and SVG mockups are labeled drafts. For real raster generation, configure
+`IMAGE_PROVIDER=gemini` and `GEMINI_API_KEY`, then ask Muse to generate an image. PNG/JPEG artifacts
+are validated and saved privately; the workspace waits for actual decoding before acknowledging
+display. Closed images reopen through Recent without generation. Missing image configuration affects
+only image generation. Browser pages
 carry unverified revision provenance. Opening a URL does not start a development server or prove
 which PR revision is running. GitHub comments still require explicit confirmation before posting;
 the prepared-review suggested comments remain unposted.

@@ -32,7 +32,8 @@
 		"test:team": "bun test services/team apps/desktop/src/main/team",
 		"test:team:db": "bash services/team/test-sql.sh",
 		"test:comment-conversation": "bun run --filter @metahackathon/desktop test:comment-conversation",
-		"test:image-workspace": "bun run --filter @metahackathon/desktop test:image-workspace"
+		"test:image-workspace": "bun run --filter @metahackathon/desktop test:image-workspace",
+		"test:team-workspace": "bun run --filter @metahackathon/desktop test:team-workspace"
 	},
 	"devDependencies": {
 		"@biomejs/biome": "1.9.4",

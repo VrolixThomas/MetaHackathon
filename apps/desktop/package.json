@@ -29,7 +29,8 @@
 		"test:day": "electron-vite build && env -u ELECTRON_RUN_AS_NODE electron src/main/day-smoke.cjs",
 		"test:slack-oauth": "electron-vite build && env -u ELECTRON_RUN_AS_NODE electron src/main/slack-oauth-smoke.cjs",
 		"test:comment-conversation": "electron-vite build && env -u ELECTRON_RUN_AS_NODE electron src/main/comment-conversation-smoke.cjs",
-		"test:image-workspace": "electron-vite build && env -u ELECTRON_RUN_AS_NODE electron src/main/image-workspace-smoke.cjs"
+		"test:image-workspace": "electron-vite build && env -u ELECTRON_RUN_AS_NODE electron src/main/image-workspace-smoke.cjs",
+		"test:team-workspace": "electron-vite build && env -u ELECTRON_RUN_AS_NODE electron src/main/team-workspace-smoke.cjs"
 	},
 	"dependencies": {
 		"@muse-code/sdk": "1.4.14",

@@ -354,3 +354,35 @@ Shared organization preparation/proposal storage is proposed in `docs/integratio
 it is not deployed. Native subscription checks must distinguish controlled transports from real coding.
 `bun run test:coding-provider` covers actual Settings/IPC/worker pins and real local Git/checks with
 controlled model transport and a deliberately unsupported CLI. It does not prove live subscription coding.
+
+## Shared team, conversational comments and raster canvases (2026-11-01)
+
+MET-72/MET-41 implement the optional Supabase review service and hosted GitHub App consumer;
+MET-73 covers exact reported proposal bundles, author decisions and independently checked local
+applications. `shared/contracts/team.ts` owns all public wire schemas. Service schema paths re-export
+them; session/access/refresh token schemas remain main/server-only. Apply every ordered migration.
+Fresh source-sensitive share/decision RPCs are service-role-only with a server-verified actor;
+organization membership alone never grants repository access. Private progress conflicts retain
+their original attempt and do not block independent keys. Explicit retry never resets an active lease.
+
+Local application verifies exact accepted before/after bytes in an app-owned checkout and records
+actual runtime checks/new applied SHA. Reported source candidate SHA is distinct. Completed work
+receives the actual job for review; acceptance/application never implicitly publish or merge.
+
+MET-26 uses the one canonical `PreparedComments` draft and composer. Display receipts bind exact
+body/revision/head and two actual frames. Spoken confirmation also requires the exact proposal's
+drained narration checkpoint and a distinct actual user turn. `inputMode` comes from app ingress,
+never a model argument. Posting state mirrors the same canonical attempt; stale/unknown attempts
+retain identity. Source, provider text, mocks and worker output cannot grant consent.
+
+MET-74 adds bounded private PNG/JPEG assets through an explicit Gemini provider. Image canvases
+persist metadata in Recent; actual bytes are read by opaque ID and verified before display. Workspace
+acceptance waits for image decode, natural dimensions and committed frames as well as native layout.
+Missing raster credentials affect generation only. Production packages contain only app output,
+production dependencies and frozen voice resources; exclude test reports/screenshots and demos.
+
+`test:comment-conversation`, `test:image-workspace` and `test:team-workspace` run the actual built
+Electron application with controlled HTTP providers, exact display/consent checks and real local Git
+where applicable. `test:team:db` executes real PostgreSQL policy/lease/role regressions in an isolated
+container. These do not establish live OAuth, cloud deployment, live images/speech, two real users or
+signed/notarized distribution. Root alone launches native checks and packaging acceptance.

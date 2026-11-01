@@ -42,6 +42,9 @@ test("release configuration matches the installed builder schema and keeps produ
 		{ from: "../../services/voice/dist/metahackathon-voice", to: "voice" },
 	]);
 	assert.ok(config.files.includes("node_modules/@muse-code/sdk/**/*"));
+	assert.ok(!config.files.includes("out/**/*"));
+	for (const part of ["main", "preload", "renderer"])
+		assert.ok(config.files.includes(`out/${part}/**/*`));
 	assert.equal(config.afterPack, "packaging/after-pack.cjs");
 	const unsigned = yaml.load(
 		fs.readFileSync(path.join(__dirname, "../electron-builder.unsigned.yml"), "utf8")
@@ -133,6 +136,10 @@ test("archive verification finds missing SDK dependencies/native unpacking and r
 	assert.throws(() => verifyPackagedPayload(app, ["arm64"]), /must be unpacked/);
 	await pack();
 	assert.equal(verifyPackagedPayload(app, ["arm64"]).sdkVersion, "1.4.14");
+	write(path.join(source, "out", "controlled-smoke-report.json"), "{}");
+	await pack();
+	assert.throws(() => verifyPackagedPayload(app, ["arm64"]), /acceptance artifacts/);
+	fs.unlinkSync(path.join(source, "out", "controlled-smoke-report.json"));
 	write(path.join(source, ".env"), "INERT_CONTROLLED_TEST=true");
 	await pack();
 	assert.throws(() => verifyPackagedPayload(app, ["arm64"]), /local configuration/);

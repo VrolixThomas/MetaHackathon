@@ -85,6 +85,13 @@ function validateRequest(body, index) {
 		"slack_read_messages",
 		"inspect_suggested_fixes",
 		"inspect_suggested_fix",
+		"inspect_pr_comment",
+		"create_pr_comment_draft",
+		"edit_pr_comment_draft",
+		"request_pr_comment_confirmation",
+		"confirm_pr_comment",
+		"generate_raster_image",
+		"show_generated_image",
 	]);
 	for (const tool of body.tools ?? [])
 		assert.ok(workspaceTools.has(tool.name), "Unexpected workspace tool");

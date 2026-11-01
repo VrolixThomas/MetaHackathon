@@ -92,6 +92,14 @@ function verifyPackagedPayload(appPath, architectures) {
 	const archive = path.join(resources, "app.asar");
 	const entries = new Set(asar.listPackage(archive).map((entry) => entry.replace(/^\//, "")));
 	if (
+		[...entries].some(
+			(entry) => entry.startsWith("out/") && !/^out\/(?:main|preload|renderer)(?:\/|$)/.test(entry)
+		)
+	)
+		throw new Error(
+			"Production archive contains non-application build output or acceptance artifacts"
+		);
+	if (
 		Array.from(entries).some((entry) => /(^|\/)\.env($|\.)|(^|\/)fixtures\/demo($|\/)/.test(entry))
 	)
 		throw new Error("Production archive contains local configuration or demo fixtures");

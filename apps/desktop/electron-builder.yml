@@ -6,7 +6,9 @@ directories:
   output: dist
 
 files:
-  - out/**/*
+  - out/main/**/*
+  - out/preload/**/*
+  - out/renderer/**/*
   - node_modules/@muse-code/sdk/**/*
 
 extraResources:
