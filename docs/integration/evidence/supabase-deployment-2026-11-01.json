@@ -1,0 +1,136 @@
+{
+	"date": "2026-11-01",
+	"project": {
+		"name": "muse",
+		"ref": "vmydpscnfgvbciotoaln",
+		"url": "https://vmydpscnfgvbciotoaln.supabase.co",
+		"region": "eu-west-1",
+		"plan": "Free"
+	},
+	"deployment": {
+		"tool": "Supabase CLI",
+		"version": "2.75.0",
+		"migrations": [
+			{
+				"file": "202611010001_team_reviews.sql",
+				"sha256": "bc83a4a847881e5038c50a927d844db4d124d07b54124c5f31dcb364bb2611e9"
+			},
+			{
+				"file": "202611010002_team_proposals.sql",
+				"sha256": "87928dd39b61256fd7f69de79ee79daf7bb9fd0bdaa4e1d0bfaa378dbb32a765"
+			},
+			{
+				"file": "202611010003_team_onboarding.sql",
+				"sha256": "26847cffb2336dd57cf3e98bcfad4dd27f291cfa7864b639bdcdf13697739aec"
+			},
+			{
+				"file": "202611010004_bundle_validation_volatility.sql",
+				"sha256": "328bd20a79366ab10591fd95392b6c323b909e9a7e3e0dbd9bfee0ffecd4160d"
+			}
+		],
+		"historyMatches": true,
+		"pendingMigrations": 0,
+		"studioMigrationExecution": false
+	},
+	"databaseLint": {
+		"errors": 0,
+		"warnings": ["unused variable existing in two public.team_share_proposal overloads"]
+	},
+	"isolatedPostgreSQL": {
+		"version": 17,
+		"status": "passed",
+		"suites": ["security.sql", "tenant-isolation.sql"],
+		"controlledUsers": true,
+		"realTwoUserOAuth": false,
+		"rolledBack": true,
+		"containerRemoved": true
+	},
+	"liveAccessChecks": {
+		"status": "passed",
+		"liveSupabase": true,
+		"projectRef": "vmydpscnfgvbciotoaln",
+		"anonymous": [
+			{
+				"table": "team_organizations",
+				"status": 401,
+				"anonymousDenied": true
+			},
+			{
+				"table": "team_memberships",
+				"status": 401,
+				"anonymousDenied": true
+			},
+			{
+				"table": "team_repositories",
+				"status": 401,
+				"anonymousDenied": true
+			},
+			{
+				"table": "team_repository_grants",
+				"status": 401,
+				"anonymousDenied": true
+			},
+			{
+				"table": "team_review_artifacts",
+				"status": 401,
+				"anonymousDenied": true
+			},
+			{
+				"table": "team_review_progress",
+				"status": 401,
+				"anonymousDenied": true
+			},
+			{
+				"table": "team_preparation_jobs",
+				"status": 401,
+				"anonymousDenied": true
+			},
+			{
+				"table": "team_webhooks",
+				"status": 401,
+				"anonymousDenied": true
+			},
+			{
+				"table": "team_pr_heads",
+				"status": 401,
+				"anonymousDenied": true
+			},
+			{
+				"table": "team_feedback_revisions",
+				"status": 401,
+				"anonymousDenied": true
+			},
+			{
+				"table": "team_fix_proposals",
+				"status": 401,
+				"anonymousDenied": true
+			},
+			{
+				"table": "team_proposal_decisions",
+				"status": 401,
+				"anonymousDenied": true
+			},
+			{
+				"table": "team_organization_owners",
+				"status": 401,
+				"anonymousDenied": true
+			}
+		],
+		"privateSchemaExposed": false,
+		"privateSchemaStatus": 406,
+		"realTwoUserOAuth": false,
+		"finishedAt": "2026-11-01T10:26:08.649Z"
+	},
+	"configuration": {
+		"desktopPublicOnly": true,
+		"backendFileOwnerOnly": true,
+		"credentialsGitIgnored": true,
+		"credentialValuesCommitted": false
+	},
+	"remaining": [
+		"GitHub identity-provider credentials and loopback callback allowlist",
+		"GitHub App installation and secrets",
+		"Hosted HTTP API/consumer",
+		"Two real authorized app users sharing artifacts and proposals"
+	]
+}

@@ -33,7 +33,11 @@
 		"test:team:db": "bash services/team/test-sql.sh",
 		"test:comment-conversation": "bun run --filter @metahackathon/desktop test:comment-conversation",
 		"test:image-workspace": "bun run --filter @metahackathon/desktop test:image-workspace",
-		"test:team-workspace": "bun run --filter @metahackathon/desktop test:team-workspace"
+		"test:team-workspace": "bun run --filter @metahackathon/desktop test:team-workspace",
+		"team:db:link": "supabase link",
+		"team:db:plan": "supabase db push --dry-run",
+		"team:db:migrate": "supabase db push",
+		"team:db:history": "supabase migration list"
 	},
 	"devDependencies": {
 		"@biomejs/biome": "1.9.4",

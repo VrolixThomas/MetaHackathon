@@ -59,8 +59,9 @@ launch, installed microphone behavior, signing, notarization and updater install
 
 ## External acceptance still pending
 
-- Supabase project selection, hosting, server secrets/GitHub App installation and two real test users.
-  No project has been provisioned or source uploaded. Follow [team setup](team-setup.md).
+- Supabase database provisioning and migrations are now complete; see [deployment evidence](supabase-deployment-2026-11-01.md).
+  GitHub identity/App setup, hosted API/consumer and two real test users remain. No private source
+  was uploaded. Follow [team setup](team-setup.md).
 - No new image key is needed. Existing `MODEL_API_KEY` Muse Image access passed the live follow-up.
 - Muse Code CLI sign-in and subscription availability for the live coding/question/resume check.
 - Developer ID identity, Apple notarization credentials and installed-app/update acceptance.

@@ -388,3 +388,18 @@ Electron application with controlled HTTP providers, exact display/consent check
 where applicable. `test:team:db` executes real PostgreSQL policy/lease/role regressions in an isolated
 container. These do not establish live OAuth, cloud deployment, live images/speech, two real users or
 signed/notarized distribution. Root alone launches native checks and packaging acceptance.
+
+## Supabase deployment and tenant isolation (2026-11-01)
+
+The selected shared database is `muse`, project `vmydpscnfgvbciotoaln`, in the Muse Free organization.
+Deploy ordered `supabase/migrations/` through `team:db:plan` and `team:db:migrate`, and verify
+`team:db:history`; never paste rollout SQL into Studio or rewrite an already applied migration.
+`supabase/config.toml` is local/CLI configuration, not automatically pushed hosted Auth settings.
+Do not use a remote reset/history repair to bypass a failure. Link state and credentials stay ignored.
+
+Each Muse organization is a tenant. RLS derives access from authenticated user membership and current
+repository grants; a renderer-supplied org ID is never authority. Private progress/notes remain user
+scoped even inside a shared organization. Desktop receives only the public client key; service-role
+credentials bypass RLS and stay server-only, behind fresh HTTP authorization. Tests include disjoint
+organizations with the same repository ID, forged keys, revocation and multi-org users. The SQL CI
+workflow runs all policy tests against isolated PostgreSQL; live two-user OAuth remains separate.

@@ -1,12 +1,14 @@
 # Shared team reviews and proposed fixes
 
-The standalone backend is implemented; this checkout has no selected Supabase project or hosted
-deployment. The desktop remains useful with its existing local providers while team configuration
-is absent. No coding subscription credential or private conversation is uploaded to the team service.
+The shared database is deployed to the selected `muse` Supabase project (`vmydpscnfgvbciotoaln`).
+The HTTP API/consumer still need a hosting target, and GitHub identity-provider setup is pending.
+The desktop remains useful with its existing local providers. No coding subscription credential or
+private conversation is uploaded to the team service. See [deployment evidence](supabase-deployment-2026-11-01.md).
 
 ## Configure the backend
 
-1. Select a dedicated Supabase project and apply **all** ordered `supabase/migrations/*.sql`.
+1. Select a dedicated Supabase project and apply **all** ordered `supabase/migrations/*.sql`
+   through the CLI workflow below.
    Configure Supabase Auth's GitHub provider with its required callback. This identity login is
    separate from the desktop's existing GitHub repository grant; preserve GitHub/Linear/Slack login.
 2. Allow the numeric loopback redirect `http://127.0.0.1:43189/team-auth/**` in Supabase Auth.
@@ -27,6 +29,37 @@ bun run team:consume
 Expose the API over HTTPS. Webhook ingress verifies the raw HMAC; consumers use durable leases,
 heartbeats and fencing. Duplicate events reuse the preparation input. A crash after a model call
 can still require another paid call; only the canonical stored result is deduplicated.
+
+## Versioned database workflow
+
+The schema and access policies live in `supabase/migrations/`; `supabase/config.toml` configures
+the local CLI project with PostgreSQL 17 and no product seed data. Use the official Supabase CLI
+(validated with 2.75.0) from the repository root:
+
+```sh
+supabase login
+bun run team:db:link --project-ref vmydpscnfgvbciotoaln
+bun run team:db:plan
+bun run team:db:migrate
+bun run team:db:history
+```
+
+The explicit link selects the hosted `muse` project in the Muse organization. Other environments
+must supply their own project reference. Plan performs a dry run; migrate applies pending files
+and records them in Supabase migration history. Keep `.temp`, `.branches`, tokens and passwords out
+of Git. `db push` does not push `config.toml` or hosted OAuth settings. Do not use a remote database
+reset or repair history to bypass a failed migration. Add a new ordered migration for later changes.
+
+The database supports multiple organizations. RLS checks the authenticated user, active membership
+and repository grant; a client-supplied team ID cannot grant access. Shared reviews/proposals are
+organization scoped, while progress and notes are also user scoped. Desktop configuration contains
+only the public key; the backend service-role key bypasses RLS and must stay server-only. HTTP
+revalidates repository access before using that privileged key.
+
+`bun run test:team:db` applies the same files to isolated PostgreSQL and asserts policy behavior.
+The Team database isolation GitHub Actions workflow runs these checks for schema/test changes.
+Read the [official migration workflow](https://supabase.com/docs/guides/local-development/database-migrations)
+for creating additional migrations with `supabase migration new`.
 
 ## Connect the desktop
 

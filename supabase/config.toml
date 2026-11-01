@@ -1,0 +1,31 @@
+# Versioned local/CLI configuration; the hosted project is selected by `supabase link`.
+# Never commit project credentials or CLI link state. This is not automatically pushed to production.
+project_id = "muse"
+
+[api]
+enabled = true
+port = 54321
+schemas = ["public"]
+extra_search_path = ["public", "extensions"]
+max_rows = 1000
+
+[db]
+port = 54322
+shadow_port = 54320
+major_version = 17
+
+[db.migrations]
+enabled = true
+schema_paths = []
+
+[db.seed]
+enabled = false
+sql_paths = []
+
+[auth]
+enabled = true
+site_url = "http://127.0.0.1:43189"
+additional_redirect_urls = ["http://127.0.0.1:43189/team-auth/**"]
+enable_signup = true
+enable_anonymous_sign_ins = false
+enable_refresh_token_rotation = true

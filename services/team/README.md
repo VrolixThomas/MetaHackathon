@@ -1,7 +1,8 @@
 # Shared team review service (MET-72, MET-73, MET-41)
 
-These modules are real Supabase/PostgREST adapters and executable migration paths. No project is
-selected, no migration is deployed, and no product fixture fallback exists. Root owns desktop
+These modules are real Supabase/PostgREST adapters and executable migration paths. The selected
+`muse` database (`vmydpscnfgvbciotoaln`) has migrations 001–004 deployed through the CLI; HTTP API/consumer
+hosting and GitHub identity login remain pending. No product fixture fallback exists. Root owns desktop
 composition, shared DTO publication, manifests and combined acceptance. Lane-local protocol schemas
 are in `services/team/protocol.ts` and reuse the existing PreparedReview contract.
 
@@ -56,6 +57,12 @@ progress/notes are separate user-scoped records with transactionally deduplicate
 
 Server service-role key and GitHub App private key are never sent to desktop. Use independent backend
 secret management. No local CLI sign-in credential is accepted for shared preparation.
+
+Repository commands `team:db:link`, `team:db:plan`, `team:db:migrate` and `team:db:history` use the
+official Supabase CLI and tracked migration history. See [the operator workflow](../../docs/integration/team-setup.md#versioned-database-workflow).
+The local SQL runner also covers disjoint tenants using the same repository ID, forged foreign
+keys, membership revocation and multi-organization users with private per-user progress. Migration
+004 corrects the bundle validator's timestamp-dependent volatility without changing access rules.
 
 ## Installed desktop facade and card
 

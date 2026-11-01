@@ -1,0 +1,23 @@
+name: Team database isolation
+on:
+  pull_request:
+    paths:
+      - "supabase/**"
+      - "services/team/test-sql.sh"
+      - ".github/workflows/team-database.yml"
+  push:
+    branches: [main]
+    paths:
+      - "supabase/**"
+      - "services/team/test-sql.sh"
+      - ".github/workflows/team-database.yml"
+permissions:
+  contents: read
+jobs:
+  row-level-security:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - name: Apply versioned migrations and check tenant isolation
+        run: bash services/team/test-sql.sh
