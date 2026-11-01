@@ -76,6 +76,18 @@ test("MuseFocus release identity keeps every nested Mach-O signature check", (t)
 	}
 });
 
+test("macOS structured codesign output preserves microphone entitlement verification", (t) => {
+	const probe = bundle(t);
+	probe.setEntitlement(
+		"[Dict]\n\t[Key] com.apple.security.cs.allow-jit\n\t[Value]\n\t\t[Bool] true\n\t[Key] com.apple.security.device.audio-input\n\t[Value]\n\t\t[Bool] true\n"
+	);
+	assert.equal(verifyApp(probe.app, "TESTTEAM01", probe.run).appId, "app.musefocus.desktop");
+	probe.setEntitlement(
+		"[Dict]\n\t[Key] com.apple.security.device.audio-input\n\t[Value]\n\t\t[Bool] false\n"
+	);
+	assert.throws(() => verifyApp(probe.app, "TESTTEAM01", probe.run), /audio-input entitlement/);
+});
+
 test("old bundle paths, plist identity and signed identifiers cannot pass as MuseFocus", (t) => {
 	const probe = bundle(t);
 	assert.throws(() => verifyApp(probe.app, "", probe.run), /APPLE_TEAM_ID/);
