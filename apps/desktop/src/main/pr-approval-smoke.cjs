@@ -86,9 +86,10 @@ async function native() {
 	ipcMain.handle = function (channel, handler) {
 		if (channel !== "trpc:request") return originalHandle.call(this, channel, handler);
 		return originalHandle.call(this, channel, async (event, request) => {
+			const result = await handler(event, request);
 			if (request.path.startsWith("prApprovals."))
-				report.ipc.push({ path: request.path, input: request.input?.json });
-			return handler(event, request);
+				report.ipc.push({ path: request.path, input: request.input?.json, error: result?.error });
+			return result;
 		});
 	};
 	globalThis.fetch = async (input, init = {}) => {

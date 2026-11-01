@@ -19,6 +19,10 @@
 			"supabase/functions/*/index.ts",
 			"design/muse-logo/v3/pull-forward/**",
 			"design/muse-logo/v3/musefocus-site/**",
+			"apps/site/assets/controller.js",
+			"apps/site/assets/pull-forward.js",
+			"apps/site/assets/pull-forward.css",
+			"apps/site/focus.css",
 			"**/db/migrations/**"
 		]
 	},
