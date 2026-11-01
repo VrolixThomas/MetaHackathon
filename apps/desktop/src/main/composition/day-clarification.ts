@@ -18,18 +18,20 @@ interface DayView {
 /** Polling is metadata only: neither cached audience lists nor encrypted storage authorize reads. */
 export function publicDaySnapshot(raw: DaySnapshot): DaySnapshot {
 	const snapshot = DaySnapshotSchema.parse(raw);
-	for (const item of snapshot.items) {
-		if (!item.clarification) continue;
-		const c = item.clarification;
-		item.clarificationMetadata = {
-			policyId: c.policy.id,
-			policyRevision: c.policy.revision,
-			status: c.status,
-			confirmedAt: c.confirmedAt,
-			expiresAt: c.expiresAt,
+	snapshot.items = snapshot.items.map((item) => {
+		if (!item.clarification) return item;
+		const { clarification: c, ...metadata } = item;
+		return {
+			...metadata,
+			clarificationMetadata: {
+				policyId: c.policy.id,
+				policyRevision: c.policy.revision,
+				status: c.status,
+				confirmedAt: c.confirmedAt,
+				expiresAt: c.expiresAt,
+			},
 		};
-		item.clarification = undefined;
-	}
+	});
 	return snapshot;
 }
 

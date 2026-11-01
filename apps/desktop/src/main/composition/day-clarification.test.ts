@@ -67,6 +67,10 @@ test("polling exposes policy metadata without cached thread, question bodies or 
 		const raw = await h.day.snapshot();
 		const visible = publicDaySnapshot(raw);
 		assert.equal(visible.items[0]?.clarification, undefined);
+		assert.ok(
+			!Object.hasOwn(visible.items[0] ?? {}, "clarification"),
+			"Omit the optional wire property rather than serializing undefined as null"
+		);
 		assert.equal(
 			visible.items[0]?.clarificationMetadata?.policyId,
 			h.item.clarification?.policy.id
