@@ -397,7 +397,7 @@ async function native() {
 				);
 				report.providerReads.push({ provider: "github", path: url.pathname, bearer: true });
 				if (url.pathname === "/user") {
-					if (headers.get("user-agent") === "Muse-Desktop") counters.githubProfile++;
+					if (headers.get("user-agent") === "MuseFocus-Desktop") counters.githubProfile++;
 					return Response.json(GH_PROFILE);
 				}
 				if (url.pathname === "/user/repos")
