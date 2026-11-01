@@ -27,17 +27,29 @@
 	box-sizing: border-box;
 }
 html {
+	background: var(--base);
+	min-height: 100%;
+	overflow-x: clip;
+	overscroll-behavior: none;
 	scroll-behavior: smooth;
 	scroll-padding-top: 100px;
 }
 body {
 	margin: 0;
+	min-height: 100vh;
+	min-height: 100svh;
 	background: var(--base);
 	color: var(--text);
 	font-family: var(--sans);
 	font-size: 16px;
 	-webkit-font-smoothing: antialiased;
 	overflow-x: clip;
+}
+@supports not (overflow-x: clip) {
+	html,
+	body {
+		overflow-x: hidden;
+	}
 }
 button,
 a {

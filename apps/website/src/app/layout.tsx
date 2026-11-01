@@ -1,4 +1,4 @@
-import type { Metadata } from "next";
+import type { Metadata, Viewport } from "next";
 import localFont from "next/font/local";
 import type { ReactNode } from "react";
 import "./globals.css";
@@ -17,6 +17,12 @@ const mono = localFont({
 	display: "swap",
 });
 const siteUrl = process.env["WEBSITE_SITE_URL"] ?? "http://localhost:3000";
+export const viewport: Viewport = {
+	width: "device-width",
+	initialScale: 1,
+	themeColor: "#050507",
+	colorScheme: "dark",
+};
 export const metadata: Metadata = {
 	metadataBase: new URL(siteUrl),
 	title: "MuseFocus — Let work flow. Keep your focus.",
