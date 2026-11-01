@@ -111,10 +111,10 @@ async function native() {
 				);
 				await wait("actual authorized repo choice", () =>
 					js(
-						`!![...document.querySelectorAll('[aria-label="Team repositories"] button')].find(e=>e.textContent.trim()==='Use shared preparation'&&!e.disabled)`
+						`!![...document.querySelectorAll('[aria-label="Team repositories"] button')].find(e=>e.textContent.trim()==='Share local findings'&&!e.disabled)`
 					)
 				);
-				await button('[aria-label="Team repositories"]', "Use shared preparation");
+				await button('[aria-label="Team repositories"]', "Share local findings");
 				await wait("selected persisted repository scope", async () => {
 					const state = await rpc("query", "team.status", {});
 					return state.scopes.some(
