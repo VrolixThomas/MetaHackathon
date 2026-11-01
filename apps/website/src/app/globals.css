@@ -355,6 +355,23 @@ h1 {
 	color: #7c98bf;
 	letter-spacing: 1.6px;
 }
+.demo-focus-heading {
+	display: flex;
+	align-items: center;
+	gap: 12px;
+}
+.demo-focus-heading > .animated-brand {
+	flex: none;
+}
+@media (max-width: 760px) {
+	.demo-focus-heading {
+		gap: 7px;
+	}
+	.demo-focus-heading > .animated-brand {
+		width: 40px !important;
+		height: 40px !important;
+	}
+}
 .demo-intro h2 {
 	margin-top: 8px;
 	font-size: 17px;

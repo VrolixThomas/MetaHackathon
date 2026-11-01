@@ -9,7 +9,7 @@ export function Hero() {
 		<section className="hero" aria-labelledby="hero-heading">
 			<div className="hero-light" aria-hidden="true" />
 			<div className="hero-mark">
-				<AnimatedBrand paused={state.paused} focusToken={state.chapter} />
+				<AnimatedBrand paused={state.paused} focusToken={state.chapter} autoAdvance />
 			</div>
 			<p className="eyebrow">Your attention, well spent</p>
 			<h1 id="hero-heading">

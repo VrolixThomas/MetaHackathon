@@ -2,7 +2,7 @@
 import { chapters } from "@/lib/story";
 import { AnimatePresence, motion, useReducedMotion } from "motion/react";
 import { useRef } from "react";
-import { Brand } from "../brand";
+import { AnimatedBrand, Brand } from "../brand";
 import { Icon } from "../icons";
 import { useStory } from "./context";
 import { ClarifyView, FixView, FlowView, FollowView, PlanView, ReviewView } from "./views";
@@ -29,9 +29,16 @@ export function Walkthrough() {
 			aria-labelledby="demo-heading"
 		>
 			<div className="demo-intro">
-				<div>
-					<span className="eyebrow">One connected day</span>
-					<h2 id="demo-heading">Everything moves. Your focus stays clear.</h2>
+				<div className="demo-focus-heading">
+					<AnimatedBrand
+						size={64}
+						paused={state.paused}
+						focusToken={`${state.chapter}:${state.chapter === "review" ? state.file : state.chapter === "flow" ? state.flow : ""}`}
+					/>
+					<div>
+						<span className="eyebrow">One connected day</span>
+						<h2 id="demo-heading">Everything moves. Your focus stays clear.</h2>
+					</div>
 				</div>
 				<button
 					type="button"

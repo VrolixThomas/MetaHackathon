@@ -72,8 +72,12 @@ feature grid:
    thread, with permission made explicit, then reset it.
 
 One conversation carries the context between these moments. No chapter advances
-automatically. The final logo keeps a stable foreground with subtle background
-activity; intentional chapter changes trigger its handoff. Ambient motion can be
+automatically. The hero logo demonstrates the selected handoff on a 3.2-second
+cycle (2.4 seconds held, 0.8 seconds bringing the next surface forward). A second
+mark beside the walkthrough heading responds to chapter, review-file and flow-view
+changes, keeping that motion visible while exploring the work. Rapid selections
+coalesce into a final handoff; they do not restart the geometry mid-transition.
+The hero cycle skips hidden/offscreen/reduced-motion states. Ambient motion can be
 paused, and OS reduced motion is respected. Tabs support arrow keys/Home/End;
 native FAQ disclosures and visible focus states work without a custom controller.
 
