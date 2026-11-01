@@ -14,7 +14,7 @@ export const AttentionPresenceSchema = z.strictObject({
 });
 export const AttentionItemSchema = z.strictObject({
 	noticeId: IdSchema,
-	kind: z.enum(["decision", "work-failed", "work-ready"]),
+	kind: z.enum(["decision", "work-failed", "work-ready", "pr-approval"]),
 	jobId: IdSchema,
 	repository: GitHubRepositorySchema,
 	label: z.string().min(1).max(300),

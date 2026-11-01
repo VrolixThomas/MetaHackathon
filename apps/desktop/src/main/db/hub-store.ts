@@ -38,6 +38,7 @@ function validateState(state: HubPersistence) {
 	unique(state.repositories.map((row) => row.id));
 	unique(state.repositories.map((row) => key(row.repository)));
 	unique(state.jobs.map((row) => row.id));
+	unique((state.approvalPolicies ?? []).map((row) => row.id));
 	unique(state.tickets.map((row) => row.id));
 	unique(state.notices.map((row) => row.id));
 	unique((state.attentionRecords ?? []).map((row) => row.key));

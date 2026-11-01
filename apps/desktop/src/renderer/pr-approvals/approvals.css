@@ -1,0 +1,35 @@
+.pr-approvals,
+.pr-approvals form,
+.pr-approvals fieldset,
+.pr-approvals label {
+	display: grid;
+	gap: .6rem;
+}
+.pr-approvals {
+	gap: 1rem;
+}
+.pr-approvals code,
+.pr-approvals pre {
+	overflow-wrap: anywhere;
+	white-space: pre-wrap;
+	user-select: text;
+}
+.pr-approvals pre {
+	max-height: 35vh;
+	overflow: auto;
+	padding: .8rem;
+	border: 1px solid currentColor;
+	border-radius: .4rem;
+}
+.pr-approvals label:has(input[type="checkbox"]) {
+	display: flex;
+	align-items: start;
+}
+.pr-approvals input,
+.pr-approvals textarea,
+.pr-approvals select {
+	width: 100%;
+}
+.pr-approvals input[type="checkbox"] {
+	width: auto;
+}

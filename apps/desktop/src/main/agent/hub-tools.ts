@@ -30,6 +30,7 @@ import {
 	WorkReviewSchema,
 	encodePRFixViewTarget,
 } from "../../shared/contracts";
+import { type ApprovalToolPorts, ApprovalTools } from "./approval-tools";
 import { abortable, throwIfAborted } from "./cancellation";
 import { type ConversationDayPorts, ConversationDayTools } from "./day-tools";
 import { GuidedReviewError } from "./guided-review";
@@ -44,6 +45,7 @@ import { type ConversationSlackPorts, ConversationSlackTools } from "./slack-too
 import { WorkspaceArgumentError } from "./workspace-tools";
 
 export interface ConversationHubPorts {
+	approvals?: ApprovalToolPorts;
 	prComments?: ConversationPRCommentPorts;
 	fixes?: {
 		list(signal?: AbortSignal): Promise<PRFixSummary[]>;
@@ -320,6 +322,7 @@ export class ConversationHubTools {
 	private readonly knowledge?: ConversationKnowledgeTools;
 	private readonly slack?: ConversationSlackTools;
 	private readonly prComments?: ConversationPRCommentTools;
+	private readonly approvals?: ApprovalTools;
 	private sequence = 0;
 	constructor(
 		private readonly ports: ConversationHubPorts,
@@ -327,6 +330,7 @@ export class ConversationHubTools {
 		private readonly signal: AbortSignal,
 		private readonly onSource?: (source: PinnedSource) => void
 	) {
+		if (ports.approvals) this.approvals = new ApprovalTools(ports.approvals, turn, signal);
 		if (ports.prComments)
 			this.prComments = new ConversationPRCommentTools(ports.prComments, turn, signal);
 		if (ports.slack) this.slack = new ConversationSlackTools(ports.slack, signal);
@@ -371,11 +375,13 @@ export class ConversationHubTools {
 			...(this.knowledge?.tools ?? []),
 			...(this.slack?.tools ?? []),
 			...(this.prComments?.tools ?? []),
+			...(this.approvals?.tools ?? []),
 		];
 	}
 	has(name: string) {
 		if (name.startsWith("inspect_suggested_") && !this.ports.fixes) return false;
 		return (
+			!!this.approvals?.has(name) ||
 			!!this.prComments?.has(name) ||
 			!!this.slack?.has(name) ||
 			!!this.knowledge?.has(name) ||
@@ -562,6 +568,7 @@ export class ConversationHubTools {
 	}
 	async execute(name: string, rawArguments: string): Promise<unknown> {
 		if (!this.has(name)) throw new GuidedReviewError("That hub operation is unavailable.");
+		if (this.approvals?.has(name)) return this.approvals.execute(name, rawArguments);
 		if (this.prComments?.has(name)) return this.prComments.execute(name, rawArguments);
 		if (this.slack?.has(name)) return this.slack.execute(name, rawArguments);
 		if (this.knowledge?.has(name)) return this.knowledge.execute(name, rawArguments);
