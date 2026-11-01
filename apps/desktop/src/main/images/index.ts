@@ -1,8 +1,8 @@
 export {
-	createGeminiImageProvider,
-	GEMINI_IMAGE_MODEL,
+	createMuseImageProvider,
+	MUSE_IMAGE_MODEL,
 	ImageError,
 	type ImageProvider,
-} from "./gemini";
+} from "./muse";
 export { PrivateImageStore } from "./store";
 export { ImageService } from "./service";

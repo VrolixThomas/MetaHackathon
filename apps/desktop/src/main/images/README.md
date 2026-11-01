@@ -1,17 +1,20 @@
 # Private raster images (MET-74)
 
-The real implementation uses the [official Gemini image generation REST API](https://ai.google.dev/gemini-api/docs/generate-content/image-generation)
-at the fixed `https://generativelanguage.googleapis.com/v1/models/gemini-2.5-flash-image:generateContent`
-endpoint. The documented request sends `contents.parts.text`, an `x-goog-api-key`
-header and image response modalities; successful image parts carry MIME/base64
-`inlineData`. This adapter uses no SDK, external image download, search grounding,
-Meta-key assumption, automatic provider fallback or product fixture.
+The implementation uses the [official Muse Image REST API](https://dev.meta.ai/docs/image-generation)
+(One-off generation, Useful parameters and Response shape) at the fixed
+`POST https://api.meta.ai/v1/images/generations` endpoint. The exact JSON request is
+`{model:"muse-image-1.0",prompt,n:1,response_format:"b64_json",output_format:"png"}`
+with `Authorization: Bearer <MODEL_API_KEY>` and `Content-Type: application/json`.
+The response must contain exactly one `data:[{b64_json}]` entry and echo
+`output_format:"png"`. Generation metadata is provider `meta`, model `muse-image-1.0`.
+This adapter uses no SDK, arbitrary image download, redirect, alternate key/provider,
+automatic fallback or product fixture.
 
 Root composition API:
 
 ```ts
 const images = new ImageService(
-  createGeminiImageProvider(mainOnlyActiveEnvironment),
+  createMuseImageProvider(mainOnlyActiveEnvironment),
   new PrivateImageStore(join(userData, "workspace", "images"))
 );
 images.generate(sharedGenerateImageInput, foregroundSignal); // Promise<ImageAsset>
@@ -20,19 +23,24 @@ images.cancel(requestId); // tombstone also wins before registration
 images.dispose(); // lifecycle/configuration change; abort outstanding generation
 ```
 
-Explicit main-only configuration is `IMAGE_PROVIDER=gemini` and `GEMINI_API_KEY`.
+The existing main-only `MODEL_API_KEY` alone enables image generation. Legacy
+`IMAGE_PROVIDER` and `GEMINI_API_KEY` are ignored, including when no model key exists.
 Never pass the environment or key to renderer, model contexts or diagnostics. Missing
 configuration raises fixed `image-not-configured` without calling a provider; it does
 not disable other conversation/workspace tools. Reading saved assets needs no key.
-No credentials were read, added or modified during implementation.
+The public index exports `createMuseImageProvider`, `MUSE_IMAGE_MODEL`, `ImageProvider`,
+`ImageError`, `ImageService` and `PrivateImageStore`.
 
 Limits: prompt 12,000 characters; request shape is text only; one fixed-model image;
-90-second transport timeout; 18 MiB streamed JSON response; 12 MiB PNG/JPEG asset;
+90-second transport timeout; 18 MiB streamed JSON response; 16 MiB canonical base64;
+12 MiB generated PNG asset (existing saved PNG/JPEG assets remain readable);
 4096 maximum width/height; two concurrent generations and 256 retained request records.
 PNG checks include chunk CRC, bounded decompression, complete scanlines and filter
 bytes (noninterlaced only); JPEG checks include supported frame, dimensions and scan
 markers. Actual browser `img.decode()` remains mandatory before display acceptance.
-Unsupported, refused, text-only, remote-file, oversized or malformed results fail.
+Strict UTF-8/JSON, response shape, canonical base64 and actual PNG bytes are validated.
+Unsupported, refused, URL-only, multiple-image, format-mismatched, truncated, oversized
+or malformed results fail. HTTP/provider errors expose fixed messages only.
 
 Private storage uses a 0700 app-owned directory, 0600 files, opaque request-derived
 IDs, atomic binary/record replacement and SHA-256. Pending requests are admitted before
@@ -53,18 +61,21 @@ its own matching committed frames/native presentation; loading/error markup is n
 display proof. Root owns image canvas/command schemas, persisted Recent descriptors,
 RPC registration, services/lifecycle and final bindings.
 
-Validation: `bun test apps/desktop/src/main/images apps/desktop/src/renderer/images`
-passes controlled provider/decoder/controller and real temporary-file tests. These
-are explicitly simulated transports, not a live provider call or native decode proof.
+Validation: `bun test apps/desktop/src/main/images` exercises the exact official
+request/headers, MODEL_API_KEY-only enablement, ignored legacy configuration,
+invalid/URL-only/multiple/format-mismatched/oversized/truncated responses and
+transport/read/service cancellation. Temporary-file checks cover private permissions,
+persistence/reopen, deduplication, legacy asset reads and tampering. Scoped lint:
+`bunx --no-install biome check apps/desktop/src/main/images`.
+These are controlled transports, not live provider calls or native decode proof.
 
-Root native author outline (root alone runs): inject controlled inline PNG and JPEG
-provider responses through actual IPC; ask typed/voice conversation to generate;
-verify exact metadata and decoded natural dimensions in the primary/secondary pane,
-two-frame receipt, closed canvas reopening through Recent and binary bytes across
-store reopen. Reject bad digest, invalid decoder bytes, wrong natural dimensions,
-remote URL, missing key, oversized stream and unsupported MIME. Cancel during provider
-read and during decode: no late positive canvas receipt. Keep existing SVG mock tools
-working and verify an image-only configuration error leaves ordinary conversation
-available. Separately configure a user-provided Gemini key for an explicitly authorized
-live generation; no live generation, native Electron, microphone or deployment check
-was run by this bounded implementation worker.
+Root owns configuration/services composition, all builds, native smoke and live
+acceptance. Its controlled native check should inject official `data:[{b64_json}]`
+with `output_format:"png"` through actual HTTP/IPC, verify exact generated metadata,
+decoded dimensions, two-frame receipts, Recent close/reopen and private-store reads,
+then check cancellation and missing MODEL_API_KEY without disabling conversation.
+Separately authorized live success requires the user-provided MODEL_API_KEY. This
+bounded worker reads no live keys and runs no build, native Electron, live provider,
+microphone or deployment check. Existing saved assets retain their original provider
+and model attribution; a provider change does not rewrite bytes or metadata, and a
+conflicting request ID never silently regenerates an old asset.

@@ -2,8 +2,8 @@ import { z } from "zod";
 import { abortable, throwIfAborted } from "../agent/cancellation";
 import { MAX_IMAGE_BYTES, type Raster, inspectRaster } from "./raster";
 
-export const GEMINI_IMAGE_MODEL = "gemini-2.5-flash-image";
-const endpoint = `https://generativelanguage.googleapis.com/v1/models/${GEMINI_IMAGE_MODEL}:generateContent`;
+export const MUSE_IMAGE_MODEL = "muse-image-1.0";
+const endpoint = "https://api.meta.ai/v1/images/generations";
 export class ImageError extends Error {
 	constructor(
 		readonly code:
@@ -16,8 +16,7 @@ export class ImageError extends Error {
 	) {
 		super(
 			{
-				"image-not-configured":
-					"Configure IMAGE_PROVIDER=gemini and GEMINI_API_KEY to generate images.",
+				"image-not-configured": "Configure MODEL_API_KEY to generate Muse images.",
 				"image-generation-failed": "Image generation did not complete. Try a new request.",
 				"image-result-invalid":
 					"The image provider did not return a supported bounded raster image.",
@@ -35,36 +34,24 @@ export type ImageProvider = {
 	generate(prompt: string, signal: AbortSignal): Promise<Raster>;
 };
 const resultSchema = z.object({
-	candidates: z
+	data: z
 		.array(
-			z.object({
-				finishReason: z.string().optional(),
-				content: z
-					.object({
-						parts: z
-							.array(
-								z.object({
-									thought: z.boolean().optional(),
-									inlineData: z
-										.object({
-											mimeType: z.enum(["image/png", "image/jpeg"]),
-											data: z.string().max(16 * 1024 * 1024),
-										})
-										.optional(),
-								})
-							)
-							.max(32),
-					})
-					.optional(),
+			z.strictObject({
+				b64_json: z
+					.string()
+					.min(4)
+					.max(16 * 1024 * 1024),
 			})
 		)
-		.max(1)
-		.optional(),
+		.length(1),
+	output_format: z.literal("png"),
 });
 async function boundedJSON(response: Response, signal: AbortSignal) {
 	const max = 18 * 1024 * 1024;
-	if (Number(response.headers.get("content-length") ?? 0) > max || !response.body)
+	if (Number(response.headers.get("content-length") ?? 0) > max || !response.body) {
+		void response.body?.cancel().catch(() => {});
 		throw new ImageError("image-result-invalid");
+	}
 	const reader = response.body.getReader();
 	const chunks: Uint8Array[] = [];
 	let total = 0;
@@ -80,7 +67,11 @@ async function boundedJSON(response: Response, signal: AbortSignal) {
 			if (total > max) throw new ImageError("image-result-invalid");
 			chunks.push(chunk.value);
 		}
-		return JSON.parse(Buffer.concat(chunks).toString("utf8"));
+		try {
+			return JSON.parse(new TextDecoder("utf-8", { fatal: true }).decode(Buffer.concat(chunks)));
+		} catch {
+			throw new ImageError("image-result-invalid");
+		}
 	} finally {
 		signal.removeEventListener("abort", cancel);
 		void reader.cancel().catch(() => {});
@@ -92,19 +83,17 @@ async function boundedJSON(response: Response, signal: AbortSignal) {
 	}
 }
 /** Fixed official endpoint; no arbitrary image download, redirects, fallback key or SDK. */
-export function createGeminiImageProvider(
+export function createMuseImageProvider(
 	env: Readonly<Record<string, string | undefined>>,
 	transport: typeof fetch = fetch
 ): ImageProvider {
-	const provider = env["IMAGE_PROVIDER"];
-	const key = env["GEMINI_API_KEY"]?.trim();
+	const key = env["MODEL_API_KEY"]?.trim();
 	return {
-		provider: "gemini",
-		model: GEMINI_IMAGE_MODEL,
+		provider: "meta",
+		model: MUSE_IMAGE_MODEL,
 		async generate(prompt, signal) {
 			throwIfAborted(signal);
-			if (provider !== "gemini" || !key || key.length > 4096)
-				throw new ImageError("image-not-configured");
+			if (!key || key.length > 4096) throw new ImageError("image-not-configured");
 			if (!prompt.trim() || prompt.length > 12000) throw new ImageError("image-result-invalid");
 			const boundedSignal = AbortSignal.any([signal, AbortSignal.timeout(90_000)]);
 			try {
@@ -113,10 +102,13 @@ export function createGeminiImageProvider(
 						method: "POST",
 						redirect: "error",
 						signal: boundedSignal,
-						headers: { "Content-Type": "application/json", "x-goog-api-key": key },
+						headers: { "Content-Type": "application/json", Authorization: `Bearer ${key}` },
 						body: JSON.stringify({
-							contents: [{ role: "user", parts: [{ text: prompt }] }],
-							generationConfig: { responseModalities: ["TEXT", "IMAGE"], candidateCount: 1 },
+							model: MUSE_IMAGE_MODEL,
+							prompt,
+							n: 1,
+							response_format: "b64_json",
+							output_format: "png",
 						}),
 					}),
 					boundedSignal
@@ -125,28 +117,20 @@ export function createGeminiImageProvider(
 					void response.body?.cancel().catch(() => {});
 					throw new ImageError("image-generation-failed");
 				}
-				const result = resultSchema.parse(await boundedJSON(response, boundedSignal));
-				const candidate = result.candidates?.[0];
-				if (candidate?.finishReason && candidate.finishReason !== "STOP")
+				const result = resultSchema.safeParse(await boundedJSON(response, boundedSignal));
+				if (!result.success) throw new ImageError("image-result-invalid");
+				const data = result.data.data[0]?.b64_json;
+				if (!data || data.length % 4 !== 0 || !/^[A-Za-z0-9+/]*={0,2}$/.test(data))
 					throw new ImageError("image-result-invalid");
-				const images =
-					candidate?.content?.parts.filter((part) => part.inlineData && !part.thought) ?? [];
-				if (images.length !== 1) throw new ImageError("image-result-invalid");
-				const image = images[0]?.inlineData;
-				if (
-					!image ||
-					!/^(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$/.test(image.data)
-				)
-					throw new ImageError("image-result-invalid");
-				const bytes = Buffer.from(image.data, "base64");
-				if (
-					!bytes.length ||
-					bytes.length > MAX_IMAGE_BYTES ||
-					bytes.toString("base64") !== image.data
-				)
+				const bytes = Buffer.from(data, "base64");
+				if (!bytes.length || bytes.length > MAX_IMAGE_BYTES || bytes.toString("base64") !== data)
 					throw new ImageError("image-result-invalid");
 				throwIfAborted(boundedSignal);
-				return inspectRaster(bytes, image.mimeType);
+				try {
+					return inspectRaster(bytes, "image/png");
+				} catch {
+					throw new ImageError("image-result-invalid");
+				}
 			} catch (error) {
 				throwIfAborted(signal);
 				if (error instanceof ImageError) throw error;

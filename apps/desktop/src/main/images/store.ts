@@ -5,7 +5,7 @@ import { join } from "node:path";
 import { z } from "zod";
 import { type ImageAsset, ImageAssetSchema, ImageReadResultSchema } from "../../shared/contracts";
 import { throwIfAborted } from "../agent/cancellation";
-import { ImageError } from "./gemini";
+import { ImageError } from "./muse";
 import { MAX_IMAGE_BYTES, type Raster, inspectRaster } from "./raster";
 
 const idSchema = z.string().regex(/^image-[a-f0-9]{64}$/);

@@ -6,7 +6,7 @@ import {
 	type ImageAsset,
 } from "../../shared/contracts";
 import { abortable, throwIfAborted } from "../agent/cancellation";
-import { ImageError, type ImageProvider } from "./gemini";
+import { ImageError, type ImageProvider } from "./muse";
 import type { PrivateImageStore } from "./store";
 
 /** Foreground cancellation owns generation only; no voice cancellation touches workers. */
