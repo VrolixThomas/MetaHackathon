@@ -1,0 +1,24 @@
+{
+  "pose_samples": 606,
+  "minimum_control_point_margin": 53.8,
+  "checks": [
+    "selected Pull forward only",
+    "one highlight maximum",
+    "held foreground stable and background active",
+    "exact tour seam and reduced still",
+    "actual reusable controller updates paths/clip/lights/order",
+    "explicit advance once and hold",
+    "no automatic advance",
+    "pause/resume and no-background mode",
+    "immediate reduced/paused advance",
+    "system reduction wins",
+    "light/dark switching preserves focus",
+    "hidden suspension",
+    "destroy cancels frames and removes listeners",
+    "reentrant callback cannot duplicate RAF loops",
+    "custom accessible label source binding",
+    "multiple controllers have independent frames and unique SVG IDs",
+    "self-contained offline preview"
+  ],
+  "scope": "Node geometry and actual controller attribute/event adapter. Native browser layout, controls, SVG animation/gradients/clipping/playback and OS app integration are not tested."
+}
