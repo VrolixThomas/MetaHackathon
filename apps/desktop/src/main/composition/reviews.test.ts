@@ -515,7 +515,7 @@ describe("prepared review queue and durable cache", () => {
 		const failed = await coordinator.get(pr().id);
 		assert.equal(failed.prepared, null);
 		assert.equal(JSON.stringify(failed).includes("fake-secret"), false);
-		await assert.rejects(coordinator.getReady(pr().id, signal()), /model key/);
+		await assert.rejects(coordinator.getReady(pr().id, signal()), /connections in Settings/);
 		failing = false;
 		await coordinator.prepareReview(pr().id);
 		await ready(coordinator);

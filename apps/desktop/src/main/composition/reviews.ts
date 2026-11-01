@@ -70,6 +70,7 @@ export interface ReviewCoordinatorPorts {
 		signal: AbortSignal
 	): Promise<ReviewFile>;
 	prepare(context: ConversationPRContext, signal: AbortSignal): Promise<PreparedReview>;
+	beforeRetry?(prId: string, signal: AbortSignal): Promise<void>;
 	validateLocal?(path: string, repository: string, signal: AbortSignal): Promise<string>;
 	pollIntervalMs?: number;
 }
@@ -580,7 +581,7 @@ export class ReviewCoordinator {
 							await this.call(
 								signal,
 								(active) => this.ports.prepare(context, active),
-								"Review preparation failed. Check the model key and prepare again.",
+								"Review preparation failed. Check your connections in Settings, then retry.",
 								120_000
 							),
 							context
@@ -661,6 +662,7 @@ export class ReviewCoordinator {
 			let entry = this.entry(prId);
 			await this.revalidate(entry, signal);
 			if (force || entry.status === "error") {
+				await this.ports.beforeRetry?.(prId, signal);
 				entry.abort.abort();
 				entry = this.queued(entry.pr);
 				this.entries.set(prId, entry);

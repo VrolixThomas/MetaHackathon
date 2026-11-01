@@ -34,7 +34,7 @@ import type { SecretEncryption } from "../runtime/credentials";
 import { TeamAuth } from "./auth";
 import { TeamClient } from "./client";
 import { TeamLogin } from "./login";
-import { TeamPreparationProvider } from "./provider";
+import { TeamPreparationProvider, sharedReviewKey } from "./provider";
 import { EncryptedTeamStore } from "./storage";
 export * from "../../../../../services/team/desktop-schemas";
 
@@ -379,6 +379,24 @@ export class TeamService {
 		}).prepare(context, signal);
 		this.fence(c);
 		return result;
+	}
+	/** Explicit Retry reopens terminal hosted work without resetting an active lease. */
+	async retryPreparation(raw: ConversationPRContext, requestId: string, signal: AbortSignal) {
+		const context = ConversationPRContextSchema.parse(raw);
+		z.uuid().parse(requestId);
+		const c = await this.scope(context.pr.repository);
+		const deployed = TeamOrganizationsSchema.parse(await c.instance.client.organizations());
+		const key = sharedReviewKey(context, {
+			orgId: c.scope.orgId,
+			repositoryId: c.scope.repositoryId,
+			analysisVersion: deployed.analysisVersion,
+		});
+		const state = await c.instance.client.preparationStatus(key);
+		this.fence(c);
+		signal.throwIfAborted();
+		if (state.status === "failed") await c.instance.client.retryPreparation(key, requestId);
+		this.fence(c);
+		signal.throwIfAborted();
 	}
 	async proposals(raw: unknown = {}) {
 		const input = ProposalsInputSchema.parse(raw);

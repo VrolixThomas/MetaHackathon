@@ -304,6 +304,17 @@ export function ConversationApp({
 	}, [browser]);
 	const identity = prepared.detail?.pr;
 	const repository = identity?.repository ?? prepared.inbox?.repository;
+	const currentWorkspace = workspace?.store.getState().workspace;
+	const primaryCanvas = currentWorkspace?.canvases.find(
+		(canvas) => canvas.id === currentWorkspace.primaryId
+	);
+	const localCandidate = fixes?.store.getState().detail?.fix;
+	const displayedCandidate =
+		primaryCanvas?.kind === "center" &&
+		primaryCanvas.section === "fixes" &&
+		primaryCanvas.fixSource?.id === localCandidate?.id
+			? localCandidate
+			: undefined;
 	const closeOverlay = () => setOverlay(null);
 	const last = state.exchanges.at(-1);
 	useEffect(() => {
@@ -682,20 +693,9 @@ export function ConversationApp({
 			{overlay === "configuration" && (
 				<Configuration
 					team={team}
-					repository={prepared.detail?.pr.repository}
-					prNumber={prepared.detail?.pr.number}
-					candidateId={
-						workspace?.store
-							.getState()
-							.workspace?.canvases.some(
-								(canvas) =>
-									canvas.id === workspace.store.getState().workspace?.primaryId &&
-									canvas.kind === "center" &&
-									canvas.section === "fixes"
-							)
-							? fixes?.store.getState().detail?.fix.id
-							: undefined
-					}
+					repository={displayedCandidate?.pr.repository ?? prepared.detail?.pr.repository}
+					prNumber={displayedCandidate?.pr.number ?? prepared.detail?.pr.number}
+					candidateId={displayedCandidate?.id}
 					onReviewApplied={(jobId) => {
 						closeOverlay();
 						requestAnimationFrame(() => {
