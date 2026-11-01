@@ -12,11 +12,11 @@ fs.mkdirSync(path.join(source, "out"), { recursive: true });
 fs.writeFileSync(
 	path.join(source, "package.json"),
 	JSON.stringify({
-		name: "metahackathon-packaging-probe",
+		name: "musefocus-packaging-probe",
 		version: "0.1.0",
 		main: "out/main.cjs",
 		description: "Local hello-world packaging probe",
-		author: "MetaHackathon",
+		author: "MuseFocus",
 	})
 );
 fs.writeFileSync(
@@ -32,7 +32,7 @@ app.on("window-all-closed", () => app.quit());
 );
 fs.writeFileSync(
 	path.join(source, "out", "index.html"),
-	`<!doctype html><html lang="en"><meta charset="utf-8"><title>MetaHackathon packaging probe</title><style>body{background:#11131a;color:#f0f2f7;font:20px system-ui;padding:48px}h1{font-size:32px}strong{color:#ffcc66}</style><h1>Hello, MetaHackathon.</h1><p>The Electron DMG packaging path works.</p><p><strong>${label} PROBE</strong></p><p>No Developer ID signature or notarization. Not a distributable release.</p></html>`
+	`<!doctype html><html lang="en"><meta charset="utf-8"><title>MuseFocus packaging probe</title><style>body{background:#11131a;color:#f0f2f7;font:20px system-ui;padding:48px}h1{font-size:32px}strong{color:#ffcc66}</style><h1>Hello, MuseFocus.</h1><p>The Electron DMG packaging path works.</p><p><strong>${label} PROBE</strong></p><p>No Developer ID signature or notarization. Not a distributable release.</p></html>`
 );
 const cli = path.join(
 	path.dirname(require.resolve("electron-builder/package.json")),
@@ -54,8 +54,8 @@ const result = spawnSync(
 		"never",
 		"-c.directories.app=dist/hello-probe-source",
 		`-c.directories.output=dist/hello-probe${adhoc ? "-adhoc" : ""}`,
-		"-c.productName=MetaHackathon Packaging Probe",
-		`-c.artifactName=MetaHackathon-HelloWorld-\${version}-\${arch}-${label}.\${ext}`,
+		"-c.productName=MuseFocus Packaging Probe",
+		`-c.artifactName=MuseFocus-HelloWorld-\${version}-\${arch}-${label}.\${ext}`,
 		"-c.electronVersion=40.8.5",
 		...(adhoc ? ["-c.mac.identity=-"] : []),
 	],

@@ -34,9 +34,24 @@ test("release configuration matches the installed builder schema and keeps produ
 		fs.readFileSync(path.join(__dirname, "../electron-builder.yml"), "utf8")
 	);
 	await validateConfiguration(config);
+	assert.equal(config.appId, "app.musefocus.desktop");
+	assert.equal(config.productName, "MuseFocus");
+	assert.equal(config.artifactName, "MuseFocus-${version}-${arch}.${ext}");
+	assert.deepEqual(config.publish, {
+		provider: "github",
+		owner: "VrolixThomas",
+		repo: "MetaHackathon",
+		releaseType: "draft",
+	});
 	assert.equal(config.forceCodeSigning, true);
+	assert.equal(config.mac.hardenedRuntime, true);
 	assert.equal(config.mac.notarize, true);
 	assert.equal(config.dmg.sign, true);
+	assert.equal(config.npmRebuild, true);
+	assert.equal(config.asar, true);
+	assert.ok(config.asarUnpack.includes("node_modules/better-sqlite3/**/*"));
+	assert.equal(config.mac.entitlements, "resources/entitlements.mac.plist");
+	assert.equal(config.mac.entitlementsInherit, "resources/entitlements.mac.plist");
 	assert.match(config.mac.extendInfo.NSMicrophoneUsageDescription, /hands-free/);
 	assert.deepEqual(config.extraResources, [
 		{ from: "../../services/voice/dist/metahackathon-voice", to: "voice" },
@@ -46,19 +61,65 @@ test("release configuration matches the installed builder schema and keeps produ
 	for (const part of ["main", "preload", "renderer"])
 		assert.ok(config.files.includes(`out/${part}/**/*`));
 	assert.equal(config.afterPack, "packaging/after-pack.cjs");
+	assert.equal(config.beforePack, "packaging/before-pack.cjs");
+	assert.equal(config.afterSign, "packaging/after-sign.cjs");
 	const unsigned = yaml.load(
 		fs.readFileSync(path.join(__dirname, "../electron-builder.unsigned.yml"), "utf8")
 	);
 	await validateConfiguration(unsigned);
 	assert.equal(unsigned.forceCodeSigning, false);
 	assert.equal(unsigned.publish, null);
-	assert.match(unsigned.artifactName, /UNSIGNED-LOCAL/);
+	assert.equal(unsigned.extends, "./electron-builder.yml");
+	assert.equal(unsigned.artifactName, "MuseFocus-${version}-${arch}-UNSIGNED-LOCAL.${ext}");
 	const probe = yaml.load(
 		fs.readFileSync(path.join(__dirname, "../electron-builder.probe.yml"), "utf8")
 	);
 	await validateConfiguration(probe);
+	assert.equal(probe.extends, "./electron-builder.unsigned.yml");
+	assert.equal(probe.appId, "app.musefocus.desktop.packaging-probe");
+	assert.equal(probe.productName, "MuseFocus Packaging Probe");
 	assert.equal(probe.extraResources, null);
 	assert.equal(probe.afterPack, null);
+});
+
+test("CI finalizes MuseFocus.app before uploading signed release artifacts", () => {
+	const workflow = yaml.load(
+		fs.readFileSync(path.join(__dirname, "../../..", ".github/workflows/macos-release.yml"), "utf8")
+	);
+	const steps = workflow.jobs["signed-arm64"].steps;
+	const finalIndex = steps.findIndex((step) =>
+		step.run?.includes("packaging/finalize-release.cjs")
+	);
+	assert.ok(finalIndex >= 0);
+	assert.equal(
+		steps[finalIndex].run,
+		"node packaging/finalize-release.cjs dist dist/mac-arm64/MuseFocus.app"
+	);
+	const uploadIndex = steps.findIndex(
+		(step) => step.name === "Preserve reviewed release candidate"
+	);
+	assert.ok(uploadIndex > finalIndex);
+	assert.equal(steps[uploadIndex].if, undefined);
+	assert.match(steps[uploadIndex].with.name, /^musefocus-signed-macos-arm64-/);
+	assert.equal(steps[uploadIndex].with["if-no-files-found"], "error");
+	const paths = steps[uploadIndex].with.path.trim().split("\n");
+	assert.ok(paths.includes("apps/desktop/dist/*.dmg"));
+	assert.ok(paths.includes("apps/desktop/dist/*.zip"));
+	assert.ok(paths.includes("apps/desktop/dist/latest-mac.yml"));
+	assert.ok(paths.includes("apps/desktop/dist/signing-evidence.json"));
+	assert.ok(!paths.some((entry) => entry.includes("**") || /unsigned|probe/i.test(entry)));
+	const signedSteps = steps.filter((entry) => entry.env?.CSC_LINK);
+	assert.equal(signedSteps.length, 3);
+	for (const step of signedSteps) {
+		assert.deepEqual(step.env, {
+			CSC_LINK: "${{ secrets.MAC_CSC_LINK || secrets.MAC_CERTIFICATE }}",
+			CSC_KEY_PASSWORD: "${{ secrets.MAC_CSC_KEY_PASSWORD || secrets.MAC_CERTIFICATE_PASSWORD }}",
+			APPLE_ID: "${{ secrets.APPLE_ID }}",
+			APPLE_APP_SPECIFIC_PASSWORD:
+				"${{ secrets.APPLE_APP_SPECIFIC_PASSWORD || secrets.APPLE_ID_PASSWORD }}",
+			APPLE_TEAM_ID: "${{ secrets.APPLE_TEAM_ID }}",
+		});
+	}
 });
 
 test("frozen payload blocks missing/wrong architecture and escaping links without executing binaries", (t) => {
@@ -96,7 +157,7 @@ test("archive verification finds missing SDK dependencies/native unpacking and r
 	// Synthetic archive and inert Mach-O headers: this proves policy only, never signing/launch.
 	const root = temporary(t);
 	const source = path.join(root, "source");
-	const app = path.join(root, "Muse.app");
+	const app = path.join(root, "MuseFocus.app");
 	const resources = path.join(app, "Contents", "Resources");
 	fs.mkdirSync(resources, { recursive: true });
 	voice(path.join(resources, "voice"));

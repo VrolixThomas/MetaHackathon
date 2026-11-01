@@ -1,4 +1,6 @@
 extends: ./electron-builder.unsigned.yml
 # The generated hello-world app is only a packaging mechanics probe.
+appId: app.musefocus.desktop.packaging-probe
+productName: MuseFocus Packaging Probe
 extraResources: null
 afterPack: null

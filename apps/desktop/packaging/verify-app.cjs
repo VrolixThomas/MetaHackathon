@@ -37,21 +37,35 @@ const machMagic = new Set([
 	"bfbafeca",
 ]);
 
-function verifyApp(appPath, expectedTeam) {
+function verifyApp(appPath, expectedTeam, run = command) {
 	if (!expectedTeam) throw new Error("APPLE_TEAM_ID is required for signature verification");
-	const microphoneDescription = command("/usr/bin/plutil", [
-		"-extract",
-		"NSMicrophoneUsageDescription",
-		"raw",
-		"-o",
-		"-",
-		path.join(appPath, "Contents", "Info.plist"),
-	]);
+	if (path.basename(appPath) !== "MuseFocus.app")
+		throw new Error("Release bundle must be MuseFocus.app");
+	const readPlist = (key) =>
+		run("/usr/bin/plutil", [
+			"-extract",
+			key,
+			"raw",
+			"-o",
+			"-",
+			path.join(appPath, "Contents", "Info.plist"),
+		]).trim();
+	for (const [key, expected] of Object.entries({
+		CFBundleIdentifier: "app.musefocus.desktop",
+		CFBundleName: "MuseFocus",
+		CFBundleDisplayName: "MuseFocus",
+		CFBundleExecutable: "MuseFocus",
+	})) {
+		if (readPlist(key) !== expected) throw new Error(`Release ${key} must be ${expected}`);
+	}
+	const microphoneDescription = readPlist("NSMicrophoneUsageDescription");
 	if (!/hands-free/.test(microphoneDescription) || /Hold Space/.test(microphoneDescription)) {
 		throw new Error("App microphone description must explain the Start/End hands-free session");
 	}
-	command("/usr/bin/codesign", ["--verify", "--deep", "--strict", "--verbose=2", appPath]);
-	const appSignature = command("/usr/bin/codesign", ["--display", "--verbose=4", appPath]);
+	run("/usr/bin/codesign", ["--verify", "--deep", "--strict", "--verbose=2", appPath]);
+	const appSignature = run("/usr/bin/codesign", ["--display", "--verbose=4", appPath]);
+	if (!appSignature.split(/\r?\n/).includes("Identifier=app.musefocus.desktop"))
+		throw new Error("Signed app identifier must be app.musefocus.desktop");
 	if (
 		!appSignature.includes("Authority=Developer ID Application:") ||
 		!appSignature.includes(`TeamIdentifier=${expectedTeam}`)
@@ -59,7 +73,7 @@ function verifyApp(appPath, expectedTeam) {
 		throw new Error("App must be signed with this team's Developer ID Application certificate");
 	}
 	if (!/flags=.*\bruntime\b/.test(appSignature)) throw new Error("App is missing Hardened Runtime");
-	const entitlements = command("/usr/bin/codesign", ["--display", "--entitlements", "-", appPath]);
+	const entitlements = run("/usr/bin/codesign", ["--display", "--entitlements", "-", appPath]);
 	if (!/<key>com\.apple\.security\.device\.audio-input<\/key>\s*<true\s*\/>/.test(entitlements)) {
 		throw new Error("App is missing its microphone audio-input entitlement");
 	}
@@ -73,10 +87,10 @@ function verifyApp(appPath, expectedTeam) {
 			fs.closeSync(fd);
 		}
 		if (!machMagic.has(header.toString("hex"))) continue;
-		const kind = command("/usr/bin/file", ["--brief", candidate]);
+		const kind = run("/usr/bin/file", ["--brief", candidate]);
 		if (!/Mach-O/.test(kind)) continue;
-		command("/usr/bin/codesign", ["--verify", "--strict", "--verbose=2", candidate]);
-		const signature = command("/usr/bin/codesign", ["--display", "--verbose=4", candidate]);
+		run("/usr/bin/codesign", ["--verify", "--strict", "--verbose=2", candidate]);
+		const signature = run("/usr/bin/codesign", ["--display", "--verbose=4", candidate]);
 		if (
 			!signature.includes(`TeamIdentifier=${expectedTeam}`) ||
 			!signature.includes("Authority=Developer ID Application:")
@@ -93,7 +107,14 @@ function verifyApp(appPath, expectedTeam) {
 		binaries.push(path.relative(appPath, candidate));
 	}
 	if (binaries.length === 0) throw new Error("No Mach-O binaries found in app");
-	return { appPath, team: expectedTeam, binaryCount: binaries.length, binaries };
+	return {
+		appPath,
+		appId: "app.musefocus.desktop",
+		productName: "MuseFocus",
+		team: expectedTeam,
+		binaryCount: binaries.length,
+		binaries,
+	};
 }
 
 module.exports = { command, verifyApp };

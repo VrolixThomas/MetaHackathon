@@ -57,7 +57,7 @@ function main() {
 		"never",
 		`-c.directories.output=${output}`,
 	]);
-	const app = path.join(output, "mac-arm64", "MetaHackathon.app");
+	const app = path.join(output, "mac-arm64", "MuseFocus.app");
 	const payload = verifyPackagedPayload(app, ["arm64"]);
 	if (mode === "signed")
 		run(process.execPath, [path.join(__dirname, "finalize-release.cjs"), output, app]);

@@ -4,7 +4,7 @@ extends: ./electron-builder.yml
 forceCodeSigning: false
 afterSign: null
 publish: null
-artifactName: MetaHackathon-${version}-${arch}-UNSIGNED-LOCAL.${ext}
+artifactName: MuseFocus-${version}-${arch}-UNSIGNED-LOCAL.${ext}
 directories:
   output: dist/unsigned-local
 mac:

@@ -1,5 +1,6 @@
-appId: com.metahackathon.app
-productName: MetaHackathon
+appId: app.musefocus.desktop
+productName: MuseFocus
+artifactName: MuseFocus-${version}-${arch}.${ext}
 
 directories:
   buildResources: resources

@@ -2,12 +2,16 @@ const fs = require("node:fs");
 const path = require("node:path");
 const { requireSigningCredentials } = require("./credentials.cjs");
 const { command, verifyApp } = require("./verify-app.cjs");
-const { refreshUpdateInfo, validateUpdateInfo } = require("./refresh-update-info.cjs");
+const {
+	artifactName,
+	refreshUpdateInfo,
+	validateUpdateInfo,
+} = require("./refresh-update-info.cjs");
 const { verifyPackagedPayload } = require("./payload.cjs");
 
 requireSigningCredentials();
 const outputDir = path.resolve(process.argv[2] || "dist");
-const appPath = path.resolve(process.argv[3] || "dist/mac-arm64/MetaHackathon.app");
+const appPath = path.resolve(process.argv[3] || "dist/mac-arm64/MuseFocus.app");
 // A stray ZIP on disk cannot stand in for a usable updater manifest.
 validateUpdateInfo(outputDir);
 const app = verifyApp(appPath, process.env.APPLE_TEAM_ID);
@@ -16,6 +20,8 @@ command("/usr/bin/xcrun", ["stapler", "validate", appPath]);
 command("/usr/sbin/spctl", ["--assess", "--type", "execute", "--verbose=4", appPath]);
 const dmgs = fs.readdirSync(outputDir).filter((name) => name.endsWith(".dmg"));
 const zips = fs.readdirSync(outputDir).filter((name) => name.endsWith(".zip"));
+// Refuse stale product archives and explicitly local probes in a signed release directory.
+for (const name of dmgs.concat(zips)) artifactName(name);
 if (
 	dmgs.length === 0 ||
 	zips.length === 0 ||

@@ -1,4 +1,4 @@
-name: Signed macOS release candidate
+name: MuseFocus signed macOS release candidate
 
 on:
   workflow_dispatch:
@@ -29,10 +29,10 @@ jobs:
       - name: Require signing and notarization credentials
         run: node apps/desktop/packaging/credentials.cjs
         env:
-          CSC_LINK: ${{ secrets.MAC_CSC_LINK }}
-          CSC_KEY_PASSWORD: ${{ secrets.MAC_CSC_KEY_PASSWORD }}
+          CSC_LINK: ${{ secrets.MAC_CSC_LINK || secrets.MAC_CERTIFICATE }}
+          CSC_KEY_PASSWORD: ${{ secrets.MAC_CSC_KEY_PASSWORD || secrets.MAC_CERTIFICATE_PASSWORD }}
           APPLE_ID: ${{ secrets.APPLE_ID }}
-          APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
+          APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD || secrets.APPLE_ID_PASSWORD }}
           APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
       - name: Install locked dependencies and rebuild native modules
         run: bun install --frozen-lockfile
@@ -55,24 +55,24 @@ jobs:
         working-directory: apps/desktop
         run: bun x --no-install electron-builder --mac dmg zip --arm64 --publish never
         env:
-          CSC_LINK: ${{ secrets.MAC_CSC_LINK }}
-          CSC_KEY_PASSWORD: ${{ secrets.MAC_CSC_KEY_PASSWORD }}
+          CSC_LINK: ${{ secrets.MAC_CSC_LINK || secrets.MAC_CERTIFICATE }}
+          CSC_KEY_PASSWORD: ${{ secrets.MAC_CSC_KEY_PASSWORD || secrets.MAC_CERTIFICATE_PASSWORD }}
           APPLE_ID: ${{ secrets.APPLE_ID }}
-          APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
+          APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD || secrets.APPLE_ID_PASSWORD }}
           APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
       - name: Notarize final DMG and verify all release evidence
         working-directory: apps/desktop
-        run: node packaging/finalize-release.cjs dist dist/mac-arm64/MetaHackathon.app
+        run: node packaging/finalize-release.cjs dist dist/mac-arm64/MuseFocus.app
         env:
-          CSC_LINK: ${{ secrets.MAC_CSC_LINK }}
-          CSC_KEY_PASSWORD: ${{ secrets.MAC_CSC_KEY_PASSWORD }}
+          CSC_LINK: ${{ secrets.MAC_CSC_LINK || secrets.MAC_CERTIFICATE }}
+          CSC_KEY_PASSWORD: ${{ secrets.MAC_CSC_KEY_PASSWORD || secrets.MAC_CERTIFICATE_PASSWORD }}
           APPLE_ID: ${{ secrets.APPLE_ID }}
-          APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
+          APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD || secrets.APPLE_ID_PASSWORD }}
           APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
       - name: Preserve reviewed release candidate
         uses: actions/upload-artifact@v4
         with:
-          name: signed-macos-arm64-${{ github.sha }}
+          name: musefocus-signed-macos-arm64-${{ github.sha }}
           if-no-files-found: error
           path: |
             apps/desktop/dist/*.dmg
@@ -89,7 +89,7 @@ jobs:
         if: failure()
         uses: actions/upload-artifact@v4
         with:
-          name: notarization-diagnostics-${{ github.sha }}
+          name: musefocus-notarization-diagnostics-${{ github.sha }}
           if-no-files-found: warn
           path: apps/desktop/dist/notarization-*.json
           retention-days: 14

@@ -25,6 +25,11 @@ function artifactName(url) {
 	const name = decodeURIComponent(url);
 	if (path.basename(name) !== name || name === "." || name === "..")
 		throw new Error("Update metadata must reference local artifact filenames");
+	if (
+		!/^MuseFocus-[0-9][0-9A-Za-z.+-]*-(?:arm64|x64|universal)\.(?:dmg|zip)$/.test(name) ||
+		/(?:UNSIGNED|ADHOC)-LOCAL/i.test(name)
+	)
+		throw new Error("Update metadata must reference MuseFocus release DMG/ZIP filenames");
 	return name;
 }
 
@@ -77,4 +82,4 @@ function refreshUpdateInfo(outputDir, changedFiles) {
 	return manifest.files.map(({ url, sha512, size }) => ({ url, sha512, size }));
 }
 
-module.exports = { hashFile, refreshUpdateInfo, validateUpdateInfo };
+module.exports = { artifactName, hashFile, refreshUpdateInfo, validateUpdateInfo };
