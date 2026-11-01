@@ -40,7 +40,7 @@ async function launch() {
 	const envPath = join(owned, ".env");
 	fs.writeFileSync(
 		envPath,
-		`GITHUB_TOKEN=${SECRET.github}\nSUPABASE_URL=${AUTH_ORIGIN}\nSUPABASE_PUBLISHABLE_KEY=${SECRET.publishable}\nMUSE_TEAM_SERVICE_URL=${TEAM_ORIGIN}\n`,
+		`GITHUB_TOKEN=${SECRET.github}\nSUPABASE_URL=${AUTH_ORIGIN}\nSUPABASE_PUBLISHABLE_KEY=${SECRET.publishable}\nMUSE_TEAM_SERVICE_URL=${TEAM_ORIGIN}\nCODING_PROVIDER=muse-code\nMUSE_CODE_PATH=/controlled/missing-muse-cli\n`,
 		{ mode: 0o600 }
 	);
 	process.env.METAHACKATHON_ENV_FILE = envPath;

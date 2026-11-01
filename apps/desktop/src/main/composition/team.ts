@@ -1,5 +1,11 @@
+import { randomUUID } from "node:crypto";
 import { sha256 } from "../../../../../services/team/protocol";
-import type { ConversationPRContext, PRFixDetail, PullRequest } from "../../shared/contracts";
+import type {
+	CodingProviderSettings,
+	ConversationPRContext,
+	PRFixDetail,
+	PullRequest,
+} from "../../shared/contracts";
 import type { SecretEncryption } from "../runtime/credentials";
 import { applyAcceptedTeamProposal } from "../runtime/team-proposal-apply";
 import type { WorkJobRuntime } from "../runtime/work-job-runtime";
@@ -13,6 +19,7 @@ type Ports = {
 	getSettings(): Promise<TeamSettings>;
 	getGitHubToken(): Promise<string | undefined>;
 	getAccountRevision(): number;
+	codingSettings(): Promise<CodingProviderSettings>;
 	openExternal(url: string): Promise<unknown>;
 	hub(): CommandCenterService;
 	runtime(): WorkJobRuntime;
@@ -41,6 +48,7 @@ export function createTeamComposition(ports: Ports) {
 				signal
 			),
 		applyProposal: async (input) => {
+			const codingProvider = await ports.codingSettings();
 			const controller = new AbortController();
 			applications.add(controller);
 			const signal = AbortSignal.any([
@@ -113,12 +121,33 @@ export function createTeamComposition(ports: Ports) {
 					Date.parse(feedback.updatedAt) !== Date.parse(input.bundle.feedback.revision)
 				)
 					throw new Error("The original feedback or PR head changed after local application.");
-				const job = { ...applied.review.job, feedback, pullRequest: current, reviewedAt: null };
+				const job = {
+					...applied.review.job,
+					codingProvider,
+					feedback,
+					pullRequest: current,
+					reviewedAt: null,
+				};
 				await ports.hub().update((state) => {
 					const existing = state.jobs.find((item) => item.id === job.id);
 					if (existing && existing.headSha !== job.headSha)
 						throw new Error("The local application result changed.");
-					if (!existing) state.jobs.push(job);
+					if (!existing) {
+						state.jobs.push(job);
+						state.notices.push({
+							id: randomUUID(),
+							kind: "work-ready",
+							title: `Ready to review: ${current.title}`.slice(0, 300),
+							detail: `The accepted shared fix was applied locally with ${applied.checks.length} recorded checks. Review its actual diff before publishing.`,
+							jobId: job.id,
+							prId: current.id,
+							headSha: applied.appliedSha,
+							decisionId: null,
+							createdAt: new Date().toISOString(),
+							announcedAt: null,
+							seenAt: null,
+						});
+					}
 				});
 				return {
 					status: "applied" as const,

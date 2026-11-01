@@ -1005,6 +1005,7 @@ export function initializeOAuth(
 		getSettings: () => getConfiguration().teamSettings(),
 		getGitHubToken,
 		getAccountRevision: () => prWorkEpoch,
+		codingSettings: () => getConfiguration().codingProviderSettings(),
 		openExternal,
 		hub: getHub,
 		runtime: () => {

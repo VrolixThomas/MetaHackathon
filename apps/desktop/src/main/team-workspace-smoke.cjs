@@ -252,6 +252,9 @@ async function native() {
 					assert.equal(frame.acceptDisabled, true);
 				}
 				assert.equal(provider.report.decisions.length, 0);
+				const proposalScreenshot = join(__dirname, "../../out/team-proposal-controlled.png");
+				fs.writeFileSync(proposalScreenshot, (await context.win.webContents.capturePage()).toPNG());
+				report.proposalScreenshot = proposalScreenshot;
 				const invalid = await raw("mutation", "team.decideProposal", {
 					proposalId: PROPOSAL,
 					repository: source.repository,
@@ -326,6 +329,18 @@ async function native() {
 				assert.ok(result.jobId);
 				const applied = await rpc("query", "hub.reviewWork", { jobId: result.jobId });
 				assert.equal(applied.job.headSha, result.appliedHeadSha);
+				assert.equal(applied.job.codingProvider.provider, "muse-code");
+				assert.equal(applied.job.codingProvider.musePath, "/controlled/missing-muse-cli");
+				const queue = await rpc("query", "hub.snapshot", {});
+				assert.ok(
+					queue.notices.some(
+						(notice) =>
+							notice.kind === "work-ready" &&
+							notice.jobId === result.jobId &&
+							notice.headSha === result.appliedHeadSha &&
+							notice.announcedAt === null
+					)
+				);
 				assert.ok(applied.job.checks.length > 0);
 				assert.ok(
 					applied.job.checks.every(
@@ -335,6 +350,22 @@ async function native() {
 				assert.equal(applied.files[0].head.content, provider.proposal.bundle.files[0].after.text);
 				assert.equal(source.git(fixture.localPath, "status", "--porcelain=v1"), fixture.status);
 				assert.equal(fs.readFileSync(join(fixture.localPath, "a-logic.ts"), "utf8"), fixture.dirty);
+				await button("[data-team-card]", "Review applied fix");
+				await wait("applied job visible in Completed work", () =>
+					js(
+						`!!document.querySelector('[data-center-section="completed"][data-selected-id="${result.jobId}"]')`
+					)
+				);
+				await button('[data-center-section="completed"]', "Inspect local diff");
+				await wait("actual applied source diff rendered", () =>
+					js(
+						`document.querySelector('.hub-work-review')?.textContent.includes('Math.max(0, quote.discount)')`
+					)
+				);
+				const appliedScreenshot = join(__dirname, "../../out/team-application-controlled.png");
+				fs.writeFileSync(appliedScreenshot, (await context.win.webContents.capturePage()).toPNG());
+				report.applicationScreenshot = appliedScreenshot;
+				await openSettings();
 				return {
 					appliedHeadSha: result.appliedHeadSha,
 					checks: applied.job.checks.length,
