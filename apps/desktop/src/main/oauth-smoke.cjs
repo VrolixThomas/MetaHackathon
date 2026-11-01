@@ -646,7 +646,7 @@ async function native() {
 			assert.ok(response.headers.get("content-security-policy").includes("default-src 'none'"));
 			const html = await response.text();
 			publicSafe(html, privateMarkers);
-			assert.match(html, /Return to Muse/);
+			assert.match(html, /Return to MuseFocus to continue\./);
 			if (staticHtml) assert.equal(html, staticHtml, "Callback HTML must be static");
 			staticHtml = html;
 		};

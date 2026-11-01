@@ -230,10 +230,10 @@ const desktop = path.resolve(root, "../desktop");
 assert(
 	fs
 		.readFileSync(path.join(kit, "icons/macos/PullForward.icns"))
-		.equals(fs.readFileSync(path.join(desktop, "resources/icon.icns")))
+		.equals(fs.readFileSync(path.join(desktop, "resources/branding/icon.icns")))
 );
 assert(
-	/^mac:\n {2}icon: resources\/icon.icns$/m.test(
+	/^mac:\n {2}icon: resources\/branding\/icon.icns$/m.test(
 		fs.readFileSync(path.join(desktop, "electron-builder.yml"), "utf8")
 	)
 );

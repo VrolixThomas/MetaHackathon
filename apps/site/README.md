@@ -20,7 +20,7 @@ The homepage shows signed download pending and offers no public download or acco
 never promotes those flags automatically. Publication, DNS, signed/notarized distribution
 and real release destinations remain integration-owned pending work.
 
-The macOS resource `../desktop/resources/icon.icns` is an exact copy of the selected
+The macOS resource `../desktop/resources/branding/icon.icns` is an exact copy of the selected
 `design/muse-logo/v3/pull-forward/icons/macos/PullForward.icns`, referenced by `mac.icon`
 in the desktop builder configuration. Packaging acceptance remains separate.
 

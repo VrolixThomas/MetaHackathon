@@ -293,6 +293,7 @@ configured as a callback, update feed or download host.
 ```sh
 bun run type-check
 bun run lint
+bun run test:unit
 bun run test:contracts
 bun run test:integration
 bun run test:hands-free

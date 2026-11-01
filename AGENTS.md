@@ -50,6 +50,7 @@ artifacts remain legacy modules until needed; fixtures are test-only. Coordinate
 bun install --frozen-lockfile
 bun run type-check
 bun run lint
+bun run test:unit
 bun run test:contracts
 bun run test:integration
 bun run test:pr-work

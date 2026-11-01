@@ -23,4 +23,5 @@ jobs:
       - run: bun run test:contracts
       - run: bun run test:unit
       - run: node --test apps/desktop/packaging/*.test.cjs
+      - run: node apps/site/verify.cjs
       - run: bun run build
