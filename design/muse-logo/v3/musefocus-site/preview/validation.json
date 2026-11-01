@@ -1,0 +1,13 @@
+{
+  "staticValidation": "passed",
+  "uniqueIds": 45,
+  "anchorAndControlTargets": 31,
+  "localReferences": 19,
+  "remoteDependencies": 0,
+  "browserChecked": false,
+  "visuals": "Pillow layout proofs; not browser screenshots",
+  "interactionCheck": "node source/verify.cjs \u2014 actual mount with a controlled DOM adapter",
+  "publication": "not published",
+  "standaloneBytes": 567947,
+  "standaloneSha256": "fc5a2cecbb76cd8a6e76ab349419ffcb34e94ba37368d693337c09223feb9d23"
+}

@@ -1,0 +1,124 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#050507">
+  <meta name="description" content="MuseFocus moves work forward in the background, then brings one thing into focus to review, discuss, and decide.">
+  <meta property="og:title" content="MuseFocus — Let work flow. Keep your focus.">
+  <meta property="og:description" content="Background work. Foreground clarity. Your attention, well spent.">
+  <meta property="og:type" content="website">
+  <meta property="og:image" content="assets/musefocus-social.png">
+  <title>MuseFocus — Let work flow. Keep your focus.</title>
+  <link rel="icon" type="image/svg+xml" href="assets/favicon.svg">
+  <link rel="icon" href="assets/favicon.ico" sizes="any">
+  <link rel="apple-touch-icon" href="assets/apple-touch-icon.png">
+  <link rel="stylesheet" href="assets/pull-forward.css">
+  <link rel="stylesheet" href="styles.css">
+  <script src="assets/pull-forward.js" defer></script>
+  <script src="assets/controller.js" defer></script>
+  <script src="site.js" defer></script>
+</head>
+<body id="top">
+  <a class="skip-link" href="#main">Skip to content</a>
+  <svg class="icon-library" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+    <symbol id="i-arrow" viewBox="0 0 24 24"><path d="M4 12h15m-6-6 6 6-6 6"/></symbol>
+    <symbol id="i-layers" viewBox="0 0 24 24"><path d="m12 3 9 5-9 5-9-5 9-5Zm-9 9 9 5 9-5M3 16l9 5 9-5"/></symbol>
+    <symbol id="i-code" viewBox="0 0 24 24"><path d="m8 7-5 5 5 5m8-10 5 5-5 5m-3-13-2 20"/></symbol>
+    <symbol id="i-chat" viewBox="0 0 24 24"><path d="M20 15a3 3 0 0 1-3 3H9l-5 3V6a3 3 0 0 1 3-3h10a3 3 0 0 1 3 3v9Z"/><path d="M8 8h8M8 12h5"/></symbol>
+    <symbol id="i-spark" viewBox="0 0 24 24"><path d="m12 3 2.5 6.5L21 12l-6.5 2.5L12 21l-2.5-6.5L3 12l6.5-2.5L12 3Z"/></symbol>
+    <symbol id="i-check" viewBox="0 0 24 24"><path d="m5 12 4 4L19 6"/></symbol>
+    <symbol id="i-revise" viewBox="0 0 24 24"><path d="M4 10h10a6 6 0 0 1 0 12M4 10l5-5M4 10l5 5"/></symbol>
+  </svg>
+
+  <header class="nav" id="nav">
+    <div class="nav-inner">
+      <a class="brand" href="#top" aria-label="MuseFocus home"><img src="assets/mark-small.svg" width="30" height="30" alt=""><span>Muse<span class="brand-focus">Focus</span></span></a>
+      <nav aria-label="Main navigation"><a href="#workflow">The workflow</a><a href="#questions">Questions</a><a class="nav-cta" href="#focus-demo">Find your focus <span aria-hidden="true">↗</span></a></nav>
+    </div>
+  </header>
+
+  <main id="main">
+    <section class="hero" aria-labelledby="hero-heading">
+      <div class="hero-light" aria-hidden="true"></div>
+      <div id="hero-mark" class="hero-mark" aria-hidden="true"><img src="assets/pull-forward.png" width="120" height="120" alt=""></div>
+      <p class="eyebrow">Your attention, well spent</p>
+      <h1 id="hero-heading">Let work flow.<br>Keep your <span class="ice-text">focus.</span></h1>
+      <p class="hero-copy">MuseFocus moves work forward in the background, then brings one thing into focus to review, discuss, and decide.</p>
+      <div class="hero-actions"><a class="button primary" href="#focus-demo">See focus in action <svg class="icon" aria-hidden="true"><use href="#i-arrow"/></svg></a><a class="text-link" href="#workflow">Meet your new workflow <span aria-hidden="true">↘</span></a></div>
+      <p class="availability"><span class="status-dot" aria-hidden="true"></span> Built for macOS <span aria-hidden="true">·</span> In development</p>
+    </section>
+
+    <section id="focus-demo" class="demo-section" aria-labelledby="demo-heading">
+      <div class="demo-intro"><h2 id="demo-heading">A little less switching. A lot more focus.</h2><button class="motion-toggle" id="motion-toggle" type="button" aria-pressed="false">Pause ambient motion</button></div>
+      <div class="app-window">
+        <div class="window-bar"><div class="traffic-lights" aria-hidden="true"><i></i><i></i><i></i></div><span class="window-title">MuseFocus</span><span class="example-label">Example workspace</span></div>
+        <div class="workspace">
+          <aside class="work-sidebar" aria-label="Example work items">
+            <div class="sidebar-brand"><img src="assets/mark-small.svg" width="26" height="26" alt=""><span>Your workspace</span></div>
+            <div class="sidebar-label">Work in motion <span>03</span></div>
+            <div class="work-items" id="work-items" role="group" aria-label="Bring an example item into focus">
+              <button class="work-item is-selected" type="button" data-item="0" aria-pressed="true"><span class="work-item-icon"><svg class="icon" aria-hidden="true"><use href="#i-code"/></svg></span><span><strong>Session recovery</strong><small><i class="tiny-dot ready"></i> Ready to review</small></span><span class="selected-pip" aria-hidden="true"></span></button>
+              <button class="work-item" type="button" data-item="1" aria-pressed="false"><span class="work-item-icon"><svg class="icon" aria-hidden="true"><use href="#i-layers"/></svg></span><span><strong>Empty states</strong><small><i class="tiny-dot working"></i> Work in progress</small></span><span class="selected-pip" aria-hidden="true"></span></button>
+              <button class="work-item" type="button" data-item="2" aria-pressed="false"><span class="work-item-icon"><svg class="icon" aria-hidden="true"><use href="#i-chat"/></svg></span><span><strong>Search filters</strong><small><i class="tiny-dot ready"></i> A decision for you</small></span><span class="selected-pip" aria-hidden="true"></span></button>
+            </div>
+            <div class="sidebar-bottom"><div class="background-signal" aria-hidden="true"><i></i><i></i><i></i><i></i><i></i></div><p>Work keeps moving.<br><span>You set the pace.</span></p></div>
+          </aside>
+          <div class="focus-workspace" id="focus-workspace">
+            <div class="workspace-bar"><span><span class="focus-pip" aria-hidden="true"></span> In focus <span class="slash">/</span> <span id="scene-kind">Review</span></span><span class="mono" id="scene-count">01 / 03</span></div>
+            <div class="focus-body">
+              <p class="scene-eyebrow" id="scene-eyebrow">Your review is the next step</p>
+              <h3 id="scene-title">Pick up where you left off.</h3>
+              <p class="scene-description" id="scene-description">A proposal to remember where a review stopped, so you can return to the same place. Start with the change, or talk through the tradeoff.</p>
+              <div class="demo-tabs" role="tablist" aria-label="Explore this example">
+                <button id="tab-change" role="tab" type="button" aria-selected="true" aria-controls="panel-change" tabindex="0" data-tab="change"><svg class="icon" aria-hidden="true"><use href="#i-code"/></svg>The change</button>
+                <button id="tab-discuss" role="tab" type="button" aria-selected="false" aria-controls="panel-discuss" tabindex="-1" data-tab="discuss"><svg class="icon" aria-hidden="true"><use href="#i-chat"/></svg>Discuss it</button>
+              </div>
+              <div class="change-panel" id="panel-change" role="tabpanel" aria-labelledby="tab-change" tabindex="0">
+                <div class="file-bar"><span id="scene-file">session-state.ts</span><span class="file-label">Illustrative proposal</span></div>
+                <pre class="code-view" id="scene-code" aria-label="Illustrative code change"><code class="code-line"><span class="line-number">12</span><span> type ReviewSession = {</span></code><code class="code-line"><span class="line-number">13</span><span>   repository: string;</span></code><code class="code-line removed"><span class="line-number">14</span><span>-  currentFile?: string;</span></code><code class="code-line added"><span class="line-number">14</span><span>+  checkpoint?: {</span></code><code class="code-line added"><span class="line-number">15</span><span>+    file: string;</span></code><code class="code-line added"><span class="line-number">16</span><span>+    position: number;</span></code><code class="code-line added"><span class="line-number">17</span><span>+  };</span></code><code class="code-line"><span class="line-number">18</span><span> };</span></code></pre>
+                <div class="change-note"><svg class="icon" aria-hidden="true"><use href="#i-spark"/></svg><span id="scene-note">The question for you: what should happen if the file has changed since the checkpoint?</span></div>
+              </div>
+              <div class="discussion-panel" id="panel-discuss" role="tabpanel" aria-labelledby="tab-discuss" tabindex="0" hidden>
+                <span class="discussion-label">A conversation could start here</span>
+                <p class="question" id="scene-question">“What happens if the file changed while I was away?”</p>
+                <div class="answer"><img src="assets/mark-small.svg" width="26" height="26" alt="MuseFocus"><p id="scene-answer">A useful next step would be to compare the checkpoint with the current file, then choose a safe place to resume. Would you want the app to ask first?</p></div>
+                <p class="discussion-footnote">Scripted discussion example</p>
+              </div>
+              <div class="revision-note" id="revision-note" role="status" hidden></div>
+              <div class="focus-actions"><button class="revision-button" id="revise-button" type="button"><svg class="icon" aria-hidden="true"><use href="#i-revise"/></svg><span id="revise-label">Explore a revision</span></button><button class="button next-button" id="next-button" type="button">Next into focus <svg class="icon" aria-hidden="true"><use href="#i-arrow"/></svg></button></div>
+            </div>
+            <div class="workspace-bottom"><span class="focus-pip" aria-hidden="true"></span>Your attention stays here. Background work continues.</div>
+          </div>
+        </div>
+      </div>
+      <p class="demo-caption">Interactive product illustration. Choose an item, explore a discussion, or bring the next item into focus.</p>
+      <p class="sr-only" id="demo-announcement" role="status" aria-live="polite" aria-atomic="true"></p>
+      <noscript><p class="noscript-note">Enable JavaScript to switch example items and discussion views.</p></noscript>
+    </section>
+
+    <section class="thesis content-width" id="workflow" aria-labelledby="thesis-heading">
+      <p class="eyebrow">A calmer way to move forward</p>
+      <h2 id="thesis-heading">Output is abundant.<br><span>Attention is finite.</span></h2>
+      <p>AI can move faster than you can review. MuseFocus gives that work a rhythm: progress in the background, clarity in the foreground, and room for your judgment.</p>
+    </section>
+
+    <section class="feature content-width" aria-labelledby="background-heading">
+      <div class="feature-copy"><span class="step-label">01 / Keep things moving</span><h2 id="background-heading">Let the background<br>stay productive.</h2><p>Delegate independent coding work while you stay with the task in front of you. Keep a view of progress, then return when there’s something to review.</p><a class="text-link" href="#focus-demo">Explore the workspace <span aria-hidden="true">↗</span></a></div>
+      <div class="background-visual feature-visual" aria-label="Illustration of background work"><div class="mini-topbar"><svg class="icon" aria-hidden="true"><use href="#i-layers"/></svg><span>In motion</span><span class="example-tag">Example</span></div><div class="background-row"><span class="task-glyph blue"><svg class="icon" aria-hidden="true"><use href="#i-code"/></svg></span><div><strong>Session recovery</strong><small>Ready for your review</small></div><span class="task-state">Ready</span></div><div class="background-row"><span class="task-glyph"><svg class="icon" aria-hidden="true"><use href="#i-layers"/></svg></span><div><strong>Empty states</strong><small>Shaping a first pass</small><span class="progress-track"><span></span></span></div><span class="task-state muted">Working</span></div><div class="background-row"><span class="task-glyph"><svg class="icon" aria-hidden="true"><use href="#i-chat"/></svg></span><div><strong>Search filters</strong><small>A tradeoff to discuss</small></div><span class="task-state muted">Your call</span></div><div class="mini-bottom"><span class="tiny-dot ready" aria-hidden="true"></span> A clear place for everything in motion.</div></div>
+    </section>
+
+    <section class="feature feature-reverse content-width" aria-labelledby="conversation-heading">
+      <div class="conversation-visual feature-visual"><div class="mini-topbar"><svg class="icon" aria-hidden="true"><use href="#i-chat"/></svg><span>A moment of clarity</span><span class="example-tag">Example</span></div><p class="visual-question">“Walk me through<br>what changed.”</p><div class="conversation-rule"></div><div class="visual-response"><img src="assets/mark-small.svg" width="32" height="32" alt=""><div><strong>Start with the decision.</strong><p>See the change. Understand the reasoning. Ask the next question.</p></div></div><div class="conversation-wave" aria-hidden="true"><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i></div></div>
+      <div class="feature-copy"><span class="step-label">02 / Bring it into focus</span><h2 id="conversation-heading">A conversation.<br>A clearer decision.</h2><p>Review the change with its context close by. Talk through the reasoning, ask for a revision, or decide what comes next. Voice is there when you want it. Typing is, too.</p><a class="text-link" href="#focus-demo" data-open-discussion>Try a discussion example <span aria-hidden="true">↗</span></a></div>
+    </section>
+
+    <section class="context-section content-width" aria-labelledby="context-heading"><div><span class="step-label">03 / Stay connected to the work</span><h2 id="context-heading">Context comes with it.</h2><p>Bring GitHub reviews, assigned Linear work and selected Slack conversations into one place. Spend less attention reconstructing what needs you.</p></div><div class="context-sources" aria-label="Supported work sources"><span><svg viewBox="0 0 24 24" aria-hidden="true" class="source-icon github"><path fill="currentColor" d="M12 2a10 10 0 0 0-3.16 19.49c.5.09.68-.22.68-.48v-1.86c-2.78.6-3.37-1.18-3.37-1.18-.45-1.16-1.11-1.47-1.11-1.47-.91-.62.07-.61.07-.61 1 .07 1.53 1.03 1.53 1.03.89 1.53 2.34 1.09 2.91.84.09-.65.35-1.09.63-1.34-2.22-.25-4.56-1.11-4.56-4.94 0-1.09.39-1.98 1.03-2.68-.1-.25-.45-1.27.1-2.65 0 0 .84-.27 2.75 1.03a9.6 9.6 0 0 1 5 0c1.91-1.3 2.75-1.03 2.75-1.03.55 1.38.2 2.4.1 2.65.64.7 1.03 1.59 1.03 2.68 0 3.84-2.34 4.69-4.57 4.94.36.31.68.92.68 1.86v2.73c0 .26.18.58.69.48A10 10 0 0 0 12 2Z"/></svg>GitHub</span><span><svg viewBox="0 0 24 24" aria-hidden="true" class="source-icon"><defs><clipPath id="linear-clip"><circle cx="12" cy="12" r="9"/></clipPath></defs><g clip-path="url(#linear-clip)" stroke="currentColor" stroke-width="1.8"><path d="m-1 10 15 15m-14-19 19 19M2 2l23 23M6 0l19 19m-15-20 15 15"/></g></svg>Linear</span><span><svg class="source-icon" viewBox="0 0 24 24" aria-hidden="true" fill="currentColor"><rect x="10" y="2" width="4" height="10" rx="2"/><rect x="2" y="10" width="10" height="4" rx="2"/><rect x="12" y="10" width="10" height="4" rx="2"/><rect x="10" y="12" width="4" height="10" rx="2"/><circle cx="6" cy="6" r="2"/><circle cx="18" cy="6" r="2"/><circle cx="6" cy="18" r="2"/><circle cx="18" cy="18" r="2"/></svg>Slack</span></div></section>
+
+    <section class="questions content-width" id="questions" aria-labelledby="questions-heading"><div><p class="eyebrow">A few things, in focus</p><h2 id="questions-heading">Good questions.</h2></div><div class="faq-list"><details><summary>What is MuseFocus?<span aria-hidden="true">+</span></summary><p>MuseFocus is a voice-first workspace for guiding work and reviewing what comes back. It keeps independent coding jobs moving in the background and gives you a focused place to review changes, ask questions and make decisions.</p></details><details><summary>Does work move on without my review?<span aria-hidden="true">+</span></summary><p>Background progress and your approval are separate steps. Ready work comes back for review. Publishing or sending something requires the relevant confirmation; readiness is not an automatic merge.</p></details><details><summary>Where does background work run?<span aria-hidden="true">+</span></summary><p>The current app runs background jobs on your Mac in separate workspaces. Your Mac needs to stay awake and connected. Hosted, always-on execution is not part of this version.</p></details><details><summary>Can I download it yet?<span aria-hidden="true">+</span></summary><p>MuseFocus is in development. This page offers an interactive illustration of the workflow. A public download will be linked here when the release is ready.</p></details></div></section>
+
+    <section class="closing" aria-labelledby="closing-heading"><div class="closing-light" aria-hidden="true"></div><img class="closing-mark" src="assets/pull-forward.png" width="112" height="112" alt=""><h2 id="closing-heading">Your attention<br>is the point.</h2><p>Give it to the work that needs you.</p><a class="button primary" href="#focus-demo">Find your focus <svg class="icon" aria-hidden="true"><use href="#i-arrow"/></svg></a><span class="closing-note">MuseFocus for macOS · In development</span></section>
+  </main>
+  <footer class="footer content-width"><a class="brand" href="#top"><img src="assets/mark-small.svg" width="28" height="28" alt=""><span>MuseFocus</span></a><p>Work moves. You focus.</p><div><a href="#workflow">The workflow</a><a href="#questions">Questions</a><a href="#top">Back to top ↑</a></div></footer>
+</body>
+</html>

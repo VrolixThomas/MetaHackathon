@@ -1,0 +1,15 @@
+{
+  "renderer": "Pillow layout composition using real site copy, local Geist fonts and Pull forward PNG",
+  "isBrowserScreenshot": false,
+  "browserValidationPerformed": false,
+  "layouts": {
+    "desktop": [
+      1440,
+      4076
+    ],
+    "mobile": [
+      390,
+      4504
+    ]
+  }
+}
