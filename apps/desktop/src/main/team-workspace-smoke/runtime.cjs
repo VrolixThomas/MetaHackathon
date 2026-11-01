@@ -178,7 +178,7 @@ async function launch() {
 		() => void stop(new Error("Team native smoke hard deadline")),
 		180000
 	);
-	app.on("will-quit", () => {
+	const cleanupAfterProduct = () => {
 		clearTimeout(deadline);
 		globalThis.fetch = originalFetch;
 		shell.openExternal = originalOpen;
@@ -203,7 +203,7 @@ async function launch() {
 		save();
 		console.log(`TEAM_WORKSPACE_SMOKE_${report.status.toUpperCase()}: ${reportPath}`);
 		if (report.status !== "passed") app.exit(1);
-	});
+	};
 	try {
 		await new Promise((done, reject) => {
 			server.once("error", reject);
@@ -225,6 +225,8 @@ async function launch() {
 			done({ cancel: !allowed });
 		});
 		await import(pathToFileURL(builtMain).href);
+		// The product registers its SQLite close handler during import. Close it before removing this profile.
+		app.on("will-quit", cleanupAfterProduct);
 		win = await wait("actual default App", () => BrowserWindow.getAllWindows()[0]);
 		await wait("built renderer loaded", () => !win.webContents.isLoadingMainFrame());
 		const js = async (code) => {
