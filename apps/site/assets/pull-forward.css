@@ -1,0 +1,2 @@
+.pull-forward{display:inline-block;inline-size:var(--pull-forward-size,64px);block-size:var(--pull-forward-size,64px);vertical-align:middle;flex:none}
+.pull-forward>svg{display:block;inline-size:100%;block-size:100%;overflow:visible}
