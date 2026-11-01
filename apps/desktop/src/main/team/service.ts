@@ -29,12 +29,22 @@ import {
 } from "../../../../../services/team/desktop-schemas";
 import { type ProposalBundle, validateBundle } from "../../../../../services/team/proposals";
 import { TeamError, digest } from "../../../../../services/team/protocol";
-import { type ConversationPRContext, ConversationPRContextSchema } from "../../shared/contracts";
+import { requestWithTimeout } from "../../../../../services/team/supabase";
+import {
+	type ConversationPRContext,
+	ConversationPRContextSchema,
+	type PreparedReview,
+} from "../../shared/contracts";
+import { abortable } from "../agent/cancellation";
 import type { SecretEncryption } from "../runtime/credentials";
 import { TeamAuth } from "./auth";
 import { TeamClient } from "./client";
 import { TeamLogin } from "./login";
-import { TeamPreparationProvider, sharedReviewKey } from "./provider";
+import {
+	type LocalReviewPreparation,
+	TeamPreparationProvider,
+	prepareLocalReview,
+} from "./provider";
 import { EncryptedTeamStore } from "./storage";
 export * from "../../../../../services/team/desktop-schemas";
 
@@ -139,9 +149,13 @@ export class TeamService {
 		if (!options.directory && !options.userDataPath)
 			throw new Error("Team user-data directory required");
 	}
-	private async configured() {
+	private async configured(signal?: AbortSignal) {
 		if (this.disposed) throw new TeamError("unavailable");
-		const settings = await this.options.getSettings();
+		signal?.throwIfAborted();
+		const pending = Promise.resolve(this.options.getSettings());
+		const settings = await (signal ? abortable(pending, signal) : pending);
+		signal?.throwIfAborted();
+		if (this.disposed) throw new TeamError("unavailable");
 		if (!settings.url || !settings.publishableKey || !settings.serviceUrl) {
 			this.instance?.login.dispose();
 			this.instance = null;
@@ -182,10 +196,12 @@ export class TeamService {
 		};
 		return this.instance;
 	}
-	private async current() {
-		const instance = await this.configured();
+	private async current(signal?: AbortSignal) {
+		const instance = await this.configured(signal);
 		if (!instance) throw new TeamError("unavailable");
-		const session = await instance.auth.session();
+		const pending = instance.auth.session();
+		const session = await (signal ? abortable(pending, signal) : pending);
+		signal?.throwIfAborted();
 		return {
 			instance,
 			userId: session.user.id,
@@ -204,14 +220,16 @@ export class TeamService {
 	private async preferences(instance: NonNullable<TeamService["instance"]>) {
 		return PreferencesSchema.parse((await instance.preferences.read()) ?? { users: {} });
 	}
-	private async scopes(context: Awaited<ReturnType<TeamService["current"]>>) {
-		const prefs = await this.preferences(context.instance);
+	private async scopes(context: Awaited<ReturnType<TeamService["current"]>>, signal?: AbortSignal) {
+		const pending = this.preferences(context.instance);
+		const prefs = await (signal ? abortable(pending, signal) : pending);
+		signal?.throwIfAborted();
 		this.fence(context);
 		return prefs.users[context.userId]?.scopes ?? [];
 	}
-	private async scope(repository?: string) {
-		const context = await this.current();
-		const scopes = await this.scopes(context);
+	private async scope(repository?: string, signal?: AbortSignal) {
+		const context = await this.current(signal);
+		const scopes = await this.scopes(context, signal);
 		const scope = repository
 			? scopes.find((s) => s.repository.toLowerCase() === repository.toLowerCase())
 			: scopes.length === 1
@@ -366,36 +384,66 @@ export class TeamService {
 			null
 		);
 	}
-	async prepare(raw: ConversationPRContext, signal: AbortSignal) {
+	async prepare(
+		raw: ConversationPRContext,
+		signal: AbortSignal,
+		localPrepare?: LocalReviewPreparation
+	): Promise<PreparedReview> {
 		const context = ConversationPRContextSchema.parse(raw);
-		const c = await this.scope(context.pr.repository);
 		signal.throwIfAborted();
-		const current = TeamOrganizationsSchema.parse(await c.instance.client.organizations());
-		if (!current.items.some((org) => org.id === c.scope.orgId)) throw new TeamError("forbidden");
-		this.fence(c);
-		const result = await new TeamPreparationProvider(c.instance.client, {
-			...c.scope,
-			analysisVersion: current.analysisVersion,
-		}).prepare(context, signal);
-		this.fence(c);
-		return result;
+		let sharing: {
+			c: Awaited<ReturnType<TeamService["scope"]>>;
+			provider: TeamPreparationProvider;
+		} | null = null;
+		try {
+			const lookup = await requestWithTimeout(4000, signal, async (active) => {
+				const c = await this.scope(context.pr.repository, active);
+				const current = TeamOrganizationsSchema.parse(
+					await c.instance.client.organizations(active)
+				);
+				active.throwIfAborted();
+				this.fence(c);
+				if (!current.items.some((org) => org.id === c.scope.orgId))
+					throw new TeamError("forbidden");
+				const provider = new TeamPreparationProvider(c.instance.client, {
+					...c.scope,
+					analysisVersion: current.analysisVersion,
+				});
+				const result = await provider.lookup(context, active);
+				active.throwIfAborted();
+				this.fence(c);
+				return { c, provider, prepared: result.prepared };
+			});
+			signal.throwIfAborted();
+			this.fence(lookup.c);
+			if (lookup.prepared) return lookup.prepared;
+			sharing = lookup;
+		} catch {
+			// Optional sharing never prevents local preparation. Foreground cancellation still wins.
+			signal.throwIfAborted();
+		}
+		const prepared = await prepareLocalReview(context, signal, localPrepare);
+		if (sharing) {
+			const { c, provider } = sharing;
+			try {
+				await requestWithTimeout(4000, signal, async (active) => {
+					this.fence(c);
+					await provider.publish(context, prepared, active);
+					active.throwIfAborted();
+					this.fence(c);
+				});
+			} catch {
+				signal.throwIfAborted();
+			}
+		}
+		signal.throwIfAborted();
+		// Another publisher may have won canonical storage. Keep this user's local report.
+		return prepared;
 	}
-	/** Explicit Retry reopens terminal hosted work without resetting an active lease. */
+	/** Compatibility only: root retries the foreground local preparation; never enqueue hosted work. */
 	async retryPreparation(raw: ConversationPRContext, requestId: string, signal: AbortSignal) {
-		const context = ConversationPRContextSchema.parse(raw);
+		ConversationPRContextSchema.parse(raw);
 		z.uuid().parse(requestId);
-		const c = await this.scope(context.pr.repository);
-		const deployed = TeamOrganizationsSchema.parse(await c.instance.client.organizations());
-		const key = sharedReviewKey(context, {
-			orgId: c.scope.orgId,
-			repositoryId: c.scope.repositoryId,
-			analysisVersion: deployed.analysisVersion,
-		});
-		const state = await c.instance.client.preparationStatus(key);
-		this.fence(c);
-		signal.throwIfAborted();
-		if (state.status === "failed") await c.instance.client.retryPreparation(key, requestId);
-		this.fence(c);
 		signal.throwIfAborted();
 	}
 	async proposals(raw: unknown = {}) {

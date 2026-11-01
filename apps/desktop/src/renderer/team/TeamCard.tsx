@@ -119,6 +119,11 @@ export function TeamCard({
 					</button>
 				)}
 			</div>
+			<p className="small">
+				Muse prepares reviews locally. Optionally share inferred findings with your organization for
+				selected repositories. Private conversations are excluded from shared findings. Local review
+				works without a team connection.
+			</p>
 			{state.error && (
 				<p className="inline-error" role="alert">
 					{state.error}
@@ -190,7 +195,7 @@ export function TeamCard({
 												data-testid="team-select-scope"
 												onClick={() => void controller.selectScope(item.orgId, item.repositoryId)}
 											>
-												{selected ? "Shared preparation selected" : "Use shared preparation"}
+												{selected ? "Local findings sharing selected" : "Share local findings"}
 											</button>
 										</div>
 									);
@@ -225,8 +230,8 @@ export function TeamCard({
 									Register repository
 								</button>
 								<p className="small">
-									Registration requires your GitHub administrator access and the organization’s
-									GitHub App installation.
+									Registration requires your GitHub administrator access. Select the repository to
+									enable findings sharing.
 								</p>
 							</form>
 						</>

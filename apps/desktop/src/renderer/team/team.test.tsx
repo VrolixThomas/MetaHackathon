@@ -60,6 +60,7 @@ test("TeamCard renders real controller data, exact escaped sources and separate 
 		status,
 		organizations: [{ id: org, name: "Controlled response organization" }],
 		orgId: org,
+		repositories: [{ orgId: org, repositoryId: "42", fullName: "test/repo" }],
 		detail,
 	});
 	controller.store.getInitialState = controller.store.getState;
@@ -72,9 +73,43 @@ test("TeamCard renders real controller data, exact escaped sources and separate 
 	assert.match(html, /data-team-source-side="before"/);
 	assert.match(html, /data-team-source-side="after"/);
 	assert.match(html, /Exact patch/);
+	assert.match(html, /Muse prepares reviews locally/);
+	assert.match(html, /Local findings sharing selected/);
+	assert.ok(!html.includes("GitHub App"));
+	assert.ok(!html.includes("Use shared preparation"));
 	assert.match(html, /Accept proposal/);
 	assert.ok(!html.includes("Apply accepted fix locally"));
 	controller.dispose();
+});
+
+test("repository registration omits installation ID and selected scope explicitly opts into local findings sharing", async () => {
+	const calls: { path: string; input: unknown }[] = [];
+	const scope = status.scopes[0];
+	assert.ok(scope);
+	const controller = createTeamController(async (_type, path, input) => {
+		calls.push({ path, input });
+		if (path === "team.registerRepository")
+			return { orgId: org, repositoryId: "42", fullName: "test/repo" };
+		if (path === "team.repositories") return { items: [], nextOffset: null };
+		if (path === "team.selectScope") return scope;
+		if (path === "team.proposals") return { items: [], nextOffset: null };
+		throw new Error(`Unexpected controlled RPC ${path}`);
+	});
+	try {
+		controller.store.setState({ status: { ...status, scopes: [] }, orgId: org });
+		await controller.registerRepository("test/repo");
+		const registration = calls.find((c) => c.path === "team.registerRepository")?.input as Record<
+			string,
+			unknown
+		>;
+		assert.equal(registration["repository"], "test/repo");
+		assert.equal(Object.hasOwn(registration, "installationId"), false);
+		assert.equal(controller.store.getState().status?.scopes.length, 0);
+		await controller.selectScope(org, "42");
+		assert.deepEqual(controller.store.getState().status?.scopes, [scope]);
+	} finally {
+		controller.dispose();
+	}
 });
 test("controller requires exact confirmation and never applies on author acceptance", async () => {
 	const calls: { path: string; input: unknown }[] = [];
