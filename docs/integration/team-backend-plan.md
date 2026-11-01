@@ -1,5 +1,10 @@
 # Shared team review backend — proposed next increment
 
+Implementation update (2026-11-01): the backend, desktop onboarding, shared preparation, proposal
+review and explicit local application are now integrated and locally verified. This document retains
+the original design context. No hosted deployment exists yet. See [setup](team-setup.md) and
+[acceptance evidence](all-features-acceptance.md) for the implemented behavior and remaining inputs.
+
 Current checkpoint: `d4207f7`. The desktop runs coding commands locally in app-owned Git checkouts.
 Meta model calls are remote; SQLite and private local files store review plans, progress, work and
 proposed fixes. Confirmed posted comments are shared through GitHub. No Muse organization backend,

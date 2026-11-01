@@ -1,0 +1,196 @@
+{
+	"date": "2026-11-01",
+	"publishedBase": "42b40f2",
+	"functionalCodeCheckpoint": "39e75ad",
+	"nativeCleanupCheckpoint": "8d8ef57",
+	"scope": "Actual built Electron application, IPC, rendering, SQLite, local Git and checks; controlled external providers. No live deployment claim.",
+	"unit": {
+		"passed": 1708,
+		"skipped": 13,
+		"failed": 0,
+		"files": 177
+	},
+	"typeCheck": "passed",
+	"lint": "passed",
+	"build": "passed",
+	"postgresqlSecurityAndLeases": "passed",
+	"native": {
+		"comment-conversation": {
+			"status": "passed",
+			"reportSha256": "82614696bfa07d9f37c95f93384d26b5bcc5ce4a5e0b5154b5e491a18ae5e5ac",
+			"steps": [
+				{
+					"label": "Empty real startup, controlled local PR preparation and actual typed UI",
+					"status": "passed"
+				},
+				{
+					"label": "Actual inspect/draft tools adopt one canonical composer after two visible frames",
+					"status": "passed"
+				},
+				{
+					"label": "Conversational edit retains canonical ID, advances revision and clears checked UI consent",
+					"status": "passed"
+				},
+				{
+					"label": "Source quotation cannot authorize confirm_pr_comment",
+					"status": "passed"
+				},
+				{
+					"label": "A new actual typed post-this-comment turn writes once and mirrors its exact receipt",
+					"status": "passed"
+				},
+				{
+					"label": "Foreground cancellation reaches actual canonical confirmation preflight with no second write",
+					"status": "passed"
+				},
+				{
+					"label": "A changed provider head rejects a fresh canonical attempt before any extra write",
+					"status": "passed"
+				}
+			],
+			"actualBuiltRendererIPC": true,
+			"controlledModel": true,
+			"controlledGitHub": true,
+			"liveProviders": false,
+			"physicalMicrophone": false,
+			"cleanup": {
+				"ownedTempRemoved": true
+			}
+		},
+		"image-workspace": {
+			"status": "passed",
+			"reportSha256": "643f36bb0097b4f8911c4ab7be6e2401ffe48507f4a945b71decad9729bbfa8e",
+			"steps": [
+				{
+					"label": "actual typed tool, ImageService, Gemini controlled HTTP, private PNG and decoded canvas receipt",
+					"status": "passed"
+				},
+				{
+					"label": "persisted descriptor closes into actual Recent and reopens same decoded bytes without regeneration",
+					"status": "passed"
+				},
+				{
+					"label": "foreground cancellation aborts actual provider HTTP and rejects any late canvas",
+					"status": "passed"
+				},
+				{
+					"label": "missing Gemini key blocks only image generation and leaves ordinary conversation available",
+					"status": "passed"
+				}
+			],
+			"actualAppIPC": true,
+			"actualImageService": true,
+			"controlledHTTP": true,
+			"liveProviders": false,
+			"liveSpeech": false,
+			"cleanup": {
+				"ownedRemoved": true,
+				"serverClosed": true
+			}
+		},
+		"team-workspace": {
+			"status": "passed",
+			"reportSha256": "a36c5365e36a8d29b20d2e08d6ed317130b5cf378ddf643833af32a59b30242d",
+			"steps": [
+				{
+					"label": "active environment and actual SettingsTeamCard begin disconnected without product fallback",
+					"status": "passed"
+				},
+				{
+					"label": "actual TeamLogin PKCE callback and OS-encrypted session with real org/repository selection",
+					"status": "passed"
+				},
+				{
+					"label": "root ReviewCoordinator reuses exact shared PreparedReview with no local preparation model call",
+					"status": "passed"
+				},
+				{
+					"label": "actual shared proposal renders exact Before/After/patch/hash and requires explicit decision",
+					"status": "passed"
+				},
+				{
+					"label": "accepted exact proposal applies through actual isolated runtime checks and enters Completed work",
+					"status": "passed"
+				},
+				{
+					"label": "actual disconnect removes encrypted session and retires current team detail",
+					"status": "passed"
+				}
+			],
+			"actualAppIPC": true,
+			"actualTeamService": true,
+			"controlledHTTP": true,
+			"liveProviders": false,
+			"liveSpeech": false,
+			"realTwoUsers": false,
+			"deployedCloud": false,
+			"realSQLRLS": "separate-root-check",
+			"cleanup": {
+				"ownedRemoved": true,
+				"serverClosed": true,
+				"originalSourcePreserved": true
+			}
+		},
+		"v1": {
+			"status": "passed",
+			"reportSha256": "af7915a04a07026cc74d1a32dba89b3459073f7e41bbd4cc4b8f3586ff2e9090",
+			"steps": [],
+			"liveSpeech": false,
+			"simulatedModel": true,
+			"cleanup": {
+				"appQuit": true,
+				"ownedTempRemoved": true
+			}
+		},
+		"executive": {
+			"status": "passed",
+			"reportSha256": "8970d787ab6a1dc76c56d11547105853de993f28607cf7402aa88408b33c31d0",
+			"steps": [],
+			"liveSpeech": false,
+			"originalPreserved": true,
+			"cleanup": {
+				"ownedTempRemoved": true
+			},
+			"childCheckpointResume": true
+		},
+		"hands-free": {
+			"status": "passed",
+			"reportSha256": "8e809a5cfff850ee45848818902e98abeb553b9994ea6ad56349937ca44df54a",
+			"steps": [],
+			"liveSpeech": false,
+			"actualChromiumMedia": true,
+			"simulatedSTT": true,
+			"simulatedModel": true,
+			"simulatedTTS": true
+		}
+	},
+	"packaging": {
+		"kind": "unsigned-local",
+		"verifiedAt": "2026-11-01T00:40:04.378Z",
+		"payload": {
+			"sdkVersion": "1.4.14",
+			"voice": {
+				"binaryCount": 274,
+				"architectures": ["arm64"]
+			}
+		},
+		"appLaunch": "not-run",
+		"physicalMicrophone": "not-run",
+		"updaterInstallation": "not-run",
+		"artifactDirectory": "apps/desktop/dist/acceptance-unsigned-1793493561894"
+	},
+	"realSubscriptionProbe": {
+		"status": "blocked",
+		"stage": "probe",
+		"failure": "sign-in-required",
+		"codingSessionStarted": false
+	},
+	"externalGates": [
+		"Supabase project selection, hosted API/consumer and GitHub App secrets/installation",
+		"Two real authorized users sharing prepared reviews and proposals",
+		"Gemini key and live raster generation",
+		"Muse Code CLI sign-in and subscription coding acceptance",
+		"Developer ID/notarization credentials and installed-app/update acceptance",
+		"Live speech and explicitly confirmed real GitHub posting"
+	]
+}
