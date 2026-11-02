@@ -3416,7 +3416,13 @@ test("a successful start request returning historical work records reuse, not a 
 });
 
 test("selected-review full-flow intent exposes broader source tools and waits for the source canvas receipt", async () => {
-	for (const outcome of ["applied", "cancelled", "uninspected"] as const) {
+	for (const outcome of [
+		"applied",
+		"cancelled",
+		"uninspected",
+		"last-slot",
+		"last-slot-repaired",
+	] as const) {
 		const d = data();
 		const w = workspace(d);
 		const pr = d.hub.reviews[0]?.pr;
@@ -3471,8 +3477,12 @@ test("selected-review full-flow intent exposes broader source tools and waits fo
 				},
 			],
 		};
+		const prefix = outcome.startsWith("last-slot")
+			? Array.from({ length: 4 }, (_, i) => [call("inspect_ready_review", {}, `inspect-${i}`)])
+			: [];
 		const controlled = client(
 			[
+				...prefix,
 				[
 					call("read_pinned_source", {
 						repository: pr.repository,
@@ -3482,7 +3492,22 @@ test("selected-review full-flow intent exposes broader source tools and waits fo
 						endLine: 12,
 					}),
 				],
+				...(outcome === "last-slot-repaired"
+					? [
+							[
+								call(
+									"create_source_flow",
+									{
+										...flow,
+										steps: [{ ...flow.steps[0], location: { ...d.source.location, endLine: 13 } }],
+									},
+									"bad-range"
+								),
+							],
+						]
+					: []),
 				[call("create_source_flow", flow)],
+				...(outcome === "uninspected" ? [[call("create_source_flow", flow, "bad-again")]] : []),
 				answer("Controlled source-flow acknowledgement."),
 			],
 			requests
@@ -3491,16 +3516,17 @@ test("selected-review full-flow intent exposes broader source tools and waits fo
 		const service = new ConversationService(
 			{
 				async *stream(request, signal) {
-					for (const name of [
-						"read_pinned_source",
-						"search_pinned_source",
-						"open_pinned_source",
-						"create_source_flow",
-					])
-						assert(
-							request.tools?.some((tool) => tool.name === name),
-							name
-						);
+					if (request.tools?.length)
+						for (const name of [
+							"read_pinned_source",
+							"search_pinned_source",
+							"open_pinned_source",
+							"create_source_flow",
+						])
+							assert(
+								request.tools?.some((tool) => tool.name === name),
+								name
+							);
 					assert.match(
 						request.instructions,
 						/Never substitute start_walkthrough for a full source-flow request/
@@ -3549,7 +3575,7 @@ test("selected-review full-flow intent exposes broader source tools and waits fo
 			} else {
 				await eventually(() => w.commands.length === 1);
 				assert.equal(service.poll(identity(turn)).text, "");
-				assert.equal(requests.length, 2);
+				assert.equal(requests.length, 2 + prefix.length + Number(outcome === "last-slot-repaired"));
 				assert.equal(w.commands[0]?.kind, "create-flow");
 				assert(!JSON.stringify(w.commands).includes('"text"'));
 				if (outcome === "cancelled")
@@ -3558,9 +3584,14 @@ test("selected-review full-flow intent exposes broader source tools and waits fo
 				await eventually(() => service.poll(identity(turn)).status !== "running");
 				assert.equal(
 					service.poll(identity(turn)).text,
-					outcome === "applied" ? "Controlled source-flow acknowledgement." : ""
+					outcome !== "cancelled" ? "Controlled source-flow acknowledgement." : ""
 				);
-				if (outcome === "applied") {
+				if (outcome !== "cancelled") {
+					assert.equal(service.poll(identity(turn)).status, "completed");
+					if (prefix.length) {
+						assert.deepEqual(requests.at(-1)?.tools, []);
+						assert.equal(requests.length, 7 + Number(outcome === "last-slot-repaired"));
+					}
 					const canvas = w.observation.workspace.canvases.find((canvas) => canvas.kind === "flow");
 					assert(canvas?.kind === "flow");
 					assert.equal(w.observation.workspace.primaryId, canvas.id);

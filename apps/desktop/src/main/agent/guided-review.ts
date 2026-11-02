@@ -35,6 +35,7 @@ import { WORKSPACE_INSTRUCTIONS } from "./workspace-conversation";
 import {
 	type ConversationWorkspaceTools,
 	WorkspaceArgumentError,
+	parseToolArguments,
 	workspaceModelContext,
 } from "./workspace-tools";
 
@@ -296,7 +297,12 @@ export async function runGuidedReview(
 	let emitted = false;
 	let repairedArguments = false;
 	const profile = workflow?.profile ?? new ForegroundProfile();
-	for (let round = 0; round < 6; round++) {
+	// Six tool rounds, one input correction, then a tools-free terminal answer.
+	// A successful last operation must not be discarded by a missing answer slot.
+	const toolRoundLimit = 6;
+	let modelAttempt = 0;
+	for (let round = 0; round <= toolRoundLimit; round++) {
+		const terminalAnswer = round === toolRoundLimit;
 		throwIfAborted(signal);
 		const snapshot = await getSnapshot(ports, input, signal, true);
 		if (acknowledgedScreen) assertSameScreen(acknowledgedScreen, snapshot.screen);
@@ -324,32 +330,41 @@ export async function runGuidedReview(
 		const emitText = async (delta: string) => {
 			if (!delta || !onText) return;
 			assertSameScreen(snapshot.screen, await screen(ports, input, signal));
+			if (workspace && observation) {
+				const current = (await workspace.observe()).workspace;
+				if (
+					(current.contentSequence ?? current.sequence) !==
+					(observation.workspace.contentSequence ?? observation.workspace.sequence)
+				)
+					throw changed();
+			}
 			throwIfAborted(signal);
 			emitted = true;
 			await abortable(Promise.resolve(onText(delta)), signal);
 		};
 		const request = {
-			requestId: `${input.requestId}:review:${round}`,
+			requestId: `${input.requestId}:review:${modelAttempt++}`,
 			workload: "quick" as const,
-			instructions: `${workspace || hub ? `${INSTRUCTIONS}\n${WORKSPACE_INSTRUCTIONS}` : INSTRUCTIONS}\n${COPARTNER_INSTRUCTIONS}\n${PROFILE_INSTRUCTIONS}`,
+			instructions: `${workspace || hub ? `${INSTRUCTIONS}\n${WORKSPACE_INSTRUCTIONS}` : INSTRUCTIONS}\n${COPARTNER_INSTRUCTIONS}\n${PROFILE_INSTRUCTIONS}${terminalAnswer ? "\nTool budget is exhausted. Answer from actual results only, briefly naming any unfinished part. Do not claim rejected or unacknowledged effects succeeded." : `\nAt most ${toolRoundLimit - round} tool calls remain, plus one final answer. Inspect missing links before proposing a source flow.`}`,
 			input: modelInput,
-			tools: navigated
-				? []
-				: profile.tools(
-						[
-							...tools.filter(
-								(tool) => workflow?.onNarration || !tool.name.endsWith("walkthrough")
-							),
-							...(workspace?.tools ?? []),
-							...(hub?.tools ?? []),
-						],
-						!!source.file
-					),
+			tools:
+				navigated || terminalAnswer
+					? []
+					: profile.tools(
+							[
+								...tools.filter(
+									(tool) => workflow?.onNarration || !tool.name.endsWith("walkthrough")
+								),
+								...(workspace?.tools ?? []),
+								...(hub?.tools ?? []),
+							],
+							!!source.file
+						),
 			maxOutputTokens: MAX_OUTPUT_TOKENS,
 		};
 		// Only the phase with tools disabled may stream. Navigation and its durable receipt
 		// have already completed; every delta is still fenced against a changed screen.
-		const streamText = navigated && onText ? emitText : undefined;
+		const streamText = (navigated || terminalAnswer) && onText ? emitText : undefined;
 		let response: Awaited<ReturnType<typeof modelRound>>;
 		try {
 			response = await modelRound(client, request, signal, streamText);
@@ -392,7 +407,7 @@ export async function runGuidedReview(
 			if (!streamText) await emitText(response.text);
 			return response.text;
 		}
-		if (navigated)
+		if (navigated || terminalAnswer)
 			throw new GuidedReviewError("Continue to the next review step with a new request.");
 		if (calls.length !== 1)
 			throw new GuidedReviewError(
@@ -404,10 +419,20 @@ export async function runGuidedReview(
 		seen.add(call.call_id);
 		if (call.name === "expand_tools") {
 			history.push(...response.completion.output.filter((item) => item["type"] !== "message"));
+			let result: unknown;
+			try {
+				result = profile.expand(call.arguments);
+			} catch (error) {
+				throwIfAborted(signal);
+				if (!(error instanceof WorkspaceArgumentError) || repairedArguments) throw error;
+				repairedArguments = true;
+				round--;
+				result = { status: "rejected-before-execution", message: error.message };
+			}
 			history.push({
 				type: "function_call_output",
 				call_id: call.call_id,
-				output: JSON.stringify(profile.expand(call.arguments)),
+				output: JSON.stringify(result),
 			});
 			continue;
 		}
@@ -452,6 +477,7 @@ export async function runGuidedReview(
 				throwIfAborted(signal);
 				if (!(error instanceof WorkspaceArgumentError) || repairedArguments) throw error;
 				repairedArguments = true;
+				round--; // One rejected preflight does not consume an executable tool slot.
 				history.push({
 					type: "function_call_output",
 					call_id: call.call_id,
@@ -470,6 +496,7 @@ export async function runGuidedReview(
 				throwIfAborted(signal);
 				if (!(error instanceof WorkspaceArgumentError) || repairedArguments) throw error;
 				repairedArguments = true;
+				round--; // One rejected preflight does not consume an executable tool slot.
 				history.push({
 					type: "function_call_output",
 					call_id: call.call_id,
@@ -491,8 +518,22 @@ export async function runGuidedReview(
 		if (!Object.hasOwn(toolArguments, call.name))
 			throw new GuidedReviewError("That review operation is unavailable.");
 		const name = call.name as keyof typeof toolArguments;
-		const args = toolArguments[name].parse(JSON.parse(call.arguments));
 		history.push(...response.completion.output.filter((item) => item["type"] !== "message"));
+		let args: z.infer<(typeof toolArguments)[keyof typeof toolArguments]>;
+		try {
+			args = parseToolArguments(toolArguments[name], call.arguments);
+		} catch (error) {
+			throwIfAborted(signal);
+			if (!(error instanceof WorkspaceArgumentError) || repairedArguments) throw error;
+			repairedArguments = true;
+			round--;
+			history.push({
+				type: "function_call_output",
+				call_id: call.call_id,
+				output: JSON.stringify({ status: "rejected-before-execution", message: error.message }),
+			});
+			continue;
+		}
 		const latest = await getSnapshot(ports, input, signal);
 		assertSameScreen(snapshot.screen, latest.screen);
 		if (snapshot.review && latest.review && !samePlan(snapshot.review, latest.review))

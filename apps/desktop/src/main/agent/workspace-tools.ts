@@ -25,6 +25,24 @@ import type { FunctionTool } from "./meta-client";
 /** Only argument rejection before execution may be repaired without replaying an effect. */
 export class WorkspaceArgumentError extends Error {}
 
+/** Only wrap model input parsing, never port results or errors after execution. */
+export function parseToolArguments<T extends z.ZodType>(schema: T, raw: string): z.infer<T> {
+	try {
+		return schema.parse(JSON.parse(raw));
+	} catch (error) {
+		const issues =
+			error instanceof z.ZodError
+				? error.issues
+						.slice(0, 5)
+						.map((issue) => `${issue.path.join(".") || "arguments"}: ${issue.code}`)
+						.join("; ")
+				: "arguments: invalid_json";
+		throw new WorkspaceArgumentError(
+			`Tool arguments were rejected before execution (${issues}). Follow the tool schema exactly; no operation was performed.`
+		);
+	}
+}
+
 export interface ConversationWorkspacePorts {
 	images?: ConversationImagePorts;
 	hub?: ConversationHubPorts;
@@ -233,7 +251,9 @@ export class ConversationWorkspaceTools {
 			JSON.stringify([ref.repository, ref.revision, ref.commitSha, ref.path])
 		);
 		if (!ranges?.some(([start, end]) => ref.startLine >= start && ref.endLine <= end))
-			throw new GuidedReviewError("Canvas references must identify inspected pinned source lines.");
+			throw new WorkspaceArgumentError(
+				"Canvas references must identify inspected pinned source lines. Use exact returned locations; read missing ranges before proposing them. No operation was performed."
+			);
 	}
 
 	async execute(name: string, rawArguments: string): Promise<WorkspaceObservation> {
@@ -244,19 +264,12 @@ export class ConversationWorkspaceTools {
 			return structuredClone(this.latest ?? (await this.observe()));
 		}
 		if (inspectNames.includes(name)) {
-			z.strictObject({}).parse(JSON.parse(rawArguments));
+			parseToolArguments(z.strictObject({}), rawArguments);
 			return this.observe();
 		}
 		const entry = commands.find((entry) => entry.name === name);
 		if (!entry) throw new GuidedReviewError("That workspace operation is unavailable.");
-		let args: Record<string, unknown>;
-		try {
-			args = entry.schema.parse(JSON.parse(rawArguments));
-		} catch {
-			throw new WorkspaceArgumentError(
-				"Tool arguments were rejected before execution. Follow the tool schema exactly; no operation was performed."
-			);
-		}
+		const args = parseToolArguments(entry.schema, rawArguments);
 		if (entry.kind === "show-image") {
 			const current = this.latest ?? (await this.observe());
 			if (

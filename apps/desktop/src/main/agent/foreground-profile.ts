@@ -1,6 +1,7 @@
 import { z } from "zod";
 import type { WorkspaceObservation } from "../../shared/contracts";
 import type { FunctionTool } from "./meta-client";
+import { parseToolArguments } from "./workspace-tools";
 
 const families = [
 	"work",
@@ -135,7 +136,7 @@ export class ForegroundProfile {
 		];
 	}
 	expand(raw: string) {
-		const value = expansion.parse(JSON.parse(raw));
+		const value = parseToolArguments(expansion, raw);
 		const newlyEnabled = value.families.filter((selected) => !this.has(selected));
 		for (const selected of value.families) this.expanded.add(selected);
 		return {

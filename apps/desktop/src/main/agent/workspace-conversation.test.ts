@@ -552,7 +552,9 @@ test("explanation citations must remain within actual supplied pinned source ran
 						],
 					}),
 				],
-				answer("The source note is displayed."),
+				answer(
+					endLine === 1 ? "The source note is displayed." : "That range still needs inspection."
+				),
 			],
 			true
 		);
@@ -564,7 +566,8 @@ test("explanation citations must remain within actual supplied pinned source ran
 				assert.equal(h.commands.length, 1);
 				assert.equal(packet(h.requests[1]).currentFilePresentation, "cached-hidden");
 			} else {
-				await finish(h, "error");
+				await finish(h);
+				assert(JSON.stringify(h.requests[1]?.input).includes("rejected-before-execution"));
 				assert.equal(h.commands.length, 0);
 			}
 		} finally {
