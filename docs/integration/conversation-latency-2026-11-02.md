@@ -6,6 +6,8 @@ Worker branch: `demo-story-conversation-fix-20261102`, created at release base
 are in `0306225c356ccb7ef6f4c2633b66fc99446c1199`. No dependencies, shared contracts,
 composition, provider configuration, microphone thresholds or preconnection changed.
 
+The later user-directed context/model-profile increment is recorded below at `8d7452ad9c4b1dda360325102817797fadb8b1bb`; it supersedes the all-tools default used by the first latency comparison.
+
 ## Correctness
 
 Cancellation and failure retain the actual user utterance and published assistant
@@ -158,3 +160,108 @@ without changing manifests or lockfile. Old expectations that interrupted turns 
 empty capture placeholders remain/disappear incorrectly were updated to the required
 behavior. No tests were skipped. No native, installed-app, live-provider, packaging or
 physical microphone acceptance is claimed, and no feature ticket was marked Done.
+
+## User-directed context and model profiles
+
+Subsequent implementation: **8d7452ad9c4b1dda360325102817797fadb8b1bb**. Routine
+foreground requests retain the existing `quick` route (Muse Spark 1.3, minimal reasoning).
+The app chooses the profile from the acknowledged primary canvas and exact selected
+item before inference; there is no preliminary routing model call. Home uses six existing
+navigation tools plus `expand_tools`. Ticket/job, review/source, browser, canvases, Day,
+Slack, knowledge, comments and approvals have focused capability families. Expansion
+only changes the prompt's capability/context selection; all existing operation parsers,
+source/actor checks, user consent and display receipts remain authoritative. It is not
+a new authorization mechanism. Existing valid registered operations retain their runtime
+gates even if a controlled provider names one outside its advertised profile.
+
+Explicitly expanded families persist for a real follow-up while the actual pane/item
+stays the same. Sidebar-only changes do not erase them. An actual content/item switch
+resets expansion. Retained real conversation, unresolved-question reference and admitted
+job effects remain in context. Ordinary Home omits unrelated queue data and explicitly
+labels omissions rather than claiming the queues are empty. A selected ticket limits its
+summary/jobs/notices to that item. Explicit queue questions can expand and inspect the
+actual hub. No model/worker/source text gains consent from any of this context.
+
+Selected ticket details and selected saved-job details are read through the existing
+main-owned authorized ports before the first fast request; source canvases supply bounded
+exact pinned source through existing line-preserving projection. A failed detail read
+produces a fixed unavailable marker and does not block an ordinary greeting. The displayed
+PR path already loads validated pinned file/source before inference; its request now uses
+the focused review tools and omits duplicate/unrelated hub queues. These reads do not
+claim new display or execution. Generated explanations remain inference.
+
+`analyze_current_context` is a separate read-only escalation: the fast controller can
+choose it for a difficult ticket/job/source/PR question, and the actual second request
+uses `deep` (Muse Wonder 1.0/high) with **no tools**. Routine questions do not invoke it.
+The bounded input comes from the already authorized current packet, not model-supplied
+source text. Workspace analysis rechecks acknowledged content before publishing; sidebar
+revisions alone are tolerated. Guided PR analysis uses the existing per-delta screen
+fence and tools-free streaming mechanism. Cancellation rejects late deep output and
+never owns background work. No alternate provider, model fallback or new key was added.
+
+### Extended exact-revision controlled comparison
+
+The same extended probe and six scenario inputs ran three times sequentially at release
+036bbf8, snapshot/schema-only 0306225, and profile 8d7452a. Full records are in
+[evidence/foreground-context-profile-2026-11-02.json](evidence/foreground-context-profile-2026-11-02.json).
+All delays remain controlled as described above. The provider is deliberately scripted
+to answer the selected-ticket question directly on both versions; this does not establish
+that the old version had enough context. Separate service regressions establish that the
+new first packet contains the freshly authorized full ticket description and selected
+source identity.
+
+| Scenario | Release → profile tool counts per request | Release → profile tool bytes, first request | Model calls release → profile | Median published text release → profile |
+| --- | --- | ---: | --- | ---: |
+| Greeting | 70 → 7 | 53,618 → 3,157 | 1 → 1 | 130.6 → 99.8 ms |
+| Planning + follow-up | 70,70 → 7,7 | 53,618 → 3,157 | 2 → 2 | 127.8 → 93.2 ms, first answer |
+| Open tickets + answer | 70,70 → 7,22 | 53,618 → 3,157 | 2 → 2 | 269.0 → 223.4 ms |
+| Selected-ticket question | 70 → 23 | 53,618 → 10,384 | 1 → 1 | 130.5 → 117.5 ms |
+| Explicit scoped dispatch | 70,70 → 23,0,23 | 53,618 → 10,384 | 2 → 3 | 245.6 → 286.9 ms |
+| Displayed PR explanation | 76 → 19 | 55,643 → 9,107 | 1 → 1 | 147.1 → 136.6 ms |
+
+The dispatch cost is explicit: the added admission guard consumes one 60 ms controlled
+provider round, and both planner rounds now read the selected ticket (two 10 ms port
+waits). Exactly one controlled start admission occurs; there is no real worker/checkout.
+This correctness cost is not hidden in an aggregate speedup. Against the snapshot-only
+0306225, selected-ticket median is **100.8 → 117.5 ms**, reflecting the extra fresh read;
+model delays are fixed and cannot demonstrate inference gains from fewer tokens.
+
+For the first request, input + instruction + tool JSON bytes are **60,957 → 9,766** for
+Home, **61,159 → 18,259** for a selected ticket, and **70,861 → 22,688** for the selected
+PR. These are measured request-component byte sums, not exact HTTP bytes or token counts.
+The profile's default fast greeting remains one request and no classifier. Live model
+latency, actual provider token counts, warm/cold/idle behavior and first PCM still require
+root's controlled native/live comparison. No drastic user-perceived improvement is claimed.
+
+Final profile validation: **255 passes, zero failures**, the same 11 isolated test files
+(history3, conversation12, hub57, workspace17, latency2, guided37, attention14,
+comment-tools5, comment-fixes31, renderer17, voice60). New checks cover first-request
+ticket/source data, unavailable-source fallback, expansion and follow-up, distinct deep
+workload, late cancellation, and sidebar-only versus changed-content fencing. Types,
+targeted Biome and build pass. The V1 native harness compatibility update accepts the two
+new tool names and omitted scoped queues while still rejecting any present seeded queue.
+Its `node --check` and `node .../v1-smoke.cjs --self-check` passed; it was **not launched**
+with Electron. Root must retain actual startup UI/IPC checks: omitted model context is not
+proof that the underlying hub is empty.
+
+### Coding-model pin: separate integration seam
+
+The inspected `coding-worker.ts` still hardcodes `workload: "quick"`. This worker did
+**not** flip it globally. Parent received the following concrete proposal before any
+out-of-reservation change:
+
+1. At NEW Meta coding-job admission, main's `work/coding-provider/pin.ts` durably pins
+   exact Wonder 1.0/high model settings alongside the existing provider/path identity.
+2. Pass the main-only pin via additive `CodingTaskInput` fields and persist/check it in
+   `CodingWorkerCheckpoint`; `requestModel` must honor the exact pin, not a changing global
+   default. Reject a mismatch or unsupported model instead of falling back.
+3. Existing provider pins/checkpoints without the field resolve Spark 1.3/minimal. This
+   includes previously admitted jobs without a checkpoint; changing only the worker's
+   no-checkpoint default would silently switch those jobs and is unsafe.
+4. Preserve provider/billing/session identity, especially existing ready jobs. Do not
+   rerun, cancel, migrate or alter the user's MET-77 job to implement or test this seam.
+
+Integration owns agreement on that main/work admission/checkpoint migration. No coding
+job, provider pin, settings, shared DTO or installed profile was changed by this worker.
+The foreground deeper-reasoning path is implemented independently; stronger NEW coding
+jobs remain an explicit integration dependency, not a claimed completed behavior.
