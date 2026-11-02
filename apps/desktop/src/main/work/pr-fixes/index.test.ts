@@ -6,6 +6,7 @@ import { join } from "node:path";
 import { type TestContext, test } from "node:test";
 import type { WorkReview } from "../../../shared/contracts/command-center";
 import type { PRFixStartInput } from "../../../shared/contracts/pr-work";
+import { NEW_CODING_MODEL } from "../../agent/coding-model";
 import type { CodingTaskInput, CodingTaskResult } from "../../agent/coding-worker";
 import { type CommentFixSource, CommentFixSourceSchema } from "../../agent/pr-comment-fixes";
 import { PRFixError, PRFixService, type PRFixServiceOptions } from "./index";
@@ -717,4 +718,52 @@ test("UI, agent and local review inspections serialize the same candidate's stri
 	assert.equal(active, 0);
 	assert.equal((await ctx.service.list())[0]?.phase, "ready");
 	assert.equal((await ctx.service.detail(admitted.id)).fix.error, null);
+});
+
+test("private API admission pins Wonder before execution and reopens without leaking into candidate DTOs", async (t) => {
+	const ctx = await setup(t);
+	const admitted = await ctx.service.start(ctx.input);
+	const stored = await ctx.disk.read("alice");
+	assert.deepEqual(stored.entries[0]?.codingModel, NEW_CODING_MODEL);
+	await ctx.settle(admitted.id);
+	assert.deepEqual(ctx.state.workerInputs[0]?.codingModel, NEW_CODING_MODEL);
+	assert.equal(ctx.state.workerInputs[0]?.repository, ctx.source.pr.repository);
+	const detail = await ctx.create().detail(admitted.id);
+	assert.equal(
+		(detail.review?.job as unknown as Record<string, unknown>)["codingModel"],
+		undefined
+	);
+	assert.deepEqual((await ctx.disk.read("alice")).entries[0]?.codingModel, NEW_CODING_MODEL);
+});
+
+test("private subscription jobs retain their provider and receive no Meta model selection", async (t) => {
+	const ctx = await setup(t);
+	ctx.options.codingSettings = async () => ({
+		provider: "muse-code",
+		musePath: "/controlled/muse",
+	});
+	const admitted = await ctx.service.start(ctx.input);
+	await ctx.settle(admitted.id);
+	assert.equal(ctx.state.workerInputs[0]?.codingModel, undefined);
+	assert.equal((await ctx.disk.read("alice")).entries[0]?.codingModel, undefined);
+});
+
+test("legacy private admission without model or checkpoint is never upgraded or replayed on reopen", async (t) => {
+	const ctx = await setup(t);
+	const admitted = await ctx.service.start(ctx.input);
+	await ctx.settle(admitted.id);
+	await ctx.service.dispose();
+	const state = await ctx.disk.read("alice");
+	const entry = state.entries[0];
+	assert(entry);
+	Reflect.deleteProperty(entry, "codingModel");
+	entry.record = null;
+	entry.issue = null;
+	await ctx.disk.write(state, () => {});
+	const reopened = ctx.create();
+	const replay = await reopened.start(ctx.input);
+	assert.equal(replay.id, admitted.id);
+	assert.equal(replay.phase, "interrupted");
+	assert.equal(ctx.state.workers, 1, "unconfirmed admission cannot run again");
+	assert.equal((await ctx.disk.read("alice")).entries[0]?.codingModel, undefined);
 });

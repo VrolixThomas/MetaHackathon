@@ -14,6 +14,7 @@ import {
 	PRFixSummarySchema,
 } from "../../../shared/contracts/pr-work";
 import { abortable } from "../../agent/cancellation";
+import { NEW_CODING_MODEL } from "../../agent/coding-model";
 import {
 	type CodingTaskInput,
 	type CodingTaskResult,
@@ -158,6 +159,7 @@ export class PRFixService {
 					entry = {
 						id: input.requestId,
 						codingProvider,
+						...(codingProvider.provider === "meta-api" ? { codingModel: NEW_CODING_MODEL } : {}),
 						jobId: identity(context.owner, input.requestId).jobId,
 						source,
 						fingerprint,
@@ -330,7 +332,11 @@ export class PRFixService {
 					finalize: (...args) => this.call(context, () => this.options.runtime.finalize(...args)),
 				},
 				checkpointPath: (jobId) => join(run.scope, `${jobId}.checkpoint.json`),
-				runWorker: async (input, signal) => {
+				runWorker: async (raw, signal) => {
+					const input = {
+						...raw,
+						...(entry.codingModel ? { codingModel: entry.codingModel } : {}),
+					};
 					await this.guard(context);
 					this.assertLive(context);
 					const operation = this.options.runWorker

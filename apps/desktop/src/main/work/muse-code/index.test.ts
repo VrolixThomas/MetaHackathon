@@ -633,3 +633,16 @@ test("cancellation while SDK connection is pending closes a late host without a 
 	assert.equal(ctx.state.closes, 1);
 	assert.equal(ctx.state.starts, 0);
 });
+
+test("subscription session identity and protocol stay independent of optional Meta coding metadata", async (t) => {
+	const ctx = await setup(t);
+	const first = await ctx.run();
+	const before = await ctx.stored();
+	assert.equal(before.codingModel, undefined);
+	const result = await ctx.run({ codingModel: { model: "muse-wonder-1.0", reasoning: "high" } });
+	assert.deepEqual(result, first);
+	assert.equal(ctx.state.starts, 1);
+	assert.equal(ctx.state.resumes, 1);
+	assert.equal((await ctx.stored()).sessionId, before.sessionId);
+	assert(!JSON.stringify(ctx.state.commands).includes("muse-wonder-1.0"));
+});
