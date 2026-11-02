@@ -609,3 +609,22 @@ test("cancellation before or during snapshot/operation fences late data without 
 		if (stage === "operation") assert.equal(h.row.acceptance, "accepted");
 	}
 });
+
+test("Day navigation only accepts exposed current actor/item revisions, including paginated targets", async () => {
+	const h = harness();
+	h.state.items = Array.from({ length: 20 }, (_, i) => ({ ...h.row, id: `item-${i}` }));
+	await h.tools.observe();
+	await assert.rejects(h.tools.validateObservedTarget("invented"), /actual observed/);
+	await assert.rejects(h.tools.validateObservedTarget("item-19"), /actual observed/);
+	const page = await h.tools.execute("day_inspect_queue", JSON.stringify({ cursor: 19, limit: 1 }));
+	assert(JSON.stringify(page).includes('"displayTarget":{"section":"day","selectedId":"item-19"}'));
+	await h.tools.validateObservedTarget("item-19");
+	const row = h.state.items[19];
+	assert(row);
+	row.revision++;
+	await assert.rejects(h.tools.validateObservedTarget(row.id), /changed or is unavailable/);
+	await h.tools.execute("day_inspect_queue", JSON.stringify({ cursor: 19, limit: 1 }));
+	row.ownerUserId = "different-user";
+	await assert.rejects(h.tools.validateObservedTarget(row.id), /private work/);
+	assert.equal(h.operations.length, 0);
+});

@@ -66,7 +66,7 @@ const names: Partial<Record<WorkspaceCommand["kind"], [string, string]>> = {
 	],
 	"open-center": [
 		"open_command_center",
-		"Open the actual executive center section home, day, reviews, feedback, tickets, completed or activity, optionally selecting an observed item. Day is the private internal commitments queue. Waits for displayed receipt.",
+		"Open the actual executive center section home, day, reviews, feedback, tickets, completed or activity, optionally selecting an observed item. Day is the private internal commitments queue, including incoming Slack requests. Discover its exact selectedId through day_inspect_queue; Slack conversation targets are separate. Waits for displayed receipt.",
 	],
 	"open-source": [
 		"open_pinned_source",
@@ -123,6 +123,10 @@ const inspectNames = ["inspect_workspace", "probe_browser"];
 /** Model-facing tools share root's coordinator and effect gate; they never create their own workspace. */
 export class ConversationWorkspaceTools {
 	private latest?: WorkspaceObservation;
+	private validateDayTarget?: (id: string) => Promise<void>;
+	setDayTargetValidator(validate: ((id: string) => Promise<void>) | undefined) {
+		this.validateDayTarget = validate;
+	}
 	private readonly sourceRanges = new Map<string, Array<[number, number]>>();
 	private readonly actionIds = new Set<string>();
 	private operationSequence = 0;
@@ -349,6 +353,11 @@ export class ConversationWorkspaceTools {
 			command.section === "fixes"
 		) {
 			decodePRFixViewTarget(command.selectedId);
+		} else if (command.kind === "open-center" && command.selectedId && command.section === "day") {
+			if (!this.validateDayTarget)
+				throw new GuidedReviewError("Day target validation is unavailable.");
+			await this.validateDayTarget(command.selectedId);
+			throwIfAborted(this.signal);
 		} else if (command.kind === "open-center" && command.selectedId) {
 			const hub = expected.hub;
 			const ids = hub
@@ -360,7 +369,9 @@ export class ConversationWorkspaceTools {
 					]
 				: [];
 			if (!ids.includes(command.selectedId))
-				throw new GuidedReviewError("Select an actual observed center item.");
+				throw new WorkspaceArgumentError(
+					"Select an actual observed center item. For incoming Slack commitments inspect day_inspect_queue and open section day with its exact selectedId. No operation was performed."
+				);
 		}
 
 		// Root/runtime enforce original browser reference freshness. An extra observe here

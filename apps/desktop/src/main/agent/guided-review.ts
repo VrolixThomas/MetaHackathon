@@ -282,6 +282,10 @@ export async function runGuidedReview(
 	onText?: (delta: string) => void | Promise<void>,
 	workflow?: GuidedReviewWorkflow
 ): Promise<string> {
+	const dayHub = workflow?.hub;
+	workflow?.workspace?.setDayTargetValidator(
+		dayHub ? (id) => dayHub.validateDayTarget(id) : undefined
+	);
 	let input = initialInput;
 	if (!input.prId) throw new Error("Selected PR required for guided review");
 	const seen = new Set<string>();

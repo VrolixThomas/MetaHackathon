@@ -131,6 +131,7 @@ function source(item: DayWorkItem) {
 function summary(item: DayWorkItem) {
 	return {
 		id: item.id,
+		displayTarget: { section: "day", selectedId: item.id },
 		revision: item.revision,
 		kind: item.kind,
 		title: clip(item.title, 500),
@@ -249,6 +250,22 @@ export class ConversationDayTools {
 	async observe() {
 		await this.refresh();
 		return this.queue();
+	}
+	/** A workspace target is data, never authority. Recheck this actor's current item. */
+	async validateObservedTarget(itemId: string) {
+		const revision = this.observed.get(itemId);
+		if (revision === undefined)
+			throw new WorkspaceArgumentError(
+				"Inspect the Day queue and select an actual observed Day item ID. No operation was performed."
+			);
+		const current = await this.refresh();
+		const item = current.items.find((item) => item.id === itemId);
+		if (!item || item.revision !== revision)
+			throw new WorkspaceArgumentError(
+				"That Day item changed or is unavailable. Inspect the Day queue again before opening it. No operation was performed."
+			);
+		if (item.workspaceId !== current.actor.workspaceId || item.ownerUserId !== current.actor.userId)
+			throw new GuidedReviewError("The Day item does not belong to the current actor.");
 	}
 	private queue(cursor = 0, limit = 12) {
 		const packet = dayModelContext(this.latest as DaySnapshot, cursor, limit);

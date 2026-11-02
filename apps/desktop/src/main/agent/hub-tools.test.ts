@@ -606,6 +606,19 @@ function workspace(d: ReturnType<typeof data>) {
 			commands.push(command);
 			const next = structuredClone(observation);
 			next.workspace.sequence++;
+			if (command.kind === "open-center") {
+				next.workspace.canvases = [
+					{
+						id: "center",
+						kind: "center",
+						title: "Center",
+						revision: 1,
+						section: command.section,
+						...(command.selectedId ? { selectedId: command.selectedId } : {}),
+					},
+				];
+				next.workspace.primaryId = "center";
+			}
 			if (command.kind === "open-source")
 				next.workspace.canvases.push({
 					id: "source",
@@ -3806,3 +3819,79 @@ test("feedback handoff is absent after foreign or cancelled production-port admi
 		assert.equal(d.operations.length, 0);
 	}
 });
+
+for (const outcome of ["applied", "cancelled", "revoked"] as const) {
+	test(`off-pane Day request uses observed target and actual receipt: ${outcome}`, async () => {
+		const d = data();
+		const day = attachDay(d);
+		const w = workspace(d);
+		const requests: MetaRequest[] = [];
+		const outputs = [
+			[call("day_inspect_queue", {}, "queue")],
+			[call("open_command_center", { section: "day", selectedId: "fabricated" }, "bad-target")],
+			[call("open_command_center", { section: "day", selectedId: day.item.id }, "actual-target")],
+			answer("The request is open; clarification still needs its separate policy."),
+		];
+		const controlled = client(outputs, requests);
+		const service = new ConversationService(
+			{
+				async *stream(request, signal) {
+					if (requests.length === 0)
+						assert(request.tools?.some((tool) => tool.name === "day_inspect_queue"));
+					if (requests.length === 2) {
+						assert(JSON.stringify(request.input).includes("rejected-before-execution"));
+						if (outcome === "revoked") day.snapshot.actor.userId = "another-account";
+					}
+					yield* controlled.stream(request, signal);
+				},
+			},
+			{ hub: d.ports, workspace: w.ports }
+		);
+		try {
+			service.start({
+				...input,
+				text: "Open the Slack request about the focus page. Clarification only, no start.",
+			});
+			if (outcome === "revoked") {
+				await eventually(() => service.poll(identity()).status !== "running");
+				assert.equal(service.poll(identity()).status, "error");
+				assert.equal(w.commands.length, 0);
+			} else {
+				await eventually(() => w.commands.length === 1);
+				assert.deepEqual(w.commands[0], {
+					kind: "open-center",
+					section: "day",
+					selectedId: day.item.id,
+				});
+				assert.equal(service.poll(identity()).text, "");
+				assert.equal(requests.length, 3);
+				if (outcome === "cancelled")
+					service.cancel({ ...identity(), requestId: "cancel-day", reason: "user" });
+				w.settle();
+				await eventually(() => service.poll(identity()).status !== "running");
+				assert.equal(
+					service.poll(identity()).status,
+					outcome === "applied" ? "completed" : "cancelled"
+				);
+				if (outcome === "applied") {
+					assert(requests.at(-1)?.tools?.some((tool) => tool.name === "day_propose_clarification"));
+					assert(
+						requests
+							.at(-1)
+							?.input.some(
+								(item) =>
+									item["type"] === "function_call_output" &&
+									typeof item["output"] === "string" &&
+									JSON.parse(item["output"]).status === "applied"
+							)
+					);
+				} else assert.equal(service.poll(identity()).text, "");
+			}
+			assert.equal(day.operations.length, 0);
+			assert.equal(d.operations.length, 0);
+		} finally {
+			w.settle();
+			await service.dispose();
+		}
+	});
+}

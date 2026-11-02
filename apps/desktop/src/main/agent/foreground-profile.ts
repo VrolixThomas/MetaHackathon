@@ -17,6 +17,7 @@ const families = [
 type Family = (typeof families)[number];
 const expansion = z.strictObject({ families: z.array(z.enum(families)).min(1).max(3) });
 const core = new Set([
+	"day_inspect_queue",
 	"inspect_workspace",
 	"open_command_center",
 	"browse_command_center",
@@ -117,7 +118,7 @@ export class ForegroundProfile {
 				type: "function",
 				name: "expand_tools",
 				description:
-					"Enable a focused capability family when the request needs tools outside the current pane. Work includes tickets, job lifecycle and attention queues; reviews includes source/feedback/fixes; other families are browser, canvases, day, slack, knowledge, comments and approvals. This only changes available tools/context; it does not navigate, execute, grant consent or send anything.",
+					"Enable a focused capability family when the request needs tools outside the current pane. Work includes tickets, job lifecycle and attention queues; day includes incoming requests/commitments, source inspection and clarification delegation; slack reads channels/messages, reviews includes source/feedback/fixes; other families are browser, canvases, day, slack, knowledge, comments and approvals. This only changes available tools/context; it does not navigate, execute, grant consent or send anything.",
 				parameters: z.toJSONSchema(expansion),
 			},
 			...(canAnalyze

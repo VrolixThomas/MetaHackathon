@@ -6,6 +6,7 @@ import type { FunctionTool } from "./meta-client";
 
 const tools: FunctionTool[] = [
 	"open_command_center",
+	"day_inspect_queue",
 	"inspect_ticket",
 	"inspect_work_job",
 	"read_pinned_source",
@@ -57,6 +58,7 @@ test("unknown off-pane needs retain explicit expansion with unchanged authority"
 	profile.select(observation("home"));
 	assert(!profile.tools(tools).some((tool) => tool.name === "read_pinned_source"));
 	assert(profile.tools(tools).some((tool) => tool.name === "expand_tools"));
+	assert(profile.tools(tools).some((tool) => tool.name === "day_inspect_queue"));
 	const result = profile.expand(JSON.stringify({ families: ["reviews"] }));
 	assert.match(result.authority, /not a user instruction or consent/);
 	assert(profile.tools(tools).some((tool) => tool.name === "read_pinned_source"));

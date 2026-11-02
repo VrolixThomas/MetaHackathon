@@ -406,6 +406,10 @@ export class ConversationHubTools {
 			conversationFocus: focus,
 		};
 	}
+	async validateDayTarget(id: string) {
+		if (!this.day) throw new GuidedReviewError("Day is unavailable.");
+		await this.day.validateObservedTarget(id);
+	}
 	async currentContext(
 		observation?: import("../../shared/contracts").WorkspaceObservation
 	): Promise<unknown> {
