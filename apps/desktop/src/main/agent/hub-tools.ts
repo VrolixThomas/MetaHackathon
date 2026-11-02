@@ -418,10 +418,10 @@ export class ConversationHubTools {
 		this.pin(pr.repository, pr.baseSha, "base");
 		this.pin(pr.repository, pr.headSha, "head");
 	}
-	async observe(selectedPrId?: string) {
+	async observe(selectedPrId?: string, observedSnapshot?: HubSnapshot) {
 		throwIfAborted(this.signal);
 		this.acceptSnapshot(
-			await abortable(this.ports.snapshot(this.signal), this.signal),
+			observedSnapshot ?? (await abortable(this.ports.snapshot(this.signal), this.signal)),
 			selectedPrId ?? this.turn.prId
 		);
 		await this.day?.observe();

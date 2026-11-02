@@ -955,3 +955,30 @@ test("workspace context bounds untrusted content honestly without attaching PR e
 		)
 	);
 });
+
+test("routing observation is reused once; state changes after an effect are freshly observed before the next model round", async () => {
+	const h = harness([
+		[call("set_code_view", { view: "head" })],
+		answer("The current code view is displayed."),
+	]);
+	let observations = 0;
+	const original = h.ports.observe;
+	h.ports.observe = async (...args) => {
+		observations++;
+		if (observations === 2) h.observation.workspace.sequence += 10;
+		return original(...args);
+	};
+	try {
+		h.service.start(h.input);
+		await effect(h, 0);
+		await finish(h);
+		assert.equal(observations, 2);
+		assert.equal(h.requests.length, 2);
+		const content = h.requests[1]?.input.at(-1)?.["content"] as { text: string }[];
+		const context = JSON.parse(content[0]?.text ?? "{}");
+		assert.equal(context.actualWorkspace.workspace.sequence, 11);
+		assert.equal(context.actualWorkspace.workspace.codeView, "head");
+	} finally {
+		await h.service.dispose();
+	}
+});

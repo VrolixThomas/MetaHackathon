@@ -760,7 +760,8 @@ export class ConversationService {
 						onText,
 						reviewPorts ? runReview : undefined,
 						recovery,
-						hub
+						hub,
+						observed
 					);
 				if (!this.active(session, turn)) return;
 				if ((hub?.hasAnnouncements || turn.input.inputMode === "voice") && turn.text.trim()) {

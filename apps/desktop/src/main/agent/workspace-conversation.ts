@@ -5,7 +5,12 @@ import { throwIfAborted } from "./cancellation";
 import { dropOldestConversationRecord } from "./conversation-history";
 import { GuidedReviewError, modelRound } from "./guided-review";
 import type { ConversationHubTools } from "./hub-tools";
-import { type AgentModelClient, MetaApiError, type MetaItem } from "./meta-client";
+import {
+	type AgentModelClient,
+	type FunctionTool,
+	MetaApiError,
+	type MetaItem,
+} from "./meta-client";
 import { boundedToolHistory } from "./review-source";
 import { WorkAdmissionError } from "./work-admission";
 import {
@@ -39,7 +44,8 @@ export async function runWorkspaceConversation(
 	onText: (text: string) => void | Promise<void>,
 	onReview?: (prId: string, history: MetaItem[]) => Promise<string>,
 	recovery: { used: boolean } = { used: false },
-	hub?: ConversationHubTools
+	hub?: ConversationHubTools,
+	initialObservation?: WorkspaceObservation
 ): Promise<string> {
 	const seen = new Set<string>();
 	let repairedArguments = false;
@@ -50,10 +56,14 @@ export async function runWorkspaceConversation(
 	);
 	for (let round = 0; round < 10; round++) {
 		throwIfAborted(signal);
-		const observation = await workspace?.observe();
-		if (observation?.hub)
-			hub?.acceptSnapshot(observation.hub, observation.workspace.review.prId ?? undefined);
-		const actualHub = await hub?.observe(observation?.workspace.review.prId ?? undefined);
+		// The router just observed this same workspace, with no intervening effect/await.
+		// Reuse that one snapshot for round zero only; every later round still refreshes.
+		const observation =
+			round === 0 && initialObservation ? initialObservation : await workspace?.observe();
+		const actualHub = await hub?.observe(
+			observation?.workspace.review.prId ?? undefined,
+			observation?.hub
+		);
 		const retained = boundedToolHistory(history);
 		const context = {
 			...(observation
@@ -98,7 +108,7 @@ export async function runWorkspaceConversation(
 			workload: "quick" as const,
 			instructions: WORKSPACE_INSTRUCTIONS,
 			input: modelInput(),
-			tools: [...(workspace?.tools ?? []), ...(hub?.tools ?? [])],
+			tools: workspaceRequestTools([...(workspace?.tools ?? []), ...(hub?.tools ?? [])]),
 			maxOutputTokens: 2048,
 		};
 		let response: Awaited<ReturnType<typeof modelRound>>;
@@ -196,4 +206,13 @@ export async function runWorkspaceConversation(
 	throw new GuidedReviewError(
 		"The workspace reached its step limit. Continue from the current canvas."
 	);
+}
+
+/** Function parameter schemas already use the API's JSON Schema dialect. Keep every
+ * constraint/description/ref; omit only the repeated top-level dialect declaration. */
+export function workspaceRequestTools(tools: FunctionTool[]): FunctionTool[] {
+	return tools.map((tool) => {
+		const { $schema: _dialect, ...parameters } = tool.parameters;
+		return { ...tool, parameters };
+	});
 }
