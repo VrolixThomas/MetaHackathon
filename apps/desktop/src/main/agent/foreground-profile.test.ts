@@ -10,6 +10,8 @@ const tools: FunctionTool[] = [
 	"inspect_work_job",
 	"read_pinned_source",
 	"search_pinned_source",
+	"open_pinned_source",
+	"create_source_flow",
 	"open_review_file",
 	"confirm_pr_comment",
 ].map((name) => ({
@@ -60,4 +62,21 @@ test("unknown off-pane needs retain explicit expansion with unchanged authority"
 	assert(profile.tools(tools).some((tool) => tool.name === "read_pinned_source"));
 	profile.select(observation("tickets"));
 	assert(!profile.tools(tools).some((tool) => tool.name === "open_review_file"));
+});
+
+test("selected reviews expose source-flow tools without expanding unrelated canvases", () => {
+	const profile = new ForegroundProfile();
+	profile.select(undefined, true);
+	const selected = profile.tools(tools);
+	for (const name of [
+		"read_pinned_source",
+		"search_pinned_source",
+		"open_pinned_source",
+		"create_source_flow",
+	])
+		assert.equal(
+			selected.find((tool) => tool.name === name),
+			tools.find((tool) => tool.name === name)
+		);
+	assert(!selected.some((tool) => tool.name === "confirm_pr_comment"));
 });

@@ -631,6 +631,8 @@ function workspace(d: ReturnType<typeof data>) {
 						provenance: "source-with-inferred-order",
 					},
 				});
+			if (command.kind === "open-source") next.workspace.primaryId = "source";
+			if (command.kind === "create-flow") next.workspace.primaryId = "flow";
 			const baseContentSequence = observation.workspace.contentSequence;
 			if (baseContentSequence !== undefined)
 				next.workspace.contentSequence = next.workspace.sequence;
@@ -3405,5 +3407,169 @@ test("a successful start request returning historical work records reuse, not a 
 		assert.equal(context.priorJobs[0].createdAt, time);
 	} finally {
 		await service.dispose();
+	}
+});
+
+test("selected-review full-flow intent exposes broader source tools and waits for the source canvas receipt", async () => {
+	for (const outcome of ["applied", "cancelled", "uninspected"] as const) {
+		const d = data();
+		const w = workspace(d);
+		const pr = d.hub.reviews[0]?.pr;
+		assert(pr);
+		const prepared: PreparedReview = {
+			id: "flow-review",
+			version: 1,
+			pr,
+			createdAt: time,
+			summary: "Inferred changed behavior",
+			orderRationale: "Prepared changed files only",
+			coverage: "complete",
+			evidence: "inferred-from-github",
+			files: [
+				{
+					path: "changed.ts",
+					reason: "Changed behavior",
+					summary: "Inferred",
+					suggestedComments: [],
+				},
+			],
+		};
+		const screen: ReviewScreen = {
+			sequence: 1,
+			mode: "review",
+			prId: pr.id,
+			reviewId: prepared.id,
+			baseSha: pr.baseSha,
+			headSha: pr.headSha,
+			path: "changed.ts",
+			paused: false,
+		};
+		w.observation.workspace.review = screen;
+		w.observation.workspace.canvases = [
+			{ id: "review", kind: "review", title: "Actual review", revision: 1 },
+		];
+		w.observation.workspace.primaryId = "review";
+		const requests: MetaRequest[] = [];
+		const turn = {
+			...input,
+			prId: pr.id,
+			text: "Show me the entire flow from the request to delivering an update.",
+		};
+		const flow = {
+			title: "Inspected caller path",
+			summary: "Inferred link; no uninspected downstream guarantee",
+			steps: [
+				{
+					title: "Caller",
+					explanation: "Calls changed behavior",
+					location: { ...d.source.location, ...(outcome === "uninspected" ? { endLine: 13 } : {}) },
+				},
+			],
+		};
+		const controlled = client(
+			[
+				[
+					call("read_pinned_source", {
+						repository: pr.repository,
+						commitSha: pr.headSha,
+						path: d.source.location.path,
+						startLine: 10,
+						endLine: 12,
+					}),
+				],
+				[call("create_source_flow", flow)],
+				answer("Controlled source-flow acknowledgement."),
+			],
+			requests
+		);
+		let reviewNavigations = 0;
+		const service = new ConversationService(
+			{
+				async *stream(request, signal) {
+					for (const name of [
+						"read_pinned_source",
+						"search_pinned_source",
+						"open_pinned_source",
+						"create_source_flow",
+					])
+						assert(
+							request.tools?.some((tool) => tool.name === name),
+							name
+						);
+					assert.match(
+						request.instructions,
+						/Never substitute start_walkthrough for a full source-flow request/
+					);
+					yield* controlled.stream(request, signal);
+				},
+			},
+			{
+				workspace: w.ports,
+				hub: d.ports,
+				review: {
+					getReady: async () => prepared,
+					getProgress: async () => null,
+					getScreen: async () => screen,
+					getFile: async () => ({
+						prId: pr.id,
+						path: "changed.ts",
+						status: "modified",
+						patch: null,
+						base: {
+							path: "changed.ts",
+							commitSha: pr.baseSha,
+							status: "available",
+							content: "old();\n",
+						},
+						head: {
+							path: "changed.ts",
+							commitSha: pr.headSha,
+							status: "available",
+							content: "changed();\n",
+						},
+					}),
+					navigate: async () => {
+						reviewNavigations++;
+						throw new Error("Flow is not a prepared-file walkthrough");
+					},
+				},
+			}
+		);
+		try {
+			service.start(turn);
+			if (outcome === "uninspected") {
+				await eventually(() => service.poll(identity(turn)).status !== "running");
+				assert.equal(service.poll(identity(turn)).status, "error");
+				assert.equal(w.commands.length, 0);
+			} else {
+				await eventually(() => w.commands.length === 1);
+				assert.equal(service.poll(identity(turn)).text, "");
+				assert.equal(requests.length, 2);
+				assert.equal(w.commands[0]?.kind, "create-flow");
+				assert(!JSON.stringify(w.commands).includes('"text"'));
+				if (outcome === "cancelled")
+					service.cancel({ ...identity(turn), requestId: "cancel-flow", reason: "user" });
+				w.settle();
+				await eventually(() => service.poll(identity(turn)).status !== "running");
+				assert.equal(
+					service.poll(identity(turn)).text,
+					outcome === "applied" ? "Controlled source-flow acknowledgement." : ""
+				);
+				if (outcome === "applied") {
+					const canvas = w.observation.workspace.canvases.find((canvas) => canvas.kind === "flow");
+					assert(canvas?.kind === "flow");
+					assert.equal(w.observation.workspace.primaryId, canvas.id);
+					assert.equal(canvas.flow.steps[0]?.source.text, d.source.text);
+					assert.deepEqual(canvas.flow.steps[0]?.source.location, d.source.location);
+				} else assert.equal(requests.length, 2);
+			}
+			assert.equal(d.sourceRequests.length, 1);
+			assert.equal(reviewNavigations, 0);
+			assert.equal(d.operations.length, 0);
+			assert(!prepared.files.some((file) => file.path === d.source.location.path));
+		} finally {
+			w.settle();
+			await service.dispose();
+		}
 	}
 });

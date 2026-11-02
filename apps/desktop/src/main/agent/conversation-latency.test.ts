@@ -18,8 +18,8 @@ test("actual conversation routes reuse only the initial snapshot and retain late
 		]
 	);
 	for (const row of results) {
-		// Work profiles now also offer the two gated pinned-source readers directly.
-		assert(row.requests.every((request) => request.toolCount < 27));
+		// Work profiles now also offer gated pinned-source read/search and source/flow presentation directly.
+		assert(row.requests.every((request) => request.toolCount < 29));
 		if (["simple", "planning-followup", "workspace-action"].includes(row.scenario))
 			assert((row.requests[0]?.toolCount ?? 100) < 10);
 		assert.equal(row.firstAudioMs, null);

@@ -26,6 +26,8 @@ const core = new Set([
 const review = new Set([
 	"read_pinned_source",
 	"search_pinned_source",
+	"open_pinned_source",
+	"create_source_flow",
 	"inspect_pr_feedback",
 	"inspect_suggested_fixes",
 	"inspect_suggested_fix",
@@ -38,7 +40,12 @@ const review = new Set([
 	"start_walkthrough",
 	"continue_walkthrough",
 ]);
-const sourceReads = new Set(["read_pinned_source", "search_pinned_source"]);
+const sourceTools = new Set([
+	"read_pinned_source",
+	"search_pinned_source",
+	"open_pinned_source",
+	"create_source_flow",
+]);
 function family(name: string): Family {
 	if (name.includes("pr_delegation")) return "approvals";
 	if (name.includes("pr_comment")) return "comments";
@@ -102,7 +109,7 @@ export class ForegroundProfile {
 				(tool) =>
 					core.has(tool.name) ||
 					this.has(family(tool.name)) ||
-					(this.has("work") && sourceReads.has(tool.name))
+					(this.has("work") && sourceTools.has(tool.name))
 			),
 			{
 				type: "function",
