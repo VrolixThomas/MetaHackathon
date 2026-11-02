@@ -11,6 +11,7 @@ import type {
 	HubSnapshot,
 	KnowledgeFact,
 	LinearTicket,
+	PRFixSummary,
 	PinnedSource,
 	PreparedReview,
 	ReviewScreen,
@@ -2609,11 +2610,15 @@ test("feedback work uses an inspected reviewable candidate instead of the auto-a
 	const args = JSON.stringify({ prId: pr.id, feedbackId: feedback.id });
 	await assert.rejects(tools.execute("start_feedback_work", args), /Inspect actual feedback/);
 	assert.equal(starts, 0);
+	assert.equal(tools.feedbackHandoff, undefined);
 	await tools.execute("inspect_pr_feedback", JSON.stringify({ prId: pr.id }));
 	const result = (await tools.execute("start_feedback_work", args)) as {
 		fix: { id: string };
 		display: string;
+		background: { status: string; nextStep: string };
 	};
+	assert.equal(result.background.status, "background-admitted");
+	assert.equal(result.background.nextStep, "acknowledge-and-yield");
 	assert.equal(result.fix.id, fix.id);
 	assert.equal(result.display, "not-established");
 	assert.equal(starts, 1);
@@ -3571,5 +3576,181 @@ test("selected-review full-flow intent exposes broader source tools and waits fo
 			w.settle();
 			await service.dispose();
 		}
+	}
+});
+
+for (const inputMode of ["typed", "voice"] as const) {
+	for (const selectedReview of [false, true]) {
+		test(`${inputMode} ${selectedReview ? "review" : "workspace"}: unfinished feedback admission acknowledges and yields without polling`, async () => {
+			const d = data();
+			const pr = required(d.hub.reviews[0]).pr;
+			const feedback = required((await d.ports.feedback(pr.id))[0]);
+			const fix: PRFixSummary = {
+				id: "admitted-fix",
+				jobId: "admitted-job",
+				pr,
+				feedback,
+				phase: "preparing",
+				summary: "",
+				question: null,
+				baseSha: pr.headSha,
+				headSha: null,
+				checks: [],
+				changedFiles: [],
+				createdAt: time,
+				updatedAt: time,
+				reviewedAt: null,
+				error: null,
+				publication: "not-published",
+			};
+			let starts = 0;
+			let lists = 0;
+			let details = 0;
+			d.ports.fixes = {
+				list: async () => {
+					lists++;
+					return [fix];
+				},
+				detail: async () => {
+					details++;
+					return { fix, review: null };
+				},
+				start: async (request) => {
+					assert.equal(request.prId, pr.id);
+					assert.equal(request.feedbackId, feedback.id);
+					starts++;
+					return fix;
+				},
+			};
+			const prepared: PreparedReview = {
+				id: "admission-review",
+				version: 1,
+				pr,
+				createdAt: time,
+				summary: "Inferred",
+				orderRationale: "Inferred",
+				coverage: "complete",
+				evidence: "inferred-from-github",
+				files: [
+					{ path: "changed.ts", reason: "Inferred", summary: "Inferred", suggestedComments: [] },
+				],
+			};
+			const turn = {
+				...input,
+				inputMode,
+				text: "Prepare a suggested fix for reviewer feedback. Keep it local and run real checks.",
+				...(selectedReview ? { prId: pr.id } : {}),
+			};
+			const requests: MetaRequest[] = [];
+			const service = new ConversationService(
+				client(
+					[
+						[call("expand_tools", { families: ["reviews"] })],
+						[call("inspect_pr_feedback", { prId: pr.id })],
+						[call("start_feedback_work", { prId: pr.id, feedbackId: feedback.id })],
+						// If the foreground wrongly continues, this recreates the observed polling failure.
+						[call("inspect_suggested_fixes", {}, "unwanted-poll")],
+					],
+					requests
+				),
+				{
+					hub: d.ports,
+					narrationCheckpoints: true,
+					...(selectedReview
+						? {
+								review: {
+									getReady: async () => prepared,
+									getProgress: async () => null,
+									getScreen: async (): Promise<ReviewScreen> => ({
+										sequence: 0,
+										mode: "conversation",
+										prId: pr.id,
+									}),
+									navigate: async () => {
+										throw new Error("No navigation requested");
+									},
+								},
+							}
+						: {}),
+				}
+			);
+			try {
+				service.start(turn);
+				await eventually(
+					() =>
+						service.poll(identity(turn)).status !== "running" ||
+						service.poll(identity(turn)).actions.length > 0
+				);
+				if (inputMode === "voice") {
+					const checkpoint = required(service.poll(identity(turn)).actions[0]);
+					assert.equal(checkpoint.kind, "narration-checkpoint");
+					assert.equal(service.poll(identity(turn)).status, "running");
+					service.narrationApplied({
+						...identity(turn),
+						requestId: checkpoint.requestId,
+						status: "spoken",
+					});
+					await eventually(() => service.poll(identity(turn)).status !== "running");
+				}
+				const result = service.poll(identity(turn));
+				assert.equal(result.status, "completed");
+				assert.match(result.text, /request was accepted.*in progress/);
+				assert.match(result.text, /actual check results.*when it’s ready/);
+				assert.doesNotMatch(result.text, /passed|TOOL FILLER|ready for review/);
+				assert.equal(requests.length, 3);
+				assert.equal(starts, 1);
+				assert.equal(lists, 0);
+				assert.equal(details, 0);
+				assert.equal(fix.headSha, null);
+				assert.deepEqual(fix.checks, []);
+				assert.equal(d.operations.length, 0);
+				assert.ok(requests[1]?.tools?.some((tool) => tool.name === "start_feedback_work"));
+				assert.ok(result.actions.every((action) => action.kind === "narration-checkpoint"));
+			} finally {
+				await service.dispose();
+			}
+		});
+	}
+}
+
+test("feedback handoff is absent after foreign or cancelled production-port admission", async () => {
+	for (const outcome of ["foreign", "cancelled"] as const) {
+		const d = data();
+		const pr = required(d.hub.reviews[0]).pr;
+		const feedback = required((await d.ports.feedback(pr.id))[0]);
+		const controller = new AbortController();
+		const fix: PRFixSummary = {
+			id: "fix",
+			jobId: "job",
+			pr,
+			feedback,
+			phase: "preparing",
+			summary: "",
+			question: null,
+			baseSha: pr.headSha,
+			headSha: null,
+			checks: [],
+			changedFiles: [],
+			createdAt: time,
+			updatedAt: time,
+			reviewedAt: null,
+			error: null,
+			publication: "not-published",
+		};
+		d.ports.fixes = {
+			list: async () => [fix],
+			detail: async () => ({ fix, review: null }),
+			start: async () => {
+				if (outcome === "cancelled") controller.abort();
+				return outcome === "foreign" ? { ...fix, feedback: { ...feedback, id: "foreign" } } : fix;
+			},
+		};
+		const tools = new ConversationHubTools(d.ports, input, controller.signal);
+		await tools.execute("inspect_pr_feedback", JSON.stringify({ prId: pr.id }));
+		await assert.rejects(
+			tools.execute("start_feedback_work", JSON.stringify({ prId: pr.id, feedbackId: feedback.id }))
+		);
+		assert.equal(tools.feedbackHandoff, undefined);
+		assert.equal(d.operations.length, 0);
 	}
 });

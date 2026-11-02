@@ -442,6 +442,12 @@ export async function runGuidedReview(
 					call_id: call.call_id,
 					output: JSON.stringify(result),
 				});
+				const handoff = hub.feedbackHandoff;
+				if (handoff) {
+					throwIfAborted(signal);
+					await emitText(handoff.acknowledgement);
+					return handoff.acknowledgement;
+				}
 			} catch (error) {
 				throwIfAborted(signal);
 				if (!(error instanceof WorkspaceArgumentError) || repairedArguments) throw error;
