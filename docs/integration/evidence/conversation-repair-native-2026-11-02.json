@@ -1,0 +1,111 @@
+{
+	"verifiedAt": "2026-11-02T22:07:01.217878+00:00",
+	"foregroundApplicationCommit": "5cefe5e",
+	"codingPinApplicationCommit": "d715778c954d84892968c34bc9175e07b889e406",
+	"currentBuiltMainSha256": "a2a9774276a265b81c8fe7339668b22b8d566cfc1910fc6e1293ee22ce464119",
+	"nativeSuites": [
+		{
+			"suite": "v1",
+			"status": "passed",
+			"artifact": "apps/desktop/out/v1-smoke-report.json",
+			"artifactSha256": "faa75b70f95193034e09fb72ea2a610bbb7751a748d07770a86c236f669b116b",
+			"artifactModifiedAt": "2026-11-02T21:57:28.118240+00:00",
+			"builtMainSha256": null,
+			"scope": "actual native app/IPC/local runtime with controlled provider transport; no physical speech or live provider claim"
+		},
+		{
+			"suite": "hands-free",
+			"status": "passed",
+			"artifact": "apps/desktop/out/hands-free-smoke-report.json",
+			"artifactSha256": "7c6dbf699758056a19578580bbe474c453e6ba3545831d8e6f55998f2a32eb80",
+			"artifactModifiedAt": "2026-11-02T21:59:10.757432+00:00",
+			"builtMainSha256": null,
+			"scope": "actual native app/IPC/local runtime with controlled provider transport; no physical speech or live provider claim"
+		},
+		{
+			"suite": "workspace",
+			"status": "passed",
+			"artifact": "apps/desktop/out/workspace-smoke-report.json",
+			"artifactSha256": "120ff346965e916189249e6c3fd6284ab20fbbeb1ee9f018d34d4c09fa0a2be0",
+			"artifactModifiedAt": "2026-11-02T21:59:55.501722+00:00",
+			"builtMainSha256": null,
+			"scope": "actual native app/IPC/local runtime with controlled provider transport; no physical speech or live provider claim"
+		},
+		{
+			"suite": "attention",
+			"status": "passed",
+			"artifact": "apps/desktop/out/attention-smoke-report.json",
+			"artifactSha256": "47dbe334c5cd9ca15d50a96aa17dda31925f5cb084c019fdadcfb8b9a71dda6d",
+			"artifactModifiedAt": "2026-11-02T22:00:50.998525+00:00",
+			"builtMainSha256": null,
+			"scope": "actual native app/IPC/local runtime with controlled provider transport; no physical speech or live provider claim"
+		},
+		{
+			"suite": "comment-conversation",
+			"status": "passed",
+			"artifact": "apps/desktop/out/comment-conversation-smoke-report.json",
+			"artifactSha256": "8a496f8849f0d64a8b4ed810a327d887a563155401b297d00b07f431ed7e1f22",
+			"artifactModifiedAt": "2026-11-02T22:01:41.095321+00:00",
+			"builtMainSha256": "bb4f76707028226f2fc9ddb4cf3912771750eb56bab339679501029361fe6254",
+			"scope": "actual native app/IPC/local runtime with controlled provider transport; no physical speech or live provider claim"
+		},
+		{
+			"suite": "executive",
+			"status": "passed",
+			"artifact": "apps/desktop/out/executive-smoke-report.json",
+			"artifactSha256": "8a9f420fb0161c84253e5173656863e72c00e7ec2eb24fd6d8fa83d3ce473c34",
+			"artifactModifiedAt": "2026-11-02T22:03:50.041562+00:00",
+			"builtMainSha256": null,
+			"scope": "actual native app/IPC/local runtime with controlled provider transport; no physical speech or live provider claim"
+		},
+		{
+			"suite": "coding-provider",
+			"status": "passed",
+			"artifact": "apps/desktop/out/coding-provider-smoke-report.json",
+			"artifactSha256": "e96864f3e544f3c881d2ce9369c2d3fbb2a8a99f4e251f609471465312ec3933",
+			"artifactModifiedAt": "2026-11-02T22:04:03.939849+00:00",
+			"builtMainSha256": "a2a9774276a265b81c8fe7339668b22b8d566cfc1910fc6e1293ee22ce464119",
+			"scope": "actual native app/IPC/local runtime with controlled provider transport; no physical speech or live provider claim"
+		},
+		{
+			"suite": "pr-fix",
+			"status": "passed",
+			"artifact": "apps/desktop/out/pr-fix-smoke-report.json",
+			"artifactSha256": "ee31940172ffbc825d68405ad97ef4656cef86cd08af685daa02675b34aee07c",
+			"artifactModifiedAt": "2026-11-02T22:05:21.249785+00:00",
+			"builtMainSha256": "a2a9774276a265b81c8fe7339668b22b8d566cfc1910fc6e1293ee22ce464119",
+			"scope": "actual native app/IPC/local runtime with controlled provider transport; no physical speech or live provider claim"
+		},
+		{
+			"suite": "team-workspace",
+			"status": "passed",
+			"artifact": "apps/desktop/out/team-workspace-smoke-report.json",
+			"artifactSha256": "09784dc7c577a990b488ba856a9fface73cd2ba728b62fce03072d0c9a3cd74a",
+			"artifactModifiedAt": "2026-11-02T22:05:34.593258+00:00",
+			"builtMainSha256": null,
+			"scope": "actual native app/IPC/local runtime with controlled provider transport; no physical speech or live provider claim"
+		}
+	],
+	"unitValidation": {
+		"foregroundWorker": {
+			"passed": 255,
+			"failed": 0
+		},
+		"codingPinWorker": {
+			"passed": 193,
+			"failed": 0
+		},
+		"note": "Independent focused groups overlap; counts are not added as a unique full-suite count."
+	},
+	"rootChecks": {
+		"typeCheck": "passed",
+		"lint": "passed; 725 files",
+		"build": "passed through native suite builds"
+	},
+	"limitations": [
+		"Installed v0.1.1 app was not replaced or launched by these checks; live profile and existing MET-77 were not modified.",
+		"No live end-to-end speech latency comparison, model classification quality benchmark or live Wonder coding run.",
+		"First PR-fix run failed the two-observed-frame audit. A diagnostic-only capture was added; the rerun passed without a production frame/receipt change. Initial timing failure remains non-reproduced, not silently counted as a pass.",
+		"Foreground six-suite acceptance precedes the additive coding-model pin change; executive was rerun and coding-provider, PR-fix and team-workspace validated afterward."
+	]
+}
