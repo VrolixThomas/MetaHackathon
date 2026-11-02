@@ -1,0 +1,166 @@
+{
+	"repository": "https://github.com/VrolixThomas/MuseFocusDemo",
+	"preparedAt": "2026-11-01T19:05:02.856254+00:00",
+	"productCheckpoint": "42bc558",
+	"project": "https://linear.app/metahackathon/project/musefocus-demo-keep-the-thread-a6c62a01c626",
+	"workerTicket": "MET-77",
+	"reviewer": "VrolixThomas",
+	"otherAuthor": "thomasaltacc-a11y",
+	"pullRequests": [
+		{
+			"author": {
+				"id": "U_kgDOFOfAIA",
+				"is_bot": false,
+				"login": "thomasaltacc-a11y",
+				"name": ""
+			},
+			"baseRefOid": "b067f9c6e3b2b8940d149a71298f17af311914a1",
+			"headRefName": "demo/quiet-updates",
+			"headRefOid": "c626938746db098f5ab0d05b4df66e8af447c711",
+			"number": 1,
+			"reviewRequests": [
+				{
+					"__typename": "User",
+					"login": "VrolixThomas"
+				}
+			],
+			"reviews": [],
+			"state": "OPEN",
+			"statusCheckRollup": [
+				{
+					"__typename": "CheckRun",
+					"completedAt": "2026-11-01T19:02:15Z",
+					"conclusion": "SUCCESS",
+					"detailsUrl": "https://github.com/VrolixThomas/MuseFocusDemo/actions/runs/41339639612/job/124946711642",
+					"name": "demo-checks",
+					"startedAt": "2026-11-01T19:02:07Z",
+					"status": "COMPLETED",
+					"workflowName": "Companion checks"
+				}
+			],
+			"title": "MET-78 Keep completed work quiet while I focus",
+			"url": "https://github.com/VrolixThomas/MuseFocusDemo/pull/1"
+		},
+		{
+			"author": {
+				"id": "MDQ6VXNlcjQzNzUxMDM2",
+				"is_bot": false,
+				"login": "VrolixThomas",
+				"name": ""
+			},
+			"baseRefOid": "b067f9c6e3b2b8940d149a71298f17af311914a1",
+			"headRefName": "demo/slack-capture",
+			"headRefOid": "a6e12a71898c869672d046feb0cffe82a3198b30",
+			"number": 2,
+			"reviewRequests": [],
+			"reviews": [
+				{
+					"id": "PRR_kwDOVfVAEs8AAAABVYVS0Q",
+					"author": {
+						"login": "thomasaltacc-a11y"
+					},
+					"authorAssociation": "COLLABORATOR",
+					"body": "Please fix request identity in src/intake/slack-request.mjs before merging. The current key contains workspaceId and channelId but omits messageId. Two different requests in the same channel overwrite each other, so one commitment disappears.\n\nInclude the original messageId in the item key. Add regressions showing that two messages in the same channel produce two items, a replay of one message stays one item, and the same channel/message IDs in different workspaces remain separate. Preserve the original thread and URL.\n\nThis is the prepared reviewer feedback for the MuseFocus demo; the bug is reproducible in the actual companion code.",
+					"submittedAt": "2026-11-01T19:03:17Z",
+					"includesCreatedEdit": false,
+					"reactionGroups": [],
+					"state": "CHANGES_REQUESTED",
+					"commit": {
+						"oid": "a6e12a71898c869672d046feb0cffe82a3198b30"
+					}
+				}
+			],
+			"state": "OPEN",
+			"statusCheckRollup": [
+				{
+					"__typename": "CheckRun",
+					"completedAt": "2026-11-01T19:02:37Z",
+					"conclusion": "SUCCESS",
+					"detailsUrl": "https://github.com/VrolixThomas/MuseFocusDemo/actions/runs/41339671669/job/124946809584",
+					"name": "demo-checks",
+					"startedAt": "2026-11-01T19:02:31Z",
+					"status": "COMPLETED",
+					"workflowName": "Companion checks"
+				}
+			],
+			"title": "MET-79 Capture Slack requests with their original thread",
+			"url": "https://github.com/VrolixThomas/MuseFocusDemo/pull/2"
+		},
+		{
+			"author": {
+				"id": "U_kgDOFOfAIA",
+				"is_bot": false,
+				"login": "thomasaltacc-a11y",
+				"name": ""
+			},
+			"baseRefOid": "b067f9c6e3b2b8940d149a71298f17af311914a1",
+			"headRefName": "demo/source-links",
+			"headRefOid": "fb820400f82c4eafc88184aff068b0319b28b199",
+			"number": 3,
+			"reviewRequests": [
+				{
+					"__typename": "User",
+					"login": "VrolixThomas"
+				}
+			],
+			"reviews": [],
+			"state": "OPEN",
+			"statusCheckRollup": [
+				{
+					"__typename": "CheckRun",
+					"completedAt": "2026-11-01T19:02:54Z",
+					"conclusion": "SUCCESS",
+					"detailsUrl": "https://github.com/VrolixThomas/MuseFocusDemo/actions/runs/41339692826/job/124946875492",
+					"name": "demo-checks",
+					"startedAt": "2026-11-01T19:02:47Z",
+					"status": "COMPLETED",
+					"workflowName": "Companion checks"
+				}
+			],
+			"title": "MET-80 Open the original source from each work card",
+			"url": "https://github.com/VrolixThomas/MuseFocusDemo/pull/3"
+		}
+	],
+	"localPreview": {
+		"main": "http://127.0.0.1:4318",
+		"quietUpdates": "http://127.0.0.1:4319"
+	},
+	"regressions": [
+		{
+			"scenario": "focus",
+			"command": [
+				"node",
+				"scripts/reproduce.mjs",
+				"focus",
+				"../MuseFocusDemo-previews/quiet-updates"
+			],
+			"commit": "c626938746db098f5ab0d05b4df66e8af447c711",
+			"exitCode": 1,
+			"expectedExitCode": 1,
+			"startedAt": "2026-11-01T19:04:12.573245+00:00",
+			"finishedAt": "2026-11-01T19:04:12.645299+00:00",
+			"actual": "Focus ON; pending decision; actual result: {\"status\":\"delivered\",\"update\":{\"workId\":\"decision\",\"title\":\"Which browser?\",\"kind\":\"decision\"}}\n"
+		},
+		{
+			"scenario": "slack",
+			"command": [
+				"node",
+				"scripts/reproduce.mjs",
+				"slack",
+				"../MuseFocusDemo-previews/slack-capture"
+			],
+			"commit": "a6e12a71898c869672d046feb0cffe82a3198b30",
+			"exitCode": 1,
+			"expectedExitCode": 1,
+			"startedAt": "2026-11-01T19:04:12.645348+00:00",
+			"finishedAt": "2026-11-01T19:04:12.699063+00:00",
+			"actual": "Two original Slack messages; actual saved items: [{\"id\":\"slack:demo-team:help\",\"title\":\"Source link is missing\",\"provider\":\"Slack\",\"state\":\"decision\",\"delivered\":false,\"source\":{\"workspaceId\":\"demo-team\",\"channelId\":\"help\",\"messageId\":\"102.001\",\"threadId\":\"102.001\"},\"sourceUrl\":null}]\n"
+		}
+	],
+	"limitations": [
+		"Companion data is explicitly synthetic.",
+		"No real MuseFocus worker, provider conversation or approval was run during repository preparation.",
+		"Slack needs a real source thread; no message was posted as part of preparation.",
+		"Live end-to-end timing and physical microphone/speaker rehearsal remain."
+	]
+}
