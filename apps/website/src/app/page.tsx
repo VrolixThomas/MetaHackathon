@@ -4,9 +4,14 @@ import { Nav } from "@/components/nav";
 import { StoryProvider } from "@/components/story/context";
 import { Walkthrough } from "@/components/story/walkthrough";
 import { Closing, Sources, WhyFocus, WorkflowSections } from "@/components/workflow-sections";
+import { getLatestRelease } from "@/lib/github";
+import { REPOSITORY_URL } from "@/lib/releases";
 import { questions } from "@/lib/story";
 
-export default function HomePage() {
+export const revalidate = 300;
+
+export default async function HomePage() {
+	const release = await getLatestRelease();
 	return (
 		<StoryProvider>
 			<a href="#main" className="skip-link">
@@ -15,7 +20,7 @@ export default function HomePage() {
 			<div id="top" />
 			<Nav />
 			<main id="main" className="relative z-10">
-				<Hero />
+				<Hero release={release} />
 				<Walkthrough />
 				<WhyFocus />
 				<WorkflowSections />
@@ -41,7 +46,7 @@ export default function HomePage() {
 						))}
 					</div>
 				</section>
-				<Closing />
+				<Closing release={release} />
 			</main>
 			<footer className="footer content-width">
 				<a href="#top" aria-label="MuseFocus home">
@@ -49,6 +54,8 @@ export default function HomePage() {
 				</a>
 				<p>Work moves. You focus.</p>
 				<div>
+					<a href={REPOSITORY_URL}>GitHub</a>
+					<a href="#download">Download</a>
 					<a href="#workflow">The workflow</a>
 					<a href="#questions">Questions</a>
 					<a href="#top">Back to top ↑</a>

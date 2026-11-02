@@ -1,7 +1,9 @@
 import { captures } from "@/lib/captures";
+import type { ReleaseState } from "@/lib/releases";
 import type { ChapterId } from "@/lib/story";
 import Image from "next/image";
 import { Brand } from "./brand";
+import { Downloads } from "./download";
 import { Icon } from "./icons";
 import { StoryLink } from "./story/context";
 
@@ -170,9 +172,9 @@ export function Sources() {
 	);
 }
 
-export function Closing() {
+export function Closing({ release }: { release: ReleaseState }) {
 	return (
-		<section className="closing" aria-labelledby="closing-heading">
+		<section id="download" className="closing" aria-labelledby="closing-heading">
 			<div className="closing-light" aria-hidden="true" />
 			<Image
 				className="closing-mark"
@@ -187,10 +189,7 @@ export function Closing() {
 				is the point.
 			</h2>
 			<p>Give it to the work that needs you.</p>
-			<a className="button primary" href="#demo">
-				Find your focus <Icon name="arrow" />
-			</a>
-			<span className="closing-note">MuseFocus for macOS · In development</span>
+			<Downloads release={release} />
 		</section>
 	);
 }

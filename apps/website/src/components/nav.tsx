@@ -1,6 +1,8 @@
 "use client";
+import { REPOSITORY_URL } from "@/lib/releases";
 import { useEffect, useState } from "react";
 import { Brand } from "./brand";
+import { Icon } from "./icons";
 
 export function Nav() {
 	const [scrolled, setScrolled] = useState(false);
@@ -18,9 +20,11 @@ export function Nav() {
 				</a>
 				<nav aria-label="Main navigation">
 					<a href="#workflow">Your day, in focus</a>
-					<a href="#questions">Questions</a>
-					<a href="#demo" className="nav-cta">
-						Find your focus <span aria-hidden="true">↗</span>
+					<a href={REPOSITORY_URL} className="nav-github" aria-label="MuseFocus on GitHub">
+						<Icon name="github" size={19} /> <span>GitHub</span>
+					</a>
+					<a href="#download" className="nav-cta">
+						Download <Icon name="download" size={16} />
 					</a>
 				</nav>
 			</div>

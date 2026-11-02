@@ -1,10 +1,12 @@
 "use client";
+import type { ReleaseState } from "@/lib/releases";
 import { AnimatedBrand } from "./brand";
-import { Icon } from "./icons";
+import { DownloadButton } from "./download";
 import { useStory } from "./story/context";
 
-export function Hero() {
+export function Hero({ release }: { release: ReleaseState }) {
 	const { state } = useStory();
+	const downloadable = release.status === "ready" && release.downloads.length > 0;
 	return (
 		<section className="hero" aria-labelledby="hero-heading">
 			<div className="hero-light" aria-hidden="true" />
@@ -22,16 +24,14 @@ export function Hero() {
 				brings one thing at a time into focus.
 			</p>
 			<div className="hero-actions">
-				<a className="button primary" href="#demo">
-					Explore a day with MuseFocus <Icon name="arrow" />
-				</a>
-				<a className="text-link" href="#why">
-					Why focus? <span aria-hidden="true">↘</span>
+				<DownloadButton release={release} />
+				<a className="text-link" href="#demo">
+					See it in action <span aria-hidden="true">↘</span>
 				</a>
 			</div>
 			<p className="availability">
-				<span className="status-dot" /> Built for macOS <span aria-hidden="true">·</span> In
-				development
+				<span className="status-dot" /> Built for macOS <span aria-hidden="true">·</span>{" "}
+				{downloadable ? release.version : "Follow development on GitHub"}
 			</p>
 		</section>
 	);

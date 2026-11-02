@@ -45,6 +45,33 @@ bun run --filter @metahackathon/website type-check
 bun run website:build
 ```
 
+Run `bun test apps/website/src/lib/releases.test.tsx` from the repository root
+to check release selection, architecture choices and unavailable-download states.
+
 Capture coverage, scene cycling and draft/proposal descriptions are checked.
 The actual desktop screens were visually inspected during capture. Next's
 production build validates the site; browser layout review remains separate.
+
+## Website deployment and downloads
+
+Vercel project `musefocus` deploys `apps/website` from `main` to
+https://musefocus.app. Set `WEBSITE_SITE_URL=https://musefocus.app` in production.
+Install with `bun install --frozen-lockfile --ignore-scripts` and build with
+`bun run build` from this app directory; shared workspace files must be included.
+
+The homepage checks the public `VrolixThomas/MetaHackathon` latest-release API
+on the server. The page and lookup revalidate on requests after five minutes,
+so publishing a release does not require a website commit or redeployment.
+No GitHub token is needed or exposed. Drafts and prereleases are not selected.
+
+Download buttons use uploaded, non-empty `MuseFocus-<version>-arm64.dmg`,
+`-x64.dmg`, or `-universal.dmg` assets from that exact repository and release.
+Architecture choices reflect the published assets; local unsigned artifacts are
+excluded. The site does not assert signing or notarization from a filename.
+Until an installer is published, the download section explains its availability
+and links to GitHub releases. API failures retain a working releases-page link.
+
+The current macOS workflow preserves verified candidates as Actions artifacts;
+it does not publish GitHub Releases automatically. Runtime's reviewed release
+publication remains separate from the website. A public repository or successful
+website deployment alone does not create an app download.

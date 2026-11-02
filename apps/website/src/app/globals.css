@@ -2485,3 +2485,53 @@ details > p {
 		font-size: 12px;
 	}
 }
+
+/* Public releases and repository links. */
+.nav-github {
+	display: inline-flex;
+	align-items: center;
+	gap: 8px;
+}
+.downloads {
+	max-width: 660px;
+	margin: 28px auto 0;
+}
+.release-status {
+	color: var(--secondary);
+	font-size: 13px;
+	line-height: 1.8;
+	text-wrap: balance;
+}
+.download-options,
+.release-links {
+	display: flex;
+	flex-wrap: wrap;
+	justify-content: center;
+	gap: 20px;
+}
+.download-option {
+	display: flex;
+	flex-direction: column;
+	align-items: center;
+	gap: 10px;
+}
+.download-option > span {
+	color: var(--secondary);
+	font-size: 11px;
+}
+.release-links {
+	margin-top: 24px;
+	gap: 28px;
+}
+@media (max-width: 760px) {
+	.nav nav > a.nav-github {
+		display: inline-flex;
+	}
+	.nav-github span {
+		display: none;
+	}
+	.footer > div {
+		flex-wrap: wrap;
+		justify-content: center;
+	}
+}

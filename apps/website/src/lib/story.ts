@@ -99,8 +99,8 @@ export const questions = [
 			"The current app runs coding jobs in separate workspaces on your Mac. Your Mac needs to stay awake and connected for that work and its follow-ups. Hosted always-on execution is not part of this version.",
 	},
 	{
-		question: "Can I download it yet?",
+		question: "Where can I get the latest version?",
 		answer:
-			"MuseFocus is in development. Explore the walkthrough here; a verified public release and the finished demo video will be linked when they are ready.",
+			"The download section links to the macOS installers attached to the latest public release on GitHub. If an installer is not available yet, you can follow the public repository and check its releases. New releases appear here automatically.",
 	},
 ] as const;
