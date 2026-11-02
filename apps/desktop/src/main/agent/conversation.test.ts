@@ -147,7 +147,7 @@ test("native client/router handle greeting and follow-up without a PR, screen or
 	}
 });
 
-test("only completed real exchanges enter history, and sessions remain isolated", async () => {
+test("real exchanges enter history, and sessions remain isolated", async () => {
 	const mock = replies();
 	const service = new ConversationService(mock.client);
 	try {
@@ -297,7 +297,7 @@ test("history drops whole old exchanges at both count and character limits", asy
 	}
 });
 
-test("cancel and replacement suppress late ignored-abort provider data and exclude partial history", async () => {
+test("cancel and replacement suppress late ignored-abort provider data and retain marked partial history", async () => {
 	let release: (() => void) | undefined;
 	let providerSignal: AbortSignal | undefined;
 	const mock = mockClient(async function* (request, signal) {
@@ -338,7 +338,11 @@ test("cancel and replacement suppress late ignored-abort provider data and exclu
 		release?.();
 		assert.equal((await finish(service, second)).text, "New reply");
 		assert.equal(service.poll(identity(first)).status, "stale");
-		assert.deepEqual(mock.requests[1]?.input, [{ role: "user", content: second.text }]);
+		assert.deepEqual(mock.requests[1]?.input[0], { role: "user", content: first.text });
+		assert(String(mock.requests[1]?.input[1]?.["content"]).includes("potentially unheard"));
+		assert(String(mock.requests[1]?.input[1]?.["content"]).endsWith("Partial"));
+		assert(!JSON.stringify(mock.requests[1]?.input).includes("LATE"));
+		assert.deepEqual(mock.requests[1]?.input[2], { role: "user", content: second.text });
 	} finally {
 		release?.();
 		await service.dispose();
@@ -407,11 +411,13 @@ test("completed text fallback works; incomplete or tool replies never become suc
 		}
 		service.start(input(4));
 		await finish(service, input(4));
-		assert.deepEqual(mock.requests[3]?.input, [
-			{ role: "user", content: "Hello" },
-			{ role: "assistant", content: "Terminal reply" },
-			{ role: "user", content: "Hello" },
-		]);
+		const retained = mock.requests[3]?.input ?? [];
+		assert.equal(retained.filter((item) => item["role"] === "user").length, 4);
+		assert.deepEqual(retained[1], { role: "assistant", content: "Terminal reply" });
+		assert(String(retained[3]?.["content"]).includes("potentially unheard"));
+		assert(String(retained[3]?.["content"]).endsWith("Unfinished"));
+		assert(String(retained[5]?.["content"]).includes("not a completed spoken response"));
+		assert(!JSON.stringify(retained).includes("post_comment"));
 	} finally {
 		await service.dispose();
 	}

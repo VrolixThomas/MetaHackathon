@@ -31,6 +31,14 @@ export type Exchange = TurnIdentity & {
 	answer: string;
 	phase: Phase;
 };
+function retainExchange(entry: Exchange) {
+	return (
+		entry.source !== "voice" ||
+		!!entry.question.trim() ||
+		!!entry.answer.trim() ||
+		!["complete", "cancelled", "error"].includes(entry.phase)
+	);
+}
 export type VoiceHandle = {
 	beginCapture(): void;
 	endCapture(): void;
@@ -144,9 +152,9 @@ export function createConversationController(
 	const updateExchange = (turn: TurnIdentity, patch: Partial<Exchange>) => {
 		if (!live(turn)) return;
 		store.setState((state) => ({
-			exchanges: state.exchanges.map((entry) =>
-				same(entry, turn) ? { ...entry, ...patch } : entry
-			),
+			exchanges: state.exchanges
+				.map((entry) => (same(entry, turn) ? { ...entry, ...patch } : entry))
+				.filter(retainExchange),
 			...(state.attention && same(state.attention, turn) && patch.answer !== undefined
 				? { attention: { ...state.attention, answer: patch.answer } }
 				: {}),
@@ -218,9 +226,9 @@ export function createConversationController(
 			resolveAttention(old, attentionResult);
 			old.abort.abort();
 			store.setState((state) => ({
-				exchanges: state.exchanges.map((entry) =>
-					same(entry, old) ? { ...entry, phase: "cancelled" } : entry
-				),
+				exchanges: state.exchanges
+					.map((entry) => (same(entry, old) ? { ...entry, phase: "cancelled" as const } : entry))
+					.filter(retainExchange),
 				active: null,
 				attention: null,
 				phase: "idle",
@@ -292,7 +300,13 @@ export function createConversationController(
 				source === "attention"
 					? state.exchanges
 					: [
-							...state.exchanges,
+							...state.exchanges
+								.map((entry) =>
+									["complete", "cancelled", "error"].includes(entry.phase)
+										? entry
+										: { ...entry, phase: "cancelled" as const }
+								)
+								.filter(retainExchange),
 							{
 								...turn,
 								source,

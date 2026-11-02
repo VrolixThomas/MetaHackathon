@@ -449,7 +449,7 @@ it("starts a hands-free session once, keeps it between replies and ends it expli
 		assert.equal(interruptions, 1);
 		assert.equal(h.controller.store.getState().handsFree, true);
 		h.controller.answer(interrupted, "late reply");
-		assert.equal(h.controller.store.getState().exchanges.at(-1)?.answer, "");
+		assert.equal(h.controller.store.getState().exchanges.at(-1), undefined);
 		h.controller.endConversation();
 		assert.equal(h.controller.store.getState().handsFree, false);
 		assert.ok(stops > 0);
@@ -559,7 +559,7 @@ it("an agent reply error keeps an armed microphone available without starting a 
 		assert.equal(h.starts.length, 0);
 		assert.equal(starts, 1);
 		h.controller.answer(turn, "Late failed answer");
-		assert.equal(h.controller.store.getState().exchanges.at(-1)?.answer, "");
+		assert.equal(h.controller.store.getState().exchanges.at(-1), undefined);
 		const next = h.controller.allocateIdentity();
 		assert.equal(h.controller.beginVoice(next), true);
 		h.controller.answer(next, "A new answer");
@@ -712,5 +712,47 @@ it("an acknowledged workspace PR selection updates the current turn before later
 		assert.equal(h.controller.getConversationContext().prId, "owner/project#13");
 	} finally {
 		h.controller.dispose();
+	}
+});
+
+it("empty capture attempts retire on completion, cancellation, replacement and errors; active capture and diagnostics remain", () => {
+	for (const end of ["complete", "cancelled", "error", "stop", "replace"] as const) {
+		const { controller } = harness();
+		try {
+			const turn = controller.allocateIdentity();
+			controller.beginVoice(turn);
+			assert.equal(controller.store.getState().exchanges.length, 1);
+			assert.equal(controller.store.getState().exchanges[0]?.phase, "listening");
+			assert.equal(controller.store.getState().active?.turnId, turn.turnId);
+			controller.transcript(turn, "   ");
+			if (end === "stop") controller.stop();
+			else if (end === "replace") controller.beginVoice(controller.allocateIdentity());
+			else controller.finishVoice(turn, end, end === "error" ? "Microphone unavailable" : "");
+			assert(!controller.store.getState().exchanges.some((entry) => entry.turnId === turn.turnId));
+			if (end === "error")
+				assert.equal(controller.store.getState().error, "Microphone unavailable");
+			if (end === "replace") assert.equal(controller.store.getState().exchanges.length, 1);
+			controller.transcript(turn, "late transcript");
+			controller.answer(turn, "late reply");
+			assert(!controller.store.getState().exchanges.some((entry) => entry.turnId === turn.turnId));
+		} finally {
+			controller.dispose();
+		}
+	}
+});
+
+it("cancelled substantive voice messages remain real messages", () => {
+	const { controller } = harness();
+	try {
+		const turn = controller.allocateIdentity();
+		controller.beginVoice(turn);
+		controller.transcript(turn, "As you");
+		controller.answer(turn, "Could you clarify?");
+		controller.finishVoice(turn, "cancelled");
+		assert.equal(controller.store.getState().exchanges[0]?.question, "As you");
+		assert.equal(controller.store.getState().exchanges[0]?.answer, "Could you clarify?");
+		assert.equal(controller.store.getState().exchanges[0]?.phase, "cancelled");
+	} finally {
+		controller.dispose();
 	}
 });

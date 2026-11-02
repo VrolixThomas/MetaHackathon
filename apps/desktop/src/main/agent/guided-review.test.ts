@@ -1320,7 +1320,7 @@ test("output-limit recovery discards partial tools/prose and retries original in
 	}
 });
 
-test("recovery is bounded, excludes partial history and does not retry unrelated failures", async () => {
+test("recovery is bounded, retains the real user turn without discarded tool prose and does not retry unrelated failures", async () => {
 	for (const code of ["output-limit", "incomplete", "stream-interrupted", null] as const) {
 		const h = harness([], 1000, undefined, async function* (request) {
 			if (request.requestId === "next-turn") {
@@ -1342,7 +1342,11 @@ test("recovery is bounded, excludes partial history and does not retry unrelated
 			const next = { ...h.identity, turnId: "next-turn", generation: 2 };
 			h.service.start({ ...next, requestId: "next-turn", text: "Hello" });
 			await eventually(() => h.service.poll(next).status === "completed");
-			assert.deepEqual(h.requests.at(-1)?.input, [{ role: "user", content: "Hello" }]);
+			const history = h.requests.at(-1)?.input ?? [];
+			assert.deepEqual(history[0], { role: "user", content: h.input.text });
+			assert(String(history[1]?.["content"]).includes("potentially unheard"));
+			assert.deepEqual(history[2], { role: "user", content: "Hello" });
+			assert(!JSON.stringify(history).includes("DISCARDED PREFIX"));
 		} finally {
 			await h.service.dispose();
 		}
