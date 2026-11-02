@@ -399,7 +399,7 @@ test("no-PR conversation manages documents, typed visual mocks and the actual br
 			"website-unverified-revision"
 		);
 		assert(!JSON.stringify(packet(h.requests[5]).actualWorkspace.browser).includes("commitSha"));
-		assert(h.requests[0]?.tools?.some((tool) => tool.name === "create_visual_mock"));
+		assert(h.requests[0]?.tools?.some((tool) => tool.name === "expand_tools"));
 		assert(h.requests[0]?.instructions.includes("untrusted evidence"));
 		assert(
 			!JSON.stringify(h.requests.slice(1).map((request) => request.input)).includes(

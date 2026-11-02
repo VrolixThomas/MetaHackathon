@@ -32,6 +32,7 @@ import {
 	retainConversationHistory,
 } from "./conversation-history";
 import { StartTurnResultSchema } from "./events";
+import { ForegroundProfile } from "./foreground-profile";
 import {
 	ConversationReceiptGate,
 	type ConversationReceiptOptions,
@@ -104,6 +105,7 @@ type Session = {
 	requests: Set<string>;
 	walkthrough: WalkthroughState;
 	workAdmission: WorkAdmission;
+	profile: ForegroundProfile;
 	attentionFocus?: {
 		claim: AttentionClaim;
 		text: string;
@@ -287,6 +289,7 @@ export class ConversationService {
 				requests: new Set(),
 				walkthrough: {},
 				workAdmission: new WorkAdmission(),
+				profile: new ForegroundProfile(),
 			};
 			this.sessions.set(input.sessionId, session);
 		}
@@ -349,6 +352,7 @@ export class ConversationService {
 			requests: new Set<string>(),
 			walkthrough: {},
 			workAdmission: new WorkAdmission(),
+			profile: new ForegroundProfile(),
 		};
 		const record: RequestRecord = {
 			sessionId: input.sessionId,
@@ -735,7 +739,14 @@ export class ConversationService {
 							return this.reviewReceipts.publish(action, signal, () => emitAction(action));
 						},
 						onText,
-						{ state: session.walkthrough, onNarration, workspace, hub, recovery }
+						{
+							state: session.walkthrough,
+							onNarration,
+							workspace,
+							hub,
+							recovery,
+							profile: session.profile,
+						}
 					);
 					return reply;
 				};
@@ -761,7 +772,8 @@ export class ConversationService {
 						reviewPorts ? runReview : undefined,
 						recovery,
 						hub,
-						observed
+						observed,
+						session.profile
 					);
 				if (!this.active(session, turn)) return;
 				if ((hub?.hasAnnouncements || turn.input.inputMode === "voice") && turn.text.trim()) {

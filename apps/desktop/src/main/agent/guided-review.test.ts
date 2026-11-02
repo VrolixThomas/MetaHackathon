@@ -1625,3 +1625,30 @@ test("selected continuation section begins after the durable narration checkpoin
 		await h.service.dispose();
 	}
 });
+
+test("displayed PR explanation is one fast request with pinned source; deeper analysis is explicit and tools-free", async () => {
+	for (const deep of [false, true]) {
+		const h = harness(
+			deep
+				? [[call("analyze_current_context", { question: "Reason about the timeout deeply" })], []]
+				: [[]]
+		);
+		displayed(h);
+		h.ports.getFile = async (_pr, _review, path) => fileSource(h.prepared, path);
+		try {
+			h.service.start({ ...h.input, text: deep ? "Analyze this deeply" : "Explain this file" });
+			await finish(h);
+			assert.equal(h.requests.length, deep ? 2 : 1);
+			assert.equal(h.requests[0]?.workload, "quick");
+			assert(JSON.stringify(h.requests[0]?.input).includes("sourceOnly_service.ts"));
+			assert((h.requests[0]?.tools?.length ?? 99) < 15);
+			assert.equal(h.navigations.length, 0);
+			if (deep) {
+				assert.equal(h.requests[1]?.workload, "deep");
+				assert.deepEqual(h.requests[1]?.tools, []);
+			}
+		} finally {
+			await h.service.dispose();
+		}
+	}
+});

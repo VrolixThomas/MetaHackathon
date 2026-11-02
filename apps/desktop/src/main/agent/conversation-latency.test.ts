@@ -12,14 +12,22 @@ test("actual conversation routes reuse only the initial snapshot and retain late
 			[1, 1, 1, 1],
 			[2, 2, 2, 2],
 			[2, 2, 2, 2],
+			[1, 1, 1, 1],
+			[3, 2, 2, 2],
+			[1, 2, 2, 1],
 		]
 	);
 	for (const row of results) {
-		assert(row.requests.every((request) => request.toolCount === 70));
+		assert(row.requests.every((request) => request.toolCount < 25));
+		if (["simple", "planning-followup", "workspace-action"].includes(row.scenario))
+			assert((row.requests[0]?.toolCount ?? 100) < 10);
 		assert.equal(row.firstAudioMs, null);
 		assert.equal(row.inputTokens, null);
 		assert((row.firstPublishedMs ?? 0) >= (row.requests[0]?.terminalMs ?? 0));
 	}
+	assert.equal(results.find((row) => row.scenario === "scoped-dispatch")?.admissions, 1);
+	assert.equal(results.find((row) => row.scenario === "selected-ticket")?.ticketReads, 1);
+	assert.equal(results.find((row) => row.scenario === "selected-pr")?.sourceReads, 1);
 	const action = results[2];
 	assert(action && action.receiptWaitMs > 0);
 	assert((action.firstPublishedMs ?? 0) >= (action.requests[1]?.terminalMs ?? 0));

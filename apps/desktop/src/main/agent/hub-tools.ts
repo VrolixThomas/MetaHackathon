@@ -377,6 +377,28 @@ export class ConversationHubTools {
 			conversationFocus: focus,
 		};
 	}
+	async currentContext(
+		observation?: import("../../shared/contracts").WorkspaceObservation
+	): Promise<unknown> {
+		const canvas = observation?.workspace.canvases.find(
+			(canvas) => canvas.id === observation.workspace.primaryId
+		);
+		if (canvas?.kind === "center" && canvas.selectedId) {
+			if (
+				canvas.section === "tickets" &&
+				this.latest?.tickets.some((ticket) => ticket.id === canvas.selectedId)
+			)
+				return this.execute("inspect_ticket", JSON.stringify({ id: canvas.selectedId }));
+			if (
+				["completed", "activity"].includes(canvas.section) &&
+				this.latest?.jobs.some((job) => job.id === canvas.selectedId)
+			)
+				return this.execute("inspect_work_job", JSON.stringify({ id: canvas.selectedId }));
+		}
+		if (canvas?.kind === "source")
+			return { source: this.boundedSource(canvas.source), evidencePolicy: policy };
+		return undefined;
+	}
 	get tools(): FunctionTool[] {
 		return [
 			...Object.entries(schemas)

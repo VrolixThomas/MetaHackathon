@@ -513,7 +513,7 @@ test("same foreground session uses hub tools and retains real history without pu
 		assert.equal(service.poll(identity()).status, "completed");
 		assert.equal(service.poll(identity()).text, "The saved job is queued.");
 		assert.equal(d.operations[0]?.operation.kind, "start-work");
-		assert(requests[0]?.tools?.some((t) => t.name === "inspect_hub"));
+		assert(requests[0]?.tools?.some((t) => t.name === "expand_tools"));
 		const follow = {
 			...input,
 			generation: 2,
@@ -1766,13 +1766,13 @@ test("general workspace and selected-review conversations receive the same Day c
 			assert.equal(result.actions.length, 0);
 			assert.equal(navigations, 0);
 			assert.equal(requests.length, 2);
-			assert(requests.every((request) => request.tools?.some((tool) => tool.name === "day_cover")));
-			assert(requests[0]?.tools?.some((tool) => tool.name === "start_work"));
-			assert(requests[0]?.tools?.some((tool) => tool.name === "day_start_work"));
+			assert(
+				requests.every((request) => request.tools?.some((tool) => tool.name === "expand_tools"))
+			);
+			assert(!requests[0]?.tools?.some((tool) => tool.name === "day_start_work"));
 			const packet = requests[0]?.input.at(-1)?.["content"] as { text: string }[];
 			const context = JSON.parse(packet[0]?.text ?? "{}");
-			assert.equal(context.actualHub.day.items[0].id, day.item.id);
-			assert.equal(context.actualHub.day.display.status, "not-established");
+			assert.equal(context.actualHub.day, undefined);
 			assert.deepEqual(
 				day.operations.map((row) => row.operation.kind),
 				["cover"]
@@ -2112,11 +2112,7 @@ test("general workspace and selected review expose read tools and actual source 
 			assert.equal(requests.length, 3);
 			assert.deepEqual(read.reads, ["memory", "source"]);
 			assert(
-				requests.every(
-					(request) =>
-						request.tools?.some((tool) => tool.name === "memory_search") &&
-						request.tools.some((tool) => tool.name === "day_read_source")
-				)
+				requests.every((request) => request.tools?.some((tool) => tool.name === "expand_tools"))
 			);
 			const outputs = requests
 				.at(-1)
@@ -2384,11 +2380,7 @@ test("both actual ConversationService routes list/read Slack and return proposal
 			assert.equal(reads.operations.length, 0);
 			assert.equal(d.operations.length, 0);
 			assert(
-				requests.every(
-					(request) =>
-						request.tools?.some((tool) => tool.name === "slack_list_conversations") &&
-						request.tools.some((tool) => tool.name === "slack_read_messages")
-				)
+				requests.every((request) => request.tools?.some((tool) => tool.name === "expand_tools"))
 			);
 			const outputs = requests
 				.at(-1)
@@ -2805,7 +2797,7 @@ for (const inputMode of ["typed", "voice"] as const) {
 			const context = JSON.parse(
 				String((continueRequest?.input.at(-1)?.["content"] as { text: string }[])[0]?.text)
 			);
-			assert.deepEqual(context.actualHub.notices, []);
+			assert.equal(context.actualHub.notices, undefined);
 			assert.equal(context.actualHub.conversationFocus.pendingQuestion.text, question);
 		} finally {
 			await service.dispose();
@@ -3000,5 +2992,282 @@ test("an actual scope answer can resolve a clarification phrased without a quest
 		assert.equal(d.operations.length, 1);
 	} finally {
 		await service.dispose();
+	}
+});
+
+function selectedTicketWorkspace(d: ReturnType<typeof data>): ConversationWorkspacePorts {
+	const observation: WorkspaceObservation = {
+		workspace: {
+			sequence: 1,
+			contentSequence: 1,
+			canvases: [
+				{
+					id: "selected",
+					kind: "center",
+					title: "Ticket",
+					section: "tickets",
+					selectedId: d.ticket.id,
+					revision: 1,
+				},
+			],
+			primaryId: "selected",
+			secondaryId: null,
+			review: { sequence: 0, mode: "conversation", prId: null },
+			browser: null,
+			codeView: "diff",
+		},
+		browser: null,
+		reviews: [],
+		capabilities: ["center", "source", "flow"],
+		hub: d.hub,
+	};
+	return {
+		observe: async () => structuredClone(observation),
+		execute: async () => {
+			throw new Error("No display operation requested");
+		},
+	};
+}
+
+test("selected ticket supplies freshly authorized details in the first fast request without unrelated queues or an inspection round", async () => {
+	const d = data();
+	let reads = 0;
+	d.ports.ticket = async (id) => {
+		assert.equal(id, d.ticket.id);
+		reads++;
+		return structuredClone(d.ticket);
+	};
+	const requests: MetaRequest[] = [];
+	const service = new ConversationService(
+		client([answer("This ticket needs a scope choice before implementation.")], requests),
+		{ hub: d.ports, workspace: selectedTicketWorkspace(d) }
+	);
+	try {
+		service.start({ ...input, text: "Explain this ticket" });
+		await eventually(() => service.poll(identity()).status !== "running");
+		assert.equal(service.poll(identity()).status, "completed");
+		assert.equal(reads, 1);
+		assert.equal(requests.length, 1);
+		assert.equal(requests[0]?.workload, "quick");
+		const content = requests[0]?.input.at(-1)?.["content"] as { text: string }[];
+		const packet = JSON.parse(content[0]?.text ?? "{}");
+		assert.equal(packet.currentContext.ticket.description, d.ticket.description);
+		assert.equal(packet.currentContext.ticket.id, d.ticket.id);
+		assert.equal(packet.actualHub.ownPRFeedback, undefined);
+		assert.equal(packet.actualHub.incomingReviews, undefined);
+		assert(requests[0]?.tools?.some((tool) => tool.name === "start_work"));
+		assert(!requests[0]?.tools?.some((tool) => tool.name === "confirm_pr_comment"));
+		assert.equal(d.operations.length, 0);
+	} finally {
+		await service.dispose();
+	}
+});
+
+test("explicit expansion enables another context without effects, source authority or a preliminary routing classifier", async () => {
+	const d = data();
+	const requests: MetaRequest[] = [];
+	const service = new ConversationService(
+		client(
+			[
+				[call("expand_tools", { families: ["work"] })],
+				[call("inspect_ticket", { id: d.ticket.id })],
+				answer("Here is the actual requested ticket."),
+			],
+			requests
+		),
+		{ hub: d.ports }
+	);
+	try {
+		service.start({ ...input, text: "Read MET-TEST" });
+		await eventually(() => service.poll(identity()).status !== "running");
+		assert.equal(service.poll(identity()).status, "completed");
+		assert.equal(requests.length, 3);
+		assert(!requests[0]?.tools?.some((tool) => tool.name === "start_work"));
+		assert(requests[1]?.tools?.some((tool) => tool.name === "start_work"));
+		assert(requests.every((request) => request.workload === "quick"));
+		assert.equal(d.operations.length, 0);
+		assert.equal(service.poll(identity()).actions.length, 0);
+	} finally {
+		await service.dispose();
+	}
+});
+
+test("deeper selected-ticket reasoning is a separate tools-free workload and cannot start work", async () => {
+	const d = data();
+	const requests: MetaRequest[] = [];
+	const service = new ConversationService(
+		client(
+			[
+				[call("analyze_current_context", { question: "Analyze persistence tradeoffs in depth" })],
+				answer(
+					"Persistence across restarts trades longer-lived state for easier return visits; the choice is still yours."
+				),
+			],
+			requests
+		),
+		{ hub: d.ports, workspace: selectedTicketWorkspace(d) }
+	);
+	try {
+		service.start({ ...input, text: "Analyze this ticket in depth" });
+		await eventually(() => service.poll(identity()).status !== "running");
+		assert.equal(service.poll(identity()).status, "completed");
+		assert.deepEqual(
+			requests.map((request) => request.workload),
+			["quick", "deep"]
+		);
+		assert.deepEqual(requests[1]?.tools, []);
+		assert(JSON.stringify(requests[1]?.input).includes(d.ticket.description));
+		assert.equal(d.operations.length, 0);
+		assert.equal(service.poll(identity()).actions.length, 0);
+	} finally {
+		await service.dispose();
+	}
+});
+
+test("unavailable selected ticket does not block ordinary conversation or expose a deep-analysis capability", async () => {
+	const d = data();
+	d.ports.ticket = async () => {
+		throw new Error("PRIVATE provider failure");
+	};
+	const requests: MetaRequest[] = [];
+	const service = new ConversationService(client([answer("Hello.")], requests), {
+		hub: d.ports,
+		workspace: selectedTicketWorkspace(d),
+	});
+	try {
+		service.start({ ...input, text: "Hello" });
+		await eventually(() => service.poll(identity()).status !== "running");
+		assert.equal(service.poll(identity()).status, "completed");
+		assert(!JSON.stringify(requests).includes("PRIVATE"));
+		assert(!requests[0]?.tools?.some((tool) => tool.name === "analyze_current_context"));
+	} finally {
+		await service.dispose();
+	}
+});
+
+test("explicit capability focus survives a real follow-up without another expansion round", async () => {
+	const d = data();
+	const requests: MetaRequest[] = [];
+	const service = new ConversationService(
+		client(
+			[
+				[call("expand_tools", { families: ["work"] })],
+				answer("Which ticket would you like to discuss?"),
+				answer("We can keep discussing the ticket scope."),
+			],
+			requests
+		),
+		{ hub: d.ports }
+	);
+	try {
+		service.start({ ...input, text: "Let's discuss my tickets" });
+		await eventually(() => service.poll(identity()).status !== "running");
+		const next = {
+			...input,
+			generation: 2,
+			turnId: "follow",
+			requestId: "follow",
+			text: "Continue?",
+		};
+		service.start(next);
+		await eventually(() => service.poll(identity(next)).status !== "running");
+		assert.equal(requests.length, 3);
+		assert(requests[2]?.tools?.some((tool) => tool.name === "inspect_ticket"));
+		assert(JSON.stringify(requests[2]?.input).includes("Which ticket"));
+		assert.equal(d.operations.length, 0);
+	} finally {
+		await service.dispose();
+	}
+});
+
+test("cancelled deeper analysis cannot publish late output or affect a saved job", async () => {
+	const d = data();
+	let release: (() => void) | undefined;
+	let entered = false;
+	const provider: AgentModelClient = {
+		async *stream(request) {
+			if (request.workload === "quick") {
+				yield {
+					type: "completed",
+					response: {
+						id: "quick",
+						model: "muse-spark-1.3",
+						output: [call("analyze_current_context", { question: "Analyze scope" })],
+					},
+				};
+			} else {
+				entered = true;
+				await new Promise<void>((done) => {
+					release = done;
+				});
+				yield { type: "text", delta: "LATE DEEP ANSWER" };
+				yield {
+					type: "completed",
+					response: { id: "deep", model: "muse-wonder-1.0", output: answer("LATE DEEP ANSWER") },
+				};
+			}
+		},
+	};
+	const service = new ConversationService(provider, {
+		hub: d.ports,
+		workspace: selectedTicketWorkspace(d),
+	});
+	try {
+		service.start({ ...input, text: "Analyze this in depth" });
+		await eventually(() => entered);
+		service.cancel({ ...identity(), requestId: "stop-deep", reason: "user" });
+		release?.();
+		await new Promise((done) => setTimeout(done, 0));
+		assert.equal(service.poll(identity()).status, "cancelled");
+		assert.equal(service.poll(identity()).text, "");
+		assert.equal(service.poll(identity()).actions.length, 0);
+		assert.equal(d.operations.length, 0);
+	} finally {
+		release?.();
+		await service.dispose();
+	}
+});
+
+test("deep reasoning tolerates sidebar-only revisions but rejects changed acknowledged content", async () => {
+	for (const changedContent of [false, true]) {
+		const d = data();
+		const workspace = selectedTicketWorkspace(d);
+		const observe = workspace.observe;
+		let deepFinished = false;
+		workspace.observe = async (...args) => {
+			const value = await observe(...args);
+			if (deepFinished) {
+				value.workspace.sequence++;
+				if (changedContent) value.workspace.contentSequence = 2;
+			}
+			return value;
+		};
+		const provider: AgentModelClient = {
+			async *stream(request) {
+				const output =
+					request.workload === "quick"
+						? [call("analyze_current_context", { question: "Analyze scope" })]
+						: answer("Bounded deep inference.");
+				if (request.workload === "deep") deepFinished = true;
+				yield {
+					type: "completed",
+					response: {
+						id: "controlled",
+						model: request.workload === "deep" ? "muse-wonder-1.0" : "muse-spark-1.3",
+						output,
+					},
+				};
+			},
+		};
+		const service = new ConversationService(provider, { hub: d.ports, workspace });
+		try {
+			service.start({ ...input, text: "Analyze this in depth" });
+			await eventually(() => service.poll(identity()).status !== "running");
+			assert.equal(service.poll(identity()).status, changedContent ? "error" : "completed");
+			assert.equal(service.poll(identity()).text, changedContent ? "" : "Bounded deep inference.");
+			assert.equal(d.operations.length, 0);
+		} finally {
+			await service.dispose();
+		}
 	}
 });
