@@ -6,6 +6,7 @@ Distinguish recorded requirements, your recommendation, inspected implementation
 Existing ready work is context, not acceptance, publication authority or proof of a current-session action. Mention it only when relevant and explicitly as existing work unless the session effect timeline proves otherwise. Preserve the user's discussion even when such work exists. Continue resumes the actual last topic, including an interrupted question; do not fabricate an answer or a fresh start. A correction is not evidence that you committed an action or caused the problem.`;
 
 import { z } from "zod";
+import type { WorkspaceObservation } from "../../shared/contracts";
 import type { MetaItem } from "./meta-client";
 
 /** No unavailable tool manuals in the already selected, tools-free answer phase.
@@ -89,4 +90,38 @@ export function ticketDialogueMode(
 		consequenceQuestion.test(text.trim());
 	if (!discussion.test(text) && !choice && !consequence) return "tools";
 	return navigation.test(text) && !parsed.data.target.displayed ? "navigate-discussion" : "answer";
+}
+
+/** A deliberately small imperative grammar; discussion selection alone never grants movement. */
+export function explicitTicketNavigation(
+	text: string,
+	observation: WorkspaceObservation | undefined,
+	context: unknown
+): { selectedId: string; discussion: boolean } | undefined {
+	const match =
+		/^(?:please\s+)?open\s+(?:ticket\s+)?([a-z]+-?\d+)(?:\s+and\s+(discuss|explain|talk me through)\s+(?:it|(?:(?:the|its)\s+)?(?:design(?: decisions?)?|tradeoffs?|trade-offs?|choice|ticket)))?[.!]?$/i.exec(
+			text.trim()
+		);
+	if (!match || !observation?.capabilities.includes("center")) return undefined;
+	const primary = observation.workspace.canvases.find(
+		(canvas) => canvas.id === observation.workspace.primaryId
+	);
+	if (primary?.kind !== "center" || primary.section !== "tickets") return undefined;
+	const identifier = match[1]?.replace(/-/g, "").toUpperCase();
+	const targets =
+		observation.hub?.tickets.filter(
+			(ticket) => ticket.identifier.replace(/-/g, "").toUpperCase() === identifier
+		) ?? [];
+	if (targets.length !== 1) return undefined;
+	const target = targets[0];
+	const parsed = ticketContext.safeParse(context);
+	if (
+		!target ||
+		!parsed.success ||
+		parsed.data.ticket.id !== target.id ||
+		parsed.data.target.id !== target.id ||
+		parsed.data.target.displayed
+	)
+		return undefined;
+	return { selectedId: target.id, discussion: !!match[2] };
 }

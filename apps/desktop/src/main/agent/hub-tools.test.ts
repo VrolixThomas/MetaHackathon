@@ -3895,3 +3895,265 @@ for (const outcome of ["applied", "cancelled", "revoked"] as const) {
 		}
 	});
 }
+
+function ticketBoard(d: ReturnType<typeof data>) {
+	d.ticket.identifier = "MET-77";
+	required(d.hub.tickets[0]).identifier = "MET-77";
+	const w = workspace(d);
+	const canvas = w.observation.workspace.canvases[0];
+	assert(canvas?.kind === "center");
+	canvas.section = "tickets";
+	return w;
+}
+
+for (const outcome of ["applied", "cancelled", "changed", "revoked", "foreign-effect"] as const) {
+	test(`explicit observed ticket imperative waits for receipt before one fresh answer: ${outcome}`, async () => {
+		const d = data();
+		const w = ticketBoard(d);
+		const requests: MetaRequest[] = [];
+		let reads = 0;
+		d.ports.ticket = async () => {
+			reads++;
+			if (reads > 1 && outcome === "revoked") throw new Error("private provider denial");
+			return {
+				...d.ticket,
+				description: reads > 1 ? "Fresh receipt-time planning context" : "Earlier context",
+			};
+		};
+		if (outcome === "changed") {
+			const observe = w.ports.observe;
+			w.ports.observe = async (...args) => {
+				const value = structuredClone(await observe(...args));
+				if (value.workspace.sequence > 0) value.workspace.sequence++;
+				return value;
+			};
+		}
+		if (outcome === "foreign-effect") {
+			const execute = w.ports.execute;
+			w.ports.execute = (command, turn, signal, onAction) =>
+				execute(command, turn, signal, (action) =>
+					onAction({ ...action, generation: action.generation + 1 })
+				);
+		}
+		const service = new ConversationService(
+			client(
+				[answer("Controlled planning consequence."), answer("Controlled follow-up rationale.")],
+				requests
+			),
+			{ hub: d.ports, workspace: w.ports }
+		);
+		const turn = { ...input, text: "Open MET-77 and discuss the design decisions." };
+		try {
+			service.start(turn);
+			await eventually(() => w.commands.length === 1);
+			assert.deepEqual(w.commands[0], {
+				kind: "open-center",
+				section: "tickets",
+				selectedId: d.ticket.id,
+			});
+			assert.equal(requests.length, 0, "No navigation model round or answer before receipt");
+			assert.equal(service.poll(identity()).text, "");
+			if (outcome === "cancelled")
+				service.cancel({ ...identity(), requestId: "stop-navigation", reason: "user" });
+			w.settle();
+			await eventually(() => service.poll(identity()).status !== "running");
+			if (outcome === "applied") {
+				assert.equal(service.poll(identity()).status, "completed");
+				assert.equal(requests.length, 1);
+				assert.deepEqual(requests[0]?.tools, []);
+				assert.equal(reads, 2);
+				assert(JSON.stringify(requests[0]?.input).includes("Fresh receipt-time planning context"));
+				const receipt = requests[0]?.input.find((item) => item["type"] === "function_call_output");
+				assert.equal(JSON.parse(String(receipt?.["output"])).origin, "explicit-user-navigation");
+				const action = service.poll(identity()).actions[0];
+				assert.equal(action?.generation, input.generation);
+				assert.equal(action?.turnId, input.turnId);
+				const follow = {
+					...input,
+					generation: 2,
+					turnId: "follow",
+					requestId: "follow",
+					text: "Why that choice?",
+				};
+				service.start(follow);
+				await eventually(() => service.poll(identity(follow)).status !== "running");
+				assert.equal(service.poll(identity(follow)).status, "completed");
+				assert.equal(w.commands.length, 1);
+				assert(JSON.stringify(requests.at(-1)?.input).includes("Controlled planning consequence."));
+				assert.equal(
+					requests
+						.at(-1)
+						?.input.filter((item) => item["role"] === "user" && typeof item["content"] === "string")
+						.length,
+					2
+				);
+			} else {
+				assert.equal(
+					service.poll(identity()).status,
+					outcome === "cancelled" ? "cancelled" : "error"
+				);
+				assert.equal(requests.length, 0);
+				assert.equal(service.poll(identity()).text, "");
+			}
+			assert.equal(d.operations.length, 0);
+		} finally {
+			w.settle();
+			await service.dispose();
+		}
+	});
+}
+
+test("strict imperative shortcut leaves questions, negation, conditionals, compounds and unknown targets to the model", async () => {
+	for (const text of [
+		"Why should we open MET-77?",
+		"Should we open MET-77 and discuss it?",
+		"Open MET-77?",
+		"Don't open MET-77",
+		"Do not open MET-77; explain it",
+		"If it is ready, open MET-77",
+		"Open MET-77 unless it is blocked",
+		"Open MET-77 if ready",
+		"Maybe open MET-77",
+		"Open MET-77 and MET-78",
+		"Open MET-77 and then open MET-78",
+		"Open MET-77 and start work",
+		"Open MET-77 and discuss it; publish the plan",
+		"Open MET-77 and discuss how to send the reply",
+		"Open MET-77 and explain the source",
+		"Open MET-77 and inspect the implementation",
+		"Open MET-78",
+		"Open 77",
+		"The ticket says: Open MET-77",
+		'"Open MET-77"',
+		"Open MET-77 and discuss it without opening anything",
+		"Open MET-77 and approve it",
+	]) {
+		const d = data();
+		const w = ticketBoard(d);
+		const requests: MetaRequest[] = [];
+		const service = new ConversationService(
+			client([answer("Controlled no-action interpretation.")], requests),
+			{ hub: d.ports, workspace: w.ports }
+		);
+		try {
+			service.start({ ...input, text });
+			await eventually(() => service.poll(identity()).status !== "running");
+			assert.equal(service.poll(identity()).status, "completed", text);
+			assert.equal(requests.length, 1, text);
+			assert.equal(w.commands.length, 0, text);
+			assert.equal(d.operations.length, 0, text);
+		} finally {
+			await service.dispose();
+		}
+	}
+});
+
+test("explicit navigation shortcut requires one observed target on the ticket pane and rejects unsolicited answer tools", async () => {
+	for (const scenario of [
+		"off-pane",
+		"duplicate",
+		"missing",
+		"malformed-context",
+		"answer-tool",
+		"plain-open",
+	] as const) {
+		const d = data();
+		const w = ticketBoard(d);
+		const canvas = required(w.observation.workspace.canvases[0]);
+		assert(canvas.kind === "center");
+		if (scenario === "off-pane") canvas.section = "home";
+		if (scenario === "duplicate")
+			d.hub.tickets.push({ ...required(d.hub.tickets[0]), id: "duplicate" });
+		if (scenario === "missing") d.hub.tickets = [];
+		if (scenario === "malformed-context")
+			d.ports.ticket = async () => ({ ...d.ticket, id: "foreign" });
+		const requests: MetaRequest[] = [];
+		const service = new ConversationService(
+			client(
+				[
+					scenario === "answer-tool"
+						? [call("open_command_center", { section: "home" })]
+						: answer("Controlled answer."),
+				],
+				requests
+			),
+			{ hub: d.ports, workspace: w.ports }
+		);
+		try {
+			service.start({
+				...input,
+				text:
+					scenario === "plain-open" ? "Please open ticket MET77." : "Open MET-77 and explain it",
+			});
+			if (scenario === "answer-tool" || scenario === "plain-open") {
+				await eventually(() => w.commands.length === 1);
+				assert.equal(requests.length, 0);
+				w.settle();
+			}
+			await eventually(() => service.poll(identity()).status !== "running");
+			assert.equal(
+				service.poll(identity()).status,
+				scenario === "answer-tool" ? "error" : "completed"
+			);
+			assert.equal(
+				w.commands.length,
+				scenario === "answer-tool" || scenario === "plain-open" ? 1 : 0
+			);
+			assert.equal(requests.length, 1);
+			if (scenario === "plain-open") {
+				assert.deepEqual(requests[0]?.tools, []);
+				assert.match(required(requests[0]).instructions, /Acknowledge it in one brief sentence/);
+			}
+			assert.equal(d.operations.length, 0);
+		} finally {
+			w.settle();
+			await service.dispose();
+		}
+	}
+});
+
+test("explicit navigation answer stream rejects cancellation or content changes before first text", async () => {
+	for (const cause of ["cancelled", "content-changed"] as const) {
+		const d = data();
+		const w = ticketBoard(d);
+		let entered = false;
+		let release: (() => void) | undefined;
+		const service = new ConversationService(
+			{
+				async *stream(request) {
+					assert.deepEqual(request.tools, []);
+					entered = true;
+					await new Promise<void>((resolve) => {
+						release = resolve;
+					});
+					yield { type: "text", delta: "LATE PLANNING TEXT" };
+					yield {
+						type: "completed",
+						response: { id: "late", model: "muse-spark-1.3", output: answer("LATE PLANNING TEXT") },
+					};
+				},
+			},
+			{ hub: d.ports, workspace: w.ports }
+		);
+		try {
+			service.start({ ...input, text: "Open MET77 and discuss it" });
+			await eventually(() => w.commands.length === 1);
+			assert.equal(entered, false);
+			w.settle();
+			await eventually(() => entered);
+			if (cause === "cancelled")
+				service.cancel({ ...identity(), requestId: "stop-answer", reason: "user" });
+			else w.observation.workspace.sequence++;
+			release?.();
+			await eventually(() => service.poll(identity()).status !== "running");
+			assert.equal(service.poll(identity()).status, cause === "cancelled" ? "cancelled" : "error");
+			assert.equal(service.poll(identity()).text, "");
+			assert.equal(w.commands.length, 1);
+			assert.equal(d.operations.length, 0);
+		} finally {
+			release?.();
+			w.settle();
+			await service.dispose();
+		}
+	}
+});

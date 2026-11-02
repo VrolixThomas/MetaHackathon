@@ -6,6 +6,7 @@ import { dropOldestConversationRecord } from "./conversation-history";
 import {
 	COPARTNER_INSTRUCTIONS,
 	TICKET_DISCUSSION_INSTRUCTIONS,
+	explicitTicketNavigation,
 	ticketDialogueMode,
 } from "./foreground-dialogue";
 import { ForegroundProfile, PROFILE_INSTRUCTIONS } from "./foreground-profile";
@@ -64,6 +65,9 @@ export async function runWorkspaceConversation(
 	workspace?.setDayTargetValidator(hub ? (id) => hub.validateDayTarget(id) : undefined);
 	const seen = new Set<string>();
 	let repairedArguments = false;
+	let directNavigation:
+		| { selectedId: string; discussion: boolean; contentSequence: number }
+		| undefined;
 	const questionIndex = history.reduce(
 		(latest, item, index) =>
 			item["role"] === "user" && typeof item["content"] === "string" ? index : latest,
@@ -101,6 +105,62 @@ export async function runWorkspaceConversation(
 				currentContext.status === "unavailable"
 			);
 		throwIfAborted(signal);
+		if (directNavigation) {
+			const primary = observation?.workspace.canvases.find(
+				(canvas) => canvas.id === observation.workspace.primaryId
+			);
+			const target = z
+				.object({ target: z.object({ id: z.string(), displayed: z.literal(true) }) })
+				.safeParse(currentContext);
+			if (
+				!canAnalyze ||
+				!target.success ||
+				target.data.target.id !== directNavigation.selectedId ||
+				primary?.kind !== "center" ||
+				primary.section !== "tickets" ||
+				primary.selectedId !== directNavigation.selectedId ||
+				(observation?.workspace.contentSequence ?? observation?.workspace.sequence) !==
+					directNavigation.contentSequence
+			)
+				throw new GuidedReviewError("The workspace changed. Ask again from the current item.");
+		}
+		const imperative =
+			round === 0 ? explicitTicketNavigation(input.text, observation, currentContext) : undefined;
+		if (imperative && workspace) {
+			const args = JSON.stringify({ section: "tickets", selectedId: imperative.selectedId });
+			const result = await trace.measure("workspace-execute-including-receipt", signal, () =>
+				workspace.execute("open_command_center", args)
+			);
+			throwIfAborted(signal);
+			directNavigation = {
+				...imperative,
+				contentSequence: result.workspace.contentSequence ?? result.workspace.sequence,
+			};
+			// Record the real app-issued tool and actual receipt, never a synthetic user turn
+			// or already-spoken assistant acknowledgement. The next request refreshes context.
+			const callId = `${input.requestId}:explicit-ticket-navigation`;
+			history.push(
+				{
+					type: "function_call",
+					call_id: callId,
+					name: "open_command_center",
+					arguments: args,
+					status: "completed",
+				},
+				{
+					type: "function_call_output",
+					call_id: callId,
+					output: JSON.stringify({
+						origin: "explicit-user-navigation",
+						status: "applied",
+						workspaceSequence: result.workspace.sequence,
+						primaryId: result.workspace.primaryId,
+						selectedId: imperative.selectedId,
+					}),
+				}
+			);
+			continue;
+		}
 		const retained = boundedToolHistory(history);
 		const context = {
 			...(observation
@@ -142,7 +202,7 @@ export async function runWorkspaceConversation(
 				"The workspace conversation is too large. Ask a narrower question."
 			);
 		const dialogueMode = ticketDialogueMode(input.text, history, currentContext);
-		const answerOnly = dialogueMode === "answer";
+		const answerOnly = !!directNavigation || dialogueMode === "answer";
 		const selectedTools = workspaceRequestTools(
 			profile.tools([...(workspace?.tools ?? []), ...(hub?.tools ?? [])], canAnalyze)
 		);
@@ -150,7 +210,7 @@ export async function runWorkspaceConversation(
 			requestId: `${input.requestId}:workspace:${round}`,
 			workload: "quick" as const,
 			instructions: answerOnly
-				? TICKET_DISCUSSION_INSTRUCTIONS
+				? `${TICKET_DISCUSSION_INSTRUCTIONS}${directNavigation && !directNavigation.discussion ? "\nThe explicit navigation has its actual applied receipt. Acknowledge it in one brief sentence and stop." : ""}`
 				: `${WORKSPACE_INSTRUCTIONS}\n${COPARTNER_INSTRUCTIONS}\n${PROFILE_INSTRUCTIONS}`,
 			input: modelInput(),
 			tools: answerOnly
@@ -216,7 +276,10 @@ export async function runWorkspaceConversation(
 				"Workspace operations must settle one at a time. Please try again."
 			);
 		const call = callSchema.parse(calls[0]);
-		if (dialogueMode !== "tools" && !request.tools.some((tool) => tool.name === call.name))
+		if (
+			(answerOnly || dialogueMode !== "tools") &&
+			!request.tools.some((tool) => tool.name === call.name)
+		)
 			throw new GuidedReviewError("The requested capability was not available in this turn.");
 		if (seen.has(call.call_id))
 			throw new GuidedReviewError("The model repeated a workspace operation. Please try again.");
