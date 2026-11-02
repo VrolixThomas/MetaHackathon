@@ -155,7 +155,7 @@ it("full voice ingress reaches a strict proposal checkpoint and requires drained
 		{
 			async *stream() {
 				await release.promise;
-				yield { type: "completed", response: { id: "held", model: "controlled", output: [] } };
+				yield { type: "completed", response: { id: "held", model: "muse-spark-1.3", output: [] } };
 			},
 		},
 		{
