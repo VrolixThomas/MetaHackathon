@@ -305,16 +305,24 @@ function choose(body, origin) {
 	assert.ok(context.actualWorkspace, "Product must supply actualWorkspace every model round");
 	const observation = context.actualWorkspace;
 	const { question, items } = currentRound(body);
-	const calls = items.filter((item) => item.type === "function_call");
-	const results = items.filter((item) => item.type === "function_call_output");
-	assert.equal(calls.length, results.length, "Model resumed before the actual tool result");
-	for (const result of results) {
-		const name = calls.find((call) => call.call_id === result.call_id)?.name;
+	const allCalls = items.filter((item) => item.type === "function_call");
+	const allResults = items.filter((item) => item.type === "function_call_output");
+	assert.equal(allCalls.length, allResults.length, "Model resumed before the actual tool result");
+	for (const result of allResults) {
+		const name = allCalls.find((call) => call.call_id === result.call_id)?.name;
 		assert.equal(
 			JSON.parse(result.output).status,
-			name === "start_walkthrough" ? "started" : "applied"
+			name === "expand_tools"
+				? "tools-expanded"
+				: name === "start_walkthrough"
+					? "started"
+					: "applied"
 		);
 	}
+	const calls = allCalls.filter((call) => call.name !== "expand_tools");
+	const results = allResults.filter(
+		(result) => allCalls.find((call) => call.call_id === result.call_id)?.name !== "expand_tools"
+	);
 	const last = results.at(-1) && JSON.parse(results.at(-1).output);
 	if (last?.workspaceSequence !== undefined)
 		assert.equal(last.workspaceSequence, observation.workspace.sequence);
@@ -336,6 +344,12 @@ function choose(body, origin) {
 		);
 	}
 	const call = (tool, args) => {
+		if (
+			!tools.includes(tool) &&
+			tools.includes("expand_tools") &&
+			["write_markdown_explanation", "create_visual_mock", "set_canvas_layout"].includes(tool)
+		)
+			return { tool: "expand_tools", args: { families: ["canvases"] }, packet: context, question };
 		assert.ok(tools.includes(tool), `Actual tool is unavailable: ${tool}`);
 		return { tool, args, packet: context, question };
 	};

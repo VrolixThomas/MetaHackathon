@@ -390,7 +390,7 @@ async function native() {
 						TRANSCRIPT
 					);
 					assert.ok(body.tools.some((tool) => tool.name === "inspect_workspace"));
-					assert.ok(body.tools.some((tool) => tool.name === "inspect_hub"));
+					assert.ok(body.tools.some((tool) => tool.name === "expand_tools"));
 					assert.equal(
 						report.releases.length,
 						1,
