@@ -1,5 +1,22 @@
 # Changelog
 
+## v0.1.2 (2026-11-02)
+
+### What's New
+
+MuseFocus keeps interrupted conversation context available for follow-up questions and requires clear scope before starting background work. Conversation requests now focus on the relevant tools and current workspace context. New API coding jobs use Wonder/high, while existing jobs retain their recorded model and provider choices.
+
+### Changes
+
+- Preserve interrupted user utterances and published assistant context, retire empty capture attempts, and require source-bound user intent before admitting coding work (MET-8; `e0e4705`).
+- Reuse request snapshots, reduce schema overhead, and select focused context/tool families with explicit capability expansion (MET-51; `7e67ea1`, `474e740`).
+- Persist exact model/provider choices across coding admissions, checkpoints, PR fixes and team proposal work; preserve historical job behavior and reject conflicting pins (MET-8; `2cf1520`, `3699c18`, `80aa5fb`).
+- Integrate native conversation and coding-routing acceptance from [PR #5](https://github.com/VrolixThomas/MetaHackathon/pull/5) (`0491939`, `5fb0bbc`).
+
+### Validation limits
+
+Request-footprint and controlled native results do not establish a measured live speech speedup, physical microphone behavior, or live Wonder/subscription entitlement. This release targets macOS Apple Silicon.
+
 ## v0.1.1 (2026-11-02)
 
 ### What's New
