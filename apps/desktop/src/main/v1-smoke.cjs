@@ -79,6 +79,10 @@ function validateRequest(body, index) {
 		"day_send_reply",
 		"day_link_linear",
 		"day_confirm_local_answer",
+		"day_propose_clarification",
+		"day_confirm_clarification",
+		"day_pause_clarification",
+		"day_revoke_clarification",
 		"memory_search",
 		"day_read_source",
 		"slack_list_conversations",
@@ -92,9 +96,13 @@ function validateRequest(body, index) {
 		"confirm_pr_comment",
 		"generate_raster_image",
 		"show_generated_image",
+		"inspect_pr_delegations",
+		"draft_pr_delegation",
+		"confirm_pr_delegation",
+		"revoke_pr_delegation",
 	]);
 	for (const tool of body.tools ?? [])
-		assert.ok(workspaceTools.has(tool.name), "Unexpected workspace tool");
+		assert.ok(workspaceTools.has(tool.name), `Unexpected workspace tool: ${tool.name}`);
 	const history = [...body.input];
 	if (Array.isArray(history.at(-1)?.content)) {
 		const context = JSON.parse(history.pop().content[0].text);
@@ -209,7 +217,12 @@ async function native() {
 		);
 		const body = JSON.parse(options.body);
 		const index = requests.length;
-		validateRequest(body, index);
+		try {
+			validateRequest(body, index);
+		} catch (error) {
+			report.requestValidationError = String(error.message).split(dummy).join("[DUMMY]");
+			throw error;
+		}
 		requests.push(body.input);
 		if (index === 2)
 			return new Promise((done) => {
@@ -442,6 +455,14 @@ if (process.argv.includes("--self-check")) {
 			"create_source_flow",
 			"revise_work",
 			"approve_work",
+			"day_propose_clarification",
+			"day_confirm_clarification",
+			"day_pause_clarification",
+			"day_revoke_clarification",
+			"inspect_pr_delegations",
+			"draft_pr_delegation",
+			"confirm_pr_delegation",
+			"revoke_pr_delegation",
 		].map((name) => ({ name })),
 		stream: true,
 		store: false,
