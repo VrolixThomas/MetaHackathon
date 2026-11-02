@@ -164,3 +164,64 @@ Type-check, targeted Biome, repository lint (731 files), build and whitespace ch
 selected-ticket latency assertion was updated to require streaming before terminal and its one new
 first-text display revalidation read; all tool-capable buffering/receipt assertions remain. No native,
 live-provider, microphone, deployment, signed-distribution or product-quality acceptance is claimed.
+
+## Follow-up from actual live rehearsal (2026-11-03 local)
+
+Parent integrated the five prior commits into `f3a298c` and reported actual Meta + ElevenLabs + RTC
+answers against controlled source services. Those replies still volunteered review/ticket inventories,
+reopened settled choices, and conflated in-memory state with storage that survives refresh. Parent's
+reported common first-PCM median was 3707 ms and p90 5457 ms; both miss the persistent acceptance
+of median <=3000 ms / p90 <=5000 ms. These are parent-reported observations, not measurements taken
+in this worker. The full rehearsal also failed on a requested end-to-end flow after selecting
+`start_walkthrough`; no flow canvas appeared. Arguments were not captured, so the specific rejection
+cause is unproved.
+
+Three follow-up commits, in order:
+
+- `c6b2398`: general copartner intent, no unsolicited inventory/screen recital, minimal acknowledgement
+  after actual navigation receipt, recommendation with consequence, settled-choice closure, and no
+  unsupported mechanism guarantees. Applies to general, workspace, guided and deep answers. Review
+  wording no longer automatically asks for an explanation after every manual-style move. Work
+  profiles offer the existing gated source readers directly. Added broad negation/conditional,
+  polite/compound operation, off-pane and mismatched-target regressions.
+- `d23453e`: tools-free ticket discussion uses a dedicated 2043-byte instruction packet instead of
+  the 9191-byte full workspace/copartner/profile manuals at `c6b2398`. Actual context and retained
+  user/assistant/tool history remain unchanged. Existing cancellation and first-text display
+  revalidation remain. Guarded consequence variants such as “What could…” and “What happens…”
+  qualify only in an established planning thread; evidence/action/deep/navigation escapes retain
+  tools. This is capability selection, never permission or consent classification.
+- `eba0de2`: `open_pinned_source` and `create_source_flow` join the review profile and the work
+  profile's focused source tools. A full behavior flow uses inspected caller/downstream locations,
+  with explicit guidance to distinguish it from a prepared-order walkthrough. One controlled
+  selected-review service regression checks an actual read outside the prepared list, exact source
+  bytes/location, primary flow canvas, held display receipt, cancellation and rejection of an
+  uninspected extra line. No change to walkthrough order, source/head/ACL or receipt validation;
+  speculative recovery of the unidentified live rejection was deliberately not added.
+
+The first two commits add `copartnerQualityScenarios` and a second optional scenarios argument to
+`replayForeground(client, scenarios)`. Root can inject its actual main-owned client and use this
+corpus for human assessment. It includes greeting/navigation, choice closure, consequence/failure,
+an alternate report-retention topic, a JavaScript-memory/sessionStorage/localStorage comparison,
+negated navigation and explicitly requested detail. These are synthetic inputs, not canned answers;
+controlled tests check their context propagation, not the truth or helpfulness of a model response.
+The replay still rejects external writes. No keys, stores or `.env` are read by this helper.
+
+At `d23453e`, a controlled replay with the unchanged injected 20 ms first-text wait and 80 ms terminal
+tail produced mixed navigation/discussion first publication 137 ms (2 requests), choice 22 ms
+(1 request), Continue 23 ms (1 request); ordinary discussion 28/24 ms, deep 208 ms (2 requests),
+implementation-unknown 104 ms (1 buffered request). First PCM is null throughout. The compact
+instruction size and withheld/streamed ordering are structural evidence only; they do not establish
+live token counts, speedup, quality, or the target latency. Simple navigation still needs the actual
+tool round and a model acknowledgement; ordinary guided source Q&A remains tool-capable/buffered.
+The English-oriented selector remains conservative, not a general semantic intent parser.
+
+Final validation at `eba0de2`: **187 passed, 0 failed, 0 skipped** across 11 exact-source test files:
+conversation 12, history 3, hub 61, workspace 17, guided 37, latency 2, dialogue 5, profile 3,
+replay 11, PR-comment tools 5 and PR-comment fixes 31. Type-check, targeted Biome, repository lint
+(733 files) and diff whitespace checks pass. Source-tool count budget assertions were updated for
+four explicitly available source operations; all receipt/call-order/buffering assertions remain.
+An initial bare-path invocation also selected ignored historical probe copies; only the later
+exact `./apps/...` executions count above. No install, build, native app, live provider, keys, preview
+restart, real data, parent checkout, root rehearsal scripts, services callback, shared contracts,
+dependency files or new agent was touched during this follow-up. Root retains full live/native
+rerun and acoustic/product acceptance. No ticket is marked Done from these controlled checks.
