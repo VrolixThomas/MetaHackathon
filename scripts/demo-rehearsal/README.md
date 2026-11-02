@@ -79,7 +79,7 @@ node scripts/demo-rehearsal/assess.cjs /absolute/path/to/report.json
 
 Numeric targets: common transcript-to-PCM median <=3s and p90 <=5s; straightforward
 navigation/planning <=5s. ASR and the synthetic VAD trigger are reported separately.
-A failure is printed with a nonzero exit. Human review must additionally establish
+A failure is printed with a nonzero exit. Qualitative review must additionally establish
 useful consequences, reasoned recommendations, no repeated screen/checklist reading,
 settled-choice continuity, accurate effect ownership and no invented guarantees.
 The numeric assessor deliberately leaves that judgment pending.

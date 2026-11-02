@@ -1,4 +1,4 @@
-// Numeric acceptance is independent of human review of the actual model answers.
+// Numeric acceptance is independent of qualitative review of the actual model answers.
 const fs = require("node:fs");
 const file = process.argv[2];
 if (!file) throw Error("Pass the report.json from a completed live rehearsal");
@@ -55,8 +55,8 @@ console.log(
 				words: t.answer.trim().split(/\s+/).length,
 				answer: t.answer,
 			})),
-			humanQualityAcceptance:
-				"pending: inspect consequences, recommendation, continuity, evidence and actual side-effect ledger",
+			qualitativeAcceptance:
+				"not assessed by this numeric CLI: inspect consequences, recommendation, continuity, evidence and actual side-effect ledger",
 		},
 		null,
 		2

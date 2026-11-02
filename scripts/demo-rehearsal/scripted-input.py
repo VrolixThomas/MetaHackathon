@@ -56,12 +56,16 @@ async def capture_tts(http, config, text):
     record({"kind": "live-tts-start", "textDigest": digest, "path": str(file), "chars": len(text)})
     count = 0
     with file.open("wb") as target:
-        async for chunk in original_tts(http, config, text):
-            if count == 0:
-                record({"kind": "live-tts-first-pcm", "textDigest": digest, "path": str(file)})
-            target.write(chunk)
-            count += len(chunk)
-            yield chunk
+        try:
+            async for chunk in original_tts(http, config, text):
+                if count == 0:
+                    record({"kind": "live-tts-first-pcm", "textDigest": digest, "path": str(file)})
+                target.write(chunk)
+                count += len(chunk)
+                yield chunk
+        except Exception as error:
+            record({"kind": "live-tts-error", "diagnostic": session.classify(error, "elevenlabs").diagnostic})
+            raise
     wav = file.with_suffix(".wav")
     with wave.open(str(wav), "wb") as target:
         target.setnchannels(1)

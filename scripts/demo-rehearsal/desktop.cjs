@@ -16,6 +16,15 @@ const { instrumentModels } = require("./live-transport.cjs");
 const { installSyntheticInput } = require("./media.cjs");
 const root = path.resolve(__dirname, "../..");
 const desktop = path.join(root, "apps/desktop");
+const textDiagnostics = process.argv.includes("--text-diagnostics");
+assert(
+	!textDiagnostics ||
+		process.argv.includes("--interactive") ||
+		["review", "collaboration", "delegation", "slack", "variants"].some((suite) =>
+			process.argv.includes(`--suite=${suite}`)
+		),
+	"Text diagnostics are limited to named subsets; full acceptance requires live voice"
+);
 assert(
 	process.argv.includes("--live"),
 	"Use --live to explicitly enable actual model and ElevenLabs calls."
@@ -35,8 +44,9 @@ const report = {
 		.execFileSync("git", ["rev-parse", "HEAD"], { cwd: root, encoding: "utf8" })
 		.trim(),
 	liveModels: true,
-	liveElevenLabs: true,
-	scriptedASR: true,
+	liveElevenLabs: !textDiagnostics,
+	scriptedASR: !textDiagnostics,
+	textDiagnostics,
 	physicalMicrophone: false,
 	physicalSpeakerMuted: !process.argv.includes("--audible"),
 	controlledSourceProviders: true,
@@ -49,6 +59,9 @@ const report = {
 	speechSegments: [],
 	actions: [],
 	agentErrors: [],
+	voiceErrors: [],
+	controlErrors: [],
+	startedTurns: [],
 	turns: [],
 	assertions: [],
 	blocked: [],
@@ -152,6 +165,7 @@ async function restartListening() {
 	await startListening();
 }
 async function say(text, options = {}) {
+	if (textDiagnostics) return sayTyped(text, options);
 	const id = options.id ?? `turn-${report.turns.length + 1}`;
 	currentLabel = id;
 	const submittedAt = Date.now();
@@ -162,7 +176,7 @@ async function say(text, options = {}) {
 		"scripted text accepted",
 		() =>
 			rows(path.join(owned, "speech.jsonl")).find(
-				(r) => r.kind === "scripted-text-accepted" && r.id === id
+				(r) => r.kind === "scripted-text-accepted" && r.id === id && r.at >= submittedAt
 			),
 		20000
 	);
@@ -235,6 +249,68 @@ async function say(text, options = {}) {
 		assert(record.answer.trim(), "Expected an actual model reply");
 	}
 	currentLabel = null;
+	return record;
+}
+async function sayTyped(text, options = {}) {
+	assert(!options.stop && !options.firstAudioOnly, "Spoken control cases require live voice mode");
+	const id = options.id ?? `turn-${report.turns.length + 1}`;
+	currentLabel = id;
+	const submittedAt = Date.now();
+	console.log(`TEXT_DIAGNOSTIC_INPUT ${id}: ${text}`);
+	if (!(await js("!!document.querySelector('textarea[aria-label=\"Message\"]')")))
+		await js("document.querySelector('button[aria-label=\"Conversation and typing\"]').click()");
+	await wait("typing field", () =>
+		js("!!document.querySelector('textarea[aria-label=\"Message\"]')")
+	);
+	await js(
+		`(()=>{const n=document.querySelector('textarea[aria-label="Message"]');Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype,'value').set.call(n,${JSON.stringify(text)});n.dispatchEvent(new Event('input',{bubbles:true}));})()`
+	);
+	await wait("send enabled", () =>
+		js("!document.querySelector('button[aria-label=\"Send message\"]').disabled")
+	);
+	await js("document.querySelector('button[aria-label=\"Send message\"]').click()");
+	const started = await wait(
+		"actual typed ingress",
+		() => report.startedTurns.find((t) => t.label === id && t.at >= submittedAt),
+		20000
+	);
+	let firstPublishedAt = null;
+	const result = await wait(
+		"typed turn settles",
+		async () => {
+			const s = await ui();
+			if (s.error) throw Error(s.error);
+			const exchange = s.messages.find((m) => m.id === started.identity.turnId);
+			if (exchange?.answer && firstPublishedAt === null) firstPublishedAt = Date.now();
+			if (exchange?.phase === "error") throw Error("Actual typed turn failed");
+			return exchange?.phase === "complete" ? exchange : false;
+		},
+		120000
+	);
+	const models = report.modelEvents.filter(
+		(m) => m.kind === "model-request" && m.context?.turnId === started.identity.turnId
+	);
+	const record = {
+		id,
+		text,
+		identity: started.identity,
+		submittedAt,
+		finishedAt: Date.now(),
+		answer: result.answer,
+		phase: result.phase,
+		firstAudioAt: null,
+		textAcceptedToAudioMs: null,
+		textToPublishedMs: firstPublishedAt === null ? null : firstPublishedAt - submittedAt,
+		modelRounds: models.length,
+		modelRequestIds: models.map((m) => m.id),
+		textDiagnostics: true,
+	};
+	report.turns.push(record);
+	currentLabel = null;
+	save();
+	console.log(
+		`TEXT_DIAGNOSTIC_REPLY ${id}: ${record.answer}\nTEXT_METRICS ${id}: ${JSON.stringify({ publishedMs: record.textToPublishedMs, rounds: record.modelRounds })}`
+	);
 	return record;
 }
 const button = async (label) => {
@@ -317,7 +393,16 @@ async function main() {
 				});
 				save();
 			}
-			return originalFetch(input, { ...init, redirect: "error" });
+			const response = await originalFetch(input, { ...init, redirect: "error" });
+			if (url.pathname === "/poll" && response.ok) {
+				const page = await response.clone().json();
+				for (const event of page.events ?? [])
+					if (event.kind === "error" && event.diagnostic) {
+						report.voiceErrors.push({ at: Date.now(), diagnostic: event.diagnostic });
+						save();
+					}
+			}
+			return response;
 		}
 		report.blocked.push(`${url.origin}${url.pathname}`);
 		throw Error("Unapproved rehearsal network");
@@ -354,14 +439,32 @@ async function main() {
 			const input = request.input?.json;
 			const context =
 				request.path === "conversation.start"
-					? { label: currentLabel, turnId: input.turnId, generation: input.generation }
+					? {
+							label: currentLabel,
+							sessionId: input.sessionId,
+							turnId: input.turnId,
+							generation: input.generation,
+						}
 					: trace.getStore();
+			if (request.path === "conversation.start")
+				report.startedTurns.push({
+					at: Date.now(),
+					label: currentLabel,
+					inputMode: input.inputMode,
+					identity: {
+						sessionId: input.sessionId,
+						turnId: input.turnId,
+						generation: input.generation,
+					},
+				});
 			return trace.run(context, async () => {
 				const result = await handler(event, request);
 				if (request.path === "conversation.poll") {
 					for (const item of result.result?.data?.json?.events ?? [])
-						if (item.kind === "error")
+						if (item.kind === "error") {
 							report.agentErrors.push({ at: Date.now(), message: item.message });
+							save();
+						}
 				}
 				if (
 					[
@@ -410,7 +513,11 @@ async function main() {
 	restrict(session.defaultSession);
 	win = await wait("default window", () => BrowserWindow.getAllWindows()[0]);
 	await wait("renderer", () => !win.webContents.isLoadingMainFrame());
-	win.setTitle("MuseFocus — live model/voice rehearsal, source writes simulated");
+	win.setTitle(
+		textDiagnostics
+			? "MuseFocus — live model text diagnostics, voice NOT exercised"
+			: "MuseFocus — live model/voice rehearsal, source writes simulated"
+	);
 	await js(`(${installSyntheticInput.toString()})()`);
 	await wait(
 		"hub",
@@ -438,7 +545,7 @@ async function main() {
 		},
 		180000
 	);
-	await startListening();
+	if (!textDiagnostics) await startListening();
 	report.status = "ready";
 	save();
 	const token = randomUUID();
@@ -480,6 +587,8 @@ async function main() {
 			} else throw Error("Unknown rehearsal command");
 			res.end(JSON.stringify(result));
 		} catch (error) {
+			report.controlErrors.push({ at: Date.now(), label: currentLabel, message: error.message });
+			save();
 			res.writeHead(400);
 			res.end(JSON.stringify({ error: error.message }));
 		}
@@ -497,7 +606,7 @@ async function main() {
 		),
 		{ mode: 0o600 }
 	);
-	console.log(`LIVE_REHEARSAL_READY ${owned}`);
+	console.log(`${textDiagnostics ? "TEXT_DIAGNOSTIC_READY" : "LIVE_REHEARSAL_READY"} ${owned}`);
 	if (!process.argv.includes("--interactive")) {
 		const { common, full, collaboration, slack, review, variants } = require("./scenarios.cjs");
 		if (process.argv.includes("--suite=variants"))
