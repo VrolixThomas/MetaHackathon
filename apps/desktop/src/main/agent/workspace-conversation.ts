@@ -3,7 +3,11 @@ import { PRODUCT_NAME } from "../../shared/brand";
 import type { ConversationTurnInput, WorkspaceObservation } from "../../shared/contracts";
 import { throwIfAborted } from "./cancellation";
 import { dropOldestConversationRecord } from "./conversation-history";
-import { COPARTNER_INSTRUCTIONS, ticketDialogueMode } from "./foreground-dialogue";
+import {
+	COPARTNER_INSTRUCTIONS,
+	TICKET_DISCUSSION_INSTRUCTIONS,
+	ticketDialogueMode,
+} from "./foreground-dialogue";
 import { ForegroundProfile, PROFILE_INSTRUCTIONS } from "./foreground-profile";
 import { ForegroundTrace } from "./foreground-timing";
 import { GuidedReviewError, modelRound } from "./guided-review";
@@ -143,7 +147,9 @@ export async function runWorkspaceConversation(
 		const request = {
 			requestId: `${input.requestId}:workspace:${round}`,
 			workload: "quick" as const,
-			instructions: `${WORKSPACE_INSTRUCTIONS}\n${COPARTNER_INSTRUCTIONS}\n${PROFILE_INSTRUCTIONS}${answerOnly ? "\nThis is a tools-free discussion answer. The supplied context is sufficient for planning, not implementation claims. Discuss the choice; no coding, inspection, display or publication action is being taken by this request." : ""}`,
+			instructions: answerOnly
+				? TICKET_DISCUSSION_INSTRUCTIONS
+				: `${WORKSPACE_INSTRUCTIONS}\n${COPARTNER_INSTRUCTIONS}\n${PROFILE_INSTRUCTIONS}`,
 			input: modelInput(),
 			tools: answerOnly
 				? []

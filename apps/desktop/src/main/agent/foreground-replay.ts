@@ -22,6 +22,74 @@ import type { ConversationWorkspacePorts } from "./workspace-tools";
 
 export const mixedQuestion =
 	"Started working on 77 Openets. Open the ticket for me and talk me through it. What design decisions you need from me before we can start on it.";
+type ReplayScenario = {
+	name: string;
+	selected: boolean;
+	turns: readonly string[];
+	topic?: Pick<LinearTicket, "identifier" | "title" | "description">;
+};
+/** Inputs for root's real-provider human assessment, never model answers or grading
+ * instructions. Mechanism variants deliberately separate proposed behavior from source. */
+export const copartnerQualityScenarios: readonly ReplayScenario[] = [
+	{
+		name: "greeting-and-navigation",
+		selected: false,
+		turns: [
+			"Hello Muse. Let's discuss my work before starting anything.",
+			"Bring me to my ticket boards.",
+		],
+	},
+	{
+		name: "choice-consequences-and-failure",
+		selected: true,
+		turns: [
+			"What would you recommend for this decision? Let's discuss it before starting anything.",
+			"Keep it across refreshes and browser restarts, only on this device.",
+			"What could surprise me about that choice?",
+			"What happens for someone whose browser blocks storage?",
+		],
+	},
+	{
+		name: "different-topic-retention",
+		selected: true,
+		topic: {
+			identifier: "OPS-314",
+			title: "Choose report retention",
+			description:
+				"Downloaded reports contain sensitive customer information. Automatic expiry after download is proposed but the duration is undecided. Earlier download URLs may have been shared. No implementation or revocation mechanism has been inspected.",
+		},
+		turns: [
+			"Talk me through the retention decision. What would you recommend?",
+			"I prefer a short window, one day.",
+			"What could surprise someone who saved the link?",
+			"Does the implementation revoke a previously downloaded copy?",
+		],
+	},
+	{
+		name: "mechanism-lifetimes",
+		selected: true,
+		topic: {
+			identifier: "UX-208",
+			title: "Choose draft lifetime",
+			description:
+				"A browser form needs a draft policy. Three proposed mechanisms are JavaScript memory in the page, sessionStorage, and localStorage. Storage can fail or be blocked. No implementation has been inspected, no choice made, and no sync or reliability guarantee recorded.",
+		},
+		turns: [
+			"Compare the proposed mechanisms: what survives refresh, tab closure, or browser restart?",
+			"What would you recommend if losing an unfinished form matters?",
+			"What happens if storage is blocked and the fallback is just JavaScript memory?",
+		],
+	},
+	{
+		name: "negation-and-explicit-detail",
+		selected: true,
+		turns: [
+			"Don't open another view or start anything. Explain the tradeoff here.",
+			"Please compare the alternatives in a short list.",
+			"What do you actually know from inspected source?",
+		],
+	},
+];
 export const replayScenarios = [
 	{
 		name: "mixed-scope",
@@ -56,6 +124,7 @@ export function createForegroundReplay(
 	client: AgentModelClient,
 	options: {
 		selected?: boolean;
+		topic?: ReplayScenario["topic"];
 		narrationCheckpoints?: boolean;
 		receipt?: () => Promise<void>;
 		onTiming?: (event: ForegroundTiming) => void;
@@ -77,6 +146,7 @@ export function createForegroundReplay(
 		projectName: null,
 		assigneeId: "synthetic",
 		assigneeName: "Synthetic",
+		...options.topic,
 	};
 	const job: WorkJob = {
 		id: "synthetic-historical-job",
@@ -88,7 +158,9 @@ export function createForegroundReplay(
 		worktreePath: null,
 		baseSha: "a".repeat(40),
 		headSha: "b".repeat(40),
-		brief: "Persist focus state across browser restarts on this device.",
+		brief: options.topic
+			? `Prior candidate related to ${ticket.title}; no current-session action or inspected implementation.`
+			: "Persist focus state across browser restarts on this device.",
 		summary: "Prior local candidate is ready; no acceptance or publication has occurred.",
 		createdAt: time,
 		updatedAt: time,
@@ -292,12 +364,16 @@ export function createForegroundReplay(
 	};
 }
 
-export async function replayForeground(client: AgentModelClient) {
+export async function replayForeground(
+	client: AgentModelClient,
+	scenarios: readonly ReplayScenario[] = replayScenarios
+) {
 	const reports = [];
-	for (const scenario of replayScenarios) {
+	for (const scenario of scenarios) {
 		const timings: ForegroundTiming[] = [];
 		const h = createForegroundReplay(client, {
 			selected: scenario.selected,
+			topic: scenario.topic,
 			onTiming: (row) => timings.push(row),
 		});
 		const turns = [];

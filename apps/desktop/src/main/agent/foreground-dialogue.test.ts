@@ -55,6 +55,9 @@ test("negated/conditional navigation and cross-surface compounds retain the tool
 test("polite/compound actions and evidence unknowns cannot disappear into a discussion stream", () => {
 	for (const text of [
 		"Explain the choice and could you start work on it?",
+		"Discuss this, could you also please start it?",
+		"What could surprise me? Please verify it.",
+		"Explain this and I would like you to publish it.",
 		"Discuss the tradeoff, then please publish it.",
 		"I prefer expiry; also send the decision.",
 		"Explain it. Can you update the setting?",
@@ -81,4 +84,47 @@ test("missing/mismatched context and standalone ambiguous choices retain capabil
 		assert.equal(ticketDialogueMode("Explain the choice", [], supplied), "tools");
 	assert.equal(ticketDialogueMode("Yes", [{ role: "user", content: "Yes" }], context()), "tools");
 	assert.equal(mode("Could it behave differently?"), "tools");
+});
+
+test("consequence variants stream only within an established bounded planning discussion", () => {
+	for (const text of [
+		"What could surprise me about that choice?",
+		"What happens for someone whose browser blocks storage?",
+		"What if the network goes away?",
+		"What would that mean for people sharing a device?",
+		"How might this affect someone returning next week?",
+		"Are there any downsides?",
+		"What are the risks of that preference?",
+	]) {
+		assert.equal(mode(text), "answer", text);
+		assert.equal(
+			ticketDialogueMode(text, [{ role: "user", content: text }], context()),
+			"tools",
+			text
+		);
+	}
+	for (const text of [
+		"What happens in the current implementation?",
+		"What could surprise me? Could you publish it now?",
+		"What if we inspect the source first?",
+		"What happens if you open the ticket boards?",
+		"What are the risks? Also please start work.",
+	])
+		assert.equal(mode(text), "tools", text);
+	const text = "What happens if that fails?";
+	assert.equal(
+		ticketDialogueMode(
+			text,
+			[
+				...history,
+				{ role: "user", content: "Keep it device-local." },
+				{ role: "assistant", content: "Controlled choice closure without a question." },
+				{ role: "user", content: "What could surprise me about that choice?" },
+				{ role: "assistant", content: "Controlled consequence without a question." },
+				{ role: "user", content: text },
+			],
+			context()
+		),
+		"answer"
+	);
 });
