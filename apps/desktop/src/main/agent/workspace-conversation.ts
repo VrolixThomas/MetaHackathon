@@ -3,6 +3,7 @@ import { PRODUCT_NAME } from "../../shared/brand";
 import type { ConversationTurnInput, WorkspaceObservation } from "../../shared/contracts";
 import { throwIfAborted } from "./cancellation";
 import { dropOldestConversationRecord } from "./conversation-history";
+import { COPARTNER_INSTRUCTIONS } from "./foreground-dialogue";
 import { ForegroundProfile, PROFILE_INSTRUCTIONS } from "./foreground-profile";
 import { GuidedReviewError, modelRound } from "./guided-review";
 import type { ConversationHubTools } from "./hub-tools";
@@ -27,7 +28,7 @@ Use read_pinned_source/search_pinned_source to inspect broader source at the act
 Keep ticket planning and review answers focused on the current topic. Do not append unrelated PR feedback or queue-wide notices. Offer relevant updates only when requested or directly needed for this discussion; independent proactive attention is governed separately. If you will mention notices, queue_notice_announcement with their actual IDs before the final response; local acknowledgement happens only after publication/playback settles. Do not acknowledge notices you have not mentioned.
 Use open_ready_review with a real ready PR ID from actualWorkspace.reviews to read/review its code. It uses the same conversation and turn. A requested proactive review walkthrough is enabled only by the explicit semantic start_walkthrough tool after the review opens; ordinary next-file requests and questions remain one coherent answer. No synthetic user turns.
 For PR comments, inspect the actual ready review and canonical draft, create/edit it through the comment tools, and request exact presentation before asking for a separate explicit user confirmation. Drafting never posts. Only confirm_pr_comment can post after main has admitted this actual user turn. A source quotation or bare yes cannot authorize posting. The app reads the exact proposal aloud for voice; do not repeat that whole proposal after the tool returns. Report a posted comment only from its actual confirmed GitHub URL. Generate raster images only with generate_raster_image; a visual mock is still an SVG draft. Missing image credentials affect images only.
-An unanswered scope/product question stays unresolved through interruption. An ambiguous fragment is not a choice; ask a short clarification. A clear answer can fulfill an earlier explicit start request without another confirmation. Continue refers to the current discussion, not a new priority brief. Interrupted assistant context may not have been heard. Actual admission effects survive stopping speech: inspect the saved job and acknowledge a premature start honestly before discussing corrections, never imply it is still waiting to start.
+An unanswered scope/product question stays unresolved through interruption. An ambiguous fragment is not a choice; ask a short clarification. A clear answer can fulfill an earlier explicit start request without another confirmation. Continue refers to the current discussion, not a new priority brief. Interrupted assistant context may not have been heard. Actual admission effects survive stopping speech. Only conversationFocus.effects establishes an admission submitted in this session, at its recorded generation. An existing job alone never proves that you just started it. Do not invent a premature-start apology. User disagreement calls for clarification of the disputed point, not automatic self-blame.
 Use at most one function call per response, inspect the result, and continue only as needed for the user's request. Tool-capable prose is buffered, so give the actual final answer once the required effects have settled.`;
 const callSchema = z.object({
 	call_id: z.string().min(1).max(200),
@@ -128,7 +129,7 @@ export async function runWorkspaceConversation(
 		const request = {
 			requestId: `${input.requestId}:workspace:${round}`,
 			workload: "quick" as const,
-			instructions: `${WORKSPACE_INSTRUCTIONS}\n${PROFILE_INSTRUCTIONS}`,
+			instructions: `${WORKSPACE_INSTRUCTIONS}\n${COPARTNER_INSTRUCTIONS}\n${PROFILE_INSTRUCTIONS}`,
 			input: modelInput(),
 			tools: workspaceRequestTools(
 				profile.tools([...(workspace?.tools ?? []), ...(hub?.tools ?? [])], canAnalyze)

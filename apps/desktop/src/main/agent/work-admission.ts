@@ -30,7 +30,7 @@ export class WorkAdmissionError extends Error {
 	}
 }
 
-type Attempt = { requestId: string; jobId?: string };
+type Attempt = { requestId: string; generation: number; jobId?: string };
 /** Session-owned foreground gate. No worker lifecycle or delivery authority lives here. */
 export class WorkAdmission {
 	private question?: { generation: number; text: string };
@@ -143,7 +143,7 @@ export class WorkAdmission {
 					throw new WorkAdmissionError(
 						"This conversation has reached its work limit. Start a new conversation."
 					);
-				this.attempts.set(key, { requestId });
+				this.attempts.set(key, { requestId, generation: turn.generation });
 				this.question = undefined;
 			},
 			settle: (result: HubOperationResult) => {

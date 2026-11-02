@@ -2050,3 +2050,41 @@ for (const stage of ["speech-ended", "drain", "receipt"] as const) {
 		assert.deepEqual(h.errors, []);
 	});
 }
+
+test("standalone spoken Stop finishes quietly before any reasoning or worker-capable agent start", async () => {
+	for (const text of ["Stop.", "please stop speaking", "Stop talking, please!", "Be quiet."]) {
+		const endings: VoiceTurnEnd[] = [];
+		const h = harness({ onTurnEnd: (_identity, result) => endings.push(result) });
+		await h.capture();
+		h.emit({ kind: "transcript", text, final: true });
+		await until(() => endings.length === 1);
+		assert.equal(h.starts.length, 0);
+		assert.equal(h.speaks.length, 0);
+		assert.equal(h.actions.length, 0);
+		assert.equal(h.controller.getPhase(), "idle");
+		assert.equal(endings[0]?.status, "completed");
+		// Next capture remains available; no microphone-session stop was requested.
+		await h.capture();
+		await h.final("Continue discussing the tradeoff");
+		assert.equal(h.starts.length, 1);
+	}
+});
+
+test("Stop inside meaningful speech or an interim transcript remains ordinary dialogue", async () => {
+	for (const text of [
+		"Stop the worker",
+		"Don't stop",
+		"Why does focus stop after a refresh?",
+		"Stop, and open the ticket",
+		"The sign says stop",
+	]) {
+		const h = harness();
+		await h.capture();
+		h.emit({ kind: "transcript", text: "Stop", final: false });
+		await wait();
+		assert.equal(h.controller.getPhase(), "transcribing");
+		await h.final(text);
+		assert.equal(h.starts.length, 1);
+		assert.equal(h.starts[0]?.text, text);
+	}
+});

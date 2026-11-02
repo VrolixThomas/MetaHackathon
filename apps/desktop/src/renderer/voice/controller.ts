@@ -31,6 +31,7 @@ import {
 import { asError, bounded, delay } from "./async";
 import { VoiceFailure, fromOrigin, reportTurnFailure } from "./failure";
 import { Sentences } from "./sentences";
+import { isStopSpeech } from "./speech-control";
 import type {
 	PcmObservation,
 	VoiceController,
@@ -567,7 +568,9 @@ export function createVoiceController(options: VoiceControllerOptions): VoiceCon
 			return;
 		turn.finalized = true;
 		const text = turn.finalText.trim();
-		if (!text) {
+		if (!text || isStopSpeech(text)) {
+			// The hands-free session owns listening; finish only this foreground utterance.
+			// No acknowledgement, model request or background-worker operation.
 			turn.agentDone = true;
 			finish(turn);
 			return;
