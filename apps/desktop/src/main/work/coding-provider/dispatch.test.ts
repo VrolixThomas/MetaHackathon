@@ -3,6 +3,7 @@ import { mkdir, mkdtemp, readFile, readdir, realpath, rm, writeFile } from "node
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { test } from "node:test";
+import { LEGACY_CODING_MODEL, NEW_CODING_MODEL } from "../../agent/coding-model";
 import type { CodingTaskInput } from "../../agent/coding-worker";
 import {
 	type CodingProviderPorts,
@@ -173,6 +174,7 @@ test("provider pin changes during logging cannot enter either model branch", asy
 			const path = join(root, "private", name);
 			const pin = JSON.parse(await readFile(path, "utf8"));
 			pin.settings = { provider: "muse-code", musePath: null };
+			Reflect.deleteProperty(pin, "codingModel");
 			await writeFile(path, JSON.stringify(pin));
 		},
 		meta: async () => {
@@ -192,6 +194,99 @@ test("provider pin changes during logging cannot enter either model branch", asy
 			new AbortController().signal
 		),
 		/changed before dispatch/
+	);
+	assert.equal(calls, 0);
+});
+
+for (const codingModel of [undefined, NEW_CODING_MODEL]) {
+	test(`Meta dispatch keeps ${codingModel ? "new" : "legacy"} selection through reopen without fallback`, async (t) => {
+		const root = await realpath(await mkdtemp(join(tmpdir(), "coding-model-dispatch-")));
+		t.after(() => rm(root, { recursive: true, force: true }));
+		await mkdir(join(root, "worktree"));
+		const input: CodingTaskInput = {
+			jobId: "job",
+			ticket: null,
+			repository: "owner/repo",
+			worktreePath: join(root, "worktree"),
+			checkpointPath: join(root, "private", "checkpoint.json"),
+			brief: "Controlled",
+			...(codingModel ? { codingModel } : {}),
+		};
+		const expected = codingModel ?? LEGACY_CODING_MODEL;
+		const received: CodingTaskInput[] = [];
+		const ports: CodingProviderPorts = {
+			log: async () => {},
+			muse: async () => {
+				throw Error("No CLI fallback");
+			},
+			meta: async (task) => {
+				received.push(task);
+				assert.deepEqual(task.codingModel, expected);
+				return { status: "needs-input", summary: "Question", question: "Which behavior?" };
+			},
+		};
+		await runPinnedCodingTask(
+			input,
+			async () => ({ provider: "meta-api", musePath: null }),
+			ports,
+			new AbortController().signal
+		);
+		const { codingModel: _model, ...legacyIngress } = input;
+		await runPinnedCodingTask(
+			{ ...legacyIngress, decisionContext: "Keep behavior" },
+			async () => {
+				throw Error("Must not reread settings");
+			},
+			ports,
+			new AbortController().signal
+		);
+		assert.equal(received.length, 2);
+		assert.equal(received[1]?.decisionContext, "Keep behavior");
+		assert.deepEqual(
+			{ ...received[0], codingModel: undefined },
+			{ ...input, codingModel: undefined },
+			"source and task identity remain exact"
+		);
+	});
+}
+
+test("model pin mutation during dispatch is rejected before either provider starts", async (t) => {
+	const root = await realpath(await mkdtemp(join(tmpdir(), "coding-model-race-")));
+	t.after(() => rm(root, { recursive: true, force: true }));
+	await mkdir(join(root, "worktree"));
+	const input: CodingTaskInput = {
+		jobId: "job",
+		ticket: null,
+		repository: "owner/repo",
+		worktreePath: join(root, "worktree"),
+		checkpointPath: join(root, "private", "checkpoint.json"),
+		brief: "Controlled",
+		codingModel: NEW_CODING_MODEL,
+	};
+	let calls = 0;
+	const ports: CodingProviderPorts = {
+		log: async () => {
+			const path = join(root, "private", (await readdir(join(root, "private")))[0] ?? "");
+			const pin = JSON.parse(await readFile(path, "utf8"));
+			await writeFile(path, JSON.stringify({ ...pin, codingModel: LEGACY_CODING_MODEL }));
+		},
+		meta: async () => {
+			calls++;
+			throw Error("Must not call");
+		},
+		muse: async () => {
+			calls++;
+			throw Error("Must not call");
+		},
+	};
+	await assert.rejects(
+		runPinnedCodingTask(
+			input,
+			async () => ({ provider: "meta-api", musePath: null }),
+			ports,
+			new AbortController().signal
+		),
+		/identity changed/
 	);
 	assert.equal(calls, 0);
 });

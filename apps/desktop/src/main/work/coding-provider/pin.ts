@@ -6,6 +6,8 @@ import { z } from "zod";
 import {
 	type CodingProviderSettings,
 	CodingProviderSettingsSchema,
+	type WorkJob,
+	WorkJobSchema,
 } from "../../../shared/contracts";
 import { abortable, throwIfAborted } from "../../agent/cancellation";
 import {
@@ -13,6 +15,13 @@ import {
 	CodingTaskInputSchema,
 	CodingWorkerCheckpointSchema,
 } from "../../agent/coding-worker";
+
+import {
+	CodingModelSchema,
+	LEGACY_CODING_MODEL,
+	NEW_CODING_MODEL,
+	sameCodingModel,
+} from "../../agent/coding-model";
 
 const MAX_PIN = 32768;
 const MAX_CHECKPOINT = 2_000_000;
@@ -37,9 +46,10 @@ const pinSchema = z.strictObject({
 	checkpointPath: absolute,
 	taskKey: z.string().regex(/^[a-f0-9]{64}$/),
 	settings: settingsSchema,
+	codingModel: CodingModelSchema.optional(),
 });
 export type CodingProviderPin = z.infer<typeof pinSchema>;
-type Identity = Omit<CodingProviderPin, "settings">;
+type Identity = Omit<CodingProviderPin, "settings" | "codingModel">;
 type Location = { identity: Identity; marker: string; session: string; sessionLock: string };
 
 export class CodingProviderPinError extends Error {
@@ -194,8 +204,8 @@ async function checkpointKind(location: Location, signal: AbortSignal) {
 	const sessionLock = await readPrivate(location.sessionLock, MAX_PIN, false, false);
 	throwIfAborted(signal);
 	if ((session !== null || sessionLock !== null) && checkpoint !== null) fail("ambiguous");
-	if (session !== null || sessionLock !== null) return "muse-code";
-	if (checkpoint === null) return "empty";
+	if (session !== null || sessionLock !== null) return { kind: "muse-code" as const };
+	if (checkpoint === null) return { kind: "empty" as const };
 	const meta = CodingWorkerCheckpointSchema.safeParse(checkpoint);
 	if (!meta.success) fail("ambiguous");
 	if (
@@ -203,19 +213,29 @@ async function checkpointKind(location: Location, signal: AbortSignal) {
 		meta.data.taskKey !== location.identity.taskKey
 	)
 		fail("identity");
-	return "meta-api";
+	return { kind: "meta-api" as const, codingModel: meta.data.codingModel ?? LEGACY_CODING_MODEL };
 }
 async function verify(location: Location, raw: unknown, signal: AbortSignal) {
 	const pin = pinSchema.parse(raw);
-	const { settings: _settings, ...identity } = pin;
+	const { settings: _settings, codingModel: _model, ...identity } = pin;
 	if (!same(identity, location.identity)) fail("identity");
 	const kind = await checkpointKind(location, signal);
-	if (kind !== "empty" && kind !== pin.settings.provider) fail("ambiguous");
+	if (kind.kind !== "empty" && kind.kind !== pin.settings.provider) fail("ambiguous");
+	if (pin.settings.provider === "muse-code" && pin.codingModel) fail("ambiguous");
+	if (
+		kind.kind === "meta-api" &&
+		!sameCodingModel(kind.codingModel, pin.codingModel ?? LEGACY_CODING_MODEL)
+	)
+		fail("identity");
 	return pin;
 }
-async function publish(location: Location, pin: CodingProviderPin, signal: AbortSignal) {
+async function publish(
+	location: { identity: { parent: z.infer<typeof directorySchema> }; marker: string },
+	value: unknown,
+	signal: AbortSignal
+) {
 	throwIfAborted(signal);
-	const bytes = JSON.stringify(pinSchema.parse(pin));
+	const bytes = JSON.stringify(value);
 	if (Buffer.byteLength(bytes) > MAX_PIN) fail("unsafe");
 	const temp = join(location.identity.parent.path, `.coding-provider-publish-${randomUUID()}`);
 	let handle: FileHandle | undefined;
@@ -263,6 +283,12 @@ async function finish(
 	signal: AbortSignal
 ) {
 	const pin = await verify(location, raw, signal);
+	if (
+		input.codingModel &&
+		(pin.settings.provider !== "meta-api" ||
+			!sameCodingModel(input.codingModel, pin.codingModel ?? LEGACY_CODING_MODEL))
+	)
+		fail("identity");
 	if (!same(await locate(input, false), location)) fail("identity");
 	const parent = await open(
 		location.identity.parent.path,
@@ -292,9 +318,9 @@ export async function pinCodingProvider(
 		const prior = await readPin(location.marker, signal);
 		if (prior !== null) return await finish(location, prior, input, signal);
 		const kind = await checkpointKind(location, signal);
-		if (kind === "muse-code") fail("ambiguous"); // No unpinned CLI session adoption.
+		if (kind.kind === "muse-code") fail("ambiguous"); // No unpinned CLI session adoption.
 		let settings: z.infer<typeof settingsSchema>;
-		if (kind === "meta-api") settings = { provider: "meta-api", musePath: null };
+		if (kind.kind === "meta-api") settings = { provider: "meta-api", musePath: null };
 		else {
 			try {
 				settings = settingsSchema.parse(await abortable(readSettings(), signal));
@@ -306,7 +332,19 @@ export async function pinCodingProvider(
 		const checked = await locate(input, false);
 		if (!same(checked, location)) fail("identity");
 		location = checked;
-		await publish(location, { ...location.identity, settings }, signal);
+		const codingModel =
+			settings.provider === "meta-api"
+				? kind.kind === "meta-api"
+					? kind.codingModel
+					: (input.codingModel ?? LEGACY_CODING_MODEL)
+				: undefined;
+		if (input.codingModel && (!codingModel || !sameCodingModel(input.codingModel, codingModel)))
+			fail("identity");
+		await publish(
+			location,
+			pinSchema.parse({ ...location.identity, settings, ...(codingModel ? { codingModel } : {}) }),
+			signal
+		);
 		throwIfAborted(signal);
 		return await finish(location, await readPin(location.marker, signal), input, signal);
 	} catch (error) {
@@ -314,4 +352,72 @@ export async function pinCodingProvider(
 		if (error instanceof CodingProviderPinError) throw error;
 		throw new CodingProviderPinError("unsafe");
 	}
+}
+
+const admissionSchema = z.strictObject({
+	version: z.literal(1),
+	kind: z.literal("coding-model-admission"),
+	binding: z.string().regex(/^[a-f0-9]{64}$/),
+	codingModel: CodingModelSchema,
+});
+function admissionBinding(raw: WorkJob) {
+	const job = WorkJobSchema.parse(raw);
+	return digest({
+		jobId: job.id,
+		repository: job.repository,
+		repositoryId: job.repositoryId,
+		ticketId: job.ticket?.id ?? null,
+		brief: job.brief,
+		provider: job.codingProvider ?? { provider: "meta-api", musePath: null },
+	});
+}
+function admissionPath(root: string, job: WorkJob) {
+	return join(absolute.parse(root), `.coding-model-${digest(job.id)}.json`);
+}
+/** Only called for a newly allocated job, BEFORE its durable public admission. Never backfill old jobs. */
+export async function recordCodingModelAdmission(root: string, job: WorkJob): Promise<void> {
+	if (job.codingProvider?.provider === "muse-code") return;
+	const binding = admissionBinding(job);
+	const parent = await directory(root, true);
+	const marker = admissionPath(root, job);
+	const signal = new AbortController().signal;
+	const value = admissionSchema.parse({
+		version: 1,
+		kind: "coding-model-admission",
+		binding,
+		codingModel: NEW_CODING_MODEL,
+	});
+	await publish({ identity: { parent }, marker }, value, signal);
+	const stored = admissionSchema.parse(await readPin(marker, signal));
+	if (!same(stored, value) || !same(await directory(root, false), parent)) fail("identity");
+	// A concurrent create-only winner may still be syncing its directory after unlinking the temp.
+	const handle = await open(
+		root,
+		constants.O_RDONLY | constants.O_DIRECTORY | constants.O_NOFOLLOW
+	);
+	try {
+		await handle.sync();
+	} finally {
+		await handle.close();
+	}
+	if (!same(await directory(root, false), parent)) fail("identity");
+}
+/** Missing record is historical, even when no provider marker or worker checkpoint exists yet. */
+export async function readCodingModelAdmission(root: string, job: WorkJob) {
+	const binding = admissionBinding(job);
+	const marker = admissionPath(root, job);
+	// Jobs may predate even the work directory. Missing parents do not create or upgrade metadata.
+	try {
+		await lstat(root);
+	} catch (error) {
+		if (missing(error)) return undefined;
+		throw error;
+	}
+	const parent = await directory(root, false);
+	const raw = await readPin(marker, new AbortController().signal);
+	if (!same(await directory(root, false), parent)) fail("identity");
+	if (raw === null) return undefined;
+	const value = admissionSchema.parse(raw);
+	if (value.binding !== binding || job.codingProvider?.provider === "muse-code") fail("identity");
+	return value.codingModel;
 }

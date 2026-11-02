@@ -1,5 +1,6 @@
 import { type CodingProviderSettings, MuseCodeStatusSchema } from "../../../shared/contracts";
 import { throwIfAborted } from "../../agent/cancellation";
+import { LEGACY_CODING_MODEL } from "../../agent/coding-model";
 import {
 	type CodingTaskInput,
 	CodingTaskInputSchema,
@@ -37,7 +38,7 @@ export async function runPinnedCodingTask(
 	const result =
 		pin.settings.provider === "muse-code"
 			? await ports.muse(input, { musePath: pin.settings.musePath }, signal)
-			: await ports.meta(input, signal);
+			: await ports.meta({ ...input, codingModel: pin.codingModel ?? LEGACY_CODING_MODEL }, signal);
 	throwIfAborted(signal);
 	return CodingTaskResultSchema.parse(result);
 }

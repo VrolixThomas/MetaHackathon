@@ -18,6 +18,7 @@ import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { type TestContext, test } from "node:test";
 import type { CodingProviderSettings } from "../../../shared/contracts";
+import { LEGACY_CODING_MODEL, NEW_CODING_MODEL } from "../../agent/coding-model";
 import type { CodingTaskInput } from "../../agent/coding-worker";
 import { pinCodingProvider } from "./pin";
 
@@ -297,4 +298,73 @@ test("invalid CLI preferences never publish a fallback selection or leak setting
 		}
 	);
 	assert.deepEqual(await readdir(f.parent), []);
+});
+
+test("explicit new Meta selection persists exact model while old markers remain byte-for-byte legacy", async (t) => {
+	const f = await fixture(t);
+	const input = { ...f.input, codingModel: NEW_CODING_MODEL };
+	const pin = await pinCodingProvider(input, async () => meta, new AbortController().signal);
+	assert.deepEqual(pin.codingModel, NEW_CODING_MODEL);
+	const bytes = await readFile(f.marker, "utf8");
+	assert.deepEqual(await f.pin(muse), pin, "absent input uses the immutable explicit pin");
+	assert.equal(await readFile(f.marker, "utf8"), bytes);
+	await assert.rejects(
+		pinCodingProvider(
+			{ ...input, codingModel: LEGACY_CODING_MODEL },
+			async () => meta,
+			new AbortController().signal
+		),
+		/identity changed/
+	);
+	const { codingModel: _model, ...oldPin } = pin;
+	await privateJSON(f.marker, oldPin);
+	const oldBytes = await readFile(f.marker, "utf8");
+	assert.equal((await f.pin()).codingModel, undefined);
+	await assert.rejects(
+		pinCodingProvider(input, async () => meta, new AbortController().signal),
+		/identity changed/
+	);
+	assert.equal(await readFile(f.marker, "utf8"), oldBytes);
+});
+
+test("legacy jobs without a checkpoint default to Spark; checkpoint-only explicit pins reopen without settings", async (t) => {
+	const f = await fixture(t);
+	assert.deepEqual((await f.pin(meta)).codingModel, LEGACY_CODING_MODEL);
+	await rm(f.marker);
+	await privateJSON(f.input.checkpointPath, {
+		...checkpoint(f.input),
+		codingModel: NEW_CODING_MODEL,
+	});
+	const pin = await pinCodingProvider(
+		f.input,
+		async () => {
+			throw Error("Must not select current preference");
+		},
+		new AbortController().signal
+	);
+	assert.deepEqual(pin.codingModel, NEW_CODING_MODEL);
+	await privateJSON(f.input.checkpointPath, checkpoint(f.input));
+	await assert.rejects(f.pin(), /identity changed/);
+});
+
+test("new admission cannot override legacy history and malformed model pairs fail closed", async (t) => {
+	const f = await fixture(t);
+	await privateJSON(f.input.checkpointPath, checkpoint(f.input));
+	await assert.rejects(
+		pinCodingProvider(
+			{ ...f.input, codingModel: NEW_CODING_MODEL },
+			async () => meta,
+			new AbortController().signal
+		),
+		/identity changed/
+	);
+	assert.equal((await readdir(f.parent)).includes(f.marker.split("/").at(-1) ?? ""), false);
+	await rm(f.input.checkpointPath);
+	await f.pin(meta);
+	const pin = JSON.parse(await readFile(f.marker, "utf8"));
+	await privateJSON(f.marker, {
+		...pin,
+		codingModel: { model: "muse-wonder-1.0", reasoning: "minimal" },
+	});
+	await assert.rejects(f.pin(), /unsafe/);
 });
