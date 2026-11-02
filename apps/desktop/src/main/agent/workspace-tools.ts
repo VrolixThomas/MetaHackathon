@@ -34,7 +34,20 @@ export function parseToolArguments<T extends z.ZodType>(schema: T, raw: string):
 			error instanceof z.ZodError
 				? error.issues
 						.slice(0, 5)
-						.map((issue) => `${issue.path.join(".") || "arguments"}: ${issue.code}`)
+						.map((issue) => {
+							const path = (issue.path.join(".") || "arguments").slice(0, 160);
+							const expected =
+								issue.code === "invalid_type"
+									? `; expected ${issue.expected}`
+									: issue.code === "invalid_value"
+										? `; expected ${JSON.stringify(issue.values).slice(0, 160)}`
+										: issue.code === "too_small"
+											? `; minimum ${issue.minimum}`
+											: issue.code === "too_big"
+												? `; maximum ${issue.maximum}`
+												: "";
+							return `${path}: ${issue.code}${expected}`;
+						})
 						.join("; ")
 				: "arguments: invalid_json";
 		throw new WorkspaceArgumentError(

@@ -985,3 +985,38 @@ test("routing observation is reused once; state changes after an effect are fres
 		await h.service.dispose();
 	}
 });
+
+test("nested model argument errors report schema paths and expected types without rejected values", async () => {
+	const bad = {
+		title: "Notes",
+		markdown: "Inferred",
+		references: [
+			{
+				repository: "test/repo",
+				path: "service.ts",
+				revision: "head",
+				commitSha: "b".repeat(40),
+				startLine: "PRIVATE-REJECTED-VALUE",
+				endLine: 1,
+			},
+		],
+	};
+	const h = harness(
+		[[call("write_markdown_explanation", bad, "bad")], answer("That range needs correction.")],
+		true
+	);
+	try {
+		h.service.start(h.input);
+		await finish(h);
+		const output = h.requests[1]?.input.find((item) => item["type"] === "function_call_output")?.[
+			"output"
+		];
+		assert.equal(typeof output, "string");
+		assert.match(String(output), /references.0.startLine: invalid_type; expected number/);
+		assert(!String(output).includes("PRIVATE-REJECTED-VALUE"));
+		assert.equal(h.commands.length, 0);
+		assert.equal(h.poll().actions.length, 0);
+	} finally {
+		await h.service.dispose();
+	}
+});

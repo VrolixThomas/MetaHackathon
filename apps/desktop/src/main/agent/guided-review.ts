@@ -296,6 +296,7 @@ export async function runGuidedReview(
 	);
 	let pinned: PreparedReview | undefined;
 	let navigated = false;
+	let workspaceEffectApplied = false;
 	let acknowledgedScreen: ReviewScreen | undefined;
 	const recovery = workflow?.recovery ?? { used: false };
 	let emitted = false;
@@ -334,7 +335,7 @@ export async function runGuidedReview(
 		const emitText = async (delta: string) => {
 			if (!delta || !onText) return;
 			assertSameScreen(snapshot.screen, await screen(ports, input, signal));
-			if (workspace && observation) {
+			if (workspace && observation && (workspaceEffectApplied || terminalAnswer)) {
 				const current = (await workspace.observe()).workspace;
 				if (
 					(current.contentSequence ?? current.sequence) !==
@@ -513,6 +514,7 @@ export async function runGuidedReview(
 				call_id: call.call_id,
 				output: JSON.stringify({ status: "applied", workspaceSequence: result.workspace.sequence }),
 			});
+			workspaceEffectApplied = true;
 			if (call.name === "open_ready_review" && result.workspace.review.prId) {
 				input = { ...input, prId: result.workspace.review.prId, screen: result.workspace.review };
 				pinned = undefined;
