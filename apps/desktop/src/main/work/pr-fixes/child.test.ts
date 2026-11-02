@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import type { ChildProcess, ForkOptions, fork } from "node:child_process";
 import { EventEmitter } from "node:events";
 import { test } from "node:test";
+import { NEW_CODING_MODEL } from "../../agent/coding-model";
 import type { CodingTaskInput } from "../../agent/coding-worker";
 import { runPRFixChild } from "./child";
 
@@ -165,4 +166,26 @@ test("spawn and send failures do not expose raw errors or fabricate worker resul
 	const running = runPRFixChild(sending.options, input, new AbortController().signal);
 	sending.child.emit("exit", 1, null);
 	await assert.rejects(running, /could not receive/);
+});
+
+test("child IPC preserves the exact main-only model pin and task identity", async () => {
+	const ctx = setup();
+	const pinned = {
+		...input,
+		codingModel: NEW_CODING_MODEL,
+		decisionContext: "Exact decision",
+		validationFeedback: "Actual failed check",
+	};
+	const running = runPRFixChild(ctx.options, pinned, new AbortController().signal);
+	assert.deepEqual(ctx.state.messages[0], {
+		kind: "run",
+		input: pinned,
+		envPath: ctx.options.envPath,
+	});
+	ctx.child.emit("message", {
+		kind: "result",
+		result: { status: "completed", summary: "Controlled" },
+	});
+	ctx.child.emit("exit", 0, null);
+	await running;
 });

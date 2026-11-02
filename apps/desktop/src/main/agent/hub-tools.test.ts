@@ -403,9 +403,20 @@ test("pinned source byte budget preserves whole original lines and admits only r
 	assert(Buffer.byteLength(JSON.stringify(source.text)) <= 12000);
 });
 
+const testAdmission = {
+	beforeStart: async () => ({ begin: () => {}, settle: () => {} }),
+	focus: () => ({ pendingQuestion: undefined, effects: [] }),
+};
+
 test("saved job lifecycle and real decisions use unique durable operation IDs with explicit admission", async () => {
 	const d = data();
-	const tools = new ConversationHubTools(d.ports, input, new AbortController().signal);
+	const tools = new ConversationHubTools(
+		d.ports,
+		input,
+		new AbortController().signal,
+		undefined,
+		testAdmission
+	);
 	await tools.observe();
 	await assert.rejects(
 		tools.execute(
@@ -447,7 +458,13 @@ test("foreground cancellation after durable job start never issues a background 
 		persisted = true;
 		return { snapshot: d.hub, jobId: "job" };
 	};
-	const tools = new ConversationHubTools(d.ports, input, controller.signal);
+	const tools = new ConversationHubTools(
+		d.ports,
+		input,
+		controller.signal,
+		undefined,
+		testAdmission
+	);
 	await tools.observe();
 	await tools.execute(
 		"start_work",
@@ -475,6 +492,14 @@ test("same foreground session uses hub tools and retains real history without pu
 						brief: "Actual requested work",
 					}),
 				],
+				answer(
+					JSON.stringify({
+						intent: "start",
+						request: { generation: 1, text: "Inspect MET-TEST and start that work" },
+						scope: "settled",
+						answer: null,
+					})
+				),
 				answer("The saved job is queued."),
 				answer("That same job can be resumed."),
 			],
@@ -488,7 +513,7 @@ test("same foreground session uses hub tools and retains real history without pu
 		assert.equal(service.poll(identity()).status, "completed");
 		assert.equal(service.poll(identity()).text, "The saved job is queued.");
 		assert.equal(d.operations[0]?.operation.kind, "start-work");
-		assert(requests[0]?.tools?.some((t) => t.name === "inspect_hub"));
+		assert(requests[0]?.tools?.some((t) => t.name === "expand_tools"));
 		const follow = {
 			...input,
 			generation: 2,
@@ -1239,139 +1264,61 @@ function sectionHarness() {
 	return { d, service, requests, makeTurn, finishFile, completeWork, explanation };
 }
 
-test("work completed during last-file playback is appended to the same reply and acknowledged once after the final playback", async () => {
+test("work completed during last-file playback stays pending without hijacking the review or claiming delivery", async () => {
 	const h = sectionHarness();
 	const turn = h.makeTurn();
 	try {
 		h.service.start(turn);
-		const lastFile = await h.finishFile(turn);
+		const checkpoint = await h.finishFile(turn);
 		h.completeWork();
-		assert.equal(h.service.poll(identity(turn)).text, h.explanation);
-		assert.equal(h.d.operations.length, 0);
 		h.service.narrationApplied({
 			...identity(turn),
-			requestId: lastFile.requestId,
+			requestId: checkpoint.requestId,
 			status: "spoken",
 		});
-		await eventually(() => h.service.poll(identity(turn)).actions.length === 3);
-		const delivery = h.service.poll(identity(turn)).actions[2];
-		assert(delivery?.kind === "narration-checkpoint");
-		assert.equal(
-			h.service.poll(identity(turn)).text,
-			`${h.explanation}\n\nWork on MET-49 is ready for review.`
-		);
-		assert.equal(delivery.throughTextLength, h.service.poll(identity(turn)).text.length);
-		assert.equal(delivery.screenSequence, lastFile.screenSequence);
-		assert.equal(h.d.operations.length, 0);
-		assert.equal(h.requests.length, 2);
-		assert(
-			h.requests.every(
-				(request) =>
-					request.input.filter(
-						(item) => item["role"] === "user" && typeof item["content"] === "string"
-					).length === 1
-			)
-		);
-		assert.equal(
-			h.service.narrationApplied({
-				...identity(turn),
-				requestId: delivery.requestId,
-				status: "spoken",
-			}).status,
-			"accepted"
-		);
 		await eventually(() => h.service.poll(identity(turn)).status !== "running");
 		assert.equal(h.service.poll(identity(turn)).status, "completed");
-		assert.deepEqual(
-			h.d.operations.map((entry) => entry.operation),
-			[{ kind: "announced-notices", noticeIds: ["completed-during-narration"] }]
-		);
-		assert.equal(
-			h.service.narrationApplied({
-				...identity(turn),
-				requestId: delivery.requestId,
-				status: "spoken",
-			}).status,
-			"stale"
-		);
+		assert.equal(h.service.poll(identity(turn)).text, h.explanation);
+		assert.equal(h.service.poll(identity(turn)).actions.length, 2);
+		assert.equal(h.d.operations.length, 0);
+		assert.equal(h.d.hub.notices[0]?.announcedAt, null);
 		const next = h.makeTurn(2);
 		h.service.start(next);
-		const nextFile = await h.finishFile(next);
+		const nextCheckpoint = await h.finishFile(next);
 		h.service.narrationApplied({
 			...identity(next),
-			requestId: nextFile.requestId,
+			requestId: nextCheckpoint.requestId,
 			status: "spoken",
 		});
 		await eventually(() => h.service.poll(identity(next)).status !== "running");
-		assert.equal(h.service.poll(identity(next)).status, "completed");
 		assert.equal(h.service.poll(identity(next)).text, h.explanation);
-		assert.equal(h.d.operations.length, 1);
-		assert.equal(h.requests.length, 4);
-		assert.deepEqual(h.requests[2]?.input.slice(0, 3), [
-			{ role: "user", content: turn.text },
-			{ role: "assistant", content: `${h.explanation}\n\nWork on MET-49 is ready for review.` },
-			{ role: "user", content: next.text },
-		]);
+		assert.equal(h.d.operations.length, 0);
+		assert.equal(h.d.hub.notices[0]?.announcedAt, null);
 	} finally {
 		await h.service.dispose();
 	}
 });
 
-test("cancellation before natural-section status delivery or before its final playback leaves notices unannounced", async () => {
-	for (const mode of ["before-last-playback", "during-refresh", "before-final-playback"] as const) {
-		const h = sectionHarness();
-		const turn = h.makeTurn();
-		try {
-			h.service.start(turn);
-			const lastFile = await h.finishFile(turn);
-			h.completeWork();
-			let delivery = lastFile;
-			let release: () => void = () => {};
-			if (mode === "during-refresh") {
-				let refreshing = false;
-				h.d.ports.snapshot = async () => {
-					refreshing = true;
-					return new Promise<HubSnapshot>((resolve) => {
-						release = () => resolve(h.d.hub);
-					});
-				};
-				h.service.narrationApplied({
-					...identity(turn),
-					requestId: lastFile.requestId,
-					status: "spoken",
-				});
-				await eventually(() => refreshing);
-			}
-			if (mode === "before-final-playback") {
-				h.service.narrationApplied({
-					...identity(turn),
-					requestId: lastFile.requestId,
-					status: "spoken",
-				});
-				await eventually(() => h.service.poll(identity(turn)).actions.length === 3);
-				const checkpoint = h.service.poll(identity(turn)).actions[2];
-				assert(checkpoint?.kind === "narration-checkpoint");
-				delivery = checkpoint;
-			}
-			h.service.cancel({ ...identity(turn), requestId: "stop", reason: "user" });
-			release();
-			assert.equal(
-				h.service.narrationApplied({
-					...identity(turn),
-					requestId: delivery.requestId,
-					status: "spoken",
-				}).status,
-				"stale"
-			);
-			await eventually(() => h.service.poll(identity(turn)).status === "cancelled");
-			assert.equal(h.d.operations.length, 0);
-			assert.equal(h.d.hub.notices[0]?.announcedAt, null);
-			assert.equal(h.requests.length, 2);
-			if (mode !== "before-final-playback")
-				assert.equal(h.service.poll(identity(turn)).text, h.explanation);
-		} finally {
-			await h.service.dispose();
-		}
+test("interrupted review playback cannot acknowledge unrelated pending notices", async () => {
+	const h = sectionHarness();
+	const turn = h.makeTurn();
+	try {
+		h.service.start(turn);
+		const checkpoint = await h.finishFile(turn);
+		h.completeWork();
+		h.service.cancel({ ...identity(turn), requestId: "stop", reason: "user" });
+		assert.equal(
+			h.service.narrationApplied({
+				...identity(turn),
+				requestId: checkpoint.requestId,
+				status: "spoken",
+			}).status,
+			"stale"
+		);
+		assert.equal(h.d.operations.length, 0);
+		assert.equal(h.d.hub.notices[0]?.announcedAt, null);
+	} finally {
+		await h.service.dispose();
 	}
 });
 
@@ -1819,13 +1766,13 @@ test("general workspace and selected-review conversations receive the same Day c
 			assert.equal(result.actions.length, 0);
 			assert.equal(navigations, 0);
 			assert.equal(requests.length, 2);
-			assert(requests.every((request) => request.tools?.some((tool) => tool.name === "day_cover")));
-			assert(requests[0]?.tools?.some((tool) => tool.name === "start_work"));
-			assert(requests[0]?.tools?.some((tool) => tool.name === "day_start_work"));
+			assert(
+				requests.every((request) => request.tools?.some((tool) => tool.name === "expand_tools"))
+			);
+			assert(!requests[0]?.tools?.some((tool) => tool.name === "day_start_work"));
 			const packet = requests[0]?.input.at(-1)?.["content"] as { text: string }[];
 			const context = JSON.parse(packet[0]?.text ?? "{}");
-			assert.equal(context.actualHub.day.items[0].id, day.item.id);
-			assert.equal(context.actualHub.day.display.status, "not-established");
+			assert.equal(context.actualHub.day, undefined);
 			assert.deepEqual(
 				day.operations.map((row) => row.operation.kind),
 				["cover"]
@@ -2165,11 +2112,7 @@ test("general workspace and selected review expose read tools and actual source 
 			assert.equal(requests.length, 3);
 			assert.deepEqual(read.reads, ["memory", "source"]);
 			assert(
-				requests.every(
-					(request) =>
-						request.tools?.some((tool) => tool.name === "memory_search") &&
-						request.tools.some((tool) => tool.name === "day_read_source")
-				)
+				requests.every((request) => request.tools?.some((tool) => tool.name === "expand_tools"))
 			);
 			const outputs = requests
 				.at(-1)
@@ -2437,11 +2380,7 @@ test("both actual ConversationService routes list/read Slack and return proposal
 			assert.equal(reads.operations.length, 0);
 			assert.equal(d.operations.length, 0);
 			assert(
-				requests.every(
-					(request) =>
-						request.tools?.some((tool) => tool.name === "slack_list_conversations") &&
-						request.tools.some((tool) => tool.name === "slack_read_messages")
-				)
+				requests.every((request) => request.tools?.some((tool) => tool.name === "expand_tools"))
 			);
 			const outputs = requests
 				.at(-1)
@@ -2712,4 +2651,623 @@ test("large suggested-fix lists stay bounded and absent services expose no read 
 	const packet = (await tools.execute("inspect_suggested_fixes", "{}")) as { truncated: boolean };
 	assert.equal(packet.truncated, true);
 	assert.ok(Buffer.byteLength(JSON.stringify(packet)) <= 20000);
+});
+
+for (const inputMode of ["typed", "voice"] as const) {
+	test(`${inputMode}: interrupted scope discussion gates ambiguous input, admits one explicit answer and keeps Continue on the actual job`, async () => {
+		const d = data();
+		d.hub.jobs = [];
+		const requests: MetaRequest[] = [];
+		const startText = "Let's start on MET 77";
+		const question =
+			"Should MET-77 last just in this tab, or across browser restarts on this device?";
+		const choice = "Across browser restarts on this device, please.";
+		const start = () => [
+			call("start_work", {
+				ticketId: "ticket",
+				repositoryId: "repo",
+				brief: "Persist on this device across browser restarts using localStorage.",
+			}),
+		];
+		const outputs = [
+			answer(question),
+			start(),
+			answer(
+				JSON.stringify({
+					intent: "unclear",
+					request: { generation: 1, text: startText },
+					scope: "unresolved",
+					answer: null,
+				})
+			),
+			[call("queue_notice_announcement", { noticeIds: ["notice"] })],
+			answer("We are deciding whether MET-77 persists across browser restarts."),
+			start(),
+			answer(
+				JSON.stringify({
+					intent: "start",
+					request: { generation: 1, text: startText },
+					scope: "settled",
+					answer: { generation: 4, text: choice },
+				})
+			),
+			answer("MET-77 has started with persistence across browser restarts."),
+			start(),
+			[call("inspect_work_job", { id: "job" })],
+			answer(
+				"That job already started and is now ready. We can review its actual change before deciding what to do next."
+			),
+		];
+		const originalOperate = d.ports.operate;
+		d.ports.operate = async (...args) => {
+			if (args[0].kind === "start-work") {
+				const summary = data().hub.jobs[0];
+				assert(summary);
+				d.hub.jobs = [summary];
+			}
+			return originalOperate(...args);
+		};
+		const service = new ConversationService(client(outputs, requests), {
+			hub: d.ports,
+			narrationCheckpoints: true,
+		});
+		const turn = (generation: number, text: string) => ({
+			...input,
+			inputMode,
+			generation,
+			text,
+			requestId: `scope-${generation}`,
+			turnId: `scope-${generation}`,
+		});
+		const settle = async (value: ConversationTurnInput, interrupt = false) => {
+			await eventually(() => service.poll(identity(value)).text.length > 0);
+			if (inputMode === "voice") {
+				await eventually(() =>
+					service.poll(identity(value)).actions.some((a) => a.kind === "narration-checkpoint")
+				);
+				const checkpoint = service
+					.poll(identity(value))
+					.actions.find((a) => a.kind === "narration-checkpoint");
+				assert(checkpoint);
+				if (interrupt) {
+					service.cancel({
+						...identity(value),
+						requestId: `cancel-${value.generation}`,
+						reason: "user",
+					});
+					assert.equal(
+						service.narrationApplied({
+							...identity(value),
+							requestId: checkpoint.requestId,
+							status: "spoken",
+						}).status,
+						"stale"
+					);
+				} else
+					service.narrationApplied({
+						...identity(value),
+						requestId: checkpoint.requestId,
+						status: "spoken",
+					});
+			}
+			await eventually(() => service.poll(identity(value)).status !== "running");
+		};
+		try {
+			const first = turn(1, startText);
+			service.start(first);
+			await settle(first, true);
+			const ambiguous = turn(2, "As you");
+			service.start(ambiguous);
+			await settle(ambiguous);
+			assert.equal(d.operations.length, 0);
+			assert.match(service.poll(identity(ambiguous)).text, /clarify your choice/);
+			const continued = turn(3, "Continue?");
+			service.start(continued);
+			await settle(continued, true);
+			assert.equal(d.operations.length, 0);
+			assert.equal(d.hub.notices[0]?.announcedAt, null);
+			assert(!service.poll(identity(continued)).text.includes("PR"));
+			const explicit = turn(4, choice);
+			service.start(explicit);
+			await settle(explicit, true);
+			assert.equal(d.operations.length, 1);
+			assert.equal(d.operations[0]?.operation.kind, "start-work");
+			const after = turn(5, "Continue?");
+			service.start(after);
+			await settle(after);
+			assert.equal(d.operations.length, 1);
+			assert.match(service.poll(identity(after)).text, /already started/);
+			assert.equal(outputs.length, 0);
+			const classifiers = requests.filter((request) =>
+				request.requestId.endsWith(":work-admission")
+			);
+			assert.equal(classifiers.length, 2);
+			assert(classifiers.every((request) => request.tools?.length === 0));
+			const evidence = JSON.parse(String(classifiers[0]?.input[0]?.["content"]));
+			assert.deepEqual(evidence.users, [
+				{ generation: 1, text: startText },
+				{ generation: 2, text: "As you" },
+			]);
+			assert.equal(evidence.pendingQuestion.text, question);
+			assert.equal(evidence.dialogue[0].interrupted, inputMode === "voice");
+			const continueRequest = requests.find(
+				(request) => request.requestId === "scope-3:workspace:0"
+			);
+			assert(JSON.stringify(continueRequest?.input).includes(question));
+			const context = JSON.parse(
+				String((continueRequest?.input.at(-1)?.["content"] as { text: string }[])[0]?.text)
+			);
+			assert.equal(context.actualHub.notices, undefined);
+			assert.equal(context.actualHub.conversationFocus.pendingQuestion.text, question);
+		} finally {
+			await service.dispose();
+		}
+	});
+}
+
+test("planner cannot start work without the service admission boundary", async () => {
+	const d = data();
+	const tools = new ConversationHubTools(d.ports, input, new AbortController().signal);
+	await assert.rejects(
+		tools.execute(
+			"start_work",
+			JSON.stringify({ ticketId: "ticket", repositoryId: "repo", brief: "Do it" })
+		),
+		/clarify/
+	);
+	assert.equal(d.operations.length, 0);
+});
+
+test("independent admission fails closed on forged, partial, discussion, unresolved and malformed classifier evidence", async () => {
+	const requestText = "Let's discuss MET-77 first";
+	for (const verdict of [
+		{
+			intent: "start",
+			request: { generation: 1, text: "Start MET-77" },
+			scope: "settled",
+			answer: null,
+		},
+		{ intent: "start", request: { generation: 1, text: "MET-77" }, scope: "settled", answer: null },
+		{
+			intent: "start",
+			request: { generation: 99, text: requestText },
+			scope: "settled",
+			answer: null,
+		},
+		{
+			intent: "discussion",
+			request: { generation: 1, text: requestText },
+			scope: "settled",
+			answer: null,
+		},
+		{
+			intent: "start",
+			request: { generation: 1, text: requestText },
+			scope: "unresolved",
+			answer: null,
+		},
+		{ authorized: true },
+	]) {
+		const d = data();
+		const service = new ConversationService(
+			client(
+				[
+					[
+						call("start_work", {
+							ticketId: "ticket",
+							repositoryId: "repo",
+							brief: "Provider suggests persistent localStorage",
+						}),
+					],
+					answer(JSON.stringify(verdict)),
+				],
+				[]
+			),
+			{ hub: d.ports }
+		);
+		try {
+			service.start({ ...input, text: requestText });
+			await eventually(() => service.poll(identity()).status !== "running");
+			assert.equal(service.poll(identity()).status, "completed");
+			assert.match(service.poll(identity()).text, /clarify/);
+			assert.equal(d.operations.length, 0);
+		} finally {
+			await service.dispose();
+		}
+	}
+});
+
+test("cancelled classifier and late admission completion cannot mutate foreground history or dispatch a replay", async () => {
+	for (const cancelAt of ["classifier", "admission"] as const) {
+		const d = data();
+		let release: (() => void) | undefined;
+		let entered = false;
+		const requests: MetaRequest[] = [];
+		const outputs = [
+			[call("start_work", { ticketId: "ticket", repositoryId: "repo", brief: "Requested change" })],
+			answer(
+				JSON.stringify({
+					intent: "start",
+					request: { generation: 1, text: "Start MET-TEST" },
+					scope: "settled",
+					answer: null,
+				})
+			),
+			answer("We were discussing MET-TEST. Let us inspect what actually happened."),
+		];
+		const base = client(outputs, requests);
+		const provider: AgentModelClient = {
+			async *stream(request, signal) {
+				if (cancelAt === "classifier" && request.requestId.endsWith(":work-admission")) {
+					entered = true;
+					await new Promise<void>((resolve) => {
+						release = resolve;
+					});
+				}
+				yield* base.stream(request, signal);
+			},
+		};
+		if (cancelAt === "admission") {
+			const operate = d.ports.operate;
+			d.ports.operate = async (...args) => {
+				const result = await operate(...args);
+				entered = true;
+				await new Promise<void>((resolve) => {
+					release = resolve;
+				});
+				return result;
+			};
+		}
+		const service = new ConversationService(provider, { hub: d.ports });
+		try {
+			service.start({ ...input, text: "Start MET-TEST" });
+			await eventually(() => entered);
+			service.cancel({ ...identity(), requestId: "stop", reason: "user" });
+			release?.();
+			await new Promise((resolve) => setTimeout(resolve, 0));
+			assert.equal(service.poll(identity()).text, "");
+			assert.equal(d.operations.length, cancelAt === "classifier" ? 0 : 1);
+			const next = {
+				...input,
+				generation: 2,
+				turnId: "next",
+				requestId: "next",
+				text: "Continue?",
+			};
+			service.start(next);
+			await eventually(() => service.poll(identity(next)).status !== "running");
+			assert.equal(service.poll(identity(next)).status, "completed");
+			const current = requests.at(-1);
+			assert.deepEqual(current?.input[0], { role: "user", content: "Start MET-TEST" });
+			assert(String(current?.input[1]?.["content"]).includes("potentially unheard"));
+			assert(!JSON.stringify(current?.input).includes("authorized"));
+			if (cancelAt === "admission")
+				assert(JSON.stringify(current?.input).includes("admission-outcome-unknown"));
+			assert.equal(d.operations.filter((op) => op.operation.kind === "cancel-work").length, 0);
+		} finally {
+			release?.();
+			await service.dispose();
+		}
+	}
+});
+
+test("an actual scope answer can resolve a clarification phrased without a question mark", async () => {
+	const d = data();
+	const question = "Tell me whether this should last in the tab only or across browser restarts.";
+	const startText = "Start MET-77";
+	const choice = "Across browser restarts.";
+	const service = new ConversationService(
+		client(
+			[
+				answer(question),
+				[
+					call("start_work", {
+						ticketId: "ticket",
+						repositoryId: "repo",
+						brief: "Persist across browser restarts",
+					}),
+				],
+				answer(
+					JSON.stringify({
+						intent: "start",
+						request: { generation: 1, text: startText },
+						scope: "settled",
+						answer: { generation: 2, text: choice },
+						clarification: { generation: 1, text: question },
+					})
+				),
+				answer("Work started with persistence across restarts."),
+			],
+			[]
+		),
+		{ hub: d.ports }
+	);
+	try {
+		service.start({ ...input, text: startText });
+		await eventually(() => service.poll(identity()).status !== "running");
+		const next = { ...input, text: choice, generation: 2, requestId: "choice", turnId: "choice" };
+		service.start(next);
+		await eventually(() => service.poll(identity(next)).status !== "running");
+		assert.equal(service.poll(identity(next)).status, "completed");
+		assert.equal(d.operations.length, 1);
+	} finally {
+		await service.dispose();
+	}
+});
+
+function selectedTicketWorkspace(d: ReturnType<typeof data>): ConversationWorkspacePorts {
+	const observation: WorkspaceObservation = {
+		workspace: {
+			sequence: 1,
+			contentSequence: 1,
+			canvases: [
+				{
+					id: "selected",
+					kind: "center",
+					title: "Ticket",
+					section: "tickets",
+					selectedId: d.ticket.id,
+					revision: 1,
+				},
+			],
+			primaryId: "selected",
+			secondaryId: null,
+			review: { sequence: 0, mode: "conversation", prId: null },
+			browser: null,
+			codeView: "diff",
+		},
+		browser: null,
+		reviews: [],
+		capabilities: ["center", "source", "flow"],
+		hub: d.hub,
+	};
+	return {
+		observe: async () => structuredClone(observation),
+		execute: async () => {
+			throw new Error("No display operation requested");
+		},
+	};
+}
+
+test("selected ticket supplies freshly authorized details in the first fast request without unrelated queues or an inspection round", async () => {
+	const d = data();
+	let reads = 0;
+	d.ports.ticket = async (id) => {
+		assert.equal(id, d.ticket.id);
+		reads++;
+		return structuredClone(d.ticket);
+	};
+	const requests: MetaRequest[] = [];
+	const service = new ConversationService(
+		client([answer("This ticket needs a scope choice before implementation.")], requests),
+		{ hub: d.ports, workspace: selectedTicketWorkspace(d) }
+	);
+	try {
+		service.start({ ...input, text: "Explain this ticket" });
+		await eventually(() => service.poll(identity()).status !== "running");
+		assert.equal(service.poll(identity()).status, "completed");
+		assert.equal(reads, 1);
+		assert.equal(requests.length, 1);
+		assert.equal(requests[0]?.workload, "quick");
+		const content = requests[0]?.input.at(-1)?.["content"] as { text: string }[];
+		const packet = JSON.parse(content[0]?.text ?? "{}");
+		assert.equal(packet.currentContext.ticket.description, d.ticket.description);
+		assert.equal(packet.currentContext.ticket.id, d.ticket.id);
+		assert.equal(packet.actualHub.ownPRFeedback, undefined);
+		assert.equal(packet.actualHub.incomingReviews, undefined);
+		assert(requests[0]?.tools?.some((tool) => tool.name === "start_work"));
+		assert(!requests[0]?.tools?.some((tool) => tool.name === "confirm_pr_comment"));
+		assert.equal(d.operations.length, 0);
+	} finally {
+		await service.dispose();
+	}
+});
+
+test("explicit expansion enables another context without effects, source authority or a preliminary routing classifier", async () => {
+	const d = data();
+	const requests: MetaRequest[] = [];
+	const service = new ConversationService(
+		client(
+			[
+				[call("expand_tools", { families: ["work"] })],
+				[call("inspect_ticket", { id: d.ticket.id })],
+				answer("Here is the actual requested ticket."),
+			],
+			requests
+		),
+		{ hub: d.ports }
+	);
+	try {
+		service.start({ ...input, text: "Read MET-TEST" });
+		await eventually(() => service.poll(identity()).status !== "running");
+		assert.equal(service.poll(identity()).status, "completed");
+		assert.equal(requests.length, 3);
+		assert(!requests[0]?.tools?.some((tool) => tool.name === "start_work"));
+		assert(requests[1]?.tools?.some((tool) => tool.name === "start_work"));
+		assert(requests.every((request) => request.workload === "quick"));
+		assert.equal(d.operations.length, 0);
+		assert.equal(service.poll(identity()).actions.length, 0);
+	} finally {
+		await service.dispose();
+	}
+});
+
+test("deeper selected-ticket reasoning is a separate tools-free workload and cannot start work", async () => {
+	const d = data();
+	const requests: MetaRequest[] = [];
+	const service = new ConversationService(
+		client(
+			[
+				[call("analyze_current_context", { question: "Analyze persistence tradeoffs in depth" })],
+				answer(
+					"Persistence across restarts trades longer-lived state for easier return visits; the choice is still yours."
+				),
+			],
+			requests
+		),
+		{ hub: d.ports, workspace: selectedTicketWorkspace(d) }
+	);
+	try {
+		service.start({ ...input, text: "Analyze this ticket in depth" });
+		await eventually(() => service.poll(identity()).status !== "running");
+		assert.equal(service.poll(identity()).status, "completed");
+		assert.deepEqual(
+			requests.map((request) => request.workload),
+			["quick", "deep"]
+		);
+		assert.deepEqual(requests[1]?.tools, []);
+		assert(JSON.stringify(requests[1]?.input).includes(d.ticket.description));
+		assert.equal(d.operations.length, 0);
+		assert.equal(service.poll(identity()).actions.length, 0);
+	} finally {
+		await service.dispose();
+	}
+});
+
+test("unavailable selected ticket does not block ordinary conversation or expose a deep-analysis capability", async () => {
+	const d = data();
+	d.ports.ticket = async () => {
+		throw new Error("PRIVATE provider failure");
+	};
+	const requests: MetaRequest[] = [];
+	const service = new ConversationService(client([answer("Hello.")], requests), {
+		hub: d.ports,
+		workspace: selectedTicketWorkspace(d),
+	});
+	try {
+		service.start({ ...input, text: "Hello" });
+		await eventually(() => service.poll(identity()).status !== "running");
+		assert.equal(service.poll(identity()).status, "completed");
+		assert(!JSON.stringify(requests).includes("PRIVATE"));
+		assert(!requests[0]?.tools?.some((tool) => tool.name === "analyze_current_context"));
+	} finally {
+		await service.dispose();
+	}
+});
+
+test("explicit capability focus survives a real follow-up without another expansion round", async () => {
+	const d = data();
+	const requests: MetaRequest[] = [];
+	const service = new ConversationService(
+		client(
+			[
+				[call("expand_tools", { families: ["work"] })],
+				answer("Which ticket would you like to discuss?"),
+				answer("We can keep discussing the ticket scope."),
+			],
+			requests
+		),
+		{ hub: d.ports }
+	);
+	try {
+		service.start({ ...input, text: "Let's discuss my tickets" });
+		await eventually(() => service.poll(identity()).status !== "running");
+		const next = {
+			...input,
+			generation: 2,
+			turnId: "follow",
+			requestId: "follow",
+			text: "Continue?",
+		};
+		service.start(next);
+		await eventually(() => service.poll(identity(next)).status !== "running");
+		assert.equal(requests.length, 3);
+		assert(requests[2]?.tools?.some((tool) => tool.name === "inspect_ticket"));
+		assert(JSON.stringify(requests[2]?.input).includes("Which ticket"));
+		assert.equal(d.operations.length, 0);
+	} finally {
+		await service.dispose();
+	}
+});
+
+test("cancelled deeper analysis cannot publish late output or affect a saved job", async () => {
+	const d = data();
+	let release: (() => void) | undefined;
+	let entered = false;
+	const provider: AgentModelClient = {
+		async *stream(request) {
+			if (request.workload === "quick") {
+				yield {
+					type: "completed",
+					response: {
+						id: "quick",
+						model: "muse-spark-1.3",
+						output: [call("analyze_current_context", { question: "Analyze scope" })],
+					},
+				};
+			} else {
+				entered = true;
+				await new Promise<void>((done) => {
+					release = done;
+				});
+				yield { type: "text", delta: "LATE DEEP ANSWER" };
+				yield {
+					type: "completed",
+					response: { id: "deep", model: "muse-wonder-1.0", output: answer("LATE DEEP ANSWER") },
+				};
+			}
+		},
+	};
+	const service = new ConversationService(provider, {
+		hub: d.ports,
+		workspace: selectedTicketWorkspace(d),
+	});
+	try {
+		service.start({ ...input, text: "Analyze this in depth" });
+		await eventually(() => entered);
+		service.cancel({ ...identity(), requestId: "stop-deep", reason: "user" });
+		release?.();
+		await new Promise((done) => setTimeout(done, 0));
+		assert.equal(service.poll(identity()).status, "cancelled");
+		assert.equal(service.poll(identity()).text, "");
+		assert.equal(service.poll(identity()).actions.length, 0);
+		assert.equal(d.operations.length, 0);
+	} finally {
+		release?.();
+		await service.dispose();
+	}
+});
+
+test("deep reasoning tolerates sidebar-only revisions but rejects changed acknowledged content", async () => {
+	for (const changedContent of [false, true]) {
+		const d = data();
+		const workspace = selectedTicketWorkspace(d);
+		const observe = workspace.observe;
+		let deepFinished = false;
+		workspace.observe = async (...args) => {
+			const value = await observe(...args);
+			if (deepFinished) {
+				value.workspace.sequence++;
+				if (changedContent) value.workspace.contentSequence = 2;
+			}
+			return value;
+		};
+		const provider: AgentModelClient = {
+			async *stream(request) {
+				const output =
+					request.workload === "quick"
+						? [call("analyze_current_context", { question: "Analyze scope" })]
+						: answer("Bounded deep inference.");
+				if (request.workload === "deep") deepFinished = true;
+				yield {
+					type: "completed",
+					response: {
+						id: "controlled",
+						model: request.workload === "deep" ? "muse-wonder-1.0" : "muse-spark-1.3",
+						output,
+					},
+				};
+			},
+		};
+		const service = new ConversationService(provider, { hub: d.ports, workspace });
+		try {
+			service.start({ ...input, text: "Analyze this in depth" });
+			await eventually(() => service.poll(identity()).status !== "running");
+			assert.equal(service.poll(identity()).status, changedContent ? "error" : "completed");
+			assert.equal(service.poll(identity()).text, changedContent ? "" : "Bounded deep inference.");
+			assert.equal(d.operations.length, 0);
+		} finally {
+			await service.dispose();
+		}
+	}
 });

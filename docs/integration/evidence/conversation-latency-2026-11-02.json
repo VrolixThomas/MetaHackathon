@@ -1,0 +1,1002 @@
+{
+	"method": "Actual ConversationService, workspace/hub tool orchestration and schemas; controlled provider and ports, 10ms per observation port, 20ms model first text + 40ms terminal delay, 20ms workspace receipt wait. Sequential samples. No native app, provider credentials, network or audio.",
+	"limits": [
+		"Token counts unavailable without provider usage; bytes are measured UTF-8 JSON, not token estimates.",
+		"First audio and provider warm/cold/long-idle behavior were not measured.",
+		"Three samples are dependency probes, not a live latency benchmark or causal model-speed comparison.",
+		"Planning-followup contains two actual user turns. firstPublishedMs measures the first turn; completedMs covers both.",
+		"All seventy capability tools and their validation constraints remain; no speculative tool prose is published."
+	],
+	"runs": [
+		{
+			"sourceRevision": "036bbf821f23d4cecc6ece120845637ab9f84bff",
+			"controlled": true,
+			"physicalAudio": false,
+			"measurements": [
+				{
+					"scenario": "simple",
+					"turns": 1,
+					"modelRounds": 1,
+					"workspaceReads": 2,
+					"hubReads": 3,
+					"dayReads": 1,
+					"injectedPortDelayMs": 10,
+					"contextPortWaitBudgetMs": 60,
+					"injectedProviderWaitPerRoundMs": 60,
+					"receiptWaitMs": 0,
+					"firstPublishedMs": 131.793834,
+					"completedMs": 131.860417,
+					"firstAudioMs": null,
+					"inputTokens": null,
+					"providerWarmColdIdle": "not-observed",
+					"requests": [
+						{
+							"inputBytes": 3406,
+							"instructionBytes": 3933,
+							"toolBytes": 53618,
+							"toolCount": 70,
+							"requestedAtMs": 70.85454200000001,
+							"firstProviderTextMs": 90.918834,
+							"terminalMs": 131.16325
+						}
+					]
+				},
+				{
+					"scenario": "planning-followup",
+					"turns": 2,
+					"modelRounds": 2,
+					"workspaceReads": 4,
+					"hubReads": 6,
+					"dayReads": 2,
+					"injectedPortDelayMs": 10,
+					"contextPortWaitBudgetMs": 120,
+					"injectedProviderWaitPerRoundMs": 60,
+					"receiptWaitMs": 0,
+					"firstPublishedMs": 124.018125,
+					"completedMs": 256.46579199999996,
+					"firstAudioMs": null,
+					"inputTokens": null,
+					"providerWarmColdIdle": "not-observed",
+					"requests": [
+						{
+							"inputBytes": 3451,
+							"instructionBytes": 3933,
+							"toolBytes": 53618,
+							"toolCount": 70,
+							"requestedAtMs": 63.544667000000004,
+							"firstProviderTextMs": 83.66620799999998,
+							"terminalMs": 123.77333299999998
+						},
+						{
+							"inputBytes": 3578,
+							"instructionBytes": 3933,
+							"toolBytes": 53618,
+							"toolCount": 70,
+							"requestedAtMs": 195.2815,
+							"firstProviderTextMs": 215.95879200000002,
+							"terminalMs": 256.263125
+						}
+					]
+				},
+				{
+					"scenario": "workspace-action",
+					"turns": 1,
+					"modelRounds": 2,
+					"workspaceReads": 3,
+					"hubReads": 5,
+					"dayReads": 2,
+					"injectedPortDelayMs": 10,
+					"contextPortWaitBudgetMs": 100,
+					"injectedProviderWaitPerRoundMs": 60,
+					"receiptWaitMs": 21.21612499999992,
+					"firstPublishedMs": 266.26366699999994,
+					"completedMs": 266.362042,
+					"firstAudioMs": null,
+					"inputTokens": null,
+					"providerWarmColdIdle": "not-observed",
+					"requests": [
+						{
+							"inputBytes": 3416,
+							"instructionBytes": 3933,
+							"toolBytes": 53618,
+							"toolCount": 70,
+							"requestedAtMs": 68.87329199999999,
+							"firstProviderTextMs": 89.86220800000001,
+							"terminalMs": 130.10924999999997
+						},
+						{
+							"inputBytes": 3796,
+							"instructionBytes": 3933,
+							"toolBytes": 53618,
+							"toolCount": 70,
+							"requestedAtMs": 204.76725,
+							"firstProviderTextMs": 224.98912499999994,
+							"terminalMs": 265.22620799999993
+						}
+					]
+				}
+			],
+			"sample": 1
+		},
+		{
+			"sourceRevision": "036bbf821f23d4cecc6ece120845637ab9f84bff",
+			"controlled": true,
+			"physicalAudio": false,
+			"measurements": [
+				{
+					"scenario": "simple",
+					"turns": 1,
+					"modelRounds": 1,
+					"workspaceReads": 2,
+					"hubReads": 3,
+					"dayReads": 1,
+					"injectedPortDelayMs": 10,
+					"contextPortWaitBudgetMs": 60,
+					"injectedProviderWaitPerRoundMs": 60,
+					"receiptWaitMs": 0,
+					"firstPublishedMs": 129.062666,
+					"completedMs": 129.101875,
+					"firstAudioMs": null,
+					"inputTokens": null,
+					"providerWarmColdIdle": "not-observed",
+					"requests": [
+						{
+							"inputBytes": 3406,
+							"instructionBytes": 3933,
+							"toolBytes": 53618,
+							"toolCount": 70,
+							"requestedAtMs": 68.425416,
+							"firstProviderTextMs": 88.31562499999998,
+							"terminalMs": 128.45137499999998
+						}
+					]
+				},
+				{
+					"scenario": "planning-followup",
+					"turns": 2,
+					"modelRounds": 2,
+					"workspaceReads": 4,
+					"hubReads": 6,
+					"dayReads": 2,
+					"injectedPortDelayMs": 10,
+					"contextPortWaitBudgetMs": 120,
+					"injectedProviderWaitPerRoundMs": 60,
+					"receiptWaitMs": 0,
+					"firstPublishedMs": 128.347792,
+					"completedMs": 254.75137500000002,
+					"firstAudioMs": null,
+					"inputTokens": null,
+					"providerWarmColdIdle": "not-observed",
+					"requests": [
+						{
+							"inputBytes": 3451,
+							"instructionBytes": 3933,
+							"toolBytes": 53618,
+							"toolCount": 70,
+							"requestedAtMs": 66.90687500000001,
+							"firstProviderTextMs": 86.73329200000003,
+							"terminalMs": 127.98858400000003
+						},
+						{
+							"inputBytes": 3578,
+							"instructionBytes": 3933,
+							"toolBytes": 53618,
+							"toolCount": 70,
+							"requestedAtMs": 194.56637500000002,
+							"firstProviderTextMs": 214.3475,
+							"terminalMs": 254.54129200000003
+						}
+					]
+				},
+				{
+					"scenario": "workspace-action",
+					"turns": 1,
+					"modelRounds": 2,
+					"workspaceReads": 3,
+					"hubReads": 5,
+					"dayReads": 2,
+					"injectedPortDelayMs": 10,
+					"contextPortWaitBudgetMs": 100,
+					"injectedProviderWaitPerRoundMs": 60,
+					"receiptWaitMs": 20.021458000000052,
+					"firstPublishedMs": 298.436417,
+					"completedMs": 298.509375,
+					"firstAudioMs": null,
+					"inputTokens": null,
+					"providerWarmColdIdle": "not-observed",
+					"requests": [
+						{
+							"inputBytes": 3416,
+							"instructionBytes": 3933,
+							"toolBytes": 53618,
+							"toolCount": 70,
+							"requestedAtMs": 91.53487500000006,
+							"firstProviderTextMs": 120.49341700000002,
+							"terminalMs": 160.84854199999995
+						},
+						{
+							"inputBytes": 3796,
+							"instructionBytes": 3933,
+							"toolBytes": 53618,
+							"toolCount": 70,
+							"requestedAtMs": 237.86599999999999,
+							"firstProviderTextMs": 257.775584,
+							"terminalMs": 297.860584
+						}
+					]
+				}
+			],
+			"sample": 2
+		},
+		{
+			"sourceRevision": "036bbf821f23d4cecc6ece120845637ab9f84bff",
+			"controlled": true,
+			"physicalAudio": false,
+			"measurements": [
+				{
+					"scenario": "simple",
+					"turns": 1,
+					"modelRounds": 1,
+					"workspaceReads": 2,
+					"hubReads": 3,
+					"dayReads": 1,
+					"injectedPortDelayMs": 10,
+					"contextPortWaitBudgetMs": 60,
+					"injectedProviderWaitPerRoundMs": 60,
+					"receiptWaitMs": 0,
+					"firstPublishedMs": 128.988959,
+					"completedMs": 129.030792,
+					"firstAudioMs": null,
+					"inputTokens": null,
+					"providerWarmColdIdle": "not-observed",
+					"requests": [
+						{
+							"inputBytes": 3406,
+							"instructionBytes": 3933,
+							"toolBytes": 53618,
+							"toolCount": 70,
+							"requestedAtMs": 68.0025,
+							"firstProviderTextMs": 88.138959,
+							"terminalMs": 128.204584
+						}
+					]
+				},
+				{
+					"scenario": "planning-followup",
+					"turns": 2,
+					"modelRounds": 2,
+					"workspaceReads": 4,
+					"hubReads": 6,
+					"dayReads": 2,
+					"injectedPortDelayMs": 10,
+					"contextPortWaitBudgetMs": 120,
+					"injectedProviderWaitPerRoundMs": 60,
+					"receiptWaitMs": 0,
+					"firstPublishedMs": 130.919083,
+					"completedMs": 260.362125,
+					"firstAudioMs": null,
+					"inputTokens": null,
+					"providerWarmColdIdle": "not-observed",
+					"requests": [
+						{
+							"inputBytes": 3451,
+							"instructionBytes": 3933,
+							"toolBytes": 53618,
+							"toolCount": 70,
+							"requestedAtMs": 69.818667,
+							"firstProviderTextMs": 90.0075,
+							"terminalMs": 130.097958
+						},
+						{
+							"inputBytes": 3578,
+							"instructionBytes": 3933,
+							"toolBytes": 53618,
+							"toolCount": 70,
+							"requestedAtMs": 199.283208,
+							"firstProviderTextMs": 219.25658299999998,
+							"terminalMs": 259.339708
+						}
+					]
+				},
+				{
+					"scenario": "workspace-action",
+					"turns": 1,
+					"modelRounds": 2,
+					"workspaceReads": 3,
+					"hubReads": 5,
+					"dayReads": 2,
+					"injectedPortDelayMs": 10,
+					"contextPortWaitBudgetMs": 100,
+					"injectedProviderWaitPerRoundMs": 60,
+					"receiptWaitMs": 19.944958000000042,
+					"firstPublishedMs": 265.429125,
+					"completedMs": 265.469417,
+					"firstAudioMs": null,
+					"inputTokens": null,
+					"providerWarmColdIdle": "not-observed",
+					"requests": [
+						{
+							"inputBytes": 3416,
+							"instructionBytes": 3933,
+							"toolBytes": 53618,
+							"toolCount": 70,
+							"requestedAtMs": 70.32529200000005,
+							"firstProviderTextMs": 90.41250000000002,
+							"terminalMs": 130.56408299999998
+						},
+						{
+							"inputBytes": 3796,
+							"instructionBytes": 3933,
+							"toolBytes": 53618,
+							"toolCount": 70,
+							"requestedAtMs": 204.83350000000007,
+							"firstProviderTextMs": 224.90662500000008,
+							"terminalMs": 265.109458
+						}
+					]
+				}
+			],
+			"sample": 3
+		},
+		{
+			"sourceRevision": "3a05390101a0d463c12e82f159e489e6f3019f48",
+			"controlled": true,
+			"physicalAudio": false,
+			"measurements": [
+				{
+					"scenario": "simple",
+					"turns": 1,
+					"modelRounds": 1,
+					"workspaceReads": 2,
+					"hubReads": 3,
+					"dayReads": 1,
+					"injectedPortDelayMs": 10,
+					"contextPortWaitBudgetMs": 60,
+					"injectedProviderWaitPerRoundMs": 60,
+					"receiptWaitMs": 0,
+					"firstPublishedMs": 130.147,
+					"completedMs": 130.1825,
+					"firstAudioMs": null,
+					"inputTokens": null,
+					"providerWarmColdIdle": "not-observed",
+					"requests": [
+						{
+							"inputBytes": 3445,
+							"instructionBytes": 4631,
+							"toolBytes": 53618,
+							"toolCount": 70,
+							"requestedAtMs": 69.314958,
+							"firstProviderTextMs": 89.34929100000001,
+							"terminalMs": 129.523708
+						}
+					]
+				},
+				{
+					"scenario": "planning-followup",
+					"turns": 2,
+					"modelRounds": 2,
+					"workspaceReads": 4,
+					"hubReads": 6,
+					"dayReads": 2,
+					"injectedPortDelayMs": 10,
+					"contextPortWaitBudgetMs": 120,
+					"injectedProviderWaitPerRoundMs": 60,
+					"receiptWaitMs": 0,
+					"firstPublishedMs": 124.44562499999998,
+					"completedMs": 250.791959,
+					"firstAudioMs": null,
+					"inputTokens": null,
+					"providerWarmColdIdle": "not-observed",
+					"requests": [
+						{
+							"inputBytes": 3490,
+							"instructionBytes": 4631,
+							"toolBytes": 53618,
+							"toolCount": 70,
+							"requestedAtMs": 63.80016699999999,
+							"firstProviderTextMs": 83.92141699999999,
+							"terminalMs": 124.06325000000001
+						},
+						{
+							"inputBytes": 3740,
+							"instructionBytes": 4631,
+							"toolBytes": 53618,
+							"toolCount": 70,
+							"requestedAtMs": 190.01954199999997,
+							"firstProviderTextMs": 210.31779200000003,
+							"terminalMs": 250.52374999999998
+						}
+					]
+				},
+				{
+					"scenario": "workspace-action",
+					"turns": 1,
+					"modelRounds": 2,
+					"workspaceReads": 3,
+					"hubReads": 5,
+					"dayReads": 2,
+					"injectedPortDelayMs": 10,
+					"contextPortWaitBudgetMs": 100,
+					"injectedProviderWaitPerRoundMs": 60,
+					"receiptWaitMs": 20.139666000000034,
+					"firstPublishedMs": 270.57970800000004,
+					"completedMs": 270.63795799999997,
+					"firstAudioMs": null,
+					"inputTokens": null,
+					"providerWarmColdIdle": "not-observed",
+					"requests": [
+						{
+							"inputBytes": 3455,
+							"instructionBytes": 4631,
+							"toolBytes": 53618,
+							"toolCount": 70,
+							"requestedAtMs": 69.24058300000002,
+							"firstProviderTextMs": 89.27245799999997,
+							"terminalMs": 129.550542
+						},
+						{
+							"inputBytes": 3835,
+							"instructionBytes": 4631,
+							"toolBytes": 53618,
+							"toolCount": 70,
+							"requestedAtMs": 208.85925000000003,
+							"firstProviderTextMs": 229.01462499999997,
+							"terminalMs": 270.206708
+						}
+					]
+				}
+			],
+			"sample": 1
+		},
+		{
+			"sourceRevision": "3a05390101a0d463c12e82f159e489e6f3019f48",
+			"controlled": true,
+			"physicalAudio": false,
+			"measurements": [
+				{
+					"scenario": "simple",
+					"turns": 1,
+					"modelRounds": 1,
+					"workspaceReads": 2,
+					"hubReads": 3,
+					"dayReads": 1,
+					"injectedPortDelayMs": 10,
+					"contextPortWaitBudgetMs": 60,
+					"injectedProviderWaitPerRoundMs": 60,
+					"receiptWaitMs": 0,
+					"firstPublishedMs": 130.77379200000001,
+					"completedMs": 130.811083,
+					"firstAudioMs": null,
+					"inputTokens": null,
+					"providerWarmColdIdle": "not-observed",
+					"requests": [
+						{
+							"inputBytes": 3445,
+							"instructionBytes": 4631,
+							"toolBytes": 53618,
+							"toolCount": 70,
+							"requestedAtMs": 69.89325,
+							"firstProviderTextMs": 90.0475,
+							"terminalMs": 130.10391700000002
+						}
+					]
+				},
+				{
+					"scenario": "planning-followup",
+					"turns": 2,
+					"modelRounds": 2,
+					"workspaceReads": 4,
+					"hubReads": 6,
+					"dayReads": 2,
+					"injectedPortDelayMs": 10,
+					"contextPortWaitBudgetMs": 120,
+					"injectedProviderWaitPerRoundMs": 60,
+					"receiptWaitMs": 0,
+					"firstPublishedMs": 127.88062500000004,
+					"completedMs": 256.52725,
+					"firstAudioMs": null,
+					"inputTokens": null,
+					"providerWarmColdIdle": "not-observed",
+					"requests": [
+						{
+							"inputBytes": 3490,
+							"instructionBytes": 4631,
+							"toolBytes": 53618,
+							"toolCount": 70,
+							"requestedAtMs": 67.39862500000001,
+							"firstProviderTextMs": 87.36170899999999,
+							"terminalMs": 127.52170900000002
+						},
+						{
+							"inputBytes": 3740,
+							"instructionBytes": 4631,
+							"toolBytes": 53618,
+							"toolCount": 70,
+							"requestedAtMs": 196.015209,
+							"firstProviderTextMs": 216.029959,
+							"terminalMs": 256.218875
+						}
+					]
+				},
+				{
+					"scenario": "workspace-action",
+					"turns": 1,
+					"modelRounds": 2,
+					"workspaceReads": 3,
+					"hubReads": 5,
+					"dayReads": 2,
+					"injectedPortDelayMs": 10,
+					"contextPortWaitBudgetMs": 100,
+					"injectedProviderWaitPerRoundMs": 60,
+					"receiptWaitMs": 21.068583999999987,
+					"firstPublishedMs": 267.1276250000001,
+					"completedMs": 267.16262500000005,
+					"firstAudioMs": null,
+					"inputTokens": null,
+					"providerWarmColdIdle": "not-observed",
+					"requests": [
+						{
+							"inputBytes": 3455,
+							"instructionBytes": 4631,
+							"toolBytes": 53618,
+							"toolCount": 70,
+							"requestedAtMs": 68.77287500000006,
+							"firstProviderTextMs": 88.73529200000007,
+							"terminalMs": 128.929709
+						},
+						{
+							"inputBytes": 3835,
+							"instructionBytes": 4631,
+							"toolBytes": 53618,
+							"toolCount": 70,
+							"requestedAtMs": 206.46633400000007,
+							"firstProviderTextMs": 226.231042,
+							"terminalMs": 266.86737500000004
+						}
+					]
+				}
+			],
+			"sample": 2
+		},
+		{
+			"sourceRevision": "3a05390101a0d463c12e82f159e489e6f3019f48",
+			"controlled": true,
+			"physicalAudio": false,
+			"measurements": [
+				{
+					"scenario": "simple",
+					"turns": 1,
+					"modelRounds": 1,
+					"workspaceReads": 2,
+					"hubReads": 3,
+					"dayReads": 1,
+					"injectedPortDelayMs": 10,
+					"contextPortWaitBudgetMs": 60,
+					"injectedProviderWaitPerRoundMs": 60,
+					"receiptWaitMs": 0,
+					"firstPublishedMs": 129.206958,
+					"completedMs": 129.24399999999997,
+					"firstAudioMs": null,
+					"inputTokens": null,
+					"providerWarmColdIdle": "not-observed",
+					"requests": [
+						{
+							"inputBytes": 3445,
+							"instructionBytes": 4631,
+							"toolBytes": 53618,
+							"toolCount": 70,
+							"requestedAtMs": 68.26620799999999,
+							"firstProviderTextMs": 88.32875,
+							"terminalMs": 128.46770800000002
+						}
+					]
+				},
+				{
+					"scenario": "planning-followup",
+					"turns": 2,
+					"modelRounds": 2,
+					"workspaceReads": 4,
+					"hubReads": 6,
+					"dayReads": 2,
+					"injectedPortDelayMs": 10,
+					"contextPortWaitBudgetMs": 120,
+					"injectedProviderWaitPerRoundMs": 60,
+					"receiptWaitMs": 0,
+					"firstPublishedMs": 127.32770800000003,
+					"completedMs": 265.618042,
+					"firstAudioMs": null,
+					"inputTokens": null,
+					"providerWarmColdIdle": "not-observed",
+					"requests": [
+						{
+							"inputBytes": 3490,
+							"instructionBytes": 4631,
+							"toolBytes": 53618,
+							"toolCount": 70,
+							"requestedAtMs": 65.93937500000001,
+							"firstProviderTextMs": 86.75579199999999,
+							"terminalMs": 126.96883300000002
+						},
+						{
+							"inputBytes": 3740,
+							"instructionBytes": 4631,
+							"toolBytes": 53618,
+							"toolCount": 70,
+							"requestedAtMs": 198.61233300000004,
+							"firstProviderTextMs": 224.122708,
+							"terminalMs": 264.62991700000003
+						}
+					]
+				},
+				{
+					"scenario": "workspace-action",
+					"turns": 1,
+					"modelRounds": 2,
+					"workspaceReads": 3,
+					"hubReads": 5,
+					"dayReads": 2,
+					"injectedPortDelayMs": 10,
+					"contextPortWaitBudgetMs": 100,
+					"injectedProviderWaitPerRoundMs": 60,
+					"receiptWaitMs": 19.94108300000005,
+					"firstPublishedMs": 263.13325000000003,
+					"completedMs": 263.1926250000001,
+					"firstAudioMs": null,
+					"inputTokens": null,
+					"providerWarmColdIdle": "not-observed",
+					"requests": [
+						{
+							"inputBytes": 3455,
+							"instructionBytes": 4631,
+							"toolBytes": 53618,
+							"toolCount": 70,
+							"requestedAtMs": 66.25404100000003,
+							"firstProviderTextMs": 85.40695799999997,
+							"terminalMs": 125.674916
+						},
+						{
+							"inputBytes": 3835,
+							"instructionBytes": 4631,
+							"toolBytes": 53618,
+							"toolCount": 70,
+							"requestedAtMs": 202.36270800000005,
+							"firstProviderTextMs": 222.63625000000008,
+							"terminalMs": 262.860791
+						}
+					]
+				}
+			],
+			"sample": 3
+		},
+		{
+			"sourceRevision": "0306225c356ccb7ef6f4c2633b66fc99446c1199",
+			"controlled": true,
+			"physicalAudio": false,
+			"measurements": [
+				{
+					"scenario": "simple",
+					"turns": 1,
+					"modelRounds": 1,
+					"workspaceReads": 1,
+					"hubReads": 1,
+					"dayReads": 1,
+					"injectedPortDelayMs": 10,
+					"contextPortWaitBudgetMs": 30,
+					"injectedProviderWaitPerRoundMs": 60,
+					"receiptWaitMs": 0,
+					"firstPublishedMs": 99.62187499999999,
+					"completedMs": 99.67095799999998,
+					"firstAudioMs": null,
+					"inputTokens": null,
+					"providerWarmColdIdle": "not-observed",
+					"requests": [
+						{
+							"inputBytes": 3445,
+							"instructionBytes": 4631,
+							"toolBytes": 49628,
+							"toolCount": 70,
+							"requestedAtMs": 38.22529099999999,
+							"firstProviderTextMs": 58.79475,
+							"terminalMs": 98.86937499999999
+						}
+					]
+				},
+				{
+					"scenario": "planning-followup",
+					"turns": 2,
+					"modelRounds": 2,
+					"workspaceReads": 2,
+					"hubReads": 2,
+					"dayReads": 2,
+					"injectedPortDelayMs": 10,
+					"contextPortWaitBudgetMs": 60,
+					"injectedProviderWaitPerRoundMs": 60,
+					"receiptWaitMs": 0,
+					"firstPublishedMs": 93.41891700000002,
+					"completedMs": 190.617167,
+					"firstAudioMs": null,
+					"inputTokens": null,
+					"providerWarmColdIdle": "not-observed",
+					"requests": [
+						{
+							"inputBytes": 3490,
+							"instructionBytes": 4631,
+							"toolBytes": 49628,
+							"toolCount": 70,
+							"requestedAtMs": 32.84679200000002,
+							"firstProviderTextMs": 53.001542,
+							"terminalMs": 93.195458
+						},
+						{
+							"inputBytes": 3740,
+							"instructionBytes": 4631,
+							"toolBytes": 49628,
+							"toolCount": 70,
+							"requestedAtMs": 129.98825,
+							"firstProviderTextMs": 150.13262500000002,
+							"terminalMs": 190.37145800000002
+						}
+					]
+				},
+				{
+					"scenario": "workspace-action",
+					"turns": 1,
+					"modelRounds": 2,
+					"workspaceReads": 2,
+					"hubReads": 2,
+					"dayReads": 2,
+					"injectedPortDelayMs": 10,
+					"contextPortWaitBudgetMs": 60,
+					"injectedProviderWaitPerRoundMs": 60,
+					"receiptWaitMs": 20.27641699999998,
+					"firstPublishedMs": 221.86449999999996,
+					"completedMs": 222.05787500000002,
+					"firstAudioMs": null,
+					"inputTokens": null,
+					"providerWarmColdIdle": "not-observed",
+					"requests": [
+						{
+							"inputBytes": 3455,
+							"instructionBytes": 4631,
+							"toolBytes": 49628,
+							"toolCount": 70,
+							"requestedAtMs": 35.72133299999996,
+							"firstProviderTextMs": 55.42679199999998,
+							"terminalMs": 95.61754199999996
+						},
+						{
+							"inputBytes": 3835,
+							"instructionBytes": 4631,
+							"toolBytes": 49628,
+							"toolCount": 70,
+							"requestedAtMs": 161.26475,
+							"firstProviderTextMs": 181.400917,
+							"terminalMs": 221.55349999999993
+						}
+					]
+				}
+			],
+			"sample": 1
+		},
+		{
+			"sourceRevision": "0306225c356ccb7ef6f4c2633b66fc99446c1199",
+			"controlled": true,
+			"physicalAudio": false,
+			"measurements": [
+				{
+					"scenario": "simple",
+					"turns": 1,
+					"modelRounds": 1,
+					"workspaceReads": 1,
+					"hubReads": 1,
+					"dayReads": 1,
+					"injectedPortDelayMs": 10,
+					"contextPortWaitBudgetMs": 30,
+					"injectedProviderWaitPerRoundMs": 60,
+					"receiptWaitMs": 0,
+					"firstPublishedMs": 99.381542,
+					"completedMs": 99.42191700000001,
+					"firstAudioMs": null,
+					"inputTokens": null,
+					"providerWarmColdIdle": "not-observed",
+					"requests": [
+						{
+							"inputBytes": 3445,
+							"instructionBytes": 4631,
+							"toolBytes": 49628,
+							"toolCount": 70,
+							"requestedAtMs": 38.507583,
+							"firstProviderTextMs": 58.603167,
+							"terminalMs": 98.628792
+						}
+					]
+				},
+				{
+					"scenario": "planning-followup",
+					"turns": 2,
+					"modelRounds": 2,
+					"workspaceReads": 2,
+					"hubReads": 2,
+					"dayReads": 2,
+					"injectedPortDelayMs": 10,
+					"contextPortWaitBudgetMs": 60,
+					"injectedProviderWaitPerRoundMs": 60,
+					"receiptWaitMs": 0,
+					"firstPublishedMs": 93.63187500000001,
+					"completedMs": 190.76233299999998,
+					"firstAudioMs": null,
+					"inputTokens": null,
+					"providerWarmColdIdle": "not-observed",
+					"requests": [
+						{
+							"inputBytes": 3490,
+							"instructionBytes": 4631,
+							"toolBytes": 49628,
+							"toolCount": 70,
+							"requestedAtMs": 33.049875000000014,
+							"firstProviderTextMs": 53.16495800000001,
+							"terminalMs": 93.35104100000001
+						},
+						{
+							"inputBytes": 3740,
+							"instructionBytes": 4631,
+							"toolBytes": 49628,
+							"toolCount": 70,
+							"requestedAtMs": 129.123125,
+							"firstProviderTextMs": 149.362041,
+							"terminalMs": 189.402458
+						}
+					]
+				},
+				{
+					"scenario": "workspace-action",
+					"turns": 1,
+					"modelRounds": 2,
+					"workspaceReads": 2,
+					"hubReads": 2,
+					"dayReads": 2,
+					"injectedPortDelayMs": 10,
+					"contextPortWaitBudgetMs": 60,
+					"injectedProviderWaitPerRoundMs": 60,
+					"receiptWaitMs": 20.281165999999985,
+					"firstPublishedMs": 219.47158299999995,
+					"completedMs": 219.55754099999996,
+					"firstAudioMs": null,
+					"inputTokens": null,
+					"providerWarmColdIdle": "not-observed",
+					"requests": [
+						{
+							"inputBytes": 3455,
+							"instructionBytes": 4631,
+							"toolBytes": 49628,
+							"toolCount": 70,
+							"requestedAtMs": 39.351999999999975,
+							"firstProviderTextMs": 59.52683300000001,
+							"terminalMs": 99.69108299999999
+						},
+						{
+							"inputBytes": 3835,
+							"instructionBytes": 4631,
+							"toolBytes": 49628,
+							"toolCount": 70,
+							"requestedAtMs": 158.85470800000002,
+							"firstProviderTextMs": 179.00783299999995,
+							"terminalMs": 219.17729100000003
+						}
+					]
+				}
+			],
+			"sample": 2
+		},
+		{
+			"sourceRevision": "0306225c356ccb7ef6f4c2633b66fc99446c1199",
+			"controlled": true,
+			"physicalAudio": false,
+			"measurements": [
+				{
+					"scenario": "simple",
+					"turns": 1,
+					"modelRounds": 1,
+					"workspaceReads": 1,
+					"hubReads": 1,
+					"dayReads": 1,
+					"injectedPortDelayMs": 10,
+					"contextPortWaitBudgetMs": 30,
+					"injectedProviderWaitPerRoundMs": 60,
+					"receiptWaitMs": 0,
+					"firstPublishedMs": 99.864959,
+					"completedMs": 99.91095899999999,
+					"firstAudioMs": null,
+					"inputTokens": null,
+					"providerWarmColdIdle": "not-observed",
+					"requests": [
+						{
+							"inputBytes": 3445,
+							"instructionBytes": 4631,
+							"toolBytes": 49628,
+							"toolCount": 70,
+							"requestedAtMs": 38.808917,
+							"firstProviderTextMs": 58.907209,
+							"terminalMs": 99.06020900000001
+						}
+					]
+				},
+				{
+					"scenario": "planning-followup",
+					"turns": 2,
+					"modelRounds": 2,
+					"workspaceReads": 2,
+					"hubReads": 2,
+					"dayReads": 2,
+					"injectedPortDelayMs": 10,
+					"contextPortWaitBudgetMs": 60,
+					"injectedProviderWaitPerRoundMs": 60,
+					"receiptWaitMs": 0,
+					"firstPublishedMs": 93.08908299999999,
+					"completedMs": 192.68375,
+					"firstAudioMs": null,
+					"inputTokens": null,
+					"providerWarmColdIdle": "not-observed",
+					"requests": [
+						{
+							"inputBytes": 3490,
+							"instructionBytes": 4631,
+							"toolBytes": 49628,
+							"toolCount": 70,
+							"requestedAtMs": 32.353582999999986,
+							"firstProviderTextMs": 52.48454100000001,
+							"terminalMs": 92.762583
+						},
+						{
+							"inputBytes": 3740,
+							"instructionBytes": 4631,
+							"toolBytes": 49628,
+							"toolCount": 70,
+							"requestedAtMs": 132.09762500000002,
+							"firstProviderTextMs": 152.27620799999997,
+							"terminalMs": 192.413708
+						}
+					]
+				},
+				{
+					"scenario": "workspace-action",
+					"turns": 1,
+					"modelRounds": 2,
+					"workspaceReads": 2,
+					"hubReads": 2,
+					"dayReads": 2,
+					"injectedPortDelayMs": 10,
+					"contextPortWaitBudgetMs": 60,
+					"injectedProviderWaitPerRoundMs": 60,
+					"receiptWaitMs": 20.130209000000036,
+					"firstPublishedMs": 216.74237499999998,
+					"completedMs": 216.86670799999996,
+					"firstAudioMs": null,
+					"inputTokens": null,
+					"providerWarmColdIdle": "not-observed",
+					"requests": [
+						{
+							"inputBytes": 3455,
+							"instructionBytes": 4631,
+							"toolBytes": 49628,
+							"toolCount": 70,
+							"requestedAtMs": 34.25154199999997,
+							"firstProviderTextMs": 54.42233299999998,
+							"terminalMs": 94.49462499999998
+						},
+						{
+							"inputBytes": 3835,
+							"instructionBytes": 4631,
+							"toolBytes": 49628,
+							"toolCount": 70,
+							"requestedAtMs": 156.09191699999997,
+							"firstProviderTextMs": 176.08808300000004,
+							"terminalMs": 216.19187500000004
+						}
+					]
+				}
+			],
+			"sample": 3
+		}
+	]
+}

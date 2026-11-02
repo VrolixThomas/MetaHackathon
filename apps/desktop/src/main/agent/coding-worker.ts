@@ -5,6 +5,12 @@ import { PRODUCT_NAME } from "../../shared/brand";
 import { LinearTicketSchema } from "../../shared/contracts/command-center";
 import { GitHubRepositorySchema } from "../../shared/contracts/prepared-review";
 import { abortable, throwIfAborted } from "./cancellation";
+import {
+	type CodingModel,
+	CodingModelSchema,
+	LEGACY_CODING_MODEL,
+	sameCodingModel,
+} from "./coding-model";
 import { CodingToolError, redactCodingText, redactCodingValue } from "./coding-worker-safety";
 import {
 	type AgentModelClient,
@@ -22,6 +28,7 @@ export const CodingTaskInputSchema = z.strictObject({
 	checkpointPath: z.string().min(1).max(4096).refine(isAbsolute),
 	validationFeedback: z.string().max(20000).optional(),
 	decisionContext: z.string().max(20000).optional(),
+	codingModel: CodingModelSchema.optional(),
 });
 export type CodingTaskInput = z.infer<typeof CodingTaskInputSchema>;
 
@@ -134,6 +141,7 @@ export type CodingTaskResult = z.infer<typeof CodingTaskResultSchema>;
 const jsonItem = z.record(z.string(), z.json());
 export const CodingWorkerCheckpointSchema = z.strictObject({
 	version: z.literal(1),
+	codingModel: CodingModelSchema.optional(),
 	jobId: z.string().min(1).max(200),
 	taskKey: digest,
 	contextKey: digest,
@@ -246,9 +254,15 @@ export async function runCodingTask(
 		state = CodingWorkerCheckpointSchema.parse(stored);
 		if (state.jobId !== input.jobId || state.taskKey !== taskKey)
 			throw new Error("Coding checkpoint belongs to a different task or worktree");
+		if (
+			input.codingModel &&
+			!sameCodingModel(input.codingModel, state.codingModel ?? LEGACY_CODING_MODEL)
+		)
+			throw new Error("Coding checkpoint model changed; the job cannot resume safely");
 	} else {
 		state = CodingWorkerCheckpointSchema.parse({
 			version: 1,
+			codingModel: input.codingModel ?? LEGACY_CODING_MODEL,
 			jobId: input.jobId,
 			taskKey,
 			contextKey,
@@ -334,7 +348,12 @@ export async function runCodingTask(
 			});
 		}
 		await log({ kind: "model", message: `Muse coding round ${state.rounds + 1}` });
-		const items = await requestModel(client, state.history, signal);
+		const items = await requestModel(
+			client,
+			state.history,
+			state.codingModel ?? LEGACY_CODING_MODEL,
+			signal
+		);
 		if (
 			items.some(
 				(item) =>
@@ -520,6 +539,7 @@ function codingEvidence(history: MetaItem[]): {
 async function requestModel(
 	client: AgentModelClient,
 	history: MetaItem[],
+	codingModel: CodingModel,
 	signal: AbortSignal
 ): Promise<MetaItem[]> {
 	for (let attempt = 0; attempt < 2; attempt++) {
@@ -528,7 +548,8 @@ async function requestModel(
 				.stream(
 					{
 						requestId: randomUUID(),
-						workload: "quick",
+						workload: codingModel.model === "muse-spark-1.3" ? "quick" : "deep",
+						codingModel,
 						instructions: INSTRUCTIONS,
 						input: structuredClone(history),
 						tools: CODING_WORKER_TOOLS,
@@ -547,6 +568,8 @@ async function requestModel(
 						if (bytes > 200000)
 							throw new Error("Coding model output exceeded the bounded response limit");
 					} else {
+						if (next.value.response.model !== codingModel.model)
+							throw new Error("Coding model returned a different pinned model");
 						if (Buffer.byteLength(JSON.stringify(next.value.response.output)) > 200000)
 							throw new Error("Coding model output exceeded the bounded response limit");
 						return next.value.response.output;

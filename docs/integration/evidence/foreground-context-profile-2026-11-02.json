@@ -1,0 +1,2142 @@
+{
+	"method": "Same extended production-orchestration probe at three exact revisions, three sequential samples each; controlled ports/provider/receipt delays only. Six equivalent scenarios. No native or live provider/audio.",
+	"limits": [
+		"Not a live latency/model-quality comparison.",
+		"Input tokens and first audio not observed; bytes are UTF-8 JSON, not tokens.",
+		"Warm/cold/long-idle provider behavior is not measured.",
+		"Provider outputs are controlled equally; a baseline direct answer does not prove it had sufficient selected-ticket context. Separate assertions verify current first-request context.",
+		"Scoped dispatch has exactly one controlled port admission; no coding child or real repository work. The correctness admission classifier adds one 60ms controlled provider round."
+	],
+	"runs": [
+		{
+			"sourceRevision": "036bbf821f23d4cecc6ece120845637ab9f84bff",
+			"controlled": true,
+			"physicalAudio": false,
+			"measurements": [
+				{
+					"scenario": "simple",
+					"turns": 1,
+					"modelRounds": 1,
+					"workspaceReads": 2,
+					"hubReads": 3,
+					"dayReads": 1,
+					"ticketReads": 0,
+					"sourceReads": 0,
+					"admissions": 0,
+					"injectedPortDelayMs": 10,
+					"contextPortWaitBudgetMs": 60,
+					"injectedProviderWaitPerRoundMs": 60,
+					"receiptWaitMs": 0,
+					"firstPublishedMs": 130.257166,
+					"completedMs": 130.301666,
+					"firstAudioMs": null,
+					"inputTokens": null,
+					"providerWarmColdIdle": "not-observed",
+					"requests": [
+						{
+							"inputBytes": 3406,
+							"instructionBytes": 3933,
+							"toolBytes": 53618,
+							"toolCount": 70,
+							"workload": "quick",
+							"requestedAtMs": 69.214208,
+							"firstProviderTextMs": 89.328416,
+							"terminalMs": 129.358541
+						}
+					]
+				},
+				{
+					"scenario": "planning-followup",
+					"turns": 2,
+					"modelRounds": 2,
+					"workspaceReads": 4,
+					"hubReads": 6,
+					"dayReads": 2,
+					"ticketReads": 0,
+					"sourceReads": 0,
+					"admissions": 0,
+					"injectedPortDelayMs": 10,
+					"contextPortWaitBudgetMs": 120,
+					"injectedProviderWaitPerRoundMs": 60,
+					"receiptWaitMs": 0,
+					"firstPublishedMs": 149.57770800000003,
+					"completedMs": 273.800458,
+					"firstAudioMs": null,
+					"inputTokens": null,
+					"providerWarmColdIdle": "not-observed",
+					"requests": [
+						{
+							"inputBytes": 3451,
+							"instructionBytes": 3933,
+							"toolBytes": 53618,
+							"toolCount": 70,
+							"workload": "quick",
+							"requestedAtMs": 86.86191600000001,
+							"firstProviderTextMs": 108.97725000000003,
+							"terminalMs": 149.05404099999998
+						},
+						{
+							"inputBytes": 3578,
+							"instructionBytes": 3933,
+							"toolBytes": 53618,
+							"toolCount": 70,
+							"workload": "quick",
+							"requestedAtMs": 212.887208,
+							"firstProviderTextMs": 233.00654100000003,
+							"terminalMs": 273.132416
+						}
+					]
+				},
+				{
+					"scenario": "workspace-action",
+					"turns": 1,
+					"modelRounds": 2,
+					"workspaceReads": 3,
+					"hubReads": 5,
+					"dayReads": 2,
+					"ticketReads": 0,
+					"sourceReads": 0,
+					"admissions": 0,
+					"injectedPortDelayMs": 10,
+					"contextPortWaitBudgetMs": 100,
+					"injectedProviderWaitPerRoundMs": 60,
+					"receiptWaitMs": 20.15975000000003,
+					"firstPublishedMs": 266.849875,
+					"completedMs": 266.93925,
+					"firstAudioMs": null,
+					"inputTokens": null,
+					"providerWarmColdIdle": "not-observed",
+					"requests": [
+						{
+							"inputBytes": 3416,
+							"instructionBytes": 3933,
+							"toolBytes": 53618,
+							"toolCount": 70,
+							"workload": "quick",
+							"requestedAtMs": 67.83495900000003,
+							"firstProviderTextMs": 87.895625,
+							"terminalMs": 128.023459
+						},
+						{
+							"inputBytes": 3796,
+							"instructionBytes": 3933,
+							"toolBytes": 53618,
+							"toolCount": 70,
+							"workload": "quick",
+							"requestedAtMs": 206.32129199999997,
+							"firstProviderTextMs": 226.324792,
+							"terminalMs": 266.615
+						}
+					]
+				},
+				{
+					"scenario": "selected-ticket",
+					"turns": 1,
+					"modelRounds": 1,
+					"workspaceReads": 2,
+					"hubReads": 3,
+					"dayReads": 1,
+					"ticketReads": 0,
+					"sourceReads": 0,
+					"admissions": 0,
+					"injectedPortDelayMs": 10,
+					"contextPortWaitBudgetMs": 60,
+					"injectedProviderWaitPerRoundMs": 60,
+					"receiptWaitMs": 0,
+					"firstPublishedMs": 130.49241699999993,
+					"completedMs": 130.53920899999991,
+					"firstAudioMs": null,
+					"inputTokens": null,
+					"providerWarmColdIdle": "not-observed",
+					"requests": [
+						{
+							"inputBytes": 3608,
+							"instructionBytes": 3933,
+							"toolBytes": 53618,
+							"toolCount": 70,
+							"workload": "quick",
+							"requestedAtMs": 69.97895899999992,
+							"firstProviderTextMs": 90.01749999999993,
+							"terminalMs": 130.22195899999997
+						}
+					]
+				},
+				{
+					"scenario": "scoped-dispatch",
+					"turns": 1,
+					"modelRounds": 2,
+					"workspaceReads": 3,
+					"hubReads": 5,
+					"dayReads": 2,
+					"ticketReads": 0,
+					"sourceReads": 0,
+					"admissions": 1,
+					"injectedPortDelayMs": 10,
+					"contextPortWaitBudgetMs": 100,
+					"injectedProviderWaitPerRoundMs": 60,
+					"receiptWaitMs": 0,
+					"firstPublishedMs": 243.03970900000002,
+					"completedMs": 243.07425,
+					"firstAudioMs": null,
+					"inputTokens": null,
+					"providerWarmColdIdle": "not-observed",
+					"requests": [
+						{
+							"inputBytes": 3658,
+							"instructionBytes": 3933,
+							"toolBytes": 53618,
+							"toolCount": 70,
+							"workload": "quick",
+							"requestedAtMs": 70.36187500000005,
+							"firstProviderTextMs": 90.55591700000002,
+							"terminalMs": 130.81225000000006
+						},
+						{
+							"inputBytes": 5741,
+							"instructionBytes": 3933,
+							"toolBytes": 53618,
+							"toolCount": 70,
+							"workload": "quick",
+							"requestedAtMs": 182.318042,
+							"firstProviderTextMs": 202.377834,
+							"terminalMs": 242.403459
+						}
+					]
+				},
+				{
+					"scenario": "selected-pr",
+					"turns": 1,
+					"modelRounds": 1,
+					"workspaceReads": 2,
+					"hubReads": 3,
+					"dayReads": 1,
+					"ticketReads": 0,
+					"sourceReads": 1,
+					"admissions": 0,
+					"injectedPortDelayMs": 10,
+					"contextPortWaitBudgetMs": 70,
+					"injectedProviderWaitPerRoundMs": 60,
+					"receiptWaitMs": 0,
+					"firstPublishedMs": 141.26370900000006,
+					"completedMs": 141.28270900000007,
+					"firstAudioMs": null,
+					"inputTokens": null,
+					"providerWarmColdIdle": "not-observed",
+					"requests": [
+						{
+							"inputBytes": 7010,
+							"instructionBytes": 8208,
+							"toolBytes": 55643,
+							"toolCount": 76,
+							"workload": "quick",
+							"requestedAtMs": 80.31279199999994,
+							"firstProviderTextMs": 100.3905420000001,
+							"terminalMs": 140.54262500000004
+						}
+					]
+				}
+			],
+			"sample": 1
+		},
+		{
+			"sourceRevision": "036bbf821f23d4cecc6ece120845637ab9f84bff",
+			"controlled": true,
+			"physicalAudio": false,
+			"measurements": [
+				{
+					"scenario": "simple",
+					"turns": 1,
+					"modelRounds": 1,
+					"workspaceReads": 2,
+					"hubReads": 3,
+					"dayReads": 1,
+					"ticketReads": 0,
+					"sourceReads": 0,
+					"admissions": 0,
+					"injectedPortDelayMs": 10,
+					"contextPortWaitBudgetMs": 60,
+					"injectedProviderWaitPerRoundMs": 60,
+					"receiptWaitMs": 0,
+					"firstPublishedMs": 131.054416,
+					"completedMs": 131.10345800000002,
+					"firstAudioMs": null,
+					"inputTokens": null,
+					"providerWarmColdIdle": "not-observed",
+					"requests": [
+						{
+							"inputBytes": 3406,
+							"instructionBytes": 3933,
+							"toolBytes": 53618,
+							"toolCount": 70,
+							"workload": "quick",
+							"requestedAtMs": 70.00049999999999,
+							"firstProviderTextMs": 90.21687500000002,
+							"terminalMs": 130.443208
+						}
+					]
+				},
+				{
+					"scenario": "planning-followup",
+					"turns": 2,
+					"modelRounds": 2,
+					"workspaceReads": 4,
+					"hubReads": 6,
+					"dayReads": 2,
+					"ticketReads": 0,
+					"sourceReads": 0,
+					"admissions": 0,
+					"injectedPortDelayMs": 10,
+					"contextPortWaitBudgetMs": 120,
+					"injectedProviderWaitPerRoundMs": 60,
+					"receiptWaitMs": 0,
+					"firstPublishedMs": 127.62,
+					"completedMs": 257.148042,
+					"firstAudioMs": null,
+					"inputTokens": null,
+					"providerWarmColdIdle": "not-observed",
+					"requests": [
+						{
+							"inputBytes": 3451,
+							"instructionBytes": 3933,
+							"toolBytes": 53618,
+							"toolCount": 70,
+							"workload": "quick",
+							"requestedAtMs": 66.22512499999999,
+							"firstProviderTextMs": 86.25070899999997,
+							"terminalMs": 126.31074999999998
+						},
+						{
+							"inputBytes": 3578,
+							"instructionBytes": 3933,
+							"toolBytes": 53618,
+							"toolCount": 70,
+							"workload": "quick",
+							"requestedAtMs": 196.450125,
+							"firstProviderTextMs": 216.604875,
+							"terminalMs": 256.8145
+						}
+					]
+				},
+				{
+					"scenario": "workspace-action",
+					"turns": 1,
+					"modelRounds": 2,
+					"workspaceReads": 3,
+					"hubReads": 5,
+					"dayReads": 2,
+					"ticketReads": 0,
+					"sourceReads": 0,
+					"admissions": 0,
+					"injectedPortDelayMs": 10,
+					"contextPortWaitBudgetMs": 100,
+					"injectedProviderWaitPerRoundMs": 60,
+					"receiptWaitMs": 19.945707999999968,
+					"firstPublishedMs": 269.00183300000003,
+					"completedMs": 269.09074999999996,
+					"firstAudioMs": null,
+					"inputTokens": null,
+					"providerWarmColdIdle": "not-observed",
+					"requests": [
+						{
+							"inputBytes": 3416,
+							"instructionBytes": 3933,
+							"toolBytes": 53618,
+							"toolCount": 70,
+							"workload": "quick",
+							"requestedAtMs": 71.794917,
+							"firstProviderTextMs": 92.50204199999996,
+							"terminalMs": 132.72166700000002
+						},
+						{
+							"inputBytes": 3796,
+							"instructionBytes": 3933,
+							"toolBytes": 53618,
+							"toolCount": 70,
+							"workload": "quick",
+							"requestedAtMs": 207.38033300000006,
+							"firstProviderTextMs": 227.49924999999996,
+							"terminalMs": 268.380625
+						}
+					]
+				},
+				{
+					"scenario": "selected-ticket",
+					"turns": 1,
+					"modelRounds": 1,
+					"workspaceReads": 2,
+					"hubReads": 3,
+					"dayReads": 1,
+					"ticketReads": 0,
+					"sourceReads": 0,
+					"admissions": 0,
+					"injectedPortDelayMs": 10,
+					"contextPortWaitBudgetMs": 60,
+					"injectedProviderWaitPerRoundMs": 60,
+					"receiptWaitMs": 0,
+					"firstPublishedMs": 130.51533399999994,
+					"completedMs": 130.5597919999999,
+					"firstAudioMs": null,
+					"inputTokens": null,
+					"providerWarmColdIdle": "not-observed",
+					"requests": [
+						{
+							"inputBytes": 3608,
+							"instructionBytes": 3933,
+							"toolBytes": 53618,
+							"toolCount": 70,
+							"workload": "quick",
+							"requestedAtMs": 69.6557919999999,
+							"firstProviderTextMs": 89.80449999999996,
+							"terminalMs": 129.86512499999992
+						}
+					]
+				},
+				{
+					"scenario": "scoped-dispatch",
+					"turns": 1,
+					"modelRounds": 2,
+					"workspaceReads": 3,
+					"hubReads": 5,
+					"dayReads": 2,
+					"ticketReads": 0,
+					"sourceReads": 0,
+					"admissions": 1,
+					"injectedPortDelayMs": 10,
+					"contextPortWaitBudgetMs": 100,
+					"injectedProviderWaitPerRoundMs": 60,
+					"receiptWaitMs": 0,
+					"firstPublishedMs": 245.55550000000005,
+					"completedMs": 245.61354199999994,
+					"firstAudioMs": null,
+					"inputTokens": null,
+					"providerWarmColdIdle": "not-observed",
+					"requests": [
+						{
+							"inputBytes": 3658,
+							"instructionBytes": 3933,
+							"toolBytes": 53618,
+							"toolCount": 70,
+							"workload": "quick",
+							"requestedAtMs": 68.27245800000003,
+							"firstProviderTextMs": 88.34187500000007,
+							"terminalMs": 128.575375
+						},
+						{
+							"inputBytes": 5741,
+							"instructionBytes": 3933,
+							"toolBytes": 53618,
+							"toolCount": 70,
+							"workload": "quick",
+							"requestedAtMs": 184.92624999999998,
+							"firstProviderTextMs": 205.08183300000007,
+							"terminalMs": 245.32495800000004
+						}
+					]
+				},
+				{
+					"scenario": "selected-pr",
+					"turns": 1,
+					"modelRounds": 1,
+					"workspaceReads": 2,
+					"hubReads": 3,
+					"dayReads": 1,
+					"ticketReads": 0,
+					"sourceReads": 1,
+					"admissions": 0,
+					"injectedPortDelayMs": 10,
+					"contextPortWaitBudgetMs": 70,
+					"injectedProviderWaitPerRoundMs": 60,
+					"receiptWaitMs": 0,
+					"firstPublishedMs": 147.05395799999997,
+					"completedMs": 147.07741599999986,
+					"firstAudioMs": null,
+					"inputTokens": null,
+					"providerWarmColdIdle": "not-observed",
+					"requests": [
+						{
+							"inputBytes": 7010,
+							"instructionBytes": 8208,
+							"toolBytes": 55643,
+							"toolCount": 76,
+							"workload": "quick",
+							"requestedAtMs": 85.79704100000004,
+							"firstProviderTextMs": 106.02287499999989,
+							"terminalMs": 146.25483299999996
+						}
+					]
+				}
+			],
+			"sample": 2
+		},
+		{
+			"sourceRevision": "036bbf821f23d4cecc6ece120845637ab9f84bff",
+			"controlled": true,
+			"physicalAudio": false,
+			"measurements": [
+				{
+					"scenario": "simple",
+					"turns": 1,
+					"modelRounds": 1,
+					"workspaceReads": 2,
+					"hubReads": 3,
+					"dayReads": 1,
+					"ticketReads": 0,
+					"sourceReads": 0,
+					"admissions": 0,
+					"injectedPortDelayMs": 10,
+					"contextPortWaitBudgetMs": 60,
+					"injectedProviderWaitPerRoundMs": 60,
+					"receiptWaitMs": 0,
+					"firstPublishedMs": 130.56225,
+					"completedMs": 130.60575,
+					"firstAudioMs": null,
+					"inputTokens": null,
+					"providerWarmColdIdle": "not-observed",
+					"requests": [
+						{
+							"inputBytes": 3406,
+							"instructionBytes": 3933,
+							"toolBytes": 53618,
+							"toolCount": 70,
+							"workload": "quick",
+							"requestedAtMs": 70.042333,
+							"firstProviderTextMs": 89.83425000000001,
+							"terminalMs": 129.92125
+						}
+					]
+				},
+				{
+					"scenario": "planning-followup",
+					"turns": 2,
+					"modelRounds": 2,
+					"workspaceReads": 4,
+					"hubReads": 6,
+					"dayReads": 2,
+					"ticketReads": 0,
+					"sourceReads": 0,
+					"admissions": 0,
+					"injectedPortDelayMs": 10,
+					"contextPortWaitBudgetMs": 120,
+					"injectedProviderWaitPerRoundMs": 60,
+					"receiptWaitMs": 0,
+					"firstPublishedMs": 127.75437500000001,
+					"completedMs": 259.833208,
+					"firstAudioMs": null,
+					"inputTokens": null,
+					"providerWarmColdIdle": "not-observed",
+					"requests": [
+						{
+							"inputBytes": 3451,
+							"instructionBytes": 3933,
+							"toolBytes": 53618,
+							"toolCount": 70,
+							"workload": "quick",
+							"requestedAtMs": 67.13858300000001,
+							"firstProviderTextMs": 87.07312499999998,
+							"terminalMs": 127.231417
+						},
+						{
+							"inputBytes": 3578,
+							"instructionBytes": 3933,
+							"toolBytes": 53618,
+							"toolCount": 70,
+							"workload": "quick",
+							"requestedAtMs": 197.499042,
+							"firstProviderTextMs": 217.607625,
+							"terminalMs": 257.75037499999996
+						}
+					]
+				},
+				{
+					"scenario": "workspace-action",
+					"turns": 1,
+					"modelRounds": 2,
+					"workspaceReads": 3,
+					"hubReads": 5,
+					"dayReads": 2,
+					"ticketReads": 0,
+					"sourceReads": 0,
+					"admissions": 0,
+					"injectedPortDelayMs": 10,
+					"contextPortWaitBudgetMs": 100,
+					"injectedProviderWaitPerRoundMs": 60,
+					"receiptWaitMs": 20.748749999999973,
+					"firstPublishedMs": 271.351834,
+					"completedMs": 271.45195900000004,
+					"firstAudioMs": null,
+					"inputTokens": null,
+					"providerWarmColdIdle": "not-observed",
+					"requests": [
+						{
+							"inputBytes": 3416,
+							"instructionBytes": 3933,
+							"toolBytes": 53618,
+							"toolCount": 70,
+							"workload": "quick",
+							"requestedAtMs": 73.06149999999997,
+							"firstProviderTextMs": 93.14633399999997,
+							"terminalMs": 133.343459
+						},
+						{
+							"inputBytes": 3796,
+							"instructionBytes": 3933,
+							"toolBytes": 53618,
+							"toolCount": 70,
+							"workload": "quick",
+							"requestedAtMs": 211.066084,
+							"firstProviderTextMs": 230.798875,
+							"terminalMs": 270.926625
+						}
+					]
+				},
+				{
+					"scenario": "selected-ticket",
+					"turns": 1,
+					"modelRounds": 1,
+					"workspaceReads": 2,
+					"hubReads": 3,
+					"dayReads": 1,
+					"ticketReads": 0,
+					"sourceReads": 0,
+					"admissions": 0,
+					"injectedPortDelayMs": 10,
+					"contextPortWaitBudgetMs": 60,
+					"injectedProviderWaitPerRoundMs": 60,
+					"receiptWaitMs": 0,
+					"firstPublishedMs": 135.76804200000004,
+					"completedMs": 135.81887500000005,
+					"firstAudioMs": null,
+					"inputTokens": null,
+					"providerWarmColdIdle": "not-observed",
+					"requests": [
+						{
+							"inputBytes": 3608,
+							"instructionBytes": 3933,
+							"toolBytes": 53618,
+							"toolCount": 70,
+							"workload": "quick",
+							"requestedAtMs": 75.23845800000004,
+							"firstProviderTextMs": 95.30720800000006,
+							"terminalMs": 135.54204200000004
+						}
+					]
+				},
+				{
+					"scenario": "scoped-dispatch",
+					"turns": 1,
+					"modelRounds": 2,
+					"workspaceReads": 3,
+					"hubReads": 5,
+					"dayReads": 2,
+					"ticketReads": 0,
+					"sourceReads": 0,
+					"admissions": 1,
+					"injectedPortDelayMs": 10,
+					"contextPortWaitBudgetMs": 100,
+					"injectedProviderWaitPerRoundMs": 60,
+					"receiptWaitMs": 0,
+					"firstPublishedMs": 248.37233300000014,
+					"completedMs": 248.42379199999993,
+					"firstAudioMs": null,
+					"inputTokens": null,
+					"providerWarmColdIdle": "not-observed",
+					"requests": [
+						{
+							"inputBytes": 3658,
+							"instructionBytes": 3933,
+							"toolBytes": 53618,
+							"toolCount": 70,
+							"workload": "quick",
+							"requestedAtMs": 70.00008300000002,
+							"firstProviderTextMs": 89.41704200000004,
+							"terminalMs": 129.70220800000004
+						},
+						{
+							"inputBytes": 5741,
+							"instructionBytes": 3933,
+							"toolBytes": 53618,
+							"toolCount": 70,
+							"workload": "quick",
+							"requestedAtMs": 187.787375,
+							"firstProviderTextMs": 207.896167,
+							"terminalMs": 248.13454200000012
+						}
+					]
+				},
+				{
+					"scenario": "selected-pr",
+					"turns": 1,
+					"modelRounds": 1,
+					"workspaceReads": 2,
+					"hubReads": 3,
+					"dayReads": 1,
+					"ticketReads": 0,
+					"sourceReads": 1,
+					"admissions": 0,
+					"injectedPortDelayMs": 10,
+					"contextPortWaitBudgetMs": 70,
+					"injectedProviderWaitPerRoundMs": 60,
+					"receiptWaitMs": 0,
+					"firstPublishedMs": 147.62404199999992,
+					"completedMs": 147.6474999999998,
+					"firstAudioMs": null,
+					"inputTokens": null,
+					"providerWarmColdIdle": "not-observed",
+					"requests": [
+						{
+							"inputBytes": 7010,
+							"instructionBytes": 8208,
+							"toolBytes": 55643,
+							"toolCount": 76,
+							"workload": "quick",
+							"requestedAtMs": 86.60604199999989,
+							"firstProviderTextMs": 106.61812499999996,
+							"terminalMs": 146.76858399999992
+						}
+					]
+				}
+			],
+			"sample": 3
+		},
+		{
+			"sourceRevision": "0306225c356ccb7ef6f4c2633b66fc99446c1199",
+			"controlled": true,
+			"physicalAudio": false,
+			"measurements": [
+				{
+					"scenario": "simple",
+					"turns": 1,
+					"modelRounds": 1,
+					"workspaceReads": 1,
+					"hubReads": 1,
+					"dayReads": 1,
+					"ticketReads": 0,
+					"sourceReads": 0,
+					"admissions": 0,
+					"injectedPortDelayMs": 10,
+					"contextPortWaitBudgetMs": 30,
+					"injectedProviderWaitPerRoundMs": 60,
+					"receiptWaitMs": 0,
+					"firstPublishedMs": 99.71625,
+					"completedMs": 99.757416,
+					"firstAudioMs": null,
+					"inputTokens": null,
+					"providerWarmColdIdle": "not-observed",
+					"requests": [
+						{
+							"inputBytes": 3445,
+							"instructionBytes": 4631,
+							"toolBytes": 49628,
+							"toolCount": 70,
+							"workload": "quick",
+							"requestedAtMs": 38.75379100000001,
+							"firstProviderTextMs": 58.851583000000005,
+							"terminalMs": 99.03258299999999
+						}
+					]
+				},
+				{
+					"scenario": "planning-followup",
+					"turns": 2,
+					"modelRounds": 2,
+					"workspaceReads": 2,
+					"hubReads": 2,
+					"dayReads": 2,
+					"ticketReads": 0,
+					"sourceReads": 0,
+					"admissions": 0,
+					"injectedPortDelayMs": 10,
+					"contextPortWaitBudgetMs": 60,
+					"injectedProviderWaitPerRoundMs": 60,
+					"receiptWaitMs": 0,
+					"firstPublishedMs": 92.983125,
+					"completedMs": 186.63491700000003,
+					"firstAudioMs": null,
+					"inputTokens": null,
+					"providerWarmColdIdle": "not-observed",
+					"requests": [
+						{
+							"inputBytes": 3490,
+							"instructionBytes": 4631,
+							"toolBytes": 49628,
+							"toolCount": 70,
+							"workload": "quick",
+							"requestedAtMs": 32.450458,
+							"firstProviderTextMs": 52.630292,
+							"terminalMs": 92.73891700000001
+						},
+						{
+							"inputBytes": 3740,
+							"instructionBytes": 4631,
+							"toolBytes": 49628,
+							"toolCount": 70,
+							"workload": "quick",
+							"requestedAtMs": 125.40170799999999,
+							"firstProviderTextMs": 145.650375,
+							"terminalMs": 185.782083
+						}
+					]
+				},
+				{
+					"scenario": "workspace-action",
+					"turns": 1,
+					"modelRounds": 2,
+					"workspaceReads": 2,
+					"hubReads": 2,
+					"dayReads": 2,
+					"ticketReads": 0,
+					"sourceReads": 0,
+					"admissions": 0,
+					"injectedPortDelayMs": 10,
+					"contextPortWaitBudgetMs": 60,
+					"injectedProviderWaitPerRoundMs": 60,
+					"receiptWaitMs": 19.921249999999986,
+					"firstPublishedMs": 227.87191699999994,
+					"completedMs": 227.90716699999996,
+					"firstAudioMs": null,
+					"inputTokens": null,
+					"providerWarmColdIdle": "not-observed",
+					"requests": [
+						{
+							"inputBytes": 3455,
+							"instructionBytes": 4631,
+							"toolBytes": 49628,
+							"toolCount": 70,
+							"workload": "quick",
+							"requestedAtMs": 37.59770900000001,
+							"firstProviderTextMs": 58.49520899999999,
+							"terminalMs": 99.51225
+						},
+						{
+							"inputBytes": 3835,
+							"instructionBytes": 4631,
+							"toolBytes": 49628,
+							"toolCount": 70,
+							"workload": "quick",
+							"requestedAtMs": 167.187167,
+							"firstProviderTextMs": 187.334292,
+							"terminalMs": 227.52649999999994
+						}
+					]
+				},
+				{
+					"scenario": "selected-ticket",
+					"turns": 1,
+					"modelRounds": 1,
+					"workspaceReads": 1,
+					"hubReads": 1,
+					"dayReads": 1,
+					"ticketReads": 0,
+					"sourceReads": 0,
+					"admissions": 0,
+					"injectedPortDelayMs": 10,
+					"contextPortWaitBudgetMs": 30,
+					"injectedProviderWaitPerRoundMs": 60,
+					"receiptWaitMs": 0,
+					"firstPublishedMs": 101.53024999999991,
+					"completedMs": 101.57074999999998,
+					"firstAudioMs": null,
+					"inputTokens": null,
+					"providerWarmColdIdle": "not-observed",
+					"requests": [
+						{
+							"inputBytes": 3647,
+							"instructionBytes": 4631,
+							"toolBytes": 49628,
+							"toolCount": 70,
+							"workload": "quick",
+							"requestedAtMs": 40.8689159999999,
+							"firstProviderTextMs": 60.925208,
+							"terminalMs": 101.05487499999992
+						}
+					]
+				},
+				{
+					"scenario": "scoped-dispatch",
+					"turns": 1,
+					"modelRounds": 3,
+					"workspaceReads": 2,
+					"hubReads": 2,
+					"dayReads": 2,
+					"ticketReads": 0,
+					"sourceReads": 0,
+					"admissions": 1,
+					"injectedPortDelayMs": 10,
+					"contextPortWaitBudgetMs": 60,
+					"injectedProviderWaitPerRoundMs": 60,
+					"receiptWaitMs": 0,
+					"firstPublishedMs": 273.076458,
+					"completedMs": 273.12079099999994,
+					"firstAudioMs": null,
+					"inputTokens": null,
+					"providerWarmColdIdle": "not-observed",
+					"requests": [
+						{
+							"inputBytes": 3697,
+							"instructionBytes": 4631,
+							"toolBytes": 49628,
+							"toolCount": 70,
+							"workload": "quick",
+							"requestedAtMs": 37.55124999999998,
+							"firstProviderTextMs": 58.41700000000003,
+							"terminalMs": 98.693083
+						},
+						{
+							"inputBytes": 409,
+							"instructionBytes": 1308,
+							"toolBytes": 2,
+							"toolCount": 0,
+							"workload": "quick",
+							"requestedAtMs": 102.75249999999994,
+							"firstProviderTextMs": 123.75516600000003,
+							"terminalMs": 163.913458
+						},
+						{
+							"inputBytes": 5958,
+							"instructionBytes": 4631,
+							"toolBytes": 49628,
+							"toolCount": 70,
+							"workload": "quick",
+							"requestedAtMs": 211.87400000000002,
+							"firstProviderTextMs": 232.01366599999994,
+							"terminalMs": 272.05600000000004
+						}
+					]
+				},
+				{
+					"scenario": "selected-pr",
+					"turns": 1,
+					"modelRounds": 1,
+					"workspaceReads": 2,
+					"hubReads": 3,
+					"dayReads": 1,
+					"ticketReads": 0,
+					"sourceReads": 1,
+					"admissions": 0,
+					"injectedPortDelayMs": 10,
+					"contextPortWaitBudgetMs": 70,
+					"injectedProviderWaitPerRoundMs": 60,
+					"receiptWaitMs": 0,
+					"firstPublishedMs": 150.467083,
+					"completedMs": 150.48850000000016,
+					"firstAudioMs": null,
+					"inputTokens": null,
+					"providerWarmColdIdle": "not-observed",
+					"requests": [
+						{
+							"inputBytes": 7049,
+							"instructionBytes": 8906,
+							"toolBytes": 55643,
+							"toolCount": 76,
+							"workload": "quick",
+							"requestedAtMs": 89.12908300000004,
+							"firstProviderTextMs": 109.28620799999999,
+							"terminalMs": 149.553625
+						}
+					]
+				}
+			],
+			"sample": 1
+		},
+		{
+			"sourceRevision": "0306225c356ccb7ef6f4c2633b66fc99446c1199",
+			"controlled": true,
+			"physicalAudio": false,
+			"measurements": [
+				{
+					"scenario": "simple",
+					"turns": 1,
+					"modelRounds": 1,
+					"workspaceReads": 1,
+					"hubReads": 1,
+					"dayReads": 1,
+					"ticketReads": 0,
+					"sourceReads": 0,
+					"admissions": 0,
+					"injectedPortDelayMs": 10,
+					"contextPortWaitBudgetMs": 30,
+					"injectedProviderWaitPerRoundMs": 60,
+					"receiptWaitMs": 0,
+					"firstPublishedMs": 100.390625,
+					"completedMs": 100.4495,
+					"firstAudioMs": null,
+					"inputTokens": null,
+					"providerWarmColdIdle": "not-observed",
+					"requests": [
+						{
+							"inputBytes": 3445,
+							"instructionBytes": 4631,
+							"toolBytes": 49628,
+							"toolCount": 70,
+							"workload": "quick",
+							"requestedAtMs": 38.311,
+							"firstProviderTextMs": 58.400417,
+							"terminalMs": 98.605625
+						}
+					]
+				},
+				{
+					"scenario": "planning-followup",
+					"turns": 2,
+					"modelRounds": 2,
+					"workspaceReads": 2,
+					"hubReads": 2,
+					"dayReads": 2,
+					"ticketReads": 0,
+					"sourceReads": 0,
+					"admissions": 0,
+					"injectedPortDelayMs": 10,
+					"contextPortWaitBudgetMs": 60,
+					"injectedProviderWaitPerRoundMs": 60,
+					"receiptWaitMs": 0,
+					"firstPublishedMs": 97.90745800000002,
+					"completedMs": 194.998208,
+					"firstAudioMs": null,
+					"inputTokens": null,
+					"providerWarmColdIdle": "not-observed",
+					"requests": [
+						{
+							"inputBytes": 3490,
+							"instructionBytes": 4631,
+							"toolBytes": 49628,
+							"toolCount": 70,
+							"workload": "quick",
+							"requestedAtMs": 36.177666000000016,
+							"firstProviderTextMs": 56.28008300000002,
+							"terminalMs": 96.65633300000002
+						},
+						{
+							"inputBytes": 3740,
+							"instructionBytes": 4631,
+							"toolBytes": 49628,
+							"toolCount": 70,
+							"workload": "quick",
+							"requestedAtMs": 134.432875,
+							"firstProviderTextMs": 154.550125,
+							"terminalMs": 194.712791
+						}
+					]
+				},
+				{
+					"scenario": "workspace-action",
+					"turns": 1,
+					"modelRounds": 2,
+					"workspaceReads": 2,
+					"hubReads": 2,
+					"dayReads": 2,
+					"ticketReads": 0,
+					"sourceReads": 0,
+					"admissions": 0,
+					"injectedPortDelayMs": 10,
+					"contextPortWaitBudgetMs": 60,
+					"injectedProviderWaitPerRoundMs": 60,
+					"receiptWaitMs": 20.957041000000004,
+					"firstPublishedMs": 219.74537500000002,
+					"completedMs": 219.851792,
+					"firstAudioMs": null,
+					"inputTokens": null,
+					"providerWarmColdIdle": "not-observed",
+					"requests": [
+						{
+							"inputBytes": 3455,
+							"instructionBytes": 4631,
+							"toolBytes": 49628,
+							"toolCount": 70,
+							"workload": "quick",
+							"requestedAtMs": 33.37262499999997,
+							"firstProviderTextMs": 53.47554199999996,
+							"terminalMs": 93.68337499999996
+						},
+						{
+							"inputBytes": 3835,
+							"instructionBytes": 4631,
+							"toolBytes": 49628,
+							"toolCount": 70,
+							"workload": "quick",
+							"requestedAtMs": 157.94954199999995,
+							"firstProviderTextMs": 179.249125,
+							"terminalMs": 219.45599999999996
+						}
+					]
+				},
+				{
+					"scenario": "selected-ticket",
+					"turns": 1,
+					"modelRounds": 1,
+					"workspaceReads": 1,
+					"hubReads": 1,
+					"dayReads": 1,
+					"ticketReads": 0,
+					"sourceReads": 0,
+					"admissions": 0,
+					"injectedPortDelayMs": 10,
+					"contextPortWaitBudgetMs": 30,
+					"injectedProviderWaitPerRoundMs": 60,
+					"receiptWaitMs": 0,
+					"firstPublishedMs": 100.32516599999997,
+					"completedMs": 100.43600000000004,
+					"firstAudioMs": null,
+					"inputTokens": null,
+					"providerWarmColdIdle": "not-observed",
+					"requests": [
+						{
+							"inputBytes": 3647,
+							"instructionBytes": 4631,
+							"toolBytes": 49628,
+							"toolCount": 70,
+							"workload": "quick",
+							"requestedAtMs": 39.500749999999925,
+							"firstProviderTextMs": 59.58325000000002,
+							"terminalMs": 99.99516599999993
+						}
+					]
+				},
+				{
+					"scenario": "scoped-dispatch",
+					"turns": 1,
+					"modelRounds": 3,
+					"workspaceReads": 2,
+					"hubReads": 2,
+					"dayReads": 2,
+					"ticketReads": 0,
+					"sourceReads": 0,
+					"admissions": 1,
+					"injectedPortDelayMs": 10,
+					"contextPortWaitBudgetMs": 60,
+					"injectedProviderWaitPerRoundMs": 60,
+					"receiptWaitMs": 0,
+					"firstPublishedMs": 287.063042,
+					"completedMs": 287.09341700000004,
+					"firstAudioMs": null,
+					"inputTokens": null,
+					"providerWarmColdIdle": "not-observed",
+					"requests": [
+						{
+							"inputBytes": 3697,
+							"instructionBytes": 4631,
+							"toolBytes": 49628,
+							"toolCount": 70,
+							"workload": "quick",
+							"requestedAtMs": 36.30562500000008,
+							"firstProviderTextMs": 58.82470799999999,
+							"terminalMs": 98.88437499999998
+						},
+						{
+							"inputBytes": 409,
+							"instructionBytes": 1308,
+							"toolBytes": 2,
+							"toolCount": 0,
+							"workload": "quick",
+							"requestedAtMs": 105.01591700000006,
+							"firstProviderTextMs": 125.09929199999999,
+							"terminalMs": 165.33108300000004
+						},
+						{
+							"inputBytes": 5958,
+							"instructionBytes": 4631,
+							"toolBytes": 49628,
+							"toolCount": 70,
+							"workload": "quick",
+							"requestedAtMs": 226.54441700000007,
+							"firstProviderTextMs": 246.72400000000005,
+							"terminalMs": 286.911292
+						}
+					]
+				},
+				{
+					"scenario": "selected-pr",
+					"turns": 1,
+					"modelRounds": 1,
+					"workspaceReads": 2,
+					"hubReads": 3,
+					"dayReads": 1,
+					"ticketReads": 0,
+					"sourceReads": 1,
+					"admissions": 0,
+					"injectedPortDelayMs": 10,
+					"contextPortWaitBudgetMs": 70,
+					"injectedProviderWaitPerRoundMs": 60,
+					"receiptWaitMs": 0,
+					"firstPublishedMs": 138.9407080000001,
+					"completedMs": 138.9585830000001,
+					"firstAudioMs": null,
+					"inputTokens": null,
+					"providerWarmColdIdle": "not-observed",
+					"requests": [
+						{
+							"inputBytes": 7049,
+							"instructionBytes": 8906,
+							"toolBytes": 55643,
+							"toolCount": 76,
+							"workload": "quick",
+							"requestedAtMs": 76.27537499999994,
+							"firstProviderTextMs": 97.98858300000006,
+							"terminalMs": 138.2537910000001
+						}
+					]
+				}
+			],
+			"sample": 2
+		},
+		{
+			"sourceRevision": "0306225c356ccb7ef6f4c2633b66fc99446c1199",
+			"controlled": true,
+			"physicalAudio": false,
+			"measurements": [
+				{
+					"scenario": "simple",
+					"turns": 1,
+					"modelRounds": 1,
+					"workspaceReads": 1,
+					"hubReads": 1,
+					"dayReads": 1,
+					"ticketReads": 0,
+					"sourceReads": 0,
+					"admissions": 0,
+					"injectedPortDelayMs": 10,
+					"contextPortWaitBudgetMs": 30,
+					"injectedProviderWaitPerRoundMs": 60,
+					"receiptWaitMs": 0,
+					"firstPublishedMs": 105.04487499999999,
+					"completedMs": 105.09049999999999,
+					"firstAudioMs": null,
+					"inputTokens": null,
+					"providerWarmColdIdle": "not-observed",
+					"requests": [
+						{
+							"inputBytes": 3445,
+							"instructionBytes": 4631,
+							"toolBytes": 49628,
+							"toolCount": 70,
+							"workload": "quick",
+							"requestedAtMs": 43.792958000000006,
+							"firstProviderTextMs": 64.191291,
+							"terminalMs": 104.285458
+						}
+					]
+				},
+				{
+					"scenario": "planning-followup",
+					"turns": 2,
+					"modelRounds": 2,
+					"workspaceReads": 2,
+					"hubReads": 2,
+					"dayReads": 2,
+					"ticketReads": 0,
+					"sourceReads": 0,
+					"admissions": 0,
+					"injectedPortDelayMs": 10,
+					"contextPortWaitBudgetMs": 60,
+					"injectedProviderWaitPerRoundMs": 60,
+					"receiptWaitMs": 0,
+					"firstPublishedMs": 93.539208,
+					"completedMs": 189.021875,
+					"firstAudioMs": null,
+					"inputTokens": null,
+					"providerWarmColdIdle": "not-observed",
+					"requests": [
+						{
+							"inputBytes": 3490,
+							"instructionBytes": 4631,
+							"toolBytes": 49628,
+							"toolCount": 70,
+							"workload": "quick",
+							"requestedAtMs": 32.80979099999999,
+							"firstProviderTextMs": 52.98795799999999,
+							"terminalMs": 93.04179099999999
+						},
+						{
+							"inputBytes": 3740,
+							"instructionBytes": 4631,
+							"toolBytes": 49628,
+							"toolCount": 70,
+							"workload": "quick",
+							"requestedAtMs": 128.39975,
+							"firstProviderTextMs": 148.56112499999998,
+							"terminalMs": 188.707958
+						}
+					]
+				},
+				{
+					"scenario": "workspace-action",
+					"turns": 1,
+					"modelRounds": 2,
+					"workspaceReads": 2,
+					"hubReads": 2,
+					"dayReads": 2,
+					"ticketReads": 0,
+					"sourceReads": 0,
+					"admissions": 0,
+					"injectedPortDelayMs": 10,
+					"contextPortWaitBudgetMs": 60,
+					"injectedProviderWaitPerRoundMs": 60,
+					"receiptWaitMs": 19.88383299999998,
+					"firstPublishedMs": 225.44229199999995,
+					"completedMs": 225.50904200000002,
+					"firstAudioMs": null,
+					"inputTokens": null,
+					"providerWarmColdIdle": "not-observed",
+					"requests": [
+						{
+							"inputBytes": 3455,
+							"instructionBytes": 4631,
+							"toolBytes": 49628,
+							"toolCount": 70,
+							"workload": "quick",
+							"requestedAtMs": 39.57566700000001,
+							"firstProviderTextMs": 59.58974999999998,
+							"terminalMs": 99.66133300000001
+						},
+						{
+							"inputBytes": 3835,
+							"instructionBytes": 4631,
+							"toolBytes": 49628,
+							"toolCount": 70,
+							"workload": "quick",
+							"requestedAtMs": 164.333458,
+							"firstProviderTextMs": 184.46445800000004,
+							"terminalMs": 224.563
+						}
+					]
+				},
+				{
+					"scenario": "selected-ticket",
+					"turns": 1,
+					"modelRounds": 1,
+					"workspaceReads": 1,
+					"hubReads": 1,
+					"dayReads": 1,
+					"ticketReads": 0,
+					"sourceReads": 0,
+					"admissions": 0,
+					"injectedPortDelayMs": 10,
+					"contextPortWaitBudgetMs": 30,
+					"injectedProviderWaitPerRoundMs": 60,
+					"receiptWaitMs": 0,
+					"firstPublishedMs": 100.80108399999995,
+					"completedMs": 100.84287499999994,
+					"firstAudioMs": null,
+					"inputTokens": null,
+					"providerWarmColdIdle": "not-observed",
+					"requests": [
+						{
+							"inputBytes": 3647,
+							"instructionBytes": 4631,
+							"toolBytes": 49628,
+							"toolCount": 70,
+							"workload": "quick",
+							"requestedAtMs": 39.55362500000001,
+							"firstProviderTextMs": 59.703125,
+							"terminalMs": 99.803042
+						}
+					]
+				},
+				{
+					"scenario": "scoped-dispatch",
+					"turns": 1,
+					"modelRounds": 3,
+					"workspaceReads": 2,
+					"hubReads": 2,
+					"dayReads": 2,
+					"ticketReads": 0,
+					"sourceReads": 0,
+					"admissions": 1,
+					"injectedPortDelayMs": 10,
+					"contextPortWaitBudgetMs": 60,
+					"injectedProviderWaitPerRoundMs": 60,
+					"receiptWaitMs": 0,
+					"firstPublishedMs": 268.967209,
+					"completedMs": 269.0305000000001,
+					"firstAudioMs": null,
+					"inputTokens": null,
+					"providerWarmColdIdle": "not-observed",
+					"requests": [
+						{
+							"inputBytes": 3697,
+							"instructionBytes": 4631,
+							"toolBytes": 49628,
+							"toolCount": 70,
+							"workload": "quick",
+							"requestedAtMs": 38.70383400000003,
+							"firstProviderTextMs": 58.639999999999986,
+							"terminalMs": 98.76633400000003
+						},
+						{
+							"inputBytes": 409,
+							"instructionBytes": 1308,
+							"toolBytes": 2,
+							"toolCount": 0,
+							"workload": "quick",
+							"requestedAtMs": 104.83962500000007,
+							"firstProviderTextMs": 124.16695900000002,
+							"terminalMs": 164.56008400000007
+						},
+						{
+							"inputBytes": 5958,
+							"instructionBytes": 4631,
+							"toolBytes": 49628,
+							"toolCount": 70,
+							"workload": "quick",
+							"requestedAtMs": 207.88262500000008,
+							"firstProviderTextMs": 227.94612500000005,
+							"terminalMs": 268.05575
+						}
+					]
+				},
+				{
+					"scenario": "selected-pr",
+					"turns": 1,
+					"modelRounds": 1,
+					"workspaceReads": 2,
+					"hubReads": 3,
+					"dayReads": 1,
+					"ticketReads": 0,
+					"sourceReads": 1,
+					"admissions": 0,
+					"injectedPortDelayMs": 10,
+					"contextPortWaitBudgetMs": 70,
+					"injectedProviderWaitPerRoundMs": 60,
+					"receiptWaitMs": 0,
+					"firstPublishedMs": 155.255625,
+					"completedMs": 155.27995799999985,
+					"firstAudioMs": null,
+					"inputTokens": null,
+					"providerWarmColdIdle": "not-observed",
+					"requests": [
+						{
+							"inputBytes": 7049,
+							"instructionBytes": 8906,
+							"toolBytes": 55643,
+							"toolCount": 76,
+							"workload": "quick",
+							"requestedAtMs": 93.07679099999996,
+							"firstProviderTextMs": 114.01087499999994,
+							"terminalMs": 154.31704100000002
+						}
+					]
+				}
+			],
+			"sample": 3
+		},
+		{
+			"sourceRevision": "8d7452ad9c4b1dda360325102817797fadb8b1bb",
+			"controlled": true,
+			"physicalAudio": false,
+			"measurements": [
+				{
+					"scenario": "simple",
+					"turns": 1,
+					"modelRounds": 1,
+					"workspaceReads": 1,
+					"hubReads": 1,
+					"dayReads": 1,
+					"ticketReads": 0,
+					"sourceReads": 0,
+					"admissions": 0,
+					"injectedPortDelayMs": 10,
+					"contextPortWaitBudgetMs": 30,
+					"injectedProviderWaitPerRoundMs": 60,
+					"receiptWaitMs": 0,
+					"firstPublishedMs": 99.975458,
+					"completedMs": 100.012958,
+					"firstAudioMs": null,
+					"inputTokens": null,
+					"providerWarmColdIdle": "not-observed",
+					"requests": [
+						{
+							"inputBytes": 1503,
+							"instructionBytes": 5106,
+							"toolBytes": 3157,
+							"toolCount": 7,
+							"workload": "quick",
+							"requestedAtMs": 39.015667,
+							"firstProviderTextMs": 59.153792,
+							"terminalMs": 99.36320799999999
+						}
+					]
+				},
+				{
+					"scenario": "planning-followup",
+					"turns": 2,
+					"modelRounds": 2,
+					"workspaceReads": 2,
+					"hubReads": 2,
+					"dayReads": 2,
+					"ticketReads": 0,
+					"sourceReads": 0,
+					"admissions": 0,
+					"injectedPortDelayMs": 10,
+					"contextPortWaitBudgetMs": 60,
+					"injectedProviderWaitPerRoundMs": 60,
+					"receiptWaitMs": 0,
+					"firstPublishedMs": 93.22066699999999,
+					"completedMs": 189.56716699999998,
+					"firstAudioMs": null,
+					"inputTokens": null,
+					"providerWarmColdIdle": "not-observed",
+					"requests": [
+						{
+							"inputBytes": 1548,
+							"instructionBytes": 5106,
+							"toolBytes": 3157,
+							"toolCount": 7,
+							"workload": "quick",
+							"requestedAtMs": 32.60933399999999,
+							"firstProviderTextMs": 52.703292000000005,
+							"terminalMs": 92.79925
+						},
+						{
+							"inputBytes": 1783,
+							"instructionBytes": 5106,
+							"toolBytes": 3157,
+							"toolCount": 7,
+							"workload": "quick",
+							"requestedAtMs": 128.919084,
+							"firstProviderTextMs": 148.868042,
+							"terminalMs": 189.10620899999998
+						}
+					]
+				},
+				{
+					"scenario": "workspace-action",
+					"turns": 1,
+					"modelRounds": 2,
+					"workspaceReads": 2,
+					"hubReads": 2,
+					"dayReads": 2,
+					"ticketReads": 0,
+					"sourceReads": 0,
+					"admissions": 0,
+					"injectedPortDelayMs": 10,
+					"contextPortWaitBudgetMs": 60,
+					"injectedProviderWaitPerRoundMs": 60,
+					"receiptWaitMs": 20.11620800000003,
+					"firstPublishedMs": 230.39991599999996,
+					"completedMs": 230.52995799999997,
+					"firstAudioMs": null,
+					"inputTokens": null,
+					"providerWarmColdIdle": "not-observed",
+					"requests": [
+						{
+							"inputBytes": 1513,
+							"instructionBytes": 5106,
+							"toolBytes": 3157,
+							"toolCount": 7,
+							"workload": "quick",
+							"requestedAtMs": 38.59808300000003,
+							"firstProviderTextMs": 59.73245800000001,
+							"terminalMs": 99.898708
+						},
+						{
+							"inputBytes": 2105,
+							"instructionBytes": 5106,
+							"toolBytes": 9863,
+							"toolCount": 22,
+							"workload": "quick",
+							"requestedAtMs": 167.86766599999999,
+							"firstProviderTextMs": 189.82825000000003,
+							"terminalMs": 230.03554099999997
+						}
+					]
+				},
+				{
+					"scenario": "selected-ticket",
+					"turns": 1,
+					"modelRounds": 1,
+					"workspaceReads": 1,
+					"hubReads": 1,
+					"dayReads": 1,
+					"ticketReads": 1,
+					"sourceReads": 0,
+					"admissions": 0,
+					"injectedPortDelayMs": 10,
+					"contextPortWaitBudgetMs": 40,
+					"injectedProviderWaitPerRoundMs": 60,
+					"receiptWaitMs": 0,
+					"firstPublishedMs": 115.49349999999993,
+					"completedMs": 115.54949999999997,
+					"firstAudioMs": null,
+					"inputTokens": null,
+					"providerWarmColdIdle": "not-observed",
+					"requests": [
+						{
+							"inputBytes": 2769,
+							"instructionBytes": 5106,
+							"toolBytes": 10384,
+							"toolCount": 23,
+							"workload": "quick",
+							"requestedAtMs": 54.961915999999974,
+							"firstProviderTextMs": 74.519541,
+							"terminalMs": 114.607125
+						}
+					]
+				},
+				{
+					"scenario": "scoped-dispatch",
+					"turns": 1,
+					"modelRounds": 3,
+					"workspaceReads": 2,
+					"hubReads": 2,
+					"dayReads": 2,
+					"ticketReads": 2,
+					"sourceReads": 0,
+					"admissions": 1,
+					"injectedPortDelayMs": 10,
+					"contextPortWaitBudgetMs": 80,
+					"injectedProviderWaitPerRoundMs": 60,
+					"receiptWaitMs": 0,
+					"firstPublishedMs": 290.26324999999997,
+					"completedMs": 290.30062499999997,
+					"firstAudioMs": null,
+					"inputTokens": null,
+					"providerWarmColdIdle": "not-observed",
+					"requests": [
+						{
+							"inputBytes": 2819,
+							"instructionBytes": 5106,
+							"toolBytes": 10384,
+							"toolCount": 23,
+							"workload": "quick",
+							"requestedAtMs": 50.02291700000001,
+							"firstProviderTextMs": 70.11879199999998,
+							"terminalMs": 110.43391699999995
+						},
+						{
+							"inputBytes": 409,
+							"instructionBytes": 1308,
+							"toolBytes": 2,
+							"toolCount": 0,
+							"workload": "quick",
+							"requestedAtMs": 113.724334,
+							"firstProviderTextMs": 134.53712499999995,
+							"terminalMs": 174.7004169999999
+						},
+						{
+							"inputBytes": 5080,
+							"instructionBytes": 5106,
+							"toolBytes": 10384,
+							"toolCount": 23,
+							"workload": "quick",
+							"requestedAtMs": 229.17458399999998,
+							"firstProviderTextMs": 250.02658399999996,
+							"terminalMs": 290.04104199999995
+						}
+					]
+				},
+				{
+					"scenario": "selected-pr",
+					"turns": 1,
+					"modelRounds": 1,
+					"workspaceReads": 2,
+					"hubReads": 2,
+					"dayReads": 1,
+					"ticketReads": 0,
+					"sourceReads": 1,
+					"admissions": 0,
+					"injectedPortDelayMs": 10,
+					"contextPortWaitBudgetMs": 60,
+					"injectedProviderWaitPerRoundMs": 60,
+					"receiptWaitMs": 0,
+					"firstPublishedMs": 136.33900000000006,
+					"completedMs": 136.35745800000007,
+					"firstAudioMs": null,
+					"inputTokens": null,
+					"providerWarmColdIdle": "not-observed",
+					"requests": [
+						{
+							"inputBytes": 4200,
+							"instructionBytes": 9381,
+							"toolBytes": 9107,
+							"toolCount": 19,
+							"workload": "quick",
+							"requestedAtMs": 75.2695,
+							"firstProviderTextMs": 95.50629100000003,
+							"terminalMs": 135.58733300000006
+						}
+					]
+				}
+			],
+			"sample": 1
+		},
+		{
+			"sourceRevision": "8d7452ad9c4b1dda360325102817797fadb8b1bb",
+			"controlled": true,
+			"physicalAudio": false,
+			"measurements": [
+				{
+					"scenario": "simple",
+					"turns": 1,
+					"modelRounds": 1,
+					"workspaceReads": 1,
+					"hubReads": 1,
+					"dayReads": 1,
+					"ticketReads": 0,
+					"sourceReads": 0,
+					"admissions": 0,
+					"injectedPortDelayMs": 10,
+					"contextPortWaitBudgetMs": 30,
+					"injectedProviderWaitPerRoundMs": 60,
+					"receiptWaitMs": 0,
+					"firstPublishedMs": 99.733041,
+					"completedMs": 99.76983299999999,
+					"firstAudioMs": null,
+					"inputTokens": null,
+					"providerWarmColdIdle": "not-observed",
+					"requests": [
+						{
+							"inputBytes": 1503,
+							"instructionBytes": 5106,
+							"toolBytes": 3157,
+							"toolCount": 7,
+							"workload": "quick",
+							"requestedAtMs": 38.860583000000005,
+							"firstProviderTextMs": 58.752375,
+							"terminalMs": 99.08554099999999
+						}
+					]
+				},
+				{
+					"scenario": "planning-followup",
+					"turns": 2,
+					"modelRounds": 2,
+					"workspaceReads": 2,
+					"hubReads": 2,
+					"dayReads": 2,
+					"ticketReads": 0,
+					"sourceReads": 0,
+					"admissions": 0,
+					"injectedPortDelayMs": 10,
+					"contextPortWaitBudgetMs": 60,
+					"injectedProviderWaitPerRoundMs": 60,
+					"receiptWaitMs": 0,
+					"firstPublishedMs": 96.467667,
+					"completedMs": 195.65095800000003,
+					"firstAudioMs": null,
+					"inputTokens": null,
+					"providerWarmColdIdle": "not-observed",
+					"requests": [
+						{
+							"inputBytes": 1548,
+							"instructionBytes": 5106,
+							"toolBytes": 3157,
+							"toolCount": 7,
+							"workload": "quick",
+							"requestedAtMs": 35.471667,
+							"firstProviderTextMs": 55.49404200000001,
+							"terminalMs": 95.56787500000002
+						},
+						{
+							"inputBytes": 1783,
+							"instructionBytes": 5106,
+							"toolBytes": 3157,
+							"toolCount": 7,
+							"workload": "quick",
+							"requestedAtMs": 133.77795799999998,
+							"firstProviderTextMs": 154.75308300000003,
+							"terminalMs": 194.97541700000002
+						}
+					]
+				},
+				{
+					"scenario": "workspace-action",
+					"turns": 1,
+					"modelRounds": 2,
+					"workspaceReads": 2,
+					"hubReads": 2,
+					"dayReads": 2,
+					"ticketReads": 0,
+					"sourceReads": 0,
+					"admissions": 0,
+					"injectedPortDelayMs": 10,
+					"contextPortWaitBudgetMs": 60,
+					"injectedProviderWaitPerRoundMs": 60,
+					"receiptWaitMs": 20.91916600000002,
+					"firstPublishedMs": 223.42012500000004,
+					"completedMs": 223.49816600000003,
+					"firstAudioMs": null,
+					"inputTokens": null,
+					"providerWarmColdIdle": "not-observed",
+					"requests": [
+						{
+							"inputBytes": 1513,
+							"instructionBytes": 5106,
+							"toolBytes": 3157,
+							"toolCount": 7,
+							"workload": "quick",
+							"requestedAtMs": 39.404916000000014,
+							"firstProviderTextMs": 59.535000000000025,
+							"terminalMs": 99.74991600000004
+						},
+						{
+							"inputBytes": 2105,
+							"instructionBytes": 5106,
+							"toolBytes": 9863,
+							"toolCount": 22,
+							"workload": "quick",
+							"requestedAtMs": 162.65416600000003,
+							"firstProviderTextMs": 182.68637500000006,
+							"terminalMs": 222.76741599999997
+						}
+					]
+				},
+				{
+					"scenario": "selected-ticket",
+					"turns": 1,
+					"modelRounds": 1,
+					"workspaceReads": 1,
+					"hubReads": 1,
+					"dayReads": 1,
+					"ticketReads": 1,
+					"sourceReads": 0,
+					"admissions": 0,
+					"injectedPortDelayMs": 10,
+					"contextPortWaitBudgetMs": 40,
+					"injectedProviderWaitPerRoundMs": 60,
+					"receiptWaitMs": 0,
+					"firstPublishedMs": 118.75258299999996,
+					"completedMs": 118.789583,
+					"firstAudioMs": null,
+					"inputTokens": null,
+					"providerWarmColdIdle": "not-observed",
+					"requests": [
+						{
+							"inputBytes": 2769,
+							"instructionBytes": 5106,
+							"toolBytes": 10384,
+							"toolCount": 23,
+							"workload": "quick",
+							"requestedAtMs": 57.466792000000055,
+							"firstProviderTextMs": 77.043,
+							"terminalMs": 117.05337499999996
+						}
+					]
+				},
+				{
+					"scenario": "scoped-dispatch",
+					"turns": 1,
+					"modelRounds": 3,
+					"workspaceReads": 2,
+					"hubReads": 2,
+					"dayReads": 2,
+					"ticketReads": 2,
+					"sourceReads": 0,
+					"admissions": 1,
+					"injectedPortDelayMs": 10,
+					"contextPortWaitBudgetMs": 80,
+					"injectedProviderWaitPerRoundMs": 60,
+					"receiptWaitMs": 0,
+					"firstPublishedMs": 286.87462500000004,
+					"completedMs": 286.9440410000001,
+					"firstAudioMs": null,
+					"inputTokens": null,
+					"providerWarmColdIdle": "not-observed",
+					"requests": [
+						{
+							"inputBytes": 2819,
+							"instructionBytes": 5106,
+							"toolBytes": 10384,
+							"toolCount": 23,
+							"workload": "quick",
+							"requestedAtMs": 48.157916,
+							"firstProviderTextMs": 68.26645800000006,
+							"terminalMs": 108.50945800000011
+						},
+						{
+							"inputBytes": 409,
+							"instructionBytes": 1308,
+							"toolBytes": 2,
+							"toolCount": 0,
+							"workload": "quick",
+							"requestedAtMs": 111.1371660000001,
+							"firstProviderTextMs": 130.79725000000008,
+							"terminalMs": 171.08720800000003
+						},
+						{
+							"inputBytes": 5080,
+							"instructionBytes": 5106,
+							"toolBytes": 10384,
+							"toolCount": 23,
+							"workload": "quick",
+							"requestedAtMs": 226.06820800000003,
+							"firstProviderTextMs": 246.09162500000002,
+							"terminalMs": 286.2549580000001
+						}
+					]
+				},
+				{
+					"scenario": "selected-pr",
+					"turns": 1,
+					"modelRounds": 1,
+					"workspaceReads": 2,
+					"hubReads": 2,
+					"dayReads": 1,
+					"ticketReads": 0,
+					"sourceReads": 1,
+					"admissions": 0,
+					"injectedPortDelayMs": 10,
+					"contextPortWaitBudgetMs": 60,
+					"injectedProviderWaitPerRoundMs": 60,
+					"receiptWaitMs": 0,
+					"firstPublishedMs": 136.632208,
+					"completedMs": 136.64325000000008,
+					"firstAudioMs": null,
+					"inputTokens": null,
+					"providerWarmColdIdle": "not-observed",
+					"requests": [
+						{
+							"inputBytes": 4200,
+							"instructionBytes": 9381,
+							"toolBytes": 9107,
+							"toolCount": 19,
+							"workload": "quick",
+							"requestedAtMs": 75.21554100000003,
+							"firstProviderTextMs": 95.897291,
+							"terminalMs": 135.9554579999999
+						}
+					]
+				}
+			],
+			"sample": 2
+		},
+		{
+			"sourceRevision": "8d7452ad9c4b1dda360325102817797fadb8b1bb",
+			"controlled": true,
+			"physicalAudio": false,
+			"measurements": [
+				{
+					"scenario": "simple",
+					"turns": 1,
+					"modelRounds": 1,
+					"workspaceReads": 1,
+					"hubReads": 1,
+					"dayReads": 1,
+					"ticketReads": 0,
+					"sourceReads": 0,
+					"admissions": 0,
+					"injectedPortDelayMs": 10,
+					"contextPortWaitBudgetMs": 30,
+					"injectedProviderWaitPerRoundMs": 60,
+					"receiptWaitMs": 0,
+					"firstPublishedMs": 99.835417,
+					"completedMs": 99.879625,
+					"firstAudioMs": null,
+					"inputTokens": null,
+					"providerWarmColdIdle": "not-observed",
+					"requests": [
+						{
+							"inputBytes": 1503,
+							"instructionBytes": 5106,
+							"toolBytes": 3157,
+							"toolCount": 7,
+							"workload": "quick",
+							"requestedAtMs": 38.96075,
+							"firstProviderTextMs": 58.993792000000006,
+							"terminalMs": 99.18924999999999
+						}
+					]
+				},
+				{
+					"scenario": "planning-followup",
+					"turns": 2,
+					"modelRounds": 2,
+					"workspaceReads": 2,
+					"hubReads": 2,
+					"dayReads": 2,
+					"ticketReads": 0,
+					"sourceReads": 0,
+					"admissions": 0,
+					"injectedPortDelayMs": 10,
+					"contextPortWaitBudgetMs": 60,
+					"injectedProviderWaitPerRoundMs": 60,
+					"receiptWaitMs": 0,
+					"firstPublishedMs": 93.021209,
+					"completedMs": 189.25187499999998,
+					"firstAudioMs": null,
+					"inputTokens": null,
+					"providerWarmColdIdle": "not-observed",
+					"requests": [
+						{
+							"inputBytes": 1548,
+							"instructionBytes": 5106,
+							"toolBytes": 3157,
+							"toolCount": 7,
+							"workload": "quick",
+							"requestedAtMs": 32.447666999999996,
+							"firstProviderTextMs": 52.580374999999975,
+							"terminalMs": 92.75908399999997
+						},
+						{
+							"inputBytes": 1783,
+							"instructionBytes": 5106,
+							"toolBytes": 3157,
+							"toolCount": 7,
+							"workload": "quick",
+							"requestedAtMs": 128.66999999999996,
+							"firstProviderTextMs": 148.73083399999996,
+							"terminalMs": 188.967584
+						}
+					]
+				},
+				{
+					"scenario": "workspace-action",
+					"turns": 1,
+					"modelRounds": 2,
+					"workspaceReads": 2,
+					"hubReads": 2,
+					"dayReads": 2,
+					"ticketReads": 0,
+					"sourceReads": 0,
+					"admissions": 0,
+					"injectedPortDelayMs": 10,
+					"contextPortWaitBudgetMs": 60,
+					"injectedProviderWaitPerRoundMs": 60,
+					"receiptWaitMs": 20.477749999999958,
+					"firstPublishedMs": 223.012875,
+					"completedMs": 223.11145899999997,
+					"firstAudioMs": null,
+					"inputTokens": null,
+					"providerWarmColdIdle": "not-observed",
+					"requests": [
+						{
+							"inputBytes": 1513,
+							"instructionBytes": 5106,
+							"toolBytes": 3157,
+							"toolCount": 7,
+							"workload": "quick",
+							"requestedAtMs": 37.04154199999999,
+							"firstProviderTextMs": 58.148167,
+							"terminalMs": 98.358
+						},
+						{
+							"inputBytes": 2105,
+							"instructionBytes": 5106,
+							"toolBytes": 9863,
+							"toolCount": 22,
+							"workload": "quick",
+							"requestedAtMs": 161.69566700000001,
+							"firstProviderTextMs": 181.75604200000004,
+							"terminalMs": 221.818125
+						}
+					]
+				},
+				{
+					"scenario": "selected-ticket",
+					"turns": 1,
+					"modelRounds": 1,
+					"workspaceReads": 1,
+					"hubReads": 1,
+					"dayReads": 1,
+					"ticketReads": 1,
+					"sourceReads": 0,
+					"admissions": 0,
+					"injectedPortDelayMs": 10,
+					"contextPortWaitBudgetMs": 40,
+					"injectedProviderWaitPerRoundMs": 60,
+					"receiptWaitMs": 0,
+					"firstPublishedMs": 117.51066700000001,
+					"completedMs": 117.55029200000001,
+					"firstAudioMs": null,
+					"inputTokens": null,
+					"providerWarmColdIdle": "not-observed",
+					"requests": [
+						{
+							"inputBytes": 2769,
+							"instructionBytes": 5106,
+							"toolBytes": 10384,
+							"toolCount": 23,
+							"workload": "quick",
+							"requestedAtMs": 56.28304200000002,
+							"firstProviderTextMs": 76.99483300000009,
+							"terminalMs": 117.17262500000004
+						}
+					]
+				},
+				{
+					"scenario": "scoped-dispatch",
+					"turns": 1,
+					"modelRounds": 3,
+					"workspaceReads": 2,
+					"hubReads": 2,
+					"dayReads": 2,
+					"ticketReads": 2,
+					"sourceReads": 0,
+					"admissions": 1,
+					"injectedPortDelayMs": 10,
+					"contextPortWaitBudgetMs": 80,
+					"injectedProviderWaitPerRoundMs": 60,
+					"receiptWaitMs": 0,
+					"firstPublishedMs": 286.235458,
+					"completedMs": 286.2685,
+					"firstAudioMs": null,
+					"inputTokens": null,
+					"providerWarmColdIdle": "not-observed",
+					"requests": [
+						{
+							"inputBytes": 2819,
+							"instructionBytes": 5106,
+							"toolBytes": 10384,
+							"toolCount": 23,
+							"workload": "quick",
+							"requestedAtMs": 49.857708,
+							"firstProviderTextMs": 69.49491599999999,
+							"terminalMs": 109.70304099999998
+						},
+						{
+							"inputBytes": 409,
+							"instructionBytes": 1308,
+							"toolBytes": 2,
+							"toolCount": 0,
+							"workload": "quick",
+							"requestedAtMs": 112.44312500000001,
+							"firstProviderTextMs": 132.50358300000005,
+							"terminalMs": 172.66316600000005
+						},
+						{
+							"inputBytes": 5080,
+							"instructionBytes": 5106,
+							"toolBytes": 10384,
+							"toolCount": 23,
+							"workload": "quick",
+							"requestedAtMs": 225.83462499999996,
+							"firstProviderTextMs": 245.84283300000004,
+							"terminalMs": 286.05654100000004
+						}
+					]
+				},
+				{
+					"scenario": "selected-pr",
+					"turns": 1,
+					"modelRounds": 1,
+					"workspaceReads": 2,
+					"hubReads": 2,
+					"dayReads": 1,
+					"ticketReads": 0,
+					"sourceReads": 1,
+					"admissions": 0,
+					"injectedPortDelayMs": 10,
+					"contextPortWaitBudgetMs": 60,
+					"injectedProviderWaitPerRoundMs": 60,
+					"receiptWaitMs": 0,
+					"firstPublishedMs": 140.347084,
+					"completedMs": 140.3684169999999,
+					"firstAudioMs": null,
+					"inputTokens": null,
+					"providerWarmColdIdle": "not-observed",
+					"requests": [
+						{
+							"inputBytes": 4200,
+							"instructionBytes": 9381,
+							"toolBytes": 9107,
+							"toolCount": 19,
+							"workload": "quick",
+							"requestedAtMs": 79.40558399999986,
+							"firstProviderTextMs": 99.53079200000002,
+							"terminalMs": 139.622167
+						}
+					]
+				}
+			],
+			"sample": 3
+		}
+	]
+}

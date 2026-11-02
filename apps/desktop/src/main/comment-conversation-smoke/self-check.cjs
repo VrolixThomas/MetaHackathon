@@ -25,6 +25,12 @@ async function run() {
 	const observation = { pr: { id: S.prId }, draft: null, posted: false };
 	const first = request(M.QUESTIONS.draft);
 	assert.deepEqual(M.step(first), { phase: "draft", tool: "inspect_pr_comment", args: {} });
+	const scoped = { ...request(M.QUESTIONS.draft), tools: [{ name: "expand_tools" }] };
+	assert.deepEqual(M.step(scoped), {
+		phase: "draft",
+		tool: "expand_tools",
+		args: { families: ["comments"] },
+	});
 	const add = (body, name, output) => {
 		const call_id = `pure-${body.input.length}`;
 		body.input.push(

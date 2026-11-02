@@ -1,15 +1,19 @@
 import { randomUUID } from "node:crypto";
+import { join } from "node:path";
 import { sha256 } from "../../../../../services/team/protocol";
 import type {
 	CodingProviderSettings,
 	ConversationPRContext,
 	PRFixDetail,
 	PullRequest,
+	WorkJob,
+	WorkNotice,
 } from "../../shared/contracts";
 import type { SecretEncryption } from "../runtime/credentials";
 import { applyAcceptedTeamProposal } from "../runtime/team-proposal-apply";
 import type { WorkJobRuntime } from "../runtime/work-job-runtime";
 import { TeamService, type TeamSettings } from "../team/service";
+import { recordCodingModelAdmission } from "../work/coding-provider/pin";
 import type { CommandCenterService } from "../work/hub";
 import { localFixProposal } from "./team-proposal-source";
 
@@ -128,26 +132,18 @@ export function createTeamComposition(ports: Ports) {
 					pullRequest: current,
 					reviewedAt: null,
 				};
-				await ports.hub().update((state) => {
-					const existing = state.jobs.find((item) => item.id === job.id);
-					if (existing && existing.headSha !== job.headSha)
-						throw new Error("The local application result changed.");
-					if (!existing) {
-						state.jobs.push(job);
-						state.notices.push({
-							id: randomUUID(),
-							kind: "work-ready",
-							title: `Ready to review: ${current.title}`.slice(0, 300),
-							detail: `The accepted shared fix was applied locally with ${applied.checks.length} recorded checks. Review its actual diff before publishing.`,
-							jobId: job.id,
-							prId: current.id,
-							headSha: applied.appliedSha,
-							decisionId: null,
-							createdAt: new Date().toISOString(),
-							announcedAt: null,
-							seenAt: null,
-						});
-					}
+				await admitAppliedTeamJob(ports.hub(), join(ports.userDataPath, "work", "jobs"), job, {
+					id: randomUUID(),
+					kind: "work-ready",
+					title: `Ready to review: ${current.title}`.slice(0, 300),
+					detail: `The accepted shared fix was applied locally with ${applied.checks.length} recorded checks. Review its actual diff before publishing.`,
+					jobId: job.id,
+					prId: current.id,
+					headSha: applied.appliedSha,
+					decisionId: null,
+					createdAt: new Date().toISOString(),
+					announcedAt: null,
+					seenAt: null,
 				});
 				return {
 					status: "applied" as const,
@@ -177,4 +173,24 @@ export function createTeamComposition(ports: Ports) {
 			service.dispose();
 		},
 	};
+}
+
+/** Publish a new local application only after its future coding revision identity is durable. */
+export async function admitAppliedTeamJob(
+	hub: Pick<CommandCenterService, "allJobs" | "update">,
+	directory: string,
+	job: WorkJob,
+	notice: WorkNotice
+) {
+	if (!(await hub.allJobs()).some((item) => item.id === job.id))
+		await recordCodingModelAdmission(directory, job);
+	await hub.update((state) => {
+		const existing = state.jobs.find((item) => item.id === job.id);
+		if (existing && existing.headSha !== job.headSha)
+			throw new Error("The local application result changed.");
+		if (!existing) {
+			state.jobs.push(job);
+			state.notices.push(notice);
+		}
+	});
 }

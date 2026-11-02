@@ -314,7 +314,8 @@ function sse(body, name, args) {
 }
 
 function childTool(body) {
-	assert.equal(body.model, "muse-spark-1.3");
+	assert.equal(body.model, "muse-wonder-1.0");
+	assert.equal(body.reasoning?.effort, "high");
 	const initial = body.input.find(
 		(item) => item.role === "user" && typeof item.content === "string"
 	);
@@ -1186,15 +1187,19 @@ async function selfCheck() {
 			content: JSON.stringify({ repository: REPOSITORY, ticket: { id: TICKET_ID } }),
 		},
 	];
-	assert.deepEqual(childTool({ model: "muse-spark-1.3", input }), [
+	assert.deepEqual(childTool({ model: "muse-wonder-1.0", reasoning: { effort: "high" }, input }), [
 		"read_file",
 		{ path: "AGENTS.md" },
 	]);
 	assert.throws(() => childTool({ model: "wrong-provider", input }));
+	assert.throws(() =>
+		childTool({ model: "muse-spark-1.3", reasoning: { effort: "minimal" }, input })
+	);
 	assert.throws(
 		() =>
 			childTool({
-				model: "muse-spark-1.3",
+				model: "muse-wonder-1.0",
+				reasoning: { effort: "high" },
 				input: [
 					{
 						role: "user",
@@ -1205,7 +1210,11 @@ async function selfCheck() {
 		/identity mismatch/
 	);
 	// Pure protocol rehearsal only: these synthetic receipts never execute a tool.
-	const body = { model: "muse-spark-1.3", input: structuredClone(input) };
+	const body = {
+		model: "muse-wonder-1.0",
+		reasoning: { effort: "high" },
+		input: structuredClone(input),
+	};
 	const addReceipt = (name, args, output) => {
 		const id = `self-${body.input.length}`;
 		body.input.push({ type: "function_call", call_id: id, name, arguments: JSON.stringify(args) });

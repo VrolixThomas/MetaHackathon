@@ -42,6 +42,7 @@ import {
 import type { FunctionTool } from "./meta-client";
 import { type ConversationPRCommentPorts, ConversationPRCommentTools } from "./pr-comment-tools";
 import { type ConversationSlackPorts, ConversationSlackTools } from "./slack-tools";
+import { type WorkAdmission, WorkAdmissionError } from "./work-admission";
 import { WorkspaceArgumentError } from "./workspace-tools";
 
 export interface ConversationHubPorts {
@@ -328,7 +329,17 @@ export class ConversationHubTools {
 		private readonly ports: ConversationHubPorts,
 		private readonly turn: ConversationTurnInput,
 		private readonly signal: AbortSignal,
-		private readonly onSource?: (source: PinnedSource) => void
+		private readonly onSource?: (source: PinnedSource) => void,
+		private readonly admission?: {
+			beforeStart(
+				operation: Extract<HubOperation, { kind: "start-work" }>,
+				target: { ticketIdentifier: string; repository: string }
+			): ReturnType<WorkAdmission["authorize"]>;
+			focus(): {
+				pendingQuestion: { generation: number; text: string } | undefined;
+				effects: WorkAdmission["effects"];
+			};
+		}
 	) {
 		if (ports.approvals) this.approvals = new ApprovalTools(ports.approvals, turn, signal);
 		if (ports.prComments)
@@ -358,7 +369,35 @@ export class ConversationHubTools {
 		for (const row of context.tickets) this.observedIssues.add(row.id);
 		const day = this.day?.context;
 		if (day) this.knowledge?.observeDayResult(day);
-		return { ...context, ...(day ? { day } : {}) };
+		const focus = this.admission?.focus();
+		return {
+			...context,
+			...(focus?.pendingQuestion ? { notices: [] } : {}),
+			...(day ? { day } : {}),
+			conversationFocus: focus,
+		};
+	}
+	async currentContext(
+		observation?: import("../../shared/contracts").WorkspaceObservation
+	): Promise<unknown> {
+		const canvas = observation?.workspace.canvases.find(
+			(canvas) => canvas.id === observation.workspace.primaryId
+		);
+		if (canvas?.kind === "center" && canvas.selectedId) {
+			if (
+				canvas.section === "tickets" &&
+				this.latest?.tickets.some((ticket) => ticket.id === canvas.selectedId)
+			)
+				return this.execute("inspect_ticket", JSON.stringify({ id: canvas.selectedId }));
+			if (
+				["completed", "activity"].includes(canvas.section) &&
+				this.latest?.jobs.some((job) => job.id === canvas.selectedId)
+			)
+				return this.execute("inspect_work_job", JSON.stringify({ id: canvas.selectedId }));
+		}
+		if (canvas?.kind === "source")
+			return { source: this.boundedSource(canvas.source), evidencePolicy: policy };
+		return undefined;
 	}
 	get tools(): FunctionTool[] {
 		return [
@@ -401,10 +440,10 @@ export class ConversationHubTools {
 		this.pin(pr.repository, pr.baseSha, "base");
 		this.pin(pr.repository, pr.headSha, "head");
 	}
-	async observe(selectedPrId?: string) {
+	async observe(selectedPrId?: string, observedSnapshot?: HubSnapshot) {
 		throwIfAborted(this.signal);
 		this.acceptSnapshot(
-			await abortable(this.ports.snapshot(this.signal), this.signal),
+			observedSnapshot ?? (await abortable(this.ports.snapshot(this.signal), this.signal)),
 			selectedPrId ?? this.turn.prId
 		);
 		await this.day?.observe();
@@ -467,9 +506,24 @@ export class ConversationHubTools {
 	}
 	private async operate(operation: HubOperation) {
 		throwIfAborted(this.signal);
+		const permission =
+			operation.kind === "start-work"
+				? await this.admission?.beforeStart(operation, {
+						ticketIdentifier:
+							this.latest?.tickets.find((ticket) => ticket.id === operation.ticketId)?.identifier ??
+							"",
+						repository:
+							this.latest?.repositories.find(
+								(repository) => repository.id === operation.repositoryId
+							)?.repository ?? "",
+					})
+				: undefined;
+		if (operation.kind === "start-work" && !permission)
+			throw new WorkAdmissionError("Before I start, please clarify the work you want me to do.");
 		const requestId = `hub-op-${createHash("sha256")
 			.update(JSON.stringify([this.turn.requestId, ++this.sequence]))
 			.digest("hex")}`;
+		permission?.begin(requestId);
 		// Root owns admission and persistence. This signal cancels waiting/admission only,
 		// never the worker lifecycle after admission; only cancel-work can do that.
 		const result = HubOperationResultSchema.parse(
@@ -528,6 +582,7 @@ export class ConversationHubTools {
 			this.reviewedHeads.delete(operation.jobId);
 			this.jobs.delete(operation.jobId);
 		}
+		permission?.settle(result);
 		this.acceptSnapshot(result.snapshot);
 		return {
 			jobId: operation.kind === "revise-work" ? operation.jobId : result.jobId,
@@ -911,6 +966,12 @@ export class ConversationHubTools {
 			};
 		}
 		if (name === "queue_notice_announcement") {
+			if (this.admission?.focus().pendingQuestion)
+				return {
+					status: "deferred-during-discussion",
+					instruction:
+						"Stay with the current question. Notices remain pending for the separately governed attention scheduler.",
+				};
 			for (const id of args["noticeIds"] as string[]) {
 				if (!hub.notices.some((n) => n.id === id && !n.announcedAt))
 					throw new WorkspaceArgumentError(

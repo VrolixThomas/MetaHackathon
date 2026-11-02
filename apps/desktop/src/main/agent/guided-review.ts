@@ -20,6 +20,7 @@ import {
 	ReviewScreenSchema,
 } from "../../shared/contracts";
 import { abortable, throwIfAborted } from "./cancellation";
+import { ForegroundProfile, PROFILE_INSTRUCTIONS } from "./foreground-profile";
 import type { ConversationHubTools } from "./hub-tools";
 import {
 	type AgentModelClient,
@@ -93,6 +94,7 @@ export interface GuidedReviewWorkflow {
 	workspace?: ConversationWorkspaceTools;
 	hub?: ConversationHubTools;
 	recovery?: { used: boolean };
+	profile?: ForegroundProfile;
 }
 
 /** One bounded pending effect per turn. Cancellation removes admission before late receipts arrive. */
@@ -291,6 +293,7 @@ export async function runGuidedReview(
 	const recovery = workflow?.recovery ?? { used: false };
 	let emitted = false;
 	let repairedArguments = false;
+	const profile = workflow?.profile ?? new ForegroundProfile();
 	for (let round = 0; round < 6; round++) {
 		throwIfAborted(signal);
 		const snapshot = await getSnapshot(ports, input, signal, true);
@@ -303,18 +306,18 @@ export async function runGuidedReview(
 		const observation = await workspace?.observe();
 		const hub = workflow?.hub;
 		if (snapshot.review) hub?.allowReview(snapshot.review.pr);
-		if (observation?.hub) hub?.acceptSnapshot(observation.hub, input.prId);
-		await hub?.observe(input.prId);
+		await hub?.observe(input.prId, observation?.hub);
+		profile.select(observation, true);
 		const modelInput = reviewModelInput(
 			history,
 			questionIndex,
 			snapshot,
 			source,
-			observation ? workspaceModelContext(observation) : undefined,
+			observation ? { ...workspaceModelContext(observation), hub: undefined } : undefined,
 			(base, head) => {
 				if (snapshot.review) workspace?.allowSource(snapshot.review, source.file, base, head);
 			},
-			hub?.context
+			profile.context(hub?.context)
 		);
 		const emitText = async (delta: string) => {
 			if (!delta || !onText) return;
@@ -326,15 +329,20 @@ export async function runGuidedReview(
 		const request = {
 			requestId: `${input.requestId}:review:${round}`,
 			workload: "quick" as const,
-			instructions: workspace || hub ? `${INSTRUCTIONS}\n${WORKSPACE_INSTRUCTIONS}` : INSTRUCTIONS,
+			instructions: `${workspace || hub ? `${INSTRUCTIONS}\n${WORKSPACE_INSTRUCTIONS}` : INSTRUCTIONS}\n${PROFILE_INSTRUCTIONS}`,
 			input: modelInput,
 			tools: navigated
 				? []
-				: [
-						...tools.filter((tool) => workflow?.onNarration || !tool.name.endsWith("walkthrough")),
-						...(workspace?.tools ?? []),
-						...(hub?.tools ?? []),
-					],
+				: profile.tools(
+						[
+							...tools.filter(
+								(tool) => workflow?.onNarration || !tool.name.endsWith("walkthrough")
+							),
+							...(workspace?.tools ?? []),
+							...(hub?.tools ?? []),
+						],
+						!!source.file
+					),
 			maxOutputTokens: MAX_OUTPUT_TOKENS,
 		};
 		// Only the phase with tools disabled may stream. Navigation and its durable receipt
@@ -392,6 +400,37 @@ export async function runGuidedReview(
 		if (seen.has(call.call_id))
 			throw new GuidedReviewError("The model repeated a review operation. Please try again.");
 		seen.add(call.call_id);
+		if (call.name === "expand_tools") {
+			history.push(...response.completion.output.filter((item) => item["type"] !== "message"));
+			history.push({
+				type: "function_call_output",
+				call_id: call.call_id,
+				output: JSON.stringify(profile.expand(call.arguments)),
+			});
+			continue;
+		}
+		if (call.name === "analyze_current_context") {
+			if (!source.file)
+				throw new GuidedReviewError("Open an actual prepared file before deeper analysis.");
+			const args = z
+				.strictObject({ question: z.string().trim().min(1).max(4000) })
+				.parse(JSON.parse(call.arguments));
+			const deep = await modelRound(
+				client,
+				{
+					requestId: `${input.requestId}:deep:${call.call_id}`,
+					workload: "deep",
+					tools: [],
+					maxOutputTokens: MAX_OUTPUT_TOKENS,
+					instructions: `${INSTRUCTIONS}\nGive deeper read-only reasoning about the supplied actual pinned file. You have no tools; cannot navigate, start work, grant consent or post. User question: ${JSON.stringify(args.question)}`,
+					input: modelInput,
+				},
+				signal,
+				emitText
+			);
+			assertSameScreen(snapshot.screen, await screen(ports, input, signal));
+			return deep.text;
+		}
 		if (hub?.has(call.name)) {
 			history.push(...response.completion.output.filter((item) => item["type"] !== "message"));
 			try {

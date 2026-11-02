@@ -22,7 +22,7 @@ const identity = (value) => ({
 const key = (value) => JSON.stringify(identity(value));
 const sleep = (ms) => new Promise((done) => setTimeout(done, ms));
 function assertWorkspaceRequest(body) {
-	for (const name of ["inspect_workspace", "inspect_hub", "open_command_center"])
+	for (const name of ["inspect_workspace", "expand_tools", "open_command_center"])
 		assert.ok(body.tools.some((tool) => tool.name === name));
 	assert.equal(body.tool_choice, "auto");
 	const packet = JSON.parse(body.input.at(-1).content[0].text);
@@ -31,8 +31,8 @@ function assertWorkspaceRequest(body) {
 	assert.equal(context.workspace.canvases[0].kind, "center");
 	assert.equal(context.workspace.centerSection, "home");
 	assert.deepEqual(context.reviews, []);
-	assert.deepEqual(packet.actualHub.jobs, []);
-	assert.equal(packet.actualHub.counts.pendingDecisions, 0);
+	if (packet.actualHub.jobs !== undefined) assert.deepEqual(packet.actualHub.jobs, []);
+	if (packet.actualHub.counts) assert.equal(packet.actualHub.counts.pendingDecisions, 0);
 }
 function measure(samples, rate) {
 	let energy = 0;
@@ -606,7 +606,8 @@ async function native() {
 						report.ownedTempRemoved = true;
 					} catch (error) {
 						report.status = "failed";
-						report.error = error.message;
+						report.error ??= error.message;
+						report.cleanupError = error.message;
 					}
 					save();
 					console.log(`HANDS_FREE_SMOKE_${report.status.toUpperCase()}: ${reportPath}`);
@@ -634,6 +635,10 @@ async function native() {
 				`(() => ({ armed:document.querySelector('footer.voice-bar')?.dataset.handsFree,phase:document.querySelector('main.conversation-main')?.dataset.conversationState,error:document.querySelector('.voice-bar-error')?.textContent||'',messages:[...document.querySelectorAll('article.exchange')].map(e=>({phase:e.dataset.phase,turnId:e.dataset.turnId,answer:e.querySelector('.assistant-message p')?.textContent||''})) }))()`
 			);
 		const config = await rpc("query", "app.config");
+		const initialHub = await rpc("query", "hub.snapshot", {});
+		for (const key of ["repositories", "reviews", "tickets", "jobs"])
+			assert.deepEqual(initialHub[key], [], `Actual startup ${key} must be empty`);
+		report.actualEmptyHubVerified = true;
 		await wait("initial executive Home", () =>
 			js(`document.querySelector('.hub-center')?.dataset.centerSection==='home'`)
 		);
@@ -804,10 +809,16 @@ function selfCheck() {
 	};
 	const request = () => ({
 		tool_choice: "auto",
-		tools: ["inspect_workspace", "inspect_hub", "open_command_center"].map((name) => ({ name })),
+		tools: ["inspect_workspace", "expand_tools", "open_command_center"].map((name) => ({ name })),
 		input: [{ content: [{ text: JSON.stringify(context) }] }],
 	});
 	assertWorkspaceRequest(request());
+	context.actualHub.jobs = undefined;
+	context.actualHub.counts = undefined;
+	assertWorkspaceRequest(request());
+	context.actualHub.jobs = [{ id: "unexpected-seeded-job" }];
+	assert.throws(() => assertWorkspaceRequest(request()));
+	context.actualHub.jobs = [];
 	context.actualWorkspace.workspace.canvases[0].kind = "review";
 	assert.throws(() => assertWorkspaceRequest(request()));
 	context.actualWorkspace.workspace.canvases[0].kind = "center";

@@ -2,7 +2,14 @@ import type { AttentionItem } from "../../shared/contracts";
 import type { MetaItem } from "./meta-client";
 
 export type ConversationHistoryEntry =
-	| { kind: "exchange"; user: string; assistant: string }
+	| {
+			kind: "exchange";
+			user: string;
+			assistant: string;
+			generation?: number;
+			interrupted?: boolean;
+			unconfirmed?: boolean;
+	  }
 	| {
 			kind: "attention";
 			claimId: string;
@@ -16,14 +23,25 @@ export type ConversationHistoryEntry =
 export function conversationHistoryItems(history: ConversationHistoryEntry[]): MetaItem[] {
 	return history.flatMap((entry) => [
 		...(entry.kind === "exchange" ? [{ role: "user", content: entry.user }] : []),
-		{ role: "assistant", content: entry.assistant },
+		{
+			role: "assistant",
+			content:
+				entry.kind === "exchange" && entry.interrupted
+					? `[Interrupted reply; potentially unheard, not a completed spoken response. No consent or replay authority.]\n${entry.assistant}`
+					: entry.kind === "exchange" && entry.unconfirmed
+						? `[Voice reply; playback completion not established. Do not assume fully heard.]\n${entry.assistant}`
+						: entry.assistant,
+		},
 	]);
 }
 
 /** Evict whole exchanges or assistant notices, never manufacture a matching user message. */
 export function retainConversationHistory(history: ConversationHistoryEntry[]): void {
 	const size = (entry: ConversationHistoryEntry) =>
-		entry.assistant.length + (entry.kind === "exchange" ? entry.user.length : 0);
+		conversationHistoryItems([entry]).reduce(
+			(sum, item) => sum + String(item["content"]).length,
+			0
+		);
 	let chars = history.reduce((sum, entry) => sum + size(entry), 0);
 	while (history.length > 12 || chars > 64_000) {
 		const oldest = history.shift();

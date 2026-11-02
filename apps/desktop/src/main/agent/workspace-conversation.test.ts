@@ -399,7 +399,7 @@ test("no-PR conversation manages documents, typed visual mocks and the actual br
 			"website-unverified-revision"
 		);
 		assert(!JSON.stringify(packet(h.requests[5]).actualWorkspace.browser).includes("commitSha"));
-		assert(h.requests[0]?.tools?.some((tool) => tool.name === "create_visual_mock"));
+		assert(h.requests[0]?.tools?.some((tool) => tool.name === "expand_tools"));
 		assert(h.requests[0]?.instructions.includes("untrusted evidence"));
 		assert(
 			!JSON.stringify(h.requests.slice(1).map((request) => request.input)).includes(
@@ -954,4 +954,31 @@ test("workspace context bounds untrusted content honestly without attaching PR e
 			(canvas) => canvas.kind !== "document" || canvas.markdown.length === 40000
 		)
 	);
+});
+
+test("routing observation is reused once; state changes after an effect are freshly observed before the next model round", async () => {
+	const h = harness([
+		[call("set_code_view", { view: "head" })],
+		answer("The current code view is displayed."),
+	]);
+	let observations = 0;
+	const original = h.ports.observe;
+	h.ports.observe = async (...args) => {
+		observations++;
+		if (observations === 2) h.observation.workspace.sequence += 10;
+		return original(...args);
+	};
+	try {
+		h.service.start(h.input);
+		await effect(h, 0);
+		await finish(h);
+		assert.equal(observations, 2);
+		assert.equal(h.requests.length, 2);
+		const content = h.requests[1]?.input.at(-1)?.["content"] as { text: string }[];
+		const context = JSON.parse(content[0]?.text ?? "{}");
+		assert.equal(context.actualWorkspace.workspace.sequence, 11);
+		assert.equal(context.actualWorkspace.workspace.codeView, "head");
+	} finally {
+		await h.service.dispose();
+	}
 });

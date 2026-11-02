@@ -1,6 +1,7 @@
 import { createHash, randomUUID } from "node:crypto";
 import { z } from "zod";
 import { abortable, throwIfAborted } from "./cancellation";
+import { type CodingModel, CodingModelSchema } from "./coding-model";
 import {
 	MODEL_API_URL,
 	PRICING_VERIFIED_AT,
@@ -37,6 +38,8 @@ export interface FunctionTool {
 export interface MetaRequest {
 	requestId: string;
 	workload: Workload;
+	/** Exact durable coding identity; foreground requests retain normal workload routing. */
+	codingModel?: CodingModel;
 	input: MetaItem[];
 	instructions: string;
 	tools?: FunctionTool[];
@@ -120,7 +123,8 @@ export class MetaClient implements AgentModelClient {
 	) {}
 
 	async *stream(request: MetaRequest, callerSignal: AbortSignal): AsyncGenerator<MetaStreamEvent> {
-		const model = routeModel(request.workload);
+		const codingModel = request.codingModel && CodingModelSchema.parse(request.codingModel);
+		const model = codingModel?.model ?? routeModel(request.workload);
 		const attemptId = randomUUID();
 		assertStandardModel(model);
 		const signal = AbortSignal.any([
@@ -173,7 +177,9 @@ export class MetaClient implements AgentModelClient {
 				stream: true,
 				store: false,
 				include: ["reasoning.encrypted_content"],
-				reasoning: { effort: request.workload === "quick" ? "minimal" : "high" },
+				reasoning: {
+					effort: codingModel?.reasoning ?? (request.workload === "quick" ? "minimal" : "high"),
+				},
 				max_output_tokens: maxOutputTokens,
 			});
 			if (timing) {

@@ -30,6 +30,8 @@ function expectedHistory(index) {
 function validateRequest(body, index) {
 	assert.ok(index < 3, "Unexpected additional model request");
 	const workspaceTools = new Set([
+		"expand_tools",
+		"analyze_current_context",
 		"inspect_workspace",
 		"probe_browser",
 		"open_browser",
@@ -118,8 +120,10 @@ function validateRequest(body, index) {
 		assert.deepEqual(context.actualWorkspace.reviews, []);
 		assert.equal(context.actualWorkspace.browser, null);
 		for (const key of ["repositories", "incomingReviews", "ownPRFeedback", "tickets", "jobs"])
-			assert.deepEqual(context.actualHub[key], [], `No seeded ${key} in general conversation`);
-		assert.equal(context.actualHub.counts.pendingDecisions, 0);
+			if (context.actualHub[key] !== undefined)
+				assert.deepEqual(context.actualHub[key], [], `No seeded ${key} in general conversation`);
+		if (context.actualHub.counts) assert.equal(context.actualHub.counts.pendingDecisions, 0);
+		// Omitted queues are request-scoped context, not proof that underlying queues are empty.
 	}
 	assert.ok(
 		!/prId|screenContext|fixture|Noor|stackable|shop-web|selectedPullRequest/i.test(
@@ -468,6 +472,19 @@ if (process.argv.includes("--self-check")) {
 		store: false,
 	});
 	validateRequest(withWorkspace(), 0);
+	const focused = withWorkspace();
+	focused.tools = ["inspect_workspace", "open_command_center", "expand_tools"].map((name) => ({
+		name,
+	}));
+	focused.input[focused.input.length - 1].content[0].text = JSON.stringify({
+		actualWorkspace,
+		actualHub: {
+			connections: { model: true },
+			conversationFocus: { effects: [] },
+			contextPolicy: "Omitted queues are not empty.",
+		},
+	});
+	validateRequest(focused, 0);
 	actualWorkspace.workspace.canvases[0].kind = "review";
 	assert.throws(() => validateRequest(withWorkspace(), 0));
 	actualWorkspace.workspace.canvases[0].kind = "center";

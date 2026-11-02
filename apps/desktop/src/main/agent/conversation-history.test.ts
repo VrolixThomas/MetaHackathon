@@ -47,3 +47,47 @@ test("source/workspace budget eviction handles singleton notices without splitti
 	assert.equal(dropOldestConversationRecord(history, 0), 0);
 	assert.deepEqual(history, [{ role: "user", content: "Current real question" }]);
 });
+
+test("interrupted and unconfirmed voice context keeps actual users without inventing heard completion or tool calls", () => {
+	const history: ConversationHistoryEntry[] = [
+		{
+			kind: "exchange",
+			generation: 1,
+			user: "Start MET-77",
+			assistant: "Tab only or across restarts?",
+			interrupted: true,
+		},
+		{
+			kind: "exchange",
+			generation: 2,
+			user: "As you",
+			assistant: "Please clarify your choice.",
+			unconfirmed: true,
+		},
+	];
+	const items = conversationHistoryItems(history);
+	assert.deepEqual(
+		items.filter((item) => item["role"] === "user"),
+		[
+			{ role: "user", content: "Start MET-77" },
+			{ role: "user", content: "As you" },
+		]
+	);
+	assert(String(items[1]?.["content"]).includes("potentially unheard"));
+	assert(String(items[3]?.["content"]).includes("playback completion not established"));
+	assert(items.every((item) => !item["type"]));
+	for (let i = 0; i < 20; i++)
+		history.push({
+			kind: "exchange",
+			user: "u".repeat(3000),
+			assistant: "a".repeat(3000),
+			interrupted: true,
+		});
+	retainConversationHistory(history);
+	assert(
+		conversationHistoryItems(history).reduce(
+			(sum, item) => sum + String(item["content"]).length,
+			0
+		) <= 64000
+	);
+});

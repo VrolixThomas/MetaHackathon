@@ -32,6 +32,7 @@ import {
 	retainConversationHistory,
 } from "./conversation-history";
 import { StartTurnResultSchema } from "./events";
+import { ForegroundProfile } from "./foreground-profile";
 import {
 	ConversationReceiptGate,
 	type ConversationReceiptOptions,
@@ -43,6 +44,7 @@ import {
 import { type ConversationHubPorts, ConversationHubTools } from "./hub-tools";
 import { type AgentModelClient, MetaApiError, type MetaItem } from "./meta-client";
 import { NarrationReceiptGate, type NarrationReceiptOptions } from "./narration";
+import { WorkAdmission } from "./work-admission";
 import { runWorkspaceConversation } from "./workspace-conversation";
 import {
 	type ConversationWorkspacePorts,
@@ -86,6 +88,7 @@ type TurnState = {
 	sequence: number;
 	events: AgentEvent[];
 	text: string;
+	spokenThrough?: number;
 	actions: AgentAction[];
 };
 type UserTurn = TurnState & { kind: "user"; input: ConversationTurnInput };
@@ -101,6 +104,8 @@ type Session = {
 	history: ConversationHistoryEntry[];
 	requests: Set<string>;
 	walkthrough: WalkthroughState;
+	workAdmission: WorkAdmission;
+	profile: ForegroundProfile;
 	attentionFocus?: {
 		claim: AttentionClaim;
 		text: string;
@@ -144,6 +149,11 @@ export class ConversationService {
 			this.narrationProofs.set(receipt.requestId, receipt.status);
 		const session = this.sessions.get(receipt.sessionId);
 		const turn = session?.current;
+		if (result.status === "accepted" && receipt.status === "spoken" && turn?.kind === "user") {
+			const action = turn.actions.find((action) => action.requestId === receipt.requestId);
+			if (action?.kind === "narration-checkpoint")
+				turn.spokenThrough = Math.max(turn.spokenThrough ?? 0, action.throughTextLength);
+		}
 		if (
 			result.status === "accepted" &&
 			receipt.status !== "ignored" &&
@@ -274,7 +284,13 @@ export class ConversationService {
 		if (!session) {
 			if (this.sessions.size >= 100)
 				throw new Error("Release an inactive conversation before starting another");
-			session = { history: [], requests: new Set(), walkthrough: {} };
+			session = {
+				history: [],
+				requests: new Set(),
+				walkthrough: {},
+				workAdmission: new WorkAdmission(),
+				profile: new ForegroundProfile(),
+			};
 			this.sessions.set(input.sessionId, session);
 		}
 		if (previous) this.cancelTurn(previous);
@@ -331,7 +347,13 @@ export class ConversationService {
 		}
 		if (!session && this.sessions.size >= 100)
 			throw new Error("Release an inactive conversation before starting another");
-		const current = session ?? { history: [], requests: new Set<string>(), walkthrough: {} };
+		const current = session ?? {
+			history: [],
+			requests: new Set<string>(),
+			walkthrough: {},
+			workAdmission: new WorkAdmission(),
+			profile: new ForegroundProfile(),
+		};
 		const record: RequestRecord = {
 			sessionId: input.sessionId,
 			turnId: input.turnId,
@@ -564,6 +586,8 @@ export class ConversationService {
 		turn.record.status = "cancelled";
 		turn.controller.abort();
 		if (turn.kind === "user") {
+			const session = this.sessions.get(turn.input.sessionId);
+			if (session) this.rememberExchange(session, turn, true);
 			try {
 				this.options.workspace?.cancel?.({
 					sessionId: turn.input.sessionId,
@@ -579,9 +603,25 @@ export class ConversationService {
 		}
 		this.emit(turn, { kind: "cancelled" });
 	}
+	private rememberExchange(session: Session, turn: UserTurn, interrupted = false) {
+		session.history.push({
+			kind: "exchange",
+			user: turn.input.text,
+			assistant: turn.text,
+			generation: turn.input.generation,
+			interrupted,
+			unconfirmed: turn.input.inputMode === "voice" && (turn.spokenThrough ?? 0) < turn.text.length,
+		});
+		retainConversationHistory(session.history);
+	}
 	private append(turn: Turn, delta: string) {
+		if (turn.controller.signal.aborted || turn.record.status !== "running") return;
 		if (turn.text.length + delta.length > MAX_REPLY_CHARS) throw new ReplyError("Reply too long");
 		turn.text += delta;
+		if (turn.kind === "user")
+			this.sessions
+				.get(turn.input.sessionId)
+				?.workAdmission.observeReply(turn.input.generation, turn.text);
 		if (delta) this.emit(turn, { kind: "text-delta", delta });
 	}
 	private async run(session: Session, turn: UserTurn) {
@@ -638,8 +678,26 @@ export class ConversationService {
 					: undefined;
 				const hubPorts = this.options.hub ?? this.options.workspace?.hub;
 				const hub = hubPorts
-					? new ConversationHubTools(hubPorts, turn.input, signal, (source) =>
-							workspace?.allowPinnedSource(source)
+					? new ConversationHubTools(
+							hubPorts,
+							turn.input,
+							signal,
+							(source) => workspace?.allowPinnedSource(source),
+							{
+								beforeStart: (operation, target) =>
+									session.workAdmission.authorize(
+										this.client,
+										session.history,
+										turn.input,
+										operation,
+										signal,
+										target
+									),
+								focus: () => ({
+									pendingQuestion: session.workAdmission.pendingQuestion,
+									effects: session.workAdmission.effects,
+								}),
+							}
 						)
 					: undefined;
 				let narratedThrough = 0;
@@ -681,22 +739,15 @@ export class ConversationService {
 							return this.reviewReceipts.publish(action, signal, () => emitAction(action));
 						},
 						onText,
-						{ state: session.walkthrough, onNarration, workspace, hub, recovery }
+						{
+							state: session.walkthrough,
+							onNarration,
+							workspace,
+							hub,
+							recovery,
+							profile: session.profile,
+						}
 					);
-					if (hub && narratedThrough > 0 && narratedThrough === turn.text.length) {
-						let updates: string[] = [];
-						try {
-							updates = await hub.pendingWorkUpdates();
-						} catch {
-							throwIfAborted(signal);
-						}
-						throwIfAborted(signal);
-						if (updates.length) {
-							const tail = `\n\n${updates.join(" ")}`;
-							onText(tail);
-							return reply + tail;
-						}
-					}
 					return reply;
 				};
 				const observed = await workspace?.observe();
@@ -720,10 +771,12 @@ export class ConversationService {
 						onText,
 						reviewPorts ? runReview : undefined,
 						recovery,
-						hub
+						hub,
+						observed,
+						session.profile
 					);
 				if (!this.active(session, turn)) return;
-				if (hub?.hasAnnouncements && turn.text.trim()) {
+				if ((hub?.hasAnnouncements || turn.input.inputMode === "voice") && turn.text.trim()) {
 					if (onNarration && narratedThrough < turn.text.length)
 						await onNarration(
 							turn.text.length,
@@ -732,7 +785,7 @@ export class ConversationService {
 					throwIfAborted(signal);
 					// A failed local notice acknowledgement must not erase a completed answer.
 					try {
-						await hub.acknowledgeAnnouncements();
+						await hub?.acknowledgeAnnouncements();
 					} catch {
 						throwIfAborted(signal);
 					}
@@ -798,12 +851,12 @@ export class ConversationService {
 				if (!complete || !turn.text.trim()) throw new ReplyError("Incomplete response");
 			}
 			if (!this.active(session, turn)) return;
-			session.history.push({ kind: "exchange", user: turn.input.text, assistant: turn.text });
-			retainConversationHistory(session.history);
+			this.rememberExchange(session, turn);
 			turn.record.status = "completed";
 			this.emit(turn, { kind: "completed" });
 		} catch (error) {
 			if (this.active(session, turn)) {
+				this.rememberExchange(session, turn, true);
 				turn.record.status = "error";
 				this.emit(turn, { kind: "error", message: safeError(error) });
 			}

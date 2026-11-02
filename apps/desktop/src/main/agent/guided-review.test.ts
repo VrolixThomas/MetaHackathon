@@ -1320,7 +1320,7 @@ test("output-limit recovery discards partial tools/prose and retries original in
 	}
 });
 
-test("recovery is bounded, excludes partial history and does not retry unrelated failures", async () => {
+test("recovery is bounded, retains the real user turn without discarded tool prose and does not retry unrelated failures", async () => {
 	for (const code of ["output-limit", "incomplete", "stream-interrupted", null] as const) {
 		const h = harness([], 1000, undefined, async function* (request) {
 			if (request.requestId === "next-turn") {
@@ -1342,7 +1342,11 @@ test("recovery is bounded, excludes partial history and does not retry unrelated
 			const next = { ...h.identity, turnId: "next-turn", generation: 2 };
 			h.service.start({ ...next, requestId: "next-turn", text: "Hello" });
 			await eventually(() => h.service.poll(next).status === "completed");
-			assert.deepEqual(h.requests.at(-1)?.input, [{ role: "user", content: "Hello" }]);
+			const history = h.requests.at(-1)?.input ?? [];
+			assert.deepEqual(history[0], { role: "user", content: h.input.text });
+			assert(String(history[1]?.["content"]).includes("potentially unheard"));
+			assert.deepEqual(history[2], { role: "user", content: "Hello" });
+			assert(!JSON.stringify(history).includes("DISCARDED PREFIX"));
 		} finally {
 			await h.service.dispose();
 		}
@@ -1619,5 +1623,32 @@ test("selected continuation section begins after the durable narration checkpoin
 		assert.equal(h.navigations.at(-1)?.path, "third.ts");
 	} finally {
 		await h.service.dispose();
+	}
+});
+
+test("displayed PR explanation is one fast request with pinned source; deeper analysis is explicit and tools-free", async () => {
+	for (const deep of [false, true]) {
+		const h = harness(
+			deep
+				? [[call("analyze_current_context", { question: "Reason about the timeout deeply" })], []]
+				: [[]]
+		);
+		displayed(h);
+		h.ports.getFile = async (_pr, _review, path) => fileSource(h.prepared, path);
+		try {
+			h.service.start({ ...h.input, text: deep ? "Analyze this deeply" : "Explain this file" });
+			await finish(h);
+			assert.equal(h.requests.length, deep ? 2 : 1);
+			assert.equal(h.requests[0]?.workload, "quick");
+			assert(JSON.stringify(h.requests[0]?.input).includes("sourceOnly_service.ts"));
+			assert((h.requests[0]?.tools?.length ?? 99) < 15);
+			assert.equal(h.navigations.length, 0);
+			if (deep) {
+				assert.equal(h.requests[1]?.workload, "deep");
+				assert.deepEqual(h.requests[1]?.tools, []);
+			}
+		} finally {
+			await h.service.dispose();
+		}
 	}
 });

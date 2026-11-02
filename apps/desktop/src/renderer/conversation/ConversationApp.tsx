@@ -495,13 +495,14 @@ export function ConversationApp({
 											data-turn-id={entry.turnId}
 											data-phase={entry.phase}
 										>
-											<div className="user-message">
-												<span className="message-label">You</span>
-												<p>
-													{entry.question ||
-														(entry.phase === "cancelled" ? "Voice capture stopped" : "Listening…")}
-												</p>
-											</div>
+											{entry.question.trim() ? (
+												<div className="user-message">
+													<span className="message-label">You</span>
+													<p>{entry.question}</p>
+												</div>
+											) : state.active?.turnId === entry.turnId ? (
+												<output>Listening…</output>
+											) : null}
 											{entry.answer && (
 												<div className="assistant-message">
 													<span className="message-label">

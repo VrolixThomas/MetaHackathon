@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import type { ChildProcess } from "node:child_process";
 import { EventEmitter } from "node:events";
-import { mkdtemp, rm } from "node:fs/promises";
+import { mkdtemp, readFile, readdir, realpath, rm, stat, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { type TestContext, test } from "node:test";
@@ -14,8 +14,10 @@ import {
 	WorkJobSchema,
 	type WorkReview,
 } from "../../shared/contracts";
+import { NEW_CODING_MODEL } from "../agent/coding-model";
 import type { CodingTaskInput, CodingTaskResult } from "../agent/coding-worker";
 import type { WorkJobRuntime } from "../runtime/work-job-runtime";
+import { readCodingModelAdmission } from "./coding-provider/pin";
 import { CommandCenterService } from "./hub";
 import { WorkJobCoordinator } from "./jobs";
 
@@ -158,7 +160,7 @@ type Internals = {
 	runChild(job: WorkJob, run: Running, input: CodingTaskInput): Promise<CodingTaskResult>;
 };
 async function harness(t: TestContext, initial = job(), persisted?: HubPersistence) {
-	const directory = await mkdtemp(join(tmpdir(), "muse-coordinator-test-"));
+	const directory = await realpath(await mkdtemp(join(tmpdir(), "muse-coordinator-test-")));
 	let stored: HubPersistence = persisted ?? {
 		version: 1,
 		repositories: [repository],
@@ -509,6 +511,11 @@ test("admitted internal work reuses decisions, pause/resume, review and shutdown
 	await eventually(async () => (await h.hub.job(id)).state === "ready");
 	await eventually(() => h.internal.running.size === 0);
 	assert(h.inputs[1]?.decisionContext?.includes("User decision: Keep the existing behavior"));
+	assert(
+		h.inputs.every(
+			(input) => JSON.stringify(input.codingModel) === JSON.stringify(NEW_CODING_MODEL)
+		)
+	);
 	assert.equal((await h.jobs.review(id)).job.ticket, null);
 	await h.jobs.revise(id, "Add the requested check");
 	await h.jobs.pause(id);
@@ -1177,4 +1184,111 @@ test("the fixed commit-hook diagnostic stays actionable while arbitrary provider
 			assert(!log.includes(message));
 		}
 	}
+});
+
+test("new queued API jobs persist model before dispatch; a legacy queued job with no checkpoint stays unpinned", async (t) => {
+	const h = await harness(t);
+	const pump = h.internal.pump.bind(h.internal);
+	h.internal.pump = async () => {};
+	const id = await h.jobs.start(ticket, repository, "New exact task", "new-pin");
+	const admitted = await h.hub.job(id);
+	assert.equal(admitted.worktreePath, null);
+	assert.deepEqual(await readCodingModelAdmission(h.options.directory, admitted), NEW_CODING_MODEL);
+	assert.equal(
+		(admitted as unknown as Record<string, unknown>)["codingModel"],
+		undefined,
+		"no public DTO extension"
+	);
+	await pump();
+	await eventually(async () => (await h.hub.job(id)).state === "ready");
+	assert.deepEqual(h.inputs[0]?.codingModel, NEW_CODING_MODEL);
+	const old = await harness(t, {
+		...job("queued"),
+		codingProvider: { provider: "meta-api", musePath: null },
+		worktreePath: null,
+	});
+	await old.jobs.restore();
+	await eventually(async () => (await old.hub.job("job")).state === "ready");
+	assert.equal(old.inputs.length, 1);
+	assert.equal(
+		old.inputs[0]?.codingModel,
+		undefined,
+		"missing admission means legacy at the pin boundary"
+	);
+	assert.equal(
+		await readCodingModelAdmission(old.options.directory, await old.hub.job("job")),
+		undefined
+	);
+});
+
+test("admission metadata reopens privately and rejects source/provider drift or corrupt bytes", async (t) => {
+	const h = await harness(t);
+	h.internal.pump = async () => {};
+	const id = await h.jobs.start(ticket, repository, "Private exact task", "new-pin");
+	const admitted = await h.hub.job(id);
+	assert.deepEqual(
+		await readCodingModelAdmission(h.options.directory, structuredClone(admitted)),
+		NEW_CODING_MODEL
+	);
+	for (const change of [
+		{ brief: "changed" },
+		{ repository: "other/repo" },
+		{ codingProvider: { provider: "muse-code" as const, musePath: null } },
+	]) {
+		await assert.rejects(
+			readCodingModelAdmission(h.options.directory, { ...admitted, ...change }),
+			/identity changed/
+		);
+	}
+	const name = (await readdir(h.options.directory)).find((name) =>
+		name.startsWith(".coding-model-")
+	);
+	assert(name);
+	const path = join(h.options.directory, name);
+	const bytes = await readFile(path, "utf8");
+	assert(!bytes.includes(admitted.brief));
+	assert.equal((await stat(path)).mode & 0o777, 0o600);
+	await writeFile(path, "{corrupt");
+	await assert.rejects(readCodingModelAdmission(h.options.directory, admitted));
+});
+
+test("subscription admission remains unchanged and a new coordinator reuses queued API admission", async (t) => {
+	const h = await harness(t);
+	h.internal.pump = async () => {};
+	Object.assign(h.options, {
+		codingSettings: async () => ({ provider: "muse-code", musePath: "/controlled/muse" }),
+	});
+	const cliId = await h.jobs.start(ticket, repository, "CLI request", "cli");
+	assert.equal(
+		await readCodingModelAdmission(h.options.directory, await h.hub.job(cliId)),
+		undefined
+	);
+	Object.assign(h.options, {
+		codingSettings: async () => ({ provider: "meta-api", musePath: null }),
+	});
+	const id = await h.jobs.start({ ...ticket, id: "api-ticket" }, repository, "API request", "api");
+	await h.jobs.dispose();
+	const restarted = new WorkJobCoordinator(h.options);
+	t.after(() => restarted.dispose());
+	const seen: CodingTaskInput[] = [];
+	(restarted as unknown as Internals).runChild = async (_job, run, input) => {
+		seen.push(input);
+		run.done = true;
+		return { status: "completed", summary: "Controlled" };
+	};
+	await restarted.restore();
+	await eventually(async () => (await h.hub.job(id)).state === "ready");
+	assert.deepEqual(seen.find((input) => input.jobId === id)?.codingModel, NEW_CODING_MODEL);
+	assert.equal(seen.find((input) => input.jobId === cliId)?.codingModel, undefined);
+});
+
+test("failed admission metadata persistence cannot expose or dispatch a new API job", async (t) => {
+	const h = await harness(t);
+	const blocked = join(h.options.directory, "not-a-directory");
+	await writeFile(blocked, "controlled");
+	h.options.directory = blocked;
+	const before = await h.hub.allJobs();
+	await assert.rejects(h.jobs.start(ticket, repository, "Must not admit", "failed-admission"));
+	assert.deepEqual(await h.hub.allJobs(), before);
+	assert.equal(h.inputs.length, 0);
 });

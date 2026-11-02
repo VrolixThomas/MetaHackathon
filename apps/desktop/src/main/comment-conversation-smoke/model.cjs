@@ -29,8 +29,20 @@ function step(body) {
 			? "post"
 			: Object.keys(QUESTIONS).find((key) => QUESTIONS[key] === text);
 	assert.ok(phase, "Unexpected controlled conversational input");
-	const calls = body.input.slice(lastUser + 1).filter((item) => item.type === "function_call");
-	assert.equal(new Set(calls.map((call) => call.call_id)).size, calls.length);
+	const allCalls = body.input.slice(lastUser + 1).filter((item) => item.type === "function_call");
+	assert.equal(new Set(allCalls.map((call) => call.call_id)).size, allCalls.length);
+	for (const call of allCalls.filter((call) => call.name === "expand_tools")) {
+		const result = body.input.find(
+			(item) => item.type === "function_call_output" && item.call_id === call.call_id
+		);
+		assert.ok(result, "Capability expansion must have its actual result");
+		assert.equal(JSON.parse(result.output).status, "tools-expanded");
+	}
+	if (!body.tools.some((tool) => tool.name === "inspect_pr_comment")) {
+		assert.ok(body.tools.some((tool) => tool.name === "expand_tools"));
+		return { phase, tool: "expand_tools", args: { families: ["comments"] } };
+	}
+	const calls = allCalls.filter((call) => call.name !== "expand_tools");
 	const receipt = (index) => {
 		const call = calls[index];
 		if (!call) return null;

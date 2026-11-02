@@ -376,10 +376,24 @@ async function native() {
 								JSON.stringify(expected)
 					)
 			);
+			let frames;
+			try {
+				frames = S.assertReceipt(found, expected);
+			} catch (error) {
+				report.receiptFailure = {
+					expected,
+					input: found.input,
+					result: found.result,
+					ui: found.ui,
+					receivedAt: found.receivedAt,
+				};
+				save();
+				throw error;
+			}
 			report.receipts.push({
 				input: found.input,
 				result: found.result,
-				frames: S.assertReceipt(found, expected),
+				frames,
 				receivedAt: found.receivedAt,
 			});
 			return found;

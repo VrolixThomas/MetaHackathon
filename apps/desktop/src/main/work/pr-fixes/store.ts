@@ -6,6 +6,8 @@ import { z } from "zod";
 import { CodingProviderSettingsSchema } from "../../../shared/contracts/coding-provider";
 import { CommentFixRecordSchema, CommentFixSourceSchema } from "../../agent/pr-comment-fixes";
 
+import { CodingModelSchema } from "../../agent/coding-model";
+
 export const hash = (value: unknown) =>
 	createHash("sha256").update(JSON.stringify(value)).digest("hex");
 export function identity(owner: string, id: string) {
@@ -16,6 +18,7 @@ export function identity(owner: string, id: string) {
 export const EntrySchema = z.strictObject({
 	id: z.string().min(1).max(200),
 	codingProvider: CodingProviderSettingsSchema.optional(),
+	codingModel: CodingModelSchema.optional(),
 	jobId: z.string().min(1).max(200),
 	source: CommentFixSourceSchema,
 	fingerprint: z.string().regex(/^[a-f0-9]{64}$/),

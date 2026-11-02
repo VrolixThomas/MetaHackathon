@@ -24,6 +24,7 @@ import type { HubGitHubClient } from "../runtime/hub-github";
 import type { HubLinearClient } from "../runtime/hub-linear";
 import type { WorkJobRuntime } from "../runtime/work-job-runtime";
 import { codingEnvironment } from "./coding-environment";
+import { readCodingModelAdmission, recordCodingModelAdmission } from "./coding-provider/pin";
 import type { CommandCenterService, HubJobs } from "./hub";
 
 const eventSchema = z.discriminatedUnion("kind", [
@@ -370,7 +371,7 @@ export class WorkJobCoordinator implements HubJobs {
 	): Promise<WorkJob> {
 		const id = randomUUID();
 		const now = new Date().toISOString();
-		return WorkJobSchema.parse({
+		const job = WorkJobSchema.parse({
 			id,
 			codingProvider: (await this.options.codingSettings?.()) ?? {
 				provider: "meta-api",
@@ -397,6 +398,8 @@ export class WorkJobCoordinator implements HubJobs {
 			pauseReason: null,
 			reviewedAt: null,
 		});
+		await recordCodingModelAdmission(this.options.directory, job);
+		return job;
 	}
 	private async patch(
 		id: string,
@@ -615,7 +618,9 @@ export class WorkJobCoordinator implements HubJobs {
 				(job.revisions ?? [])
 					.map((item) => `\nUser review instruction: ${item.instruction}`)
 					.join("\n");
+			const codingModel = await readCodingModelAdmission(this.options.directory, job);
 			const input: CodingTaskInput = {
+				...(codingModel ? { codingModel } : {}),
 				jobId: job.id,
 				ticket: job.ticket,
 				repository: job.repository,
