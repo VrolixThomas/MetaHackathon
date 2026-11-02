@@ -38,6 +38,7 @@ const review = new Set([
 	"start_walkthrough",
 	"continue_walkthrough",
 ]);
+const sourceReads = new Set(["read_pinned_source", "search_pinned_source"]);
 function family(name: string): Family {
 	if (name.includes("pr_delegation")) return "approvals";
 	if (name.includes("pr_comment")) return "comments";
@@ -97,7 +98,12 @@ export class ForegroundProfile {
 	}
 	tools(available: FunctionTool[], canAnalyze = false): FunctionTool[] {
 		return [
-			...available.filter((tool) => core.has(tool.name) || this.has(family(tool.name))),
+			...available.filter(
+				(tool) =>
+					core.has(tool.name) ||
+					this.has(family(tool.name)) ||
+					(this.has("work") && sourceReads.has(tool.name))
+			),
 			{
 				type: "function",
 				name: "expand_tools",
@@ -166,4 +172,4 @@ export class ForegroundProfile {
 	}
 }
 export const PROFILE_INSTRUCTIONS =
-	"The app selected current-context data and a focused tool set before this request. Answer directly from it when sufficient; do not inspect the same data again by default. Omitted queues are not empty. Use expand_tools only when this request needs another capability family. Keep routine conversation on the fast path; analyze_current_context is an explicit deeper read-only reasoning path. Neither context nor expansion establishes user consent or displayed/executed effects.";
+	"The app selected current-context data and a focused tool set before this request. Answer directly from it when sufficient; do not inspect the same data again by default. Available inventories and counts are reference data, not a request to summarize them. Simple navigation needs only its actual display receipt and a brief acknowledgement; do not inspect the destination's items without a substantive question. Omitted queues are not empty. Use expand_tools only when this request needs another capability family; source reads already offered need no expansion, but still require actual inspected pins and authorization. Keep routine conversation on the fast path; analyze_current_context is an explicit deeper read-only reasoning path. Neither context nor expansion establishes user consent or displayed/executed effects.";

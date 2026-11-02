@@ -445,3 +445,58 @@ test("actual service-to-voice-controller stream requests speech before model ter
 		await h.service.dispose();
 	}
 });
+
+test("ordinary greeting/navigation receive copartner policy; navigation stays silent until its actual receipt", async () => {
+	const receipt = deferred();
+	const finish = deferred();
+	let calls = 0;
+	const h = createForegroundReplay(
+		{
+			async *stream(request) {
+				calls++;
+				assert.match(
+					request.instructions,
+					/greeting or invitation to discuss work is not a queue request/
+				);
+				assert.match(request.instructions, /one short acknowledgement and stop/);
+				assert.match(request.instructions, /Do not reopen the settled choice/);
+				assert.match(request.instructions, /do not promise reliability/);
+				if (calls === 1) yield terminal(answer("Controlled greeting, not a quality assertion."));
+				else if (calls === 2) {
+					yield { type: "text", delta: "Unconfirmed arrival must be discarded." };
+					yield terminal([call("open_command_center", { section: "tickets" })]);
+				} else {
+					yield { type: "text", delta: "Controlled acknowledgement." };
+					await finish.promise;
+					yield terminal(answer("Controlled acknowledgement."));
+				}
+			},
+		},
+		{ receipt: () => receipt.promise }
+	);
+	try {
+		assert.equal(
+			(await h.settle(h.start("Hello. Let's discuss my work before starting anything."))).result
+				.status,
+			"completed"
+		);
+		assert.equal(calls, 1);
+		assert.equal(h.reads.navigation, 0);
+		const navigation = h.start("Bring me to my ticket boards.");
+		await eventually(() => h.reads.navigation === 1);
+		assert.equal(h.service.poll(identity(navigation)).text, "");
+		assert.equal(calls, 2);
+		receipt.resolve();
+		await eventually(() => calls === 3);
+		assert.equal(h.service.poll(identity(navigation)).text, "");
+		finish.resolve();
+		assert.equal((await h.settle(navigation)).result.text, "Controlled acknowledgement.");
+		assert.equal(h.reads.ticket, 0);
+		assert.equal(h.reads.job, 0);
+		assert.equal(h.reads.mutations, 0);
+	} finally {
+		receipt.resolve();
+		finish.resolve();
+		await h.service.dispose();
+	}
+});
