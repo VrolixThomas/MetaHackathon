@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
 import { test } from "node:test";
 import { setImmediate } from "node:timers/promises";
+import { LEGACY_CODING_MODEL, NEW_CODING_MODEL } from "./coding-model";
 import {
 	MetaApiError,
 	MetaClient,
@@ -565,4 +566,42 @@ test("truncated stream has a distinct recovery code and tool-free requests use M
 		collect(client),
 		(error: unknown) => error instanceof MetaApiError && error.code === "stream-interrupted"
 	);
+});
+
+test("durable coding pin controls the exact HTTP model/reasoning independently of workload defaults", async () => {
+	for (const codingModel of [LEGACY_CODING_MODEL, NEW_CODING_MODEL]) {
+		let calls = 0;
+		const client = new MetaClient({
+			getApiKey: async () => "controlled-key",
+			recordUsage: () => {},
+			fetch: async (_url, init) => {
+				calls++;
+				const body = JSON.parse(String(init?.body));
+				assert.equal(body.model, codingModel.model);
+				assert.deepEqual(body.reasoning, { effort: codingModel.reasoning });
+				return sseResponse([responseEvent([], codingModel.model)]);
+			},
+		});
+		await collect(client, {
+			...request,
+			workload: codingModel.model === "muse-spark-1.3" ? "deep" : "quick",
+			codingModel,
+		});
+		assert.equal(calls, 1);
+	}
+});
+
+test("a rejected pinned Wonder request never retries with Spark or another provider", async () => {
+	let calls = 0;
+	const client = new MetaClient({
+		getApiKey: async () => "controlled-key",
+		recordUsage: () => {},
+		fetch: async (_url, init) => {
+			calls++;
+			assert.equal(JSON.parse(String(init?.body)).model, NEW_CODING_MODEL.model);
+			return new Response("controlled unavailable", { status: 403 });
+		},
+	});
+	await assert.rejects(collect(client, { ...request, codingModel: NEW_CODING_MODEL }));
+	assert.equal(calls, 1);
 });

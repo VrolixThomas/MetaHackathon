@@ -5,6 +5,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { type TestContext, test } from "node:test";
 import { setTimeout as delay } from "node:timers/promises";
+import { LEGACY_CODING_MODEL, NEW_CODING_MODEL } from "./coding-model";
 import {
 	type CodingTaskInput,
 	type CodingWorkerCheckpoint,
@@ -818,4 +819,130 @@ test("overflowing command output is bounded without exposing a clipped credentia
 	assert.match(result.stdout, /bounded capture limit/);
 	assert.ok(!result.stdout.includes(secret.slice(0, 10)));
 	assert.ok(result.stdout.length < 32000);
+});
+
+for (const codingModel of [LEGACY_CODING_MODEL, NEW_CODING_MODEL]) {
+	test(`exact ${codingModel.model} pin survives checkpoint reopen, decisions and validation feedback`, async (t) => {
+		const f = await fixture(t);
+		const input = { ...f.input, codingModel };
+		const seen: MetaRequest[] = [];
+		const model: AgentModelClient = {
+			async *stream(request) {
+				seen.push(request);
+				assert.deepEqual(request.codingModel, codingModel);
+				assert.equal(request.workload, codingModel.model === "muse-spark-1.3" ? "quick" : "deep");
+				const durable = JSON.parse(await readFile(input.checkpointPath, "utf8"));
+				assert.deepEqual(
+					durable.codingModel,
+					codingModel,
+					"pin is durable before every model request"
+				);
+				yield {
+					type: "completed",
+					response: {
+						id: `response-${seen.length}`,
+						model: codingModel.model,
+						output: [question(`question-${seen.length}`)],
+					},
+				};
+			},
+		};
+		const first = await runCodingTask(model, input, f.newPorts(), signal());
+		assert.equal(first.status, "needs-input");
+		assert.deepEqual(await runCodingTask(model, f.input, f.newPorts(), signal()), first);
+		assert.equal(seen.length, 1, "reopen does not repeat settled work");
+		await runCodingTask(
+			model,
+			{ ...input, decisionContext: "Keep the existing behavior" },
+			f.newPorts(),
+			signal()
+		);
+		await runCodingTask(
+			model,
+			{
+				...input,
+				decisionContext: "Keep the existing behavior",
+				validationFeedback: "Actual check failed",
+			},
+			f.newPorts(),
+			signal()
+		);
+		assert.equal(seen.length, 3);
+		const before = await readFile(input.checkpointPath, "utf8");
+		await assert.rejects(
+			runCodingTask(
+				model,
+				{
+					...input,
+					codingModel:
+						codingModel.model === "muse-spark-1.3" ? NEW_CODING_MODEL : LEGACY_CODING_MODEL,
+				},
+				f.newPorts(),
+				signal()
+			),
+			/checkpoint model changed/
+		);
+		assert.equal(await readFile(input.checkpointPath, "utf8"), before);
+		assert.equal(seen.length, 3);
+	});
+}
+
+test("legacy checkpoint missing model keeps Spark and rejects new-model resume before effects", async (t) => {
+	const f = await fixture(t);
+	await runCodingTask(
+		provider(() => [question("old")]),
+		f.input,
+		f.newPorts(),
+		signal()
+	);
+	const stored = JSON.parse(await readFile(f.input.checkpointPath, "utf8"));
+	Reflect.deleteProperty(stored, "codingModel");
+	await writeFile(f.input.checkpointPath, JSON.stringify(stored));
+	const before = await readFile(f.input.checkpointPath, "utf8");
+	await assert.rejects(
+		runCodingTask(
+			provider(() => {
+				throw Error("must not request");
+			}),
+			{ ...f.input, codingModel: NEW_CODING_MODEL },
+			f.newPorts(),
+			signal()
+		),
+		/checkpoint model changed/
+	);
+	assert.equal(await readFile(f.input.checkpointPath, "utf8"), before);
+	await runCodingTask(
+		provider((request) => {
+			assert.deepEqual(request.codingModel, LEGACY_CODING_MODEL);
+			return [question("resumed")];
+		}),
+		{ ...f.input, decisionContext: "Continue existing behavior" },
+		f.newPorts(),
+		signal()
+	);
+});
+
+test("wrong-model response and output retry never change a coding pin", async (t) => {
+	const f = await fixture(t);
+	let calls = 0;
+	const client: AgentModelClient = {
+		async *stream(request) {
+			calls++;
+			assert.deepEqual(request.codingModel, NEW_CODING_MODEL);
+			if (calls === 1) throw new MetaApiError("Controlled truncation", null, null, "output-limit");
+			yield {
+				type: "completed",
+				response: { id: "wrong", model: "muse-spark-1.3", output: [question("must-not-apply")] },
+			};
+		},
+	};
+	await assert.rejects(
+		runCodingTask(client, { ...f.input, codingModel: NEW_CODING_MODEL }, f.newPorts(), signal()),
+		/different pinned model/
+	);
+	assert.equal(calls, 2);
+	const stored = JSON.parse(await readFile(f.input.checkpointPath, "utf8"));
+	assert.deepEqual(stored.codingModel, NEW_CODING_MODEL);
+	assert.equal(stored.result, null);
+	assert.equal(stored.pendingTool, null);
 });
