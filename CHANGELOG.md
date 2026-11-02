@@ -13,6 +13,8 @@ MuseFocus keeps interrupted conversation context available for follow-up questio
 - Persist exact model/provider choices across coding admissions, checkpoints, PR fixes and team proposal work; preserve historical job behavior and reject conflicting pins (MET-8; `2cf1520`, `3699c18`, `80aa5fb`).
 - Integrate native conversation and coding-routing acceptance from [PR #5](https://github.com/VrolixThomas/MetaHackathon/pull/5) (`0491939`, `5fb0bbc`).
 
+- Give the two multi-step Git publication regressions a bounded 30-second timeout on slower hosts; retain every existing assertion (MET-8).
+
 ### Validation limits
 
 Request-footprint and controlled native results do not establish a measured live speech speedup, physical microphone behavior, or live Wonder/subscription entitlement. This release targets macOS Apple Silicon.
