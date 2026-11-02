@@ -218,7 +218,10 @@ export class ConversationService {
 			throw new Error("Conversation proposal is stale");
 		this.append(turn, `${turn.text ? "\n" : ""}${text}`);
 		const action = AgentActionSchema.parse({
-			...identity,
+			// Composition may pass full ingress; a structural TS type does not strip it.
+			sessionId: identity.sessionId,
+			turnId: identity.turnId,
+			generation: identity.generation,
 			requestId,
 			kind: "narration-checkpoint",
 			screenSequence: 0,
