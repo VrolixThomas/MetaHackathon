@@ -3271,3 +3271,139 @@ test("deep reasoning tolerates sidebar-only revisions but rejects changed acknow
 		}
 	}
 });
+
+test("first request includes authorized historical work without attributing its admission to this session", async () => {
+	const d = data();
+	d.ticket.identifier = "MET-77";
+	required(d.hub.tickets[0]).identifier = "MET-77";
+	let ticketReads = 0;
+	let jobReads = 0;
+	d.ports.ticket = async () => {
+		ticketReads++;
+		return structuredClone(d.ticket);
+	};
+	d.ports.job = async () => {
+		jobReads++;
+		return structuredClone(d.job);
+	};
+	const requests: MetaRequest[] = [];
+	const workspace = selectedTicketWorkspace(d);
+	const observe = workspace.observe;
+	workspace.observe = async () => {
+		const value = await observe(input.sessionId, new AbortController().signal);
+		const primary = value.workspace.canvases[0];
+		if (primary?.kind === "center") primary.selectedId = undefined;
+		return value;
+	};
+	const service = new ConversationService(
+		client([answer("Planning remains separate from existing work.")], requests),
+		{ hub: d.ports, workspace }
+	);
+	try {
+		service.start({
+			...input,
+			text: "Started working on 77 Openets. Open the ticket for me and talk me through it. What design decisions you need from me before we can start on it.",
+		});
+		await eventually(() => service.poll(identity()).status !== "running");
+		assert.equal(service.poll(identity()).status, "completed");
+		assert.equal(requests.length, 1);
+		assert.equal(ticketReads, 1);
+		assert.equal(jobReads, 1);
+		const content = requests[0]?.input.at(-1)?.["content"] as { text: string }[];
+		const context = JSON.parse(required(content[0]).text).currentContext;
+		assert.equal(context.ticket.description, d.ticket.description);
+		assert.deepEqual(context.target, { id: d.ticket.id, displayed: false });
+		assert.equal(context.priorJobs[0].createdAt, time);
+		assert.equal(context.priorJobs[0].state, "ready");
+		assert.equal(context.priorJobs[0].brief, d.job.brief);
+		assert.equal(
+			context.priorJobs[0].admission.origin,
+			"existing-work-not-admitted-in-this-session"
+		);
+		assert.deepEqual(context.sessionAdmissions, []);
+		assert.equal(context.priorJobs[0].checks, undefined);
+		assert.equal(context.priorJobs[0].changedFiles, undefined);
+		assert.equal(d.operations.length, 0);
+	} finally {
+		await service.dispose();
+	}
+});
+
+test("prefill reauthorizes on every turn and withholds revoked or mismatched prior-job details", async () => {
+	const d = data();
+	const tools = new ConversationHubTools(d.ports, input, new AbortController().signal);
+	await tools.observe();
+	const observation = await selectedTicketWorkspace(d).observe(
+		input.sessionId,
+		new AbortController().signal
+	);
+	for (const job of [
+		async () => {
+			throw new Error("revoked");
+		},
+		async () => ({ ...d.job, ticket: null }),
+	]) {
+		d.ports.job = job;
+		const packet = (await tools.currentContext(observation)) as { priorJobs: unknown[] };
+		assert.deepEqual(packet.priorJobs, [
+			{
+				status: "unavailable",
+				details: "Related job could not be freshly authorized; do not infer its state.",
+			},
+		]);
+		assert(!JSON.stringify(packet).includes(d.job.brief));
+	}
+	d.ports.ticket = async () => {
+		throw new Error("revoked ticket");
+	};
+	await assert.rejects(tools.currentContext(observation), /revoked ticket/);
+	assert.equal(d.operations.length, 0);
+});
+
+test("a successful start request returning historical work records reuse, not a fabricated new creation", async () => {
+	const d = data();
+	const requests: MetaRequest[] = [];
+	const text = "Start MET-TEST with the recorded brief";
+	const provider: AgentModelClient = {
+		async *stream(request) {
+			requests.push(request);
+			const output = request.requestId.endsWith(":work-admission")
+				? answer(
+						JSON.stringify({
+							intent: "start",
+							request: { generation: 1, text },
+							scope: "settled",
+							answer: null,
+						})
+					)
+				: requests.length === 1
+					? [
+							call("start_work", {
+								ticketId: d.ticket.id,
+								repositoryId: "repo",
+								brief: "Requested change",
+							}),
+						]
+					: answer("Controlled existing-job reply");
+			yield { type: "completed", response: { id: "controlled", model: "muse-spark-1.3", output } };
+		},
+	};
+	const service = new ConversationService(provider, {
+		hub: d.ports,
+		workspace: selectedTicketWorkspace(d),
+	});
+	try {
+		service.start({ ...input, text });
+		await eventually(() => service.poll(identity()).status !== "running");
+		assert.equal(service.poll(identity()).status, "completed");
+		assert.equal(d.operations.length, 1);
+		const content = requests.at(-1)?.input.at(-1)?.["content"] as { text: string }[];
+		const context = JSON.parse(required(content[0]).text).currentContext;
+		assert.equal(context.sessionAdmissions[0].generation, 1);
+		assert.equal(context.sessionAdmissions[0].creation, "pre-existing-job-returned");
+		assert.equal(context.priorJobs[0].admission.origin, "existing-job-returned-this-session");
+		assert.equal(context.priorJobs[0].createdAt, time);
+	} finally {
+		await service.dispose();
+	}
+});

@@ -101,3 +101,35 @@ test("main-only model timings retain numeric stages and reject content or raw re
 		rmSync(dir, { recursive: true, force: true });
 	}
 });
+
+test("foreground operation timings are fixed labels and numbers; renderer cannot submit them", async () => {
+	const dir = mkdtempSync(join(tmpdir(), "muse-tool-diagnostics-"));
+	const log = new ConversationDiagnostics(dir);
+	const row = {
+		stage: "foreground-timing",
+		turnHash: "a".repeat(64),
+		requestHash: "b".repeat(64),
+		operation: "inspect_ticket",
+		sequence: 1,
+		status: "completed",
+		durationMs: 42,
+		firstTextMs: null,
+	};
+	try {
+		log.record(row);
+		for (const field of ["arguments", "text", "url", "apiKey", "requestId"])
+			log.record({ ...row, [field]: "secret" });
+		log.record({ ...row, operation: "secret-provider-tool" });
+		log.record({ ...row, durationMs: Number.NaN });
+		log.record({ ...row, durationMs: -1 });
+		assert.equal(readFileSync(log.path, "utf8").trim().split("\n").length, 1);
+		assert.doesNotMatch(readFileSync(log.path, "utf8"), /secret|arguments|apiKey/);
+		await assert.rejects(
+			createDiagnosticsRouter(() => log)
+				.createCaller({})
+				.record(row as never)
+		);
+	} finally {
+		rmSync(dir, { recursive: true, force: true });
+	}
+});

@@ -30,7 +30,12 @@ export class WorkAdmissionError extends Error {
 	}
 }
 
-type Attempt = { requestId: string; generation: number; jobId?: string };
+type Attempt = {
+	requestId: string;
+	generation: number;
+	jobId?: string;
+	existingJobReturned?: boolean;
+};
 /** Session-owned foreground gate. No worker lifecycle or delivery authority lives here. */
 export class WorkAdmission {
 	private question?: { generation: number; text: string };
@@ -50,6 +55,9 @@ export class WorkAdmission {
 			target,
 			...attempt,
 			status: attempt.jobId ? "admitted" : "admission-outcome-unknown",
+			creation: attempt.existingJobReturned
+				? "pre-existing-job-returned"
+				: "new-creation-not-established-by-this-receipt",
 		}));
 	}
 
@@ -59,7 +67,7 @@ export class WorkAdmission {
 		turn: ConversationTurnInput,
 		operation: Extract<HubOperation, { kind: "start-work" }>,
 		signal: AbortSignal,
-		observedTarget?: { ticketIdentifier: string; repository: string }
+		observedTarget?: { ticketIdentifier: string; repository: string; existingJobIds?: string[] }
 	) {
 		throwIfAborted(signal);
 		const key = JSON.stringify([operation.ticketId, operation.repositoryId]);
@@ -149,7 +157,11 @@ export class WorkAdmission {
 			settle: (result: HubOperationResult) => {
 				throwIfAborted(signal);
 				const attempt = this.attempts.get(key);
-				if (attempt && result.jobId) attempt.jobId = result.jobId;
+				if (attempt && result.jobId) {
+					attempt.jobId = result.jobId;
+					attempt.existingJobReturned =
+						observedTarget?.existingJobIds?.includes(result.jobId) ?? false;
+				}
 			},
 		};
 	}

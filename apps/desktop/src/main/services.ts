@@ -230,6 +230,7 @@ async function prepareCurrentReview(
 export const conversationService: ConversationService = new ConversationService(
 	conversationClient,
 	{
+		onTiming: (event) => diagnostics?.record(event),
 		onUserTurn: (input) => {
 			commentPresentations.confirmation.acceptUserTurn(input, input.inputMode ?? "typed");
 			approvalConfirmation.acceptUserTurn(input);

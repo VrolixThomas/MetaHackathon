@@ -33,6 +33,7 @@ import {
 import { type ApprovalToolPorts, ApprovalTools } from "./approval-tools";
 import { abortable, throwIfAborted } from "./cancellation";
 import { type ConversationDayPorts, ConversationDayTools } from "./day-tools";
+import { ForegroundTrace } from "./foreground-timing";
 import { GuidedReviewError } from "./guided-review";
 import {
 	type ConversationKnowledgePorts,
@@ -333,13 +334,18 @@ export class ConversationHubTools {
 		private readonly admission?: {
 			beforeStart(
 				operation: Extract<HubOperation, { kind: "start-work" }>,
-				target: { ticketIdentifier: string; repository: string }
+				target: { ticketIdentifier: string; repository: string; existingJobIds?: string[] }
 			): ReturnType<WorkAdmission["authorize"]>;
 			focus(): {
 				pendingQuestion: { generation: number; text: string } | undefined;
 				effects: WorkAdmission["effects"];
 			};
-		}
+		},
+		private readonly trace = new ForegroundTrace(turn.requestId, {
+			sessionId: turn.sessionId,
+			turnId: turn.turnId,
+			generation: turn.generation,
+		})
 	) {
 		if (ports.approvals) this.approvals = new ApprovalTools(ports.approvals, turn, signal);
 		if (ports.prComments)
@@ -383,18 +389,87 @@ export class ConversationHubTools {
 		const canvas = observation?.workspace.canvases.find(
 			(canvas) => canvas.id === observation.workspace.primaryId
 		);
-		if (canvas?.kind === "center" && canvas.selectedId) {
-			if (
-				canvas.section === "tickets" &&
-				this.latest?.tickets.some((ticket) => ticket.id === canvas.selectedId)
-			)
-				return this.execute("inspect_ticket", JSON.stringify({ id: canvas.selectedId }));
-			if (
-				["completed", "activity"].includes(canvas.section) &&
-				this.latest?.jobs.some((job) => job.id === canvas.selectedId)
-			)
-				return this.execute("inspect_work_job", JSON.stringify({ id: canvas.selectedId }));
+		// Resolve only actual observed identifiers. A bare number is useful on the
+		// ticket board only when unique; it is never a fabricated provider ID.
+		const mentioned =
+			this.latest?.tickets.filter((ticket) => {
+				const words = this.turn.text.toUpperCase().match(/[A-Z]+-?\d+|\d+/g) ?? [];
+				return words.some(
+					(word) =>
+						word.replace(/[- ]/g, "") === ticket.identifier.replace(/-/g, "").toUpperCase() ||
+						(canvas?.kind === "center" &&
+							canvas.section === "tickets" &&
+							/\bticket\b/i.test(this.turn.text) &&
+							word === ticket.identifier.split("-").at(-1))
+				);
+			}) ?? [];
+		const selected =
+			canvas?.kind === "center" && canvas.section === "tickets"
+				? this.latest?.tickets.find((ticket) => ticket.id === canvas.selectedId)
+				: undefined;
+		const target =
+			mentioned.length === 1 ? mentioned[0] : mentioned.length === 0 ? selected : undefined;
+		if (target) {
+			const packet = (await this.trace.measure("prefill-ticket", this.signal, () =>
+				this.execute("inspect_ticket", JSON.stringify({ id: target.id }))
+			)) as Record<string, unknown>;
+			const related = this.latest?.jobs.filter((job) => job.ticket?.id === target.id) ?? [];
+			const effects = this.admission?.focus().effects ?? [];
+			const priorJobs = await Promise.all(
+				related.slice(0, 3).map(async (summary) => {
+					try {
+						// Read current main-owned local job state; the ticket was freshly fetched
+						// above. This does not inspect source or establish new repository authority.
+						const job = WorkJobSchema.parse(
+							await this.trace.measure("prefill-job", this.signal, () =>
+								abortable(this.ports.job(summary.id, this.signal), this.signal)
+							)
+						);
+						if (job.id !== summary.id || job.ticket?.id !== target.id)
+							throw new GuidedReviewError("The related job no longer matches this ticket.");
+						const effect = effects.find((effect) => effect.jobId === job.id);
+						return {
+							id: job.id,
+							createdAt: job.createdAt,
+							updatedAt: job.updatedAt,
+							state: job.state,
+							brief: clipBytes(job.brief, 2000),
+							reviewedAt: job.reviewedAt ?? null,
+							pullRequest: job.pullRequest,
+							admission: effect
+								? {
+										origin: effect.existingJobReturned
+											? "existing-job-returned-this-session"
+											: "request-submitted-this-session-creation-not-established",
+										generation: effect.generation,
+									}
+								: { origin: "existing-work-not-admitted-in-this-session" },
+							implementation: "not-inspected; readiness is not acceptance or publication",
+						};
+					} catch {
+						throwIfAborted(this.signal);
+						return {
+							status: "unavailable",
+							details: "Related job could not be freshly authorized; do not infer its state.",
+						};
+					}
+				})
+			);
+			return {
+				...packet,
+				target: { id: target.id, displayed: selected?.id === target.id },
+				priorJobs,
+				priorJobsTruncated: related.length > 3,
+				sessionAdmissions: effects,
+			};
 		}
+		if (
+			canvas?.kind === "center" &&
+			canvas.selectedId &&
+			["completed", "activity"].includes(canvas.section) &&
+			this.latest?.jobs.some((job) => job.id === canvas.selectedId)
+		)
+			return this.execute("inspect_work_job", JSON.stringify({ id: canvas.selectedId }));
 		if (canvas?.kind === "source")
 			return { source: this.boundedSource(canvas.source), evidencePolicy: policy };
 		return undefined;
@@ -509,6 +584,7 @@ export class ConversationHubTools {
 		const permission =
 			operation.kind === "start-work"
 				? await this.admission?.beforeStart(operation, {
+						existingJobIds: this.latest?.jobs.map((job) => job.id) ?? [],
 						ticketIdentifier:
 							this.latest?.tickets.find((ticket) => ticket.id === operation.ticketId)?.identifier ??
 							"",

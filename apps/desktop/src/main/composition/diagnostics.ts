@@ -11,6 +11,7 @@ import {
 import { join } from "node:path";
 import { z } from "zod";
 import { ConversationDiagnosticSchema } from "../../shared/contracts";
+import { ForegroundTimingSchema } from "../agent/foreground-timing";
 import type { ModelTimingRecord } from "../agent/meta-client";
 import { publicProcedure, router } from "../trpc";
 
@@ -66,7 +67,12 @@ const modelTiming = z.strictObject({
 	cachedInputTokens: count.nullable(),
 	outputTokens: count.nullable(),
 });
-const eventSchema = z.union([ConversationDiagnosticSchema, lifecycle, modelTiming]);
+const eventSchema = z.union([
+	ConversationDiagnosticSchema,
+	lifecycle,
+	modelTiming,
+	ForegroundTimingSchema,
+]);
 
 /** Bounded private local log. Logging must never fail or delay a voice turn on disk errors. */
 export class ConversationDiagnostics {
