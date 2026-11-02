@@ -54,8 +54,9 @@ it("manual review controls retire the reply before navigation while leaving hand
 		assert.deepEqual([...events], []);
 		button.props.onClick({} as MouseEvent<HTMLButtonElement>);
 		assert.deepEqual([...events], ["interrupt", "navigate"]);
+		assert.deepEqual(conversation.store.getState().exchanges, []);
 		conversation.answer(turn, "Old file narration arriving late");
-		assert.equal(conversation.store.getState().exchanges.at(-1)?.answer, "");
+		assert.deepEqual(conversation.store.getState().exchanges, []);
 		assert.equal(conversation.store.getState().handsFree, true);
 		ReviewActionButton({
 			disabled: true,
