@@ -243,6 +243,7 @@ export function createForegroundReplay(
 		}
 	);
 	let generation = 0;
+	const startedAt = new Map<number, number>();
 	return {
 		service,
 		requests,
@@ -266,11 +267,12 @@ export function createForegroundReplay(
 				text,
 				inputMode: "typed",
 			};
+			startedAt.set(generation, performance.now());
 			service.start(input);
 			return input;
 		},
 		async settle(input: ConversationTurnInput, timeoutMs = 120_000) {
-			const start = performance.now();
+			const start = startedAt.get(input.generation) ?? performance.now();
 			let firstPublishedMs: number | null = null;
 			while (performance.now() - start < timeoutMs) {
 				const result = service.poll(identity(input));
