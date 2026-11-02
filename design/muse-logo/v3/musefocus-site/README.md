@@ -82,3 +82,21 @@ review artifact. Before an eventual publication, set a real release/waitlist
 destination if desired and add canonical/absolute social URLs for the chosen
 domain. Publication remains a separate action. The current page works entirely
 as a local interactive introduction.
+
+## Production deployment (2026-11-02)
+
+The site is published at https://musefocus.app on the Vercel project `musefocus`
+in `thomas-projects-18c8a57b`. `www.musefocus.app` redirects to the apex domain;
+Cloudflare retains domain registration and DNS.
+
+Vercel is connected to `VrolixThomas/MetaHackathon`. Production tracks
+`design/muse-logo-motion`, with root directory
+`design/muse-logo/v3/musefocus-site/dist`. Commit and push changes to the files
+in that directory on this branch to update production automatically. Changes
+on other branches do not update the production domain.
+
+`dist/vercel.json` serves the committed static files directly, with no install
+or build command. Edit `dist/` as the website source; `source/build.py` assembles
+the standalone HTML and ZIP review artifacts rather than generating `dist/`.
+The original November 1 deployment used a browser upload; the Git connection
+replaces that manual update workflow. No environment variables are needed.
