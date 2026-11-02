@@ -12,7 +12,7 @@ test("actual conversation routes reuse only the initial snapshot and retain late
 			[1, 1, 1, 1],
 			[2, 2, 2, 2],
 			[2, 2, 2, 2],
-			[1, 1, 1, 1],
+			[1, 2, 2, 1],
 			[3, 2, 2, 2],
 			[1, 2, 2, 1],
 		]
@@ -23,7 +23,10 @@ test("actual conversation routes reuse only the initial snapshot and retain late
 			assert((row.requests[0]?.toolCount ?? 100) < 10);
 		assert.equal(row.firstAudioMs, null);
 		assert.equal(row.inputTokens, null);
-		assert((row.firstPublishedMs ?? 0) >= (row.requests[0]?.terminalMs ?? 0));
+		if (row.scenario === "selected-ticket") {
+			assert.equal(row.requests[0]?.toolCount, 0);
+			assert((row.firstPublishedMs ?? 0) < (row.requests[0]?.terminalMs ?? 0));
+		} else assert((row.firstPublishedMs ?? 0) >= (row.requests[0]?.terminalMs ?? 0));
 	}
 	assert.equal(results.find((row) => row.scenario === "scoped-dispatch")?.admissions, 1);
 	assert.equal(results.find((row) => row.scenario === "selected-ticket")?.ticketReads, 1);

@@ -3055,7 +3055,7 @@ test("selected ticket supplies freshly authorized details in the first fast requ
 		assert.equal(packet.currentContext.ticket.id, d.ticket.id);
 		assert.equal(packet.actualHub.ownPRFeedback, undefined);
 		assert.equal(packet.actualHub.incomingReviews, undefined);
-		assert(requests[0]?.tools?.some((tool) => tool.name === "start_work"));
+		assert.equal(requests[0]?.tools?.length, 0);
 		assert(!requests[0]?.tools?.some((tool) => tool.name === "confirm_pr_comment"));
 		assert.equal(d.operations.length, 0);
 	} finally {

@@ -20,6 +20,7 @@ import {
 	ReviewScreenSchema,
 } from "../../shared/contracts";
 import { abortable, throwIfAborted } from "./cancellation";
+import { COPARTNER_INSTRUCTIONS } from "./foreground-dialogue";
 import { ForegroundProfile, PROFILE_INSTRUCTIONS } from "./foreground-profile";
 import type { ConversationHubTools } from "./hub-tools";
 import {
@@ -329,7 +330,7 @@ export async function runGuidedReview(
 		const request = {
 			requestId: `${input.requestId}:review:${round}`,
 			workload: "quick" as const,
-			instructions: `${workspace || hub ? `${INSTRUCTIONS}\n${WORKSPACE_INSTRUCTIONS}` : INSTRUCTIONS}\n${PROFILE_INSTRUCTIONS}`,
+			instructions: `${workspace || hub ? `${INSTRUCTIONS}\n${WORKSPACE_INSTRUCTIONS}` : INSTRUCTIONS}\n${COPARTNER_INSTRUCTIONS}\n${PROFILE_INSTRUCTIONS}`,
 			input: modelInput,
 			tools: navigated
 				? []

@@ -1484,3 +1484,23 @@ for (const stage of ["poll", "synthesis", "hardware"] as const) {
 		}
 	});
 }
+
+test("spoken Stop keeps the actual hands-free audio session listening with zero agent/TTS calls, then Continue is a real turn", async () => {
+	const h = harness();
+	h.setTranscript("Stop.");
+	await h.voice.startListening();
+	h.feed(tone(), undefined, 15);
+	h.feed(undefined, undefined, 35);
+	await until(() => h.ends.length === 1);
+	assert.equal(h.starts.length, 0);
+	assert.equal(h.speaks.length, 0);
+	assert.equal(h.sessions[0]?.closed, false);
+	assert.equal(h.voice.getSessionSnapshot().active, true);
+	h.setTranscript("Continue");
+	h.feed(tone(), undefined, 15);
+	h.feed(undefined, undefined, 35);
+	await until(() => h.starts.length === 1);
+	assert.equal(h.starts[0]?.text, "Continue");
+	assert.equal(h.sessions.length, 1);
+	assert.equal(h.sessions[0]?.closed, false);
+});

@@ -3,7 +3,7 @@ import { PRODUCT_NAME } from "../../shared/brand";
 import type { ConversationTurnInput, WorkspaceObservation } from "../../shared/contracts";
 import { throwIfAborted } from "./cancellation";
 import { dropOldestConversationRecord } from "./conversation-history";
-import { COPARTNER_INSTRUCTIONS } from "./foreground-dialogue";
+import { COPARTNER_INSTRUCTIONS, ticketDialogueMode } from "./foreground-dialogue";
 import { ForegroundProfile, PROFILE_INSTRUCTIONS } from "./foreground-profile";
 import { ForegroundTrace } from "./foreground-timing";
 import { GuidedReviewError, modelRound } from "./guided-review";
@@ -135,22 +135,54 @@ export async function runWorkspaceConversation(
 			throw new GuidedReviewError(
 				"The workspace conversation is too large. Ask a narrower question."
 			);
+		const dialogueMode = ticketDialogueMode(input.text, history, currentContext);
+		const answerOnly = dialogueMode === "answer";
+		const selectedTools = workspaceRequestTools(
+			profile.tools([...(workspace?.tools ?? []), ...(hub?.tools ?? [])], canAnalyze)
+		);
 		const request = {
 			requestId: `${input.requestId}:workspace:${round}`,
 			workload: "quick" as const,
-			instructions: `${WORKSPACE_INSTRUCTIONS}\n${COPARTNER_INSTRUCTIONS}\n${PROFILE_INSTRUCTIONS}`,
+			instructions: `${WORKSPACE_INSTRUCTIONS}\n${COPARTNER_INSTRUCTIONS}\n${PROFILE_INSTRUCTIONS}${answerOnly ? "\nThis is a tools-free discussion answer. The supplied context is sufficient for planning, not implementation claims. Discuss the choice; no coding, inspection, display or publication action is being taken by this request." : ""}`,
 			input: modelInput(),
-			tools: workspaceRequestTools(
-				profile.tools([...(workspace?.tools ?? []), ...(hub?.tools ?? [])], canAnalyze)
-			),
+			tools: answerOnly
+				? []
+				: dialogueMode === "navigate-discussion"
+					? selectedTools.filter((tool) => tool.name === "open_command_center")
+					: selectedTools,
 			maxOutputTokens: 2048,
 		};
+		let streamed = false;
+		const streamText = answerOnly
+			? async (delta: string) => {
+					throwIfAborted(signal);
+					if (!streamed && workspace) {
+						const current = await trace.measure("workspace-observe", signal, () =>
+							workspace.observe()
+						);
+						if (
+							(current.workspace.contentSequence ?? current.workspace.sequence) !==
+							(observation?.workspace.contentSequence ?? observation?.workspace.sequence)
+						)
+							throw new GuidedReviewError(
+								"The workspace changed. Ask again from the current item."
+							);
+					}
+					streamed = true;
+					await onText(delta);
+				}
+			: undefined;
 		let response: Awaited<ReturnType<typeof modelRound>>;
 		try {
-			response = await modelRound(client, request, signal);
+			response = await modelRound(client, request, signal, streamText);
 		} catch (error) {
 			throwIfAborted(signal);
-			if (!(error instanceof MetaApiError) || error.code !== "output-limit" || recovery.used)
+			if (
+				!(error instanceof MetaApiError) ||
+				error.code !== "output-limit" ||
+				recovery.used ||
+				streamed
+			)
 				throw error;
 			const current = await workspace?.observe();
 			if (current?.workspace.sequence !== observation?.workspace.sequence)
@@ -159,7 +191,8 @@ export async function runWorkspaceConversation(
 			response = await modelRound(
 				client,
 				{ ...request, requestId: `${request.requestId}:retry`, maxOutputTokens: 4096 },
-				signal
+				signal,
+				streamText
 			);
 		}
 		throwIfAborted(signal);
@@ -167,7 +200,7 @@ export async function runWorkspaceConversation(
 		if (!calls.length) {
 			if (!response.text.trim())
 				throw new GuidedReviewError("The conversation reply was empty. Please try again.");
-			await onText(response.text);
+			if (!answerOnly) await onText(response.text);
 			return response.text;
 		}
 		if (calls.length !== 1)
@@ -175,6 +208,8 @@ export async function runWorkspaceConversation(
 				"Workspace operations must settle one at a time. Please try again."
 			);
 		const call = callSchema.parse(calls[0]);
+		if (dialogueMode !== "tools" && !request.tools.some((tool) => tool.name === call.name))
+			throw new GuidedReviewError("The requested capability was not available in this turn.");
 		if (seen.has(call.call_id))
 			throw new GuidedReviewError("The model repeated a workspace operation. Please try again.");
 		seen.add(call.call_id);
