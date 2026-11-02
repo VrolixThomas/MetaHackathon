@@ -158,6 +158,7 @@ export class ForegroundProfile {
 		const jobIds = new Set(Array.isArray(jobs) ? jobs.map((job) => job.id) : []);
 		return {
 			connections: hub["connections"],
+			clock: hub["clock"],
 			conversationFocus: hub["conversationFocus"],
 			...(this.has("work")
 				? {
@@ -184,4 +185,4 @@ export class ForegroundProfile {
 	}
 }
 export const PROFILE_INSTRUCTIONS =
-	"The app selected current-context data and a focused tool set before this request. Answer directly from it when sufficient; do not inspect the same data again by default. Available inventories and counts are reference data, not a request to summarize them. Simple navigation needs only its actual display receipt and a brief acknowledgement; do not inspect the destination's items without a substantive question. Omitted queues are not empty. Use expand_tools only when this request needs a family absent from the available tools; never repeat expansion for an already available family or poll unchanged lists waiting for background work; source reads already offered need no expansion, but still require actual inspected pins and authorization. Keep routine conversation on the fast path; analyze_current_context is an explicit deeper read-only reasoning path. Neither context nor expansion establishes user consent or displayed/executed effects.";
+	"The app selected current-context data and a focused tool set before this request. Answer directly from it when sufficient; do not inspect the same data again by default. Available inventories and counts are reference data, not a request to summarize them. Simple navigation needs only its actual display receipt and a brief acknowledgement; do not inspect the destination's items without a substantive question. Omitted queues are not empty. Use expand_tools only when this request needs a family absent from the available tools; never repeat expansion for an already available family or poll unchanged lists waiting for background work; source reads already offered need no expansion, but still require actual inspected pins and authorization. Keep routine conversation on the fast path; analyze_current_context is an explicit deeper read-only reasoning path. The app supplies actualHub.clock from the main-process clock. Derive relative deadlines from clock.turnReferenceAt for this user request, preserving the exact duration and UTC timestamp without rounding or guessing from source dates; clock.observedAt is the latest observation time. Neither clock metadata, context nor expansion establishes user consent or displayed/executed effects.";

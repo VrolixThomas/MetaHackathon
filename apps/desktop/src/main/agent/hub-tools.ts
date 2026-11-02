@@ -326,6 +326,7 @@ export class ConversationHubTools {
 	private readonly prComments?: ConversationPRCommentTools;
 	private readonly approvals?: ApprovalTools;
 	private sequence = 0;
+	private readonly turnReferenceAt = new Date().toISOString();
 	private admittedFix?: Pick<PRFixSummary, "id" | "phase">;
 	/** Only a validated production-port admission can end the foreground wait. */
 	get feedbackHandoff() {
@@ -395,6 +396,11 @@ export class ConversationHubTools {
 		const focus = this.admission?.focus();
 		return {
 			...context,
+			clock: {
+				turnReferenceAt: this.turnReferenceAt,
+				observedAt: new Date().toISOString(),
+				timeZone: "UTC",
+			},
 			...(focus?.pendingQuestion ? { notices: [] } : {}),
 			...(day ? { day } : {}),
 			conversationFocus: focus,

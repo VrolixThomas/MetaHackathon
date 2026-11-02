@@ -3675,6 +3675,7 @@ for (const inputMode of ["typed", "voice"] as const) {
 				}
 			);
 			try {
+				const before = Date.now();
 				service.start(turn);
 				await eventually(
 					() =>
@@ -3698,6 +3699,26 @@ for (const inputMode of ["typed", "voice"] as const) {
 				assert.match(result.text, /actual check results.*when it’s ready/);
 				assert.doesNotMatch(result.text, /passed|TOOL FILLER|ready for review/);
 				assert.equal(requests.length, 3);
+				const clocks = requests.map((request) => {
+					const last = required(request.input.at(-1));
+					const content = last["content"] as { text: string }[];
+					return JSON.parse(required(content[0]).text).actualHub.clock as {
+						turnReferenceAt: string;
+						observedAt: string;
+						timeZone: string;
+					};
+				});
+				assert.equal(new Set(clocks.map((clock) => clock.turnReferenceAt)).size, 1);
+				for (const clock of clocks) {
+					assert.equal(clock.timeZone, "UTC");
+					assert.ok(Date.parse(clock.turnReferenceAt) >= before);
+					assert.ok(Date.parse(clock.observedAt) >= Date.parse(clock.turnReferenceAt));
+					assert.ok(Date.parse(clock.observedAt) <= Date.now());
+				}
+				assert.match(
+					required(requests[0]).instructions,
+					/exact duration and UTC timestamp without rounding/
+				);
 				assert.equal(starts, 1);
 				assert.equal(lists, 0);
 				assert.equal(details, 0);
