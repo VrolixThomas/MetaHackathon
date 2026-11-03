@@ -3367,7 +3367,7 @@ test("cancelled deeper analysis cannot publish late output or affect a saved job
 	}
 });
 
-test("deep reasoning tolerates sidebar-only revisions but rejects changed acknowledged content", async () => {
+test("grounded deep reasoning continues across manual sidebar and content changes", async () => {
 	for (const changedContent of [false, true]) {
 		const d = data();
 		const workspace = selectedTicketWorkspace(d);
@@ -3402,8 +3402,8 @@ test("deep reasoning tolerates sidebar-only revisions but rejects changed acknow
 		try {
 			service.start({ ...input, text: "Analyze this in depth" });
 			await eventually(() => service.poll(identity()).status !== "running");
-			assert.equal(service.poll(identity()).status, changedContent ? "error" : "completed");
-			assert.equal(service.poll(identity()).text, changedContent ? "" : "Bounded deep inference.");
+			assert.equal(service.poll(identity()).status, "completed");
+			assert.equal(service.poll(identity()).text, "Bounded deep inference.");
 			assert.equal(d.operations.length, 0);
 		} finally {
 			await service.dispose();
@@ -4274,7 +4274,7 @@ test("explicit navigation shortcut requires one observed target across panes and
 	}
 });
 
-test("explicit navigation answer stream rejects cancellation or content changes before first text", async () => {
+test("explicit navigation answer survives browsing but rejects explicit cancellation before first text", async () => {
 	for (const cause of ["cancelled", "content-changed"] as const) {
 		const d = data();
 		const w = ticketBoard(d);
@@ -4308,8 +4308,14 @@ test("explicit navigation answer stream rejects cancellation or content changes 
 			else w.observation.workspace.sequence++;
 			release?.();
 			await eventually(() => service.poll(identity()).status !== "running");
-			assert.equal(service.poll(identity()).status, cause === "cancelled" ? "cancelled" : "error");
-			assert.equal(service.poll(identity()).text, "");
+			assert.equal(
+				service.poll(identity()).status,
+				cause === "cancelled" ? "cancelled" : "completed"
+			);
+			assert.equal(
+				service.poll(identity()).text,
+				cause === "cancelled" ? "" : "LATE PLANNING TEXT"
+			);
 			assert.equal(w.commands.length, 1);
 			assert.equal(d.operations.length, 0);
 		} finally {
@@ -5006,9 +5012,13 @@ for (const selected of [false, true]) {
 				await eventually(() => service.poll(identity()).status !== "running");
 				assert.equal(
 					service.poll(identity()).status,
-					outcome === "applied" ? "completed" : outcome === "cancelled" ? "cancelled" : "error"
+					outcome === "applied" || outcome === "content-changed"
+						? "completed"
+						: outcome === "cancelled"
+							? "cancelled"
+							: "error"
 				);
-				if (outcome === "applied") {
+				if (outcome === "applied" || outcome === "content-changed") {
 					assert.equal(requests.length, 3);
 					assert(requests[2]?.requestId.includes(":workspace:"));
 					const final = JSON.stringify(requests[2]?.input);
@@ -5452,11 +5462,11 @@ for (const change of ["sidebar", "content", "cancelled"] as const) {
 			await eventually(() => service.poll(identity()).status !== "running");
 			assert.equal(
 				service.poll(identity()).status,
-				change === "sidebar" ? "completed" : change === "content" ? "error" : "cancelled"
+				change === "cancelled" ? "cancelled" : "completed"
 			);
 			assert.equal(
 				service.poll(identity()).text,
-				change === "sidebar" ? "Controlled preference." : ""
+				change === "cancelled" ? "" : "Controlled preference."
 			);
 			assert.equal(service.poll(identity()).actions.length, 0);
 			assert.equal(d.operations.length, 0);
@@ -5796,7 +5806,11 @@ for (const outcome of ["applied", "cancelled", "wrong-target"] as const) {
 			await eventually(() => service.poll(identity()).status !== "running");
 			assert.equal(
 				service.poll(identity()).status,
-				outcome === "applied" ? "completed" : outcome === "cancelled" ? "cancelled" : "error"
+				outcome === "applied" || outcome === "content-changed"
+					? "completed"
+					: outcome === "cancelled"
+						? "cancelled"
+						: "error"
 			);
 			assert.equal(requests.length, outcome === "applied" ? 1 : 0);
 			if (outcome === "applied")

@@ -318,18 +318,7 @@ export async function runWorkspaceConversation(
 		const streamText = answerOnly
 			? async (delta: string) => {
 					throwIfAborted(signal);
-					if (!streamed && workspace) {
-						const current = await trace.measure("workspace-observe", signal, () =>
-							workspace.observe()
-						);
-						if (
-							(current.workspace.contentSequence ?? current.workspace.sequence) !==
-							(observation?.workspace.contentSequence ?? observation?.workspace.sequence)
-						)
-							throw new GuidedReviewError(
-								"The workspace changed. Ask again from the current item."
-							);
-					}
+					// Preserve the grounded answer while the user browses; effects have a separate fence.
 					streamed = true;
 					await onText(delta);
 				}
@@ -346,9 +335,6 @@ export async function runWorkspaceConversation(
 				streamed
 			)
 				throw error;
-			const current = await workspace?.observe();
-			if (current?.workspace.sequence !== observation?.workspace.sequence)
-				throw new GuidedReviewError("The workspace changed. Continue from the current canvas.");
 			recovery.used = true;
 			response = await modelRound(
 				client,
@@ -363,15 +349,7 @@ export async function runWorkspaceConversation(
 			if (!response.text.trim())
 				throw new GuidedReviewError("The conversation reply was empty. Please try again.");
 			if (profile.candidateWorkflow) {
-				const current = await workspace?.observe();
-				if (
-					(current?.workspace.contentSequence ?? current?.workspace.sequence) !==
-					(observation?.workspace.contentSequence ?? observation?.workspace.sequence)
-				)
-					throw new GuidedReviewError(
-						"The workspace changed. Ask again from the current candidate."
-					);
-				await hub?.currentContext(current);
+				await hub?.currentContext(observation);
 				throwIfAborted(signal);
 			}
 			if (!answerOnly) await onText(response.text);
@@ -427,14 +405,7 @@ export async function runWorkspaceConversation(
 					)
 				);
 				throwIfAborted(signal);
-				if (workspace) {
-					const current = (await workspace.observe()).workspace;
-					if (
-						(current.contentSequence ?? current.sequence) !==
-						(observation?.workspace.contentSequence ?? observation?.workspace.sequence)
-					)
-						throw new GuidedReviewError("The workspace changed. Ask again from the current item.");
-				}
+				if (profile.candidateWorkflow) await hub?.currentContext(observation);
 				if (!deep.text.trim())
 					throw new GuidedReviewError("The deeper analysis returned no answer.");
 				await onText(deep.text);
