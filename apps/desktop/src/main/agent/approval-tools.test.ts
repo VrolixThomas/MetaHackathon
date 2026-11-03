@@ -342,3 +342,44 @@ it("provider or post-validation errors never become repairable input failures", 
 		await h.service.dispose();
 	}
 });
+
+it("empty delegation inspection reports available operations without activation or fabricated service availability", async () => {
+	const h = harness([]);
+	const confirmation = new ApprovalConfirmation({ voice: () => false, narrate: async () => {} });
+	const tools = new ApprovalTools(
+		{ service: () => h.service, confirmation },
+		turn,
+		new AbortController().signal
+	);
+	try {
+		const result = (await tools.execute("inspect_pr_delegations", "{}")) as {
+			status: string;
+			policies: unknown[];
+			availableTools: string[];
+			authority: string;
+		};
+		assert.equal(result.status, "available");
+		assert.deepEqual(result.policies, []);
+		assert.deepEqual(
+			result.availableTools,
+			tools.tools.map((tool) => tool.name)
+		);
+		assert.match(result.authority, /Separate real user confirmation/);
+		assert.deepEqual(await h.service.list(), []); // Public service/RPC shape remains unchanged.
+		assert.equal(h.control.writes, 0);
+		assert.equal(h.submitted.length, 0);
+		const unavailable = new ApprovalTools(
+			{
+				service: () => {
+					throw new Error("Service absent");
+				},
+				confirmation,
+			},
+			turn,
+			new AbortController().signal
+		);
+		await assert.rejects(unavailable.execute("inspect_pr_delegations", "{}"), /Service absent/);
+	} finally {
+		await h.service.dispose();
+	}
+});

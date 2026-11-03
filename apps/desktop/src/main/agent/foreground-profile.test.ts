@@ -3,6 +3,7 @@ import { test } from "node:test";
 import type { WorkspaceObservation } from "../../shared/contracts";
 import { ForegroundProfile } from "./foreground-profile";
 import type { FunctionTool } from "./meta-client";
+import { WorkspaceArgumentError } from "./workspace-tools";
 
 const tools: FunctionTool[] = [
 	"open_command_center",
@@ -189,9 +190,9 @@ test("ordinary navigation, PR questions and unknown compounds start scoped and c
 		assert(profile.tools(workflowTools).some((t) => t.name === "read_pinned_source"));
 		assert(!profile.tools(workflowTools).some((t) => t.name === "confirm_pr_comment"));
 		assert(profile.tools(workflowTools).length <= 8);
-		assert.equal(
-			profile.expand(JSON.stringify({ families: ["reviews"] })).status,
-			"tools-already-available"
+		assert.throws(
+			() => profile.expand(JSON.stringify({ families: ["reviews"] })),
+			WorkspaceArgumentError
 		);
 	}
 });
@@ -223,4 +224,35 @@ test("sparse legacy V1 availability does not widen an observed empty workspace",
 	empty.workspace.primaryId = "missing";
 	profile.select(empty, false, "Take care of that");
 	assert.equal(profile.tools(workflowTools).length, 3);
+});
+
+function expansionChoices(offered: FunctionTool[]) {
+	const schema = offered.find((tool) => tool.name === "expand_tools")?.parameters as
+		| { properties: { families: { items: { enum: string[] } } } }
+		| undefined;
+	return schema?.properties.families.items.enum ?? [];
+}
+
+test("expansion lists only families that add registered tools and rejects no-op or absent families", () => {
+	const profile = new ForegroundProfile();
+	profile.select(observation("home"), false, "Notify me when PR 3 checks pass within an hour");
+	const offered = profile.tools(workflowTools);
+	assert(offered.some((tool) => tool.name === "draft_pr_delegation"));
+	assert(!expansionChoices(offered).includes("approvals"));
+	assert(!expansionChoices(offered).includes("reviews"));
+	assert(!expansionChoices(offered).includes("browser"));
+	assert(expansionChoices(offered).includes("day"));
+	for (const family of ["approvals", "reviews", "browser"])
+		assert.throws(
+			() => profile.expand(JSON.stringify({ families: [family] })),
+			WorkspaceArgumentError
+		);
+	profile.expand(JSON.stringify({ families: ["day"] }));
+	assert(!expansionChoices(profile.tools(workflowTools)).includes("day"));
+	assert(!profile.tools(workflowTools).some((tool) => tool.name === "day_capture_manual"));
+	const absent = profile.tools(tools);
+	assert(!absent.some((tool) => tool.name === "draft_pr_delegation"));
+	assert(!expansionChoices(absent).includes("approvals"));
+	profile.select(undefined);
+	assert(!profile.tools(workflowTools).some((tool) => tool.name === "expand_tools"));
 });

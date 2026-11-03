@@ -520,7 +520,7 @@ test("same foreground session uses hub tools and retains real history without pu
 		assert.equal(service.poll(identity()).status, "completed");
 		assert.equal(service.poll(identity()).text, "The saved job is queued.");
 		assert.equal(d.operations[0]?.operation.kind, "start-work");
-		assert(requests[0]?.tools?.some((t) => t.name === "expand_tools"));
+		assert(!requests[0]?.tools?.some((t) => t.name === "expand_tools"));
 		const follow = {
 			...input,
 			generation: 2,
@@ -1795,7 +1795,7 @@ test("general workspace and selected-review conversations receive the same Day c
 			assert.equal(navigations, 0);
 			assert.equal(requests.length, 2);
 			assert(
-				requests.every((request) => request.tools?.some((tool) => tool.name === "expand_tools"))
+				requests.every((request) => !request.tools?.some((tool) => tool.name === "expand_tools"))
 			);
 			assert(requests[0]?.tools?.some((tool) => tool.name === "day_cover"));
 			const packet = requests[0]?.input.at(-1)?.["content"] as { text: string }[];
@@ -2140,7 +2140,7 @@ test("general workspace and selected review expose read tools and actual source 
 			assert.equal(requests.length, 3);
 			assert.deepEqual(read.reads, ["memory", "source"]);
 			assert(
-				requests.every((request) => request.tools?.some((tool) => tool.name === "expand_tools"))
+				requests.every((request) => !request.tools?.some((tool) => tool.name === "expand_tools"))
 			);
 			const outputs = requests
 				.at(-1)
@@ -2408,7 +2408,7 @@ test("both actual ConversationService routes list/read Slack and return proposal
 			assert.equal(reads.operations.length, 0);
 			assert.equal(d.operations.length, 0);
 			assert(
-				requests.every((request) => request.tools?.some((tool) => tool.name === "expand_tools"))
+				requests.every((request) => !request.tools?.some((tool) => tool.name === "expand_tools"))
 			);
 			const outputs = requests
 				.at(-1)
@@ -3095,13 +3095,12 @@ test("selected ticket supplies freshly authorized details in the first fast requ
 	}
 });
 
-test("sparse legacy V1 retains available tools and expansion grants no effects or authority", async () => {
+test("sparse legacy V1 retains available tools and omits no-op expansion without effects or authority", async () => {
 	const d = data();
 	const requests: MetaRequest[] = [];
 	const service = new ConversationService(
 		client(
 			[
-				[call("expand_tools", { families: ["work"] })],
 				[call("inspect_ticket", { id: d.ticket.id })],
 				answer("Here is the actual requested ticket."),
 			],
@@ -3113,7 +3112,8 @@ test("sparse legacy V1 retains available tools and expansion grants no effects o
 		service.start({ ...input, text: "Read MET-TEST" });
 		await eventually(() => service.poll(identity()).status !== "running");
 		assert.equal(service.poll(identity()).status, "completed");
-		assert.equal(requests.length, 3);
+		assert.equal(requests.length, 2);
+		assert(!requests[0]?.tools?.some((tool) => tool.name === "expand_tools"));
 		assert(requests[0]?.tools?.some((tool) => tool.name === "start_work"));
 		assert(requests[1]?.tools?.some((tool) => tool.name === "start_work"));
 		assert(requests.every((request) => request.workload === "quick"));
@@ -3297,7 +3297,7 @@ test("explicit capability focus survives a real follow-up without another expans
 			],
 			requests
 		),
-		{ hub: d.ports }
+		{ hub: d.ports, workspace: workspace(d).ports }
 	);
 	try {
 		service.start({ ...input, text: "Let's discuss my tickets" });
@@ -3809,7 +3809,6 @@ for (const inputMode of ["typed", "voice"] as const) {
 			const service = new ConversationService(
 				client(
 					[
-						[call("expand_tools", { families: ["reviews"] })],
 						[call("inspect_pr_feedback", { prId: pr.id })],
 						[call("start_feedback_work", { prId: pr.id, feedbackId: feedback.id })],
 						// If the foreground wrongly continues, this recreates the observed polling failure.
@@ -3862,7 +3861,7 @@ for (const inputMode of ["typed", "voice"] as const) {
 				assert.match(result.text, /request was accepted.*in progress/);
 				assert.match(result.text, /actual check results.*when it’s ready/);
 				assert.doesNotMatch(result.text, /passed|TOOL FILLER|ready for review/);
-				assert.equal(requests.length, 3);
+				assert.equal(requests.length, 2);
 				const clocks = requests.map((request) => {
 					const last = required(request.input.at(-1));
 					const content = last["content"] as { text: string }[];
@@ -4321,6 +4320,7 @@ test("explicit navigation answer stream rejects cancellation or content changes 
 for (const selected of [false, true]) {
 	for (const attempted of [
 		"draft",
+		"inspect-empty",
 		"repair",
 		"repeat-invalid",
 		"post-draft-error",
@@ -4361,7 +4361,7 @@ for (const selected of [false, true]) {
 			const invalidTerms = { ...terms, conditions: [{ kind: "check", name: "demo-checks" }] };
 			const output = repairs
 				? call("draft_pr_delegation", { terms: invalidTerms }, "invalid")
-				: attempted === "draft" || attempted === "post-draft-error"
+				: attempted === "draft" || attempted === "inspect-empty" || attempted === "post-draft-error"
 					? call("draft_pr_delegation", { terms })
 					: attempted === "unoffered-day"
 						? call("day_capture_manual", { invalid: "must not reach parsing or execution" })
@@ -4385,6 +4385,9 @@ for (const selected of [false, true]) {
 			const service = new ConversationService(
 				client(
 					[
+						...(attempted === "inspect-empty"
+							? [[call("inspect_pr_delegations", {}, "inspect-empty")]]
+							: []),
 						[output],
 						...(repairs
 							? [
@@ -4451,8 +4454,22 @@ for (const selected of [false, true]) {
 					);
 					assert.equal(approvalAccesses, attempted === "repair" ? 1 : 0);
 				}
-				if (attempted === "draft" || attempted === "repair") {
-					assert.equal(requests.length, repairs ? 2 : 1);
+				if (attempted === "inspect-empty") {
+					const receipt = requests[1]?.input.find(
+						(item) => item["type"] === "function_call_output"
+					);
+					const inspected = JSON.parse(String(receipt?.["output"]));
+					assert.equal(inspected.status, "available");
+					assert.deepEqual(inspected.policies, []);
+					assert(inspected.availableTools.includes("draft_pr_delegation"));
+					assert.match(first.instructions, /canvas kinds, not provider operations/);
+					for (const request of requests) {
+						const expansion = request.tools?.find((tool) => tool.name === "expand_tools");
+						assert(!JSON.stringify(expansion?.parameters).includes('"approvals"'));
+					}
+				}
+				if (attempted === "draft" || attempted === "repair" || attempted === "inspect-empty") {
+					assert.equal(requests.length, repairs || attempted === "inspect-empty" ? 2 : 1);
 					assert.equal(service.poll(identity(turn)).text, "");
 					assert.equal(approval.p.status, "draft");
 					assert.deepEqual(approval.p.terms, terms);
@@ -4460,7 +4477,7 @@ for (const selected of [false, true]) {
 					confirmation.presented(required(confirmation.pending(input.sessionId)));
 					await eventually(() => service.poll(identity(turn)).status !== "running");
 					assert.equal(service.poll(identity(turn)).status, "completed");
-					assert.equal(requests.length, repairs ? 3 : 2);
+					assert.equal(requests.length, repairs || attempted === "inspect-empty" ? 3 : 2);
 					assert.equal(approval.p.status, "draft");
 				} else {
 					assert.equal(service.poll(identity(turn)).status, "error");

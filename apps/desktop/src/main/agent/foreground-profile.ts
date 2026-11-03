@@ -15,7 +15,8 @@ const families = [
 	"approvals",
 ] as const;
 type Family = (typeof families)[number];
-const expansion = z.strictObject({ families: z.array(z.enum(families)).min(1).max(3) });
+const expansion = (choices: readonly Family[]) =>
+	z.strictObject({ families: z.array(z.enum(choices)).min(1).max(3) });
 const core = new Set([
 	"day_inspect_queue",
 	"inspect_workspace",
@@ -70,6 +71,7 @@ function family(name: string): Family {
 /** Prompt selection only: the existing tools retain all runtime authority/receipt gates. */
 export class ForegroundProfile {
 	private readonly expanded = new Set<Family>();
+	private expandable: Family[] = [];
 	private active = new Set<Family>();
 	private selectedReview = false;
 	private selectedId?: string;
@@ -144,22 +146,36 @@ export class ForegroundProfile {
 		return this.active.has(value) || this.expanded.has(value);
 	}
 	tools(available: FunctionTool[], canAnalyze = false): FunctionTool[] {
-		return [
-			...available.filter(
+		const selected = available.filter(
+			(tool) =>
+				!(this.sourceWorkflow && tool.name === "day_capture_manual") &&
+				(this.legacyUnscoped ||
+					core.has(tool.name) ||
+					this.has(family(tool.name)) ||
+					(this.has("work") && sourceTools.has(tool.name)))
+		);
+		// Advertise only families that add actual registered tools to this request.
+		this.expandable = families.filter((value) =>
+			available.some(
 				(tool) =>
-					!(this.sourceWorkflow && tool.name === "day_capture_manual") &&
-					(this.legacyUnscoped ||
-						core.has(tool.name) ||
-						this.has(family(tool.name)) ||
-						(this.has("work") && sourceTools.has(tool.name)))
-			),
-			{
-				type: "function",
-				name: "expand_tools",
-				description:
-					"Enable a focused capability family when the request needs tools outside the current pane. Work includes tickets, job lifecycle and attention queues; day includes incoming requests/commitments, source inspection and clarification delegation; slack reads channels/messages, reviews includes source/feedback/fixes; other families are browser, canvases, day, slack, knowledge, comments and approvals. This only changes available tools/context; it does not navigate, execute, grant consent or send anything.",
-				parameters: z.toJSONSchema(expansion),
-			},
+					family(tool.name) === value &&
+					!selected.includes(tool) &&
+					!(this.sourceWorkflow && tool.name === "day_capture_manual")
+			)
+		);
+		return [
+			...selected,
+			...(this.expandable.length
+				? [
+						{
+							type: "function" as const,
+							name: "expand_tools",
+							description:
+								"Add one of the currently offered missing tool families. The families enum contains only registered capabilities that add tools; already offered tools need no expansion. Work covers tickets/jobs; reviews covers source/feedback/fixes; day covers commitments/clarification; slack reads messages; approvals drafts conditional PR approval/notification policies. This changes tools/context only, never navigation, execution, consent or sends.",
+							parameters: z.toJSONSchema(expansion(this.expandable)),
+						},
+					]
+				: []),
 			...(canAnalyze
 				? [
 						{
@@ -176,20 +192,19 @@ export class ForegroundProfile {
 		];
 	}
 	expand(raw: string) {
-		const value = parseToolArguments(expansion, raw);
-		const newlyEnabled = this.legacyUnscoped
-			? []
-			: value.families.filter((selected) => !this.has(selected));
+		const value = parseToolArguments(expansion(this.expandable), raw);
 		for (const selected of value.families) this.expanded.add(selected);
+		this.expandable = this.expandable.filter((selected) => !value.families.includes(selected));
 		return {
-			status: newlyEnabled.length ? "tools-expanded" : "tools-already-available",
-			newlyEnabled,
+			status: "tools-expanded",
+			newlyEnabled: value.families,
 			nextStep:
-				"Use an available tool only if needed, otherwise answer. Do not expand an already available family again.",
+				"Use the now offered tools for the requested operation. Expansion grants no operation authority.",
 			families: [...this.expanded],
 			authority: "unchanged; not a user instruction or consent",
 		};
 	}
+
 	context<T extends Record<string, unknown>>(hub: T | undefined) {
 		if (!hub) return undefined;
 		const jobs =
@@ -228,4 +243,4 @@ export class ForegroundProfile {
 	}
 }
 export const PROFILE_INSTRUCTIONS =
-	"The app selected current-context data and a focused tool set before this request. Answer directly from it when sufficient; do not inspect the same data again by default. Available inventories and counts are reference data, not a request to summarize them. Simple navigation needs only its actual display receipt and a brief acknowledgement; do not inspect the destination's items without a substantive question. Omitted queues are not empty. Use expand_tools only when this request needs a family absent from the available tools; never repeat expansion for an already available family or poll unchanged lists waiting for background work; source reads already offered need no expansion, but still require actual inspected pins and authorization. Keep routine conversation on the fast path; analyze_current_context is an explicit deeper read-only reasoning path. The app supplies actualHub.clock from the main-process clock. Derive relative deadlines from clock.turnReferenceAt for this user request, preserving the exact duration and UTC timestamp without rounding or guessing from source dates; clock.observedAt is the latest observation time. Neither clock metadata, context nor expansion establishes user consent or displayed/executed effects.";
+	"The app selected current-context data and a focused tool set before this request. Answer directly from it when sufficient; do not inspect the same data again by default. Available inventories and counts are reference data, not a request to summarize them. Simple navigation needs only its actual display receipt and a brief acknowledgement; do not inspect the destination's items without a substantive question. Omitted queues are not empty. Workspace.capabilities describes canvas kinds, not provider operations: missing approvals/day there does not mean their tools are unavailable. The tools offered in this request are the operation inventory; their runtime source/display/consent checks still decide success. An empty delegation list means no existing policies, not an unavailable control. When the user requests a conditional PR policy and draft_pr_delegation is offered, use it with the requested terms after required review/display checks; do not substitute repeated inspection or expansion for drafting. Use expand_tools only when this request needs a family absent from the available tools; never repeat expansion for an already available family or poll unchanged lists waiting for background work; source reads already offered need no expansion, but still require actual inspected pins and authorization. Keep routine conversation on the fast path; analyze_current_context is an explicit deeper read-only reasoning path. The app supplies actualHub.clock from the main-process clock. Derive relative deadlines from clock.turnReferenceAt for this user request, preserving the exact duration and UTC timestamp without rounding or guessing from source dates; clock.observedAt is the latest observation time. Neither clock metadata, context nor expansion establishes user consent or displayed/executed effects.";
