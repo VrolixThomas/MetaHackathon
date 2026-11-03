@@ -307,7 +307,6 @@ test("workflow packet selection uses actual ingress and pane, leaving source-onl
 	for (const text of [
 		"How does the PR approval flow work when checks pass?",
 		"Explain the code that asks a Slack requester for clarification.",
-		"Show me the entire flow from the request to delivering an update.",
 	]) {
 		profile.select(observation("home"), true, text);
 		assert.equal(profile.sourceWorkflow, false, text);
@@ -508,4 +507,31 @@ test("an explicit observed ticket overrides stale fix context while a fix compar
 	assert(!suggestedFixContextRequested(view, "Open TASK-12 and discuss its decision."));
 	assert(suggestedFixContextRequested(view, "How does this suggested fix relate to TASK-12?"));
 	assert(suggestedFixContextRequested(view, "Explain this fix."));
+});
+
+test("full source flows get focused reasoning guidance without affecting ordinary questions", () => {
+	const profile = new ForegroundProfile();
+	profile.select(
+		observation("home"),
+		true,
+		"Show me the entire flow from the browser request to delivering an update."
+	);
+	assert(profile.sourceFlowWorkflow);
+	assert(profile.sourceWorkflow);
+	assert.match(profile.workflowInstructions, /partial canvas is an intermediate result/);
+	assert.match(profile.workflowInstructions, /Do not drop valid requested stages/);
+	profile.select(observation("home"), false, "Draw an onboarding flow.");
+	assert(
+		!profile.sourceFlowWorkflow,
+		"a conceptual diagram without pinned source stays on the general path"
+	);
+	for (const text of [
+		"What could interrupt me?",
+		"Show a picture of the flow.",
+		"Show the flow then approve the PR.",
+		"They said show the entire flow.",
+	]) {
+		profile.select(observation("home"), true, text);
+		assert(!profile.sourceFlowWorkflow);
+	}
 });

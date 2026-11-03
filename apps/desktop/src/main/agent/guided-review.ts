@@ -22,7 +22,7 @@ import {
 } from "../../shared/contracts";
 import { abortable, throwIfAborted } from "./cancellation";
 import { COPARTNER_INSTRUCTIONS } from "./foreground-dialogue";
-import { ForegroundProfile, PROFILE_INSTRUCTIONS } from "./foreground-profile";
+import { ForegroundProfile, PROFILE_INSTRUCTIONS, sourceFlowRequested } from "./foreground-profile";
 import type { ConversationHubTools } from "./hub-tools";
 import {
 	type AgentModelClient,
@@ -309,9 +309,7 @@ export async function runGuidedReview(
 	// End-to-end flow discovery may need unchanged callers plus a final canvas write.
 	// Keep ordinary turns bounded at six; allow ten for an explicit flow request,
 	// plus the existing one input correction and tools-free terminal answer.
-	const requestedFlow =
-		/^(?:please\s+)?(?:show|draw|map|trace|visualize)\b/i.test(input.text.trim()) &&
-		/\b(?:flow|end.to.end|request.to.result)\b/i.test(input.text);
+	const requestedFlow = sourceFlowRequested(input.text);
 	const toolRoundLimit = requestedFlow ? 10 : 6;
 	let modelAttempt = 0;
 	for (let round = 0; round <= toolRoundLimit; round++) {
@@ -320,13 +318,19 @@ export async function runGuidedReview(
 		const workspace = workflow?.workspace;
 		const observation = await workspace?.observe();
 		profile.select(observation, true, input.text);
-		const snapshot = await getSnapshot(ports, input, signal, !profile.sourceWorkflow);
+		const snapshot = await getSnapshot(
+			ports,
+			input,
+			signal,
+			!profile.sourceWorkflow || profile.sourceFlowWorkflow
+		);
 		if (acknowledgedScreen) assertSameScreen(acknowledgedScreen, snapshot.screen);
 		if (pinned && snapshot.review && !samePlan(pinned, snapshot.review)) throw changed();
 		if (snapshot.review) pinned = snapshot.review;
-		const source: CurrentReviewSource = profile.sourceWorkflow
-			? { file: null, unavailableReason: "workflow-source-not-requested" }
-			: await currentSource(ports, snapshot, signal);
+		const source: CurrentReviewSource =
+			profile.sourceWorkflow && !profile.sourceFlowWorkflow
+				? { file: null, unavailableReason: "workflow-source-not-requested" }
+				: await currentSource(ports, snapshot, signal);
 		assertSameScreen(snapshot.screen, await screen(ports, input, signal));
 		const hub = workflow?.hub;
 		if (snapshot.review) hub?.allowReview(snapshot.review.pr);
@@ -390,7 +394,12 @@ export async function runGuidedReview(
 				));
 		const request = {
 			requestId: `${input.requestId}:review:${modelAttempt++}`,
-			workload: proposalReasoning || profile.workWorkflow ? ("deep" as const) : ("quick" as const),
+			workload:
+				proposalReasoning || profile.workWorkflow
+					? ("deep" as const)
+					: profile.sourceFlowWorkflow
+						? ("conversation" as const)
+						: ("quick" as const),
 			instructions: `${profile.sourceWorkflow ? profile.workflowInstructions : `${workspace || hub ? `${INSTRUCTIONS}\n${WORKSPACE_INSTRUCTIONS}` : INSTRUCTIONS}\n${COPARTNER_INSTRUCTIONS}\n${PROFILE_INSTRUCTIONS}`}${terminalAnswer ? "\nTool budget is exhausted. Answer from actual results only, briefly naming any unfinished part. Do not claim rejected or unacknowledged effects succeeded." : `\nAt most ${toolRoundLimit - round} tool calls remain, plus one final answer.${profile.sourceWorkflow ? "" : " Inspect missing links before creating the requested source flow. Reserve a tool call for create_source_flow and wait for its applied display receipt; a verbal description is not completion of an explicit show-flow request."}`}`,
 			input: modelInput,
 			tools: answerOnly
@@ -405,7 +414,11 @@ export async function runGuidedReview(
 						],
 						!!source.file
 					),
-			maxOutputTokens: proposalReasoning ? 8192 : MAX_OUTPUT_TOKENS,
+			maxOutputTokens: proposalReasoning
+				? 8192
+				: profile.sourceFlowWorkflow
+					? 4096
+					: MAX_OUTPUT_TOKENS,
 		};
 		// Only the phase with tools disabled may stream. Navigation and its durable receipt
 		// have already completed; every delta is still fenced against a changed screen.

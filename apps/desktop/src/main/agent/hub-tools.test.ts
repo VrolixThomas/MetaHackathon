@@ -3660,7 +3660,7 @@ test("selected-review full-flow intent exposes broader source tools and waits fo
 							);
 					assert.match(
 						request.instructions,
-						/Never substitute start_walkthrough for a full source-flow request/
+						/A prepared-file walkthrough is not an end-to-end flow/
 					);
 					yield* controlled.stream(request, signal);
 				},
