@@ -9,8 +9,8 @@ import {
 	explicitTicketNavigation,
 	ticketDialogueMode,
 } from "./foreground-dialogue";
-import { ForegroundProfile, PROFILE_INSTRUCTIONS } from "./foreground-profile";
 import { explicitWorkspaceNavigation } from "./foreground-navigation";
+import { ForegroundProfile, PROFILE_INSTRUCTIONS } from "./foreground-profile";
 import { ForegroundTrace } from "./foreground-timing";
 import { GuidedReviewError, modelRound } from "./guided-review";
 import type { ConversationHubTools } from "./hub-tools";
