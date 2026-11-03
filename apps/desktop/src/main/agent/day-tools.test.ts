@@ -1462,7 +1462,8 @@ for (const mode of [
 				);
 				assert.match(proposalResult.text, /clarification only/);
 				assert.match(proposalResult.text, /original Slack thread/);
-				assert.match(proposalResult.text, /at most 2 messages over 30 minutes\?$/);
+				assert.match(proposalResult.text, /at most 2 messages over 30 minutes/);
+				assert.match(proposalResult.text, /Shall I send those questions\?$/);
 				assert(!proposalResult.text.includes(wrongQuestion));
 				assert(JSON.stringify(requests[0]?.input).includes("selectedDay"));
 			}

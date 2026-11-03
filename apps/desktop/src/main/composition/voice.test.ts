@@ -1017,3 +1017,32 @@ it("non-Stop finals and retired voice polls cannot revoke a newer confirmation",
 	await f.caller.poll({ ...identity, afterSequence: 1 }).catch(() => {});
 	assert.equal(stopped.length, 0);
 });
+
+it("an in-flight Stop transcript cannot revoke consent after its voice turn is cancelled", async (t) => {
+	const stopped: TurnIdentity[] = [];
+	const f = fixture(t, { onStopSpeech: (value) => stopped.push(value) });
+	await ready(f.manager);
+	await f.caller.offer(offer);
+	await f.caller.release(identity);
+	const backend = f.sidecars[0];
+	assert(backend);
+	const pending = deferred<unknown>();
+	let polling = false;
+	backend.handle = async (path) => {
+		if (path === "poll") {
+			polling = true;
+			return pending.promise;
+		}
+		return {};
+	};
+	const polled = f.caller.poll({ ...identity, afterSequence: 0 });
+	await flush();
+	assert(polling);
+	const cancelled = f.caller.cancel(identity);
+	await flush();
+	pending.resolve({
+		events: [{ ...identity, sequence: 1, kind: "transcript", text: "Stop.", final: true }],
+	});
+	await Promise.all([cancelled, polled.catch(() => {})]);
+	assert.equal(stopped.length, 0);
+});
