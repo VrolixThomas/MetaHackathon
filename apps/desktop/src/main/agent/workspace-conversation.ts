@@ -10,6 +10,7 @@ import {
 	ticketDialogueMode,
 } from "./foreground-dialogue";
 import { ForegroundProfile, PROFILE_INSTRUCTIONS } from "./foreground-profile";
+import { explicitWorkspaceNavigation } from "./foreground-navigation";
 import { ForegroundTrace } from "./foreground-timing";
 import { GuidedReviewError, modelRound } from "./guided-review";
 import type { ConversationHubTools } from "./hub-tools";
@@ -83,6 +84,47 @@ export async function runWorkspaceConversation(
 			round === 0 && initialObservation
 				? initialObservation
 				: await trace.measure("workspace-observe", signal, async () => workspace?.observe());
+		const direct =
+			round === 0 && workspace ? explicitWorkspaceNavigation(input.text, observation) : undefined;
+		if (direct && workspace) {
+			const args = JSON.stringify(direct.args);
+			const result = await trace.measure(direct.tool, signal, () =>
+				workspace.execute(direct.tool, args)
+			);
+			throwIfAborted(signal);
+			const primary = result.workspace.canvases.find((c) => c.id === result.workspace.primaryId);
+			const displayed =
+				direct.kind === "tickets"
+					? primary?.kind === "center" && primary.section === "tickets"
+					: primary?.kind === "browser" &&
+						result.browser?.presented &&
+						(direct.kind === "phone"
+							? result.browser.viewport.width === 390 && result.browser.viewport.height === 844
+							: result.workspace.browser?.viewportMode === "desktop");
+			if (!displayed)
+				throw new GuidedReviewError("The requested view was not confirmed as displayed.");
+			const callId = `${input.requestId}:explicit-workspace-navigation`;
+			history.push(
+				{
+					type: "function_call",
+					call_id: callId,
+					name: direct.tool,
+					arguments: args,
+					status: "completed",
+				},
+				{
+					type: "function_call_output",
+					call_id: callId,
+					output: JSON.stringify({
+						origin: "explicit-user-navigation",
+						status: "applied",
+						workspaceSequence: result.workspace.sequence,
+					}),
+				}
+			);
+			await onText(direct.acknowledgement);
+			return direct.acknowledgement;
+		}
 		const actualHub = await trace.measure("hub-observe", signal, async () =>
 			hub?.observe(observation?.workspace.review.prId ?? undefined, observation?.hub)
 		);

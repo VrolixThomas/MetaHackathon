@@ -485,12 +485,10 @@ test("ordinary greeting/navigation receive copartner policy; navigation stays si
 		const navigation = h.start("Bring me to my ticket boards.");
 		await eventually(() => h.reads.navigation === 1);
 		assert.equal(h.service.poll(identity(navigation)).text, "");
-		assert.equal(calls, 2);
+		assert.equal(calls, 1);
 		receipt.resolve();
-		await eventually(() => calls === 3);
-		assert.equal(h.service.poll(identity(navigation)).text, "");
-		finish.resolve();
-		assert.equal((await h.settle(navigation)).result.text, "Controlled acknowledgement.");
+		assert.equal((await h.settle(navigation)).result.text, "You're at your ticket boards.");
+		assert.equal(calls, 1);
 		assert.equal(h.reads.ticket, 0);
 		assert.equal(h.reads.job, 0);
 		assert.equal(h.reads.mutations, 0);

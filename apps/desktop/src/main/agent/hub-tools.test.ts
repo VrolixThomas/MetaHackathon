@@ -3126,7 +3126,7 @@ test("sparse legacy V1 retains available tools and omits no-op expansion without
 });
 
 for (const text of ["Bring me to my ticket boards.", "Could you take me over to the tickets?"]) {
-	test(`ordinary navigation keeps bounded tools and awaits its display receipt: ${text}`, async () => {
+	test(`explicit UI navigation skips the model and awaits its display receipt: ${text}`, async () => {
 		const d = data();
 		const w = workspace(d);
 		const requests: MetaRequest[] = [];
@@ -3143,11 +3143,8 @@ for (const text of ["Bring me to my ticket boards.", "Could you take me over to 
 		try {
 			service.start({ ...input, text });
 			await eventually(() => w.commands.length === 1);
-			assert.equal(requests.length, 1);
+			assert.equal(requests.length, 0);
 			assert.equal(service.poll(identity()).text, "");
-			assert(required(required(requests[0]).tools).length <= 8);
-			assert(required(required(requests[0]).tools).some((t) => t.name === "expand_tools"));
-			assert(!required(required(requests[0]).tools).some((t) => t.name === "start_work"));
 			w.settle();
 			await eventually(() => service.poll(identity()).status !== "running");
 			assert.equal(service.poll(identity()).status, "completed");
@@ -4194,7 +4191,7 @@ test("strict imperative shortcut leaves questions, negation, conditionals, compo
 	}
 });
 
-test("explicit navigation shortcut requires one observed target on the ticket pane and rejects unsolicited answer tools", async () => {
+test("explicit navigation shortcut requires one observed target across panes and rejects unsolicited answer tools", async () => {
 	for (const scenario of [
 		"off-pane",
 		"duplicate",
@@ -4242,6 +4239,7 @@ test("explicit navigation shortcut requires one observed target on the ticket pa
 			});
 			if (
 				scenario === "answer-tool" ||
+				scenario === "off-pane" ||
 				scenario === "plain-open" ||
 				scenario === "planning-variant"
 			) {
@@ -4256,7 +4254,10 @@ test("explicit navigation shortcut requires one observed target on the ticket pa
 			);
 			assert.equal(
 				w.commands.length,
-				scenario === "answer-tool" || scenario === "plain-open" || scenario === "planning-variant"
+				scenario === "answer-tool" ||
+					scenario === "off-pane" ||
+					scenario === "plain-open" ||
+					scenario === "planning-variant"
 					? 1
 					: 0
 			);
@@ -5517,4 +5518,29 @@ test("selected Day context retains only freshly observed session work for cross-
 	assert.deepEqual(refreshed.sessionWorkContext, []);
 	assert.equal(d.operations.length, 0);
 	assert.equal(day.operations.length, 0);
+});
+
+test("direct UI navigation cannot acknowledge a cancelled display operation", async () => {
+	const d = data();
+	const w = workspace(d);
+	const requests: MetaRequest[] = [];
+	const service = new ConversationService(client([], requests), {
+		hub: d.ports,
+		workspace: w.ports,
+	});
+	try {
+		service.start({ ...input, text: "Bring me to my tickets." });
+		await eventually(() => w.commands.length === 1);
+		assert.equal(service.poll(identity()).text, "");
+		service.cancel({ ...identity(), requestId: "cancel-ui", reason: "user" });
+		w.settle();
+		await eventually(() => service.poll(identity()).status !== "running");
+		assert.equal(service.poll(identity()).status, "cancelled");
+		assert.equal(service.poll(identity()).text, "");
+		assert.equal(requests.length, 0);
+		assert.equal(d.operations.length, 0);
+	} finally {
+		w.settle();
+		await service.dispose();
+	}
 });

@@ -34,6 +34,7 @@ import {
 } from "./conversation-history";
 import { StartTurnResultSchema } from "./events";
 import { COPARTNER_INSTRUCTIONS } from "./foreground-dialogue";
+import { explicitWorkspaceNavigation } from "./foreground-navigation";
 import { ForegroundProfile } from "./foreground-profile";
 import { type ForegroundTiming, ForegroundTrace } from "./foreground-timing";
 import {
@@ -838,7 +839,12 @@ export class ConversationService {
 								? observed.workspace.review.prId
 								: undefined
 							: turn.input.prId;
-						if (effectivePrId && reviewPorts) await runReview(effectivePrId, history);
+						if (
+							effectivePrId &&
+							reviewPorts &&
+							!explicitWorkspaceNavigation(turn.input.text, observed)
+						)
+							await runReview(effectivePrId, history);
 						else if (workspace || hub) await runWorkspace(history, observed);
 					}
 				}

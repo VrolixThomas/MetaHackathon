@@ -5,6 +5,7 @@ if (!file) throw Error("Pass the report.json from a completed live rehearsal");
 const report = JSON.parse(fs.readFileSync(file, "utf8"));
 const allowMock = process.argv.includes("--allow-mock-tts");
 const commonIds = new Set([
+	"greeting",
 	"scope-choice",
 	"scope-consequence",
 	"scope-rationale",
@@ -28,7 +29,7 @@ const percentile = (q) =>
 const median = percentile(0.5);
 const p90 = percentile(0.9);
 const navigation = report.turns.filter((t) =>
-	["ticket-navigation", "ticket-design"].includes(t.id)
+	["ticket-navigation", "ticket-design", "existing-work-planning", "phone-browser"].includes(t.id)
 );
 const checks = {
 	mediaPipelineForSelectedMode:
@@ -39,7 +40,7 @@ const checks = {
 	enoughSamples: sorted.length >= 5,
 	commonMedian: median !== null && median <= 3000,
 	commonP90: p90 !== null && p90 <= 5000,
-	navigation: navigation.length === 2 && navigation.every((t) => t.textAcceptedToAudioMs <= 5000),
+	navigation: navigation.length >= 2 && navigation.every((t) => t.textAcceptedToAudioMs <= 5000),
 	quietStop:
 		report.suite === "variants"
 			? null

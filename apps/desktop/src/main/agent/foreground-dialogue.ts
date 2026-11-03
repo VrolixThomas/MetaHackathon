@@ -213,10 +213,6 @@ export function explicitTicketNavigation(
 		(text.match(/\b[a-z]+-?\d+\b/gi) ?? []).map((id) => id.replace(/-/g, "").toUpperCase())
 	);
 	if (ids.size !== 1) return undefined;
-	const primary = observation.workspace.canvases.find(
-		(canvas) => canvas.id === observation.workspace.primaryId
-	);
-	if (primary?.kind !== "center" || primary.section !== "tickets") return undefined;
 	const identifier = match[1]?.replace(/-/g, "").toUpperCase();
 	const targets =
 		observation.hub?.tickets.filter(
