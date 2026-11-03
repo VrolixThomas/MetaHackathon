@@ -5492,7 +5492,7 @@ test("selected Day context retains only freshly observed session work for cross-
 			],
 		}),
 	});
-	const observed = await workspace(d).ports.observe();
+	const observed = await workspace(d).ports.observe(input.sessionId, new AbortController().signal);
 	observed.workspace.canvases = [
 		{
 			id: "center",
