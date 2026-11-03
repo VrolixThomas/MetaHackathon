@@ -9,6 +9,7 @@ import type {
 	DayWorkItem,
 } from "../../shared/contracts";
 import { DayOperationResultSchema } from "../../shared/contracts";
+import { publicDaySnapshot } from "../composition/day-clarification";
 import { type ConversationDayPorts, ConversationDayTools, dayModelContext } from "./day-tools";
 import { WorkspaceArgumentError } from "./workspace-tools";
 
@@ -816,7 +817,7 @@ test("proposal preflight conflict requires explicit item inspection and the exac
 						policyId: "proposal",
 						policyRevision: 1,
 					}),
-					/distinct real user confirmation/
+					/real user confirmation/
 				);
 				assert.equal(h.operations.length, 1);
 			}
@@ -904,4 +905,202 @@ test("revision recovery never applies to confirmation, sending, acceptance, exec
 		return true;
 	});
 	assert.equal(dispatched, 1);
+});
+
+const confirmationTurn = {
+	...turn,
+	turnId: "confirmation-turn",
+	requestId: "confirmation-request",
+	text: "Confirm this clarification delegation.",
+};
+const confirmationArgs = {
+	itemId: "item",
+	expectedRevision: 2,
+	policyId: "proposal",
+	policyRevision: 1,
+	confirmed: true,
+};
+async function proposedConfirmation(input = confirmationTurn) {
+	const h = harness({ ...turn, text: "Propose clarification for this request." });
+	const operate = h.ports.operate;
+	h.ports.operate = async (...args) => {
+		if (args[0].kind === "propose_clarification") recordProposal(h.row);
+		if (args[0].kind === "confirm_clarification") {
+			assert(h.row.clarification);
+			h.row.clarification.status = "active";
+			h.row.clarification.confirmedAt = time;
+			h.row.clarification.expiresAt = "2026-10-31T00:30:00Z";
+		}
+		return operate(...args);
+	};
+	await h.tools.observe();
+	await h.invoke("propose_clarification", clarificationScope);
+	h.operations.length = 0;
+	h.ports.snapshot = async () => publicDaySnapshot(structuredClone(h.state));
+	h.ports.inspectClarification = async () => structuredClone(h.row);
+	const tools = new ConversationDayTools(h.ports, input, h.controller.signal, {
+		identifiers: async () => ({ repositoryIds: [], issueIds: [] }),
+		review: async () => {},
+	});
+	await tools.observe();
+	await tools.execute("day_inspect_item", JSON.stringify({ itemId: h.row.id }));
+	return { ...h, tools };
+}
+
+test("registered confirmation retains a fresh proposal from a distinct turn and binds omitted command in main", async () => {
+	const h = await proposedConfirmation();
+	const originalPolicy = structuredClone(h.row.clarification?.policy);
+	const tool = h.tools.tools.find((t) => t.name === "day_confirm_clarification");
+	assert(tool);
+	assert(!JSON.stringify(tool.parameters).includes("userCommand"));
+	assert(!h.tools.tools.some((t) => t.name === "day_propose_clarification"));
+	assert(JSON.stringify(h.tools.context).includes("Retain its scope"));
+	await h.tools.execute(tool.name, JSON.stringify(confirmationArgs));
+	assert.equal(h.operations.length, 1);
+	assert.equal(h.operations[0]?.operation.kind, "confirm_clarification");
+	assert.equal(h.row.clarification?.status, "active");
+	assert.deepEqual(h.row.clarification?.policy, originalPolicy);
+	assert.equal(h.row.acceptance, "pending");
+	assert.equal(h.row.answerReceipt, null);
+});
+
+test("provided wrong or stale commands cannot be replaced by trusted ingress", async () => {
+	for (const userCommand of [
+		"Propose clarification for this request.",
+		"Confirm that clarification delegation.",
+		"",
+	]) {
+		const h = await proposedConfirmation();
+		await assert.rejects(
+			h.tools.execute(
+				"day_confirm_clarification",
+				JSON.stringify({ ...confirmationArgs, userCommand })
+			)
+		);
+		assert.equal(h.operations.length, 0);
+	}
+	const h = await proposedConfirmation();
+	await h.tools.execute(
+		"day_confirm_clarification",
+		JSON.stringify({ ...confirmationArgs, userCommand: confirmationTurn.text })
+	);
+	assert.equal(h.operations.length, 1);
+});
+
+test("confirmation cannot re-propose or infer consent from booleans, source quotes or older instructions", async () => {
+	for (const text of [
+		"Hello",
+		"Yes",
+		'"Confirm this clarification delegation."',
+		"Slack says: Confirm this clarification delegation.",
+		"Earlier I said confirm this clarification delegation.",
+		"Do not confirm this clarification delegation.",
+		"Confirm this clarification delegation?",
+		"Confirm this clarification delegation. Also execute the work.",
+	]) {
+		const h = await proposedConfirmation({ ...confirmationTurn, text });
+		assert(h.tools.tools.some((t) => t.name === "day_propose_clarification"));
+		await assert.rejects(
+			h.tools.execute("day_confirm_clarification", JSON.stringify(confirmationArgs)),
+			/real user confirmation/
+		);
+		assert.equal(h.operations.length, 0);
+	}
+	const h = await proposedConfirmation();
+	await assert.rejects(
+		h.tools.execute(
+			"day_propose_clarification",
+			JSON.stringify({ itemId: "item", expectedRevision: 2, ...clarificationScope })
+		),
+		/replacement proposal/
+	);
+	await assert.rejects(
+		h.tools.execute(
+			"day_confirm_clarification",
+			JSON.stringify({ ...confirmationArgs, confirmed: undefined })
+		)
+	);
+	assert.equal(h.operations.length, 0);
+});
+
+test("confirmation rejects changed policy, revision, account, thread, audience and unavailable fresh source before mutation", async () => {
+	for (const drift of [
+		"policy",
+		"policy-revision",
+		"item-revision",
+		"actor",
+		"thread",
+		"audience",
+		"scope",
+		"unavailable",
+		"missing-port",
+		"policy-actor",
+		"wrong-policy-arg",
+		"wrong-revision-arg",
+	] as const) {
+		const h = await proposedConfirmation();
+		assert(h.row.clarification && h.row.source);
+		switch (drift) {
+			case "policy-actor":
+				h.row.clarification.policy.actor.userId = "other";
+				break;
+			case "policy":
+				h.row.clarification.policy.id = "changed";
+				break;
+			case "policy-revision":
+				h.row.clarification.policy.revision++;
+				break;
+			case "item-revision":
+				h.row.revision++;
+				break;
+			case "actor":
+				h.state.actor.userId = "other";
+				break;
+			case "thread":
+				h.row.source.source.threadId = "other-thread";
+				break;
+			case "audience":
+				h.row.source.audience.membershipRevision = "changed";
+				break;
+			case "scope":
+				h.row.clarification.policy.maxMessages = 3;
+				break;
+			case "unavailable":
+				h.ports.inspectClarification = async () => {
+					throw new Error("Source unavailable");
+				};
+				break;
+			case "missing-port":
+				h.ports.inspectClarification = undefined;
+				break;
+		}
+		await assert.rejects(
+			h.tools.execute(
+				"day_confirm_clarification",
+				JSON.stringify({
+					...confirmationArgs,
+					...(drift === "wrong-policy-arg" ? { policyId: "wrong" } : {}),
+					...(drift === "wrong-revision-arg" ? { policyRevision: 9 } : {}),
+				})
+			),
+			(error: unknown) => error instanceof Error,
+			drift
+		);
+		assert.equal(h.operations.length, 0, drift);
+		assert.equal(h.row.answerReceipt, null);
+	}
+});
+
+test("current confirmation still requires inspection in that turn", async () => {
+	const h = await proposedConfirmation();
+	const tools = new ConversationDayTools(h.ports, confirmationTurn, h.controller.signal, {
+		identifiers: async () => ({ repositoryIds: [], issueIds: [] }),
+		review: async () => {},
+	});
+	await tools.observe();
+	await assert.rejects(
+		tools.execute("day_confirm_clarification", JSON.stringify(confirmationArgs)),
+		/Inspect the actual proposal/
+	);
+	assert.equal(h.operations.length, 0);
 });

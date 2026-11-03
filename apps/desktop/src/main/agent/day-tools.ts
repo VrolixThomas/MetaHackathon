@@ -57,9 +57,18 @@ const operationTools = DayOperationSchema.options.map((schema) => {
 	return {
 		kind,
 		name: `day_${kind}`,
-		schema: z.strictObject({ ...schema.shape, userCommand, ...confirmation }).omit({ kind: true }),
+		schema: z
+			.strictObject({ ...schema.shape, userCommand: userCommand.optional(), ...confirmation })
+			.omit({ kind: true }),
 	};
 });
+// Deliberately bounded whole-utterance intent: quotes, reported instructions and
+// incidental affirmation cannot turn model arguments into user consent.
+function confirmsClarification(text: string) {
+	return /^(?:please\s+)?(?:confirm|i confirm|yes,? confirm) (?:this|the|that) (?:proposed )?clarification delegation[.!]?$/i.test(
+		text.trim()
+	);
+}
 const inspections = {
 	day_inspect_queue: z.strictObject({
 		cursor: z.int().min(0).max(1000).default(0),
@@ -241,12 +250,16 @@ export class ConversationDayTools {
 						: "Inspect an observed Day item's actual questions, original source identity, exact draft when within budget and delivery evidence. This does not cover, accept or display the item.",
 				parameters: z.toJSONSchema(schema),
 			})),
-			...operationTools.map(({ name, kind, schema }) => ({
-				type: "function" as const,
-				name,
-				description: `${descriptions[kind]} Returns data only; use acknowledged workspace commands separately to show anything.`,
-				parameters: z.toJSONSchema(schema),
-			})),
+			...operationTools
+				.filter(
+					({ kind }) => !confirmsClarification(this.turn.text) || kind === "confirm_clarification"
+				)
+				.map(({ name, kind, schema }) => ({
+					type: "function" as const,
+					name,
+					description: `${descriptions[kind]} Returns data only; use acknowledged workspace commands separately to show anything.`,
+					parameters: z.toJSONSchema(schema.omit({ userCommand: true })),
+				})),
 		];
 	}
 	has(name: string) {
@@ -320,7 +333,17 @@ export class ConversationDayTools {
 				this.proposalBindings.set(item.id, proposalBinding(original));
 			}
 		}
-		return packet;
+		return {
+			...packet,
+			...(confirmsClarification(this.turn.text)
+				? {
+						clarificationConfirmation: {
+							instruction:
+								"Inspect the existing proposed policy with day_inspect_item, then confirm its exact policy ID/revision and item revision. Retain its scope, original thread and bounds; do not propose a replacement. Current user intent alone is not source authorization or inspection proof.",
+						},
+					}
+				: {}),
+		};
 	}
 	private detail(item: DayWorkItem) {
 		const questions = [...item.questions]
@@ -423,9 +446,19 @@ export class ConversationDayTools {
 			return result;
 		}
 		if (!tool) throw new GuidedReviewError("That Day operation is unavailable.");
-		if (args["userCommand"] !== this.turn.text)
+		// Compatibility accepts an explicit command only when it matches exactly.
+		if (args["userCommand"] !== undefined && args["userCommand"] !== this.turn.text)
 			throw new GuidedReviewError(
 				"Only the current real user's command can authorize a Day operation."
+			);
+		args["userCommand"] = this.turn.text;
+		if (tool.kind === "confirm_clarification" && !confirmsClarification(this.turn.text))
+			throw new GuidedReviewError(
+				"A current explicit real user confirmation of clarification delegation is required."
+			);
+		if (tool.kind === "propose_clarification" && confirmsClarification(this.turn.text))
+			throw new GuidedReviewError(
+				"Inspect and confirm the existing clarification proposal; confirmation does not authorize a replacement proposal."
 			);
 		const { userCommand: _, confirmed: __, ...fields } = args;
 		const operation = DayOperationSchema.parse({ kind: tool.kind, ...fields });
@@ -512,6 +545,24 @@ export class ConversationDayTools {
 				throw new GuidedReviewError(
 					"Inspect the actual proposal and obtain a distinct real user confirmation of scope, thread, send authority and bounds."
 				);
+			if (!this.ports.inspectClarification)
+				throw new GuidedReviewError("Fresh clarification source access is unavailable.");
+			const fresh = await abortable(
+				this.ports.inspectClarification(
+					{ itemId: item.id, expectedRevision: item.revision },
+					this.signal
+				),
+				this.signal
+			);
+			if (
+				fresh.revision !== item.revision ||
+				proposalBinding(fresh) !== proposalBinding(inspected) ||
+				navigationBinding(item) !== navigationBinding(inspected) ||
+				fresh.clarification?.policy.actor.workspaceId !== day.actor.workspaceId ||
+				fresh.clarification.policy.actor.userId !== day.actor.userId ||
+				JSON.stringify(fresh.clarification.policy.source) !== JSON.stringify(item.source?.source)
+			)
+				throw new GuidedReviewError("The inspected clarification policy, actor or source changed.");
 		}
 		if (operation.kind === "answer_question") {
 			const inspected = this.details.get(operation.itemId);
