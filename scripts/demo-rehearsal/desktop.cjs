@@ -656,7 +656,9 @@ async function main() {
 		),
 		{ mode: 0o600 }
 	);
-	console.log(`${textDiagnostics ? "TEXT_DIAGNOSTIC_READY" : "LIVE_REHEARSAL_READY"} ${owned}`);
+	console.log(
+		`${textDiagnostics ? "TEXT_DIAGNOSTIC_READY" : mockTTS ? "MOCK_SPEECH_REHEARSAL_READY" : "LIVE_REHEARSAL_READY"} ${owned}`
+	);
 	if (!process.argv.includes("--interactive")) {
 		const {
 			common,
@@ -736,7 +738,7 @@ async function main() {
 		report.status = "completed";
 		save();
 		console.log(
-			`${textDiagnostics ? "TEXT_DIAGNOSTIC_COMPLETED" : "LIVE_REHEARSAL_COMPLETED"} ${path.join(owned, "report.json")}`
+			`${textDiagnostics ? "TEXT_DIAGNOSTIC_COMPLETED" : mockTTS ? "MOCK_SPEECH_REHEARSAL_COMPLETED" : "LIVE_REHEARSAL_COMPLETED"} ${path.join(owned, "report.json")}`
 		);
 		if (process.argv.includes("--exit")) app.quit();
 	}
@@ -763,7 +765,7 @@ main().catch(async (error) => {
 	if (win && !win.isDestroyed()) report.lastUI = await ui().catch(() => null);
 	save();
 	console.error(
-		`${textDiagnostics ? "TEXT_DIAGNOSTIC_FAILED" : "LIVE_REHEARSAL_FAILED"} ${error.message}\n${path.join(owned, "report.json")}`
+		`${textDiagnostics ? "TEXT_DIAGNOSTIC_FAILED" : mockTTS ? "MOCK_SPEECH_REHEARSAL_FAILED" : "LIVE_REHEARSAL_FAILED"} ${error.message}\n${path.join(owned, "report.json")}`
 	);
 	cleanup();
 	app.exit(1);

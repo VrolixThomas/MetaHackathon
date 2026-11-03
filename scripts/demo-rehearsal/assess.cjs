@@ -29,7 +29,7 @@ const navigation = report.turns.filter((t) =>
 	["ticket-navigation", "ticket-design"].includes(t.id)
 );
 const checks = {
-	actualSpeechPipeline:
+	mediaPipelineForSelectedMode:
 		report.liveModels === true &&
 		!report.textDiagnostics &&
 		(report.liveElevenLabs === true || (allowMock && report.mockTTS === true)),
@@ -51,6 +51,9 @@ console.log(
 				? "mocked speech; real models/tools/media, not live speech latency"
 				: "live speech",
 			mockTTSAllowed: allowMock,
+			latencyBasis: report.mockTTS
+				? "scripted text to observed synthetic PCM, excluding real TTS latency"
+				: "scripted text to observed provider PCM",
 			scriptedASR: report.scriptedASR === true,
 			actualModelAndTTS: report.liveModels === true && report.liveElevenLabs === true,
 			physicalAcousticsTested: false,
