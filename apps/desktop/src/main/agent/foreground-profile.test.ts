@@ -606,3 +606,21 @@ test("standing clarification and distinct confirmation remain tools-capable off 
 		);
 	}
 });
+
+test("ladder and sequence requests offer actual visual tools while retaining source grounding", () => {
+	for (const text of [
+		"Draw a ladder diagram of that flow.",
+		"Draw a sequence diagram of this PR.",
+	]) {
+		const profile = new ForegroundProfile();
+		profile.select(observation("home"), true, text);
+		assert(profile.sourceFlowWorkflow);
+		assert(profile.has("reviews"));
+		assert(profile.has("canvases"));
+		assert.match(profile.workflowInstructions, /create_visual_mock/);
+		assert.match(profile.workflowInstructions, /actually inspected pinned source/);
+	}
+	const profile = new ForegroundProfile();
+	profile.select(observation("home"), true, "Show the entire source flow.");
+	assert.match(profile.workflowInstructions, /create_source_flow/);
+});
