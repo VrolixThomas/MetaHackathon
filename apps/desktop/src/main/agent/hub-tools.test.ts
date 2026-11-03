@@ -3612,7 +3612,7 @@ test("selected-review full-flow intent exposes broader source tools and waits fo
 			],
 		};
 		const prefix = outcome.startsWith("last-slot")
-			? Array.from({ length: 4 }, (_, i) => [call("inspect_ready_review", {}, `inspect-${i}`)])
+			? Array.from({ length: 8 }, (_, i) => [call("inspect_ready_review", {}, `inspect-${i}`)])
 			: [];
 		const controlled = client(
 			[
@@ -3724,7 +3724,7 @@ test("selected-review full-flow intent exposes broader source tools and waits fo
 					assert.equal(service.poll(identity(turn)).status, "completed");
 					if (prefix.length) {
 						assert.deepEqual(requests.at(-1)?.tools, []);
-						assert.equal(requests.length, 7 + Number(outcome === "last-slot-repaired"));
+						assert.equal(requests.length, 11 + Number(outcome === "last-slot-repaired"));
 					}
 					const canvas = w.observation.workspace.canvases.find((canvas) => canvas.kind === "flow");
 					assert(canvas?.kind === "flow");
@@ -5467,3 +5467,54 @@ for (const change of ["sidebar", "content", "cancelled"] as const) {
 		}
 	});
 }
+
+test("selected Day context retains only freshly observed session work for cross-source reasoning", async () => {
+	const d = data();
+	const day = attachDay(d);
+	d.hub.jobs.push({ ...d.hub.jobs[0]!, id: "unrelated", summary: "UNRELATED PRIVATE WORK" });
+	const tools = new ConversationHubTools(d.ports, input, new AbortController().signal, undefined, {
+		beforeStart: async () => {
+			throw new Error("No execution authorized");
+		},
+		focus: () => ({
+			pendingQuestion: undefined,
+			effects: [
+				{
+					target: "target",
+					requestId: "prior-request",
+					generation: 1,
+					jobId: d.job.id,
+					status: "admitted",
+					creation: "new-creation-not-established-by-this-receipt",
+				},
+			],
+		}),
+	});
+	const observed = await workspace(d).ports.observe();
+	observed.workspace.canvases = [
+		{
+			id: "center",
+			kind: "center",
+			title: "Day",
+			revision: 1,
+			section: "day",
+			selectedId: day.item.id,
+		},
+	];
+	await tools.observe();
+	const context = (await tools.currentContext(observed)) as {
+		sessionWorkContext: Array<{ id: string; state: string; summary: string }>;
+	};
+	assert.deepEqual(
+		context.sessionWorkContext.map((job) => job.id),
+		[d.job.id]
+	);
+	assert.equal(context.sessionWorkContext[0]?.state, "ready");
+	assert(!JSON.stringify(context).includes("UNRELATED PRIVATE WORK"));
+	d.hub.jobs = d.hub.jobs.filter((job) => job.id !== d.job.id);
+	await tools.observe();
+	const refreshed = (await tools.currentContext(observed)) as { sessionWorkContext: unknown[] };
+	assert.deepEqual(refreshed.sessionWorkContext, []);
+	assert.equal(d.operations.length, 0);
+	assert.equal(day.operations.length, 0);
+});
