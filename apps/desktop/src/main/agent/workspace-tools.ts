@@ -206,8 +206,10 @@ export class ConversationWorkspaceTools {
 									.map((canvas) => canvas.id)
 							),
 						];
-						if (!ids.length) delete parameters.properties["id"];
-						else
+						if (!ids.length) {
+							const { id: _id, ...withoutId } = parameters.properties;
+							parameters.properties = withoutId;
+						} else
 							parameters.properties["id"] = {
 								...parameters.properties["id"],
 								enum: ids,
