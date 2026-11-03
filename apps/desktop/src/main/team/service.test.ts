@@ -70,12 +70,13 @@ test("TeamService persists real selected scope, shares only observed exact local
 	let shares = 0;
 	let applies = 0;
 	let rawDecision: Record<string, unknown> | null = null;
+	let createdAt = "2026-11-01T00:00:00.60506+00:00";
 	const record = () => ({
 		id: "20000000-0000-4000-8000-000000000001",
 		key: bundle.key,
 		owner_id: user,
 		bundle_digest: digest(bundle),
-		created_at: "2026-11-01T00:00:00Z",
+		created_at: createdAt,
 		bundle,
 		decision: rawDecision,
 	});
@@ -120,6 +121,8 @@ test("TeamService persists real selected scope, shares only observed exact local
 			return Response.json(record());
 		}
 		if (path === "/v1/proposals/get") return Response.json(record());
+		if (path === "/v1/proposals/browse")
+			return Response.json({ items: [record()], nextOffset: null });
 		if (path === "/v1/proposals/decide") {
 			rawDecision = {
 				id: randomUUID(),
@@ -128,7 +131,7 @@ test("TeamService persists real selected scope, shares only observed exact local
 				decision: input.decision,
 				author_id: user,
 				github_author_id: "101",
-				created_at: "2026-11-01T00:00:01Z",
+				created_at: "2026-11-01T02:00:01.123456+02:00",
 			};
 			return Response.json(rawDecision);
 		}
@@ -211,9 +214,14 @@ test("TeamService persists real selected scope, shares only observed exact local
 			confirmed: true,
 		});
 		assert.equal(shared.status, "recorded");
+		assert.equal(shared.proposal?.createdAt, "2026-11-01T00:00:00.605Z");
+		assert.equal(
+			(await service.proposals({ repository: "test/repo" })).items[0]?.createdAt,
+			"2026-11-01T00:00:00.605Z"
+		);
 		assert.equal(shares, 1);
 		const id = record().id;
-		await service.decideProposal({
+		const accepted = await service.decideProposal({
 			proposalId: id,
 			repository: "test/repo",
 			bundleDigest: preview.bundleDigest,
@@ -221,6 +229,7 @@ test("TeamService persists real selected scope, shares only observed exact local
 			decision: "accept",
 			confirmed: true,
 		});
+		assert.equal(accepted.decision?.createdAt, "2026-11-01T00:00:01.123Z");
 		assert.equal(applies, 0);
 		const apply = {
 			proposalId: id,
@@ -234,6 +243,9 @@ test("TeamService persists real selected scope, shares only observed exact local
 		assert.equal(result.jobId, "actual-port-job");
 		await service.applyProposal(apply);
 		assert.equal(applies, 1);
+		createdAt = "not-a-timestamp";
+		await assert.rejects(service.proposals({ repository: "test/repo" }));
+		createdAt = "2026-11-01T00:00:00.60506+00:00";
 		service.dispose();
 		const reopened = new TeamService(options);
 		assert.equal((await reopened.scopeForRepository("test/repo"))?.orgId, org);

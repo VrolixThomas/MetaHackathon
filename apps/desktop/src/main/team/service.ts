@@ -84,6 +84,10 @@ const LedgerSchema = z.record(
 	z.string(),
 	z.object({ input: ApplyTeamProposalSchema, receipt: TeamApplyReceiptSchema })
 );
+// PostgREST emits offset timestamps with microseconds; desktop wire times are UTC ISO.
+const databaseTimestamp = z.iso
+	.datetime({ offset: true })
+	.transform((value) => new Date(value).toISOString());
 function decision(raw: unknown): TeamDecision {
 	const d = z
 		.object({
@@ -93,7 +97,7 @@ function decision(raw: unknown): TeamDecision {
 			decision: z.string(),
 			author_id: z.string(),
 			github_author_id: z.string(),
-			created_at: z.string(),
+			created_at: databaseTimestamp,
 		})
 		.parse(raw);
 	return TeamDecisionSchema.parse({
@@ -113,7 +117,7 @@ function proposal(raw: unknown): TeamProposalDetail {
 			key: z.unknown(),
 			owner_id: z.string(),
 			bundle_digest: z.string(),
-			created_at: z.string(),
+			created_at: databaseTimestamp,
 			bundle: z.unknown(),
 			decision: z.unknown().nullable(),
 		})
@@ -464,6 +468,48 @@ export class TeamService {
 								? "schema"
 								: "unknown",
 					httpStatus: error instanceof TeamError ? error.status : 0,
+					...(error instanceof z.ZodError
+						? {
+								schemaIssues: error.issues.slice(0, 6).map((issue) => ({
+									code: issue.code,
+									path: issue.path
+										.slice(0, 8)
+										.map((part) =>
+											typeof part === "number"
+												? part
+												: [
+															"repository",
+															"prNumber",
+															"offset",
+															"items",
+															"nextOffset",
+															"id",
+															"key",
+															"orgId",
+															"repositoryId",
+															"owner_id",
+															"bundle_digest",
+															"created_at",
+															"decision",
+															"ownerId",
+															"bundleDigest",
+															"createdAt",
+															"users",
+															"scopes",
+															"analysisVersion",
+															"status",
+															"proposal",
+															"bundle",
+															"files",
+															"checks",
+														].includes(String(part))
+													? part
+													: "field"
+										),
+									...("expected" in issue ? { expected: issue.expected } : {}),
+								})),
+							}
+						: {}),
 				})
 			);
 			throw error;
@@ -484,7 +530,7 @@ export class TeamService {
 							key: z.unknown(),
 							owner_id: z.string(),
 							bundle_digest: z.string(),
-							created_at: z.string(),
+							created_at: databaseTimestamp,
 							decision: z.unknown().nullable(),
 						})
 					)
