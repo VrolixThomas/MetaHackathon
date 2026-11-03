@@ -230,7 +230,7 @@ async function slack(d) {
 	);
 	report.clarificationProposal = proposed;
 	state.allowSlackQuestion = true;
-	await say("Confirm this clarification delegation.", { id: "slack-confirm" });
+	await say("Yes, go ahead.", { id: "slack-confirm" });
 	await wait(
 		"actual delegated question reaches controlled source ledger",
 		() => report.simulatedWrites.some((w) => w.provider === "slack"),
