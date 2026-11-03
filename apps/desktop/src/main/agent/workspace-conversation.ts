@@ -94,14 +94,18 @@ export async function runWorkspaceConversation(
 			throwIfAborted(signal);
 			const primary = result.workspace.canvases.find((c) => c.id === result.workspace.primaryId);
 			const displayed =
-				direct.kind === "tickets"
-					? primary?.kind === "center" && primary.section === "tickets"
-					: primary?.kind === "browser" &&
-						result.browser?.presented &&
-						(direct.kind === "browser" ||
-							(direct.kind === "phone"
-								? result.browser.viewport.width === 390 && result.browser.viewport.height === 844
-								: result.workspace.browser?.viewportMode === "desktop"));
+				direct.kind === "completed-work"
+					? primary?.kind === "center" &&
+						primary.section === "completed" &&
+						primary.selectedId === direct.jobId
+					: direct.kind === "tickets"
+						? primary?.kind === "center" && primary.section === "tickets"
+						: primary?.kind === "browser" &&
+							result.browser?.presented &&
+							(direct.kind === "browser" ||
+								(direct.kind === "phone"
+									? result.browser.viewport.width === 390 && result.browser.viewport.height === 844
+									: result.workspace.browser?.viewportMode === "desktop"));
 			if (!displayed)
 				throw new GuidedReviewError("The requested view was not confirmed as displayed.");
 			const callId = `${input.requestId}:explicit-workspace-navigation`;
@@ -123,6 +127,7 @@ export async function runWorkspaceConversation(
 					}),
 				}
 			);
+			if (direct.kind === "completed-work") continue;
 			await onText(direct.acknowledgement);
 			return direct.acknowledgement;
 		}

@@ -5587,3 +5587,38 @@ test("flow creation omits a model ID and rejects invented update targets before 
 	);
 	assert.equal(w.commands.length, 0);
 });
+
+test("an explicit completed-ticket request opens the actual unique saved job before reasoning", async () => {
+	const d = data();
+	d.ticket.identifier = "MET-77";
+	assert(d.hub.jobs[0]?.ticket);
+	d.hub.jobs[0].ticket.identifier = "MET-77";
+	const w = workspace(d);
+	const requests: MetaRequest[] = [];
+	const service = new ConversationService(
+		client([answer("Controlled behavioral explanation.")], requests),
+		{ hub: d.ports, workspace: w.ports }
+	);
+	try {
+		service.start({
+			...input,
+			text: "Show me the completed MET-77 work and explain its behavior. Do not publish it.",
+		});
+		await eventually(() => w.commands.length === 1);
+		assert.deepEqual(w.commands[0], {
+			kind: "open-center",
+			section: "completed",
+			selectedId: d.job.id,
+		});
+		assert.equal(requests.length, 0);
+		assert.equal(service.poll(identity()).text, "");
+		w.settle();
+		await eventually(() => service.poll(identity()).status !== "running");
+		assert.equal(service.poll(identity()).status, "completed");
+		assert.equal(requests.length, 1);
+		assert.equal(d.operations.length, 0);
+	} finally {
+		w.settle();
+		await service.dispose();
+	}
+});

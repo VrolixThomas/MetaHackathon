@@ -287,7 +287,7 @@ export async function probeConversationLatency(ServiceClass: typeof Service, por
 				return { snapshot: structuredClone(hub), jobId: job.id };
 			},
 			fixes: unusedPorts,
-			approvals: unusedPorts,
+			approvals: { ...unusedPorts, confirmation: { peek: () => undefined }, service: unexpected },
 			prComments: unusedPorts,
 			slack: unusedPorts,
 			knowledge: unusedPorts,

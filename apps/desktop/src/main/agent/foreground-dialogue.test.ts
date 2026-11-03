@@ -275,3 +275,16 @@ test("simple chronology uses supplied current receipts, never implied start auth
 		"tools"
 	);
 });
+
+test("spoken zoom requests retain navigation until the actual ticket is displayed", () => {
+	const text =
+		"Okay, let's zoom into ticket 77. Can you talk me through the design trade-off and what you need me to decide before we can start?";
+	assert.equal(mode(text, false), "navigate-discussion");
+	assert.equal(mode(text, true), "answer");
+	assert.equal(mode("Talk me through the design tradeoff", false), "tools");
+	assert.equal(mode("Don't zoom into ticket 77; explain the tradeoff here.", false), "tools");
+	assert.equal(
+		mode("If it is ready, zoom into ticket 77 and explain the tradeoff.", false),
+		"tools"
+	);
+});
