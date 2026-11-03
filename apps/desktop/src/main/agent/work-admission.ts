@@ -39,6 +39,7 @@ export type WorkAdmissionDiagnostic =
 function refuse(category: WorkAdmissionDiagnostic): never {
 	console.warn(`[work-admission] ${JSON.stringify({ version: 1, category })}`);
 	const needsUserChoice = [
+		"intent-unclear",
 		"scope-unresolved",
 		"pending-answer-evidence-mismatch",
 		"prior-request-evidence-mismatch",

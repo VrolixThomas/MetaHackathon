@@ -440,3 +440,19 @@ for (const text of [
 		assert(!profile.has("work"));
 	});
 }
+
+test("coding reasoning selection is turn-local and does not escalate discussion or inspection", () => {
+	const profile = new ForegroundProfile();
+	profile.select(observation("home"), false, "Build ticket TASK-12 now.");
+	assert(profile.workWorkflow);
+	assert.match(profile.workflowInstructions, /start_work/);
+	for (const text of [
+		"Inspect TASK-12.",
+		"What tradeoff do you recommend?",
+		"Keep it local.",
+		"Do not build TASK-12.",
+	]) {
+		profile.select(observation("tickets"), false, text);
+		assert(!profile.workWorkflow);
+	}
+});

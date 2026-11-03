@@ -222,7 +222,7 @@ export async function runWorkspaceConversation(
 		);
 		const request = {
 			requestId: `${input.requestId}:workspace:${round}`,
-			workload: "quick" as const,
+			workload: profile.workWorkflow && !answerOnly ? ("deep" as const) : ("quick" as const),
 			instructions: answerOnly
 				? `${TICKET_DISCUSSION_INSTRUCTIONS}${directNavigation && !directNavigation.discussion ? "\nThe explicit navigation has its actual applied receipt. Acknowledge it in one brief sentence and stop." : ""}`
 				: profile.sourceWorkflow

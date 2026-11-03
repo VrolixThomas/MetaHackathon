@@ -386,7 +386,7 @@ export async function runGuidedReview(
 				));
 		const request = {
 			requestId: `${input.requestId}:review:${modelAttempt++}`,
-			workload: proposalReasoning ? ("deep" as const) : ("quick" as const),
+			workload: proposalReasoning || profile.workWorkflow ? ("deep" as const) : ("quick" as const),
 			instructions: `${profile.sourceWorkflow ? profile.workflowInstructions : `${workspace || hub ? `${INSTRUCTIONS}\n${WORKSPACE_INSTRUCTIONS}` : INSTRUCTIONS}\n${COPARTNER_INSTRUCTIONS}\n${PROFILE_INSTRUCTIONS}`}${terminalAnswer ? "\nTool budget is exhausted. Answer from actual results only, briefly naming any unfinished part. Do not claim rejected or unacknowledged effects succeeded." : `\nAt most ${toolRoundLimit - round} tool calls remain, plus one final answer.${profile.sourceWorkflow ? "" : " Inspect missing links before proposing a source flow."}`}`,
 			input: modelInput,
 			tools: answerOnly

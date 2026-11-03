@@ -68,6 +68,7 @@ async function refusal(
 				error.diagnostic === category &&
 				!error.inspectExisting &&
 				([
+					"intent-unclear",
 					"scope-unresolved",
 					"pending-answer-evidence-mismatch",
 					"prior-request-evidence-mismatch",

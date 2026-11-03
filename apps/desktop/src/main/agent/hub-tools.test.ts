@@ -2902,7 +2902,7 @@ test("independent admission fails closed on forged, partial, discussion, unresol
 			service.start({ ...input, text: requestText });
 			await eventually(() => service.poll(identity()).status !== "running");
 			assert.equal(service.poll(identity()).status, "completed");
-			assert.match(service.poll(identity()).text, /clarify/);
+			assert.match(service.poll(identity()).text, /clarify|couldn’t verify.*haven’t started/);
 			assert.equal(d.operations.length, 0);
 		} finally {
 			await service.dispose();
