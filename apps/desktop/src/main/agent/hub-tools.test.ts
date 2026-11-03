@@ -3942,7 +3942,10 @@ for (const outcome of ["applied", "cancelled", "changed", "revoked", "foreign-ef
 			),
 			{ hub: d.ports, workspace: w.ports }
 		);
-		const turn = { ...input, text: "Open MET-77 and discuss the design decisions." };
+		const turn = {
+			...input,
+			text: "Open MET-77 and talk me through the product tradeoff before we start. What do you recommend?",
+		};
 		try {
 			service.start(turn);
 			await eventually(() => w.commands.length === 1);
@@ -4027,6 +4030,17 @@ test("strict imperative shortcut leaves questions, negation, conditionals, compo
 		'"Open MET-77"',
 		"Open MET-77 and discuss it without opening anything",
 		"Open MET-77 and approve it",
+		"Open MET-77 and talk me through the product tradeoff before we start. What do you recommend? Also start work.",
+		"Open MET-77. Before we change anything, what should I be thinking about? Then open MET-80.",
+		"Open MET-77. Before we start work, explain it.",
+		"Open MET-77. Before we start, publish it.",
+		"Open MET-77. Before we change anything, what should I be thinking about if it is ready?",
+		"Open MET-77. Before we change anything, explain the source.",
+		"Open MET-77. Before we change anything, discuss the browser.",
+		"Open MET-77. What do you recommend without opening it?",
+		"Open MET-77. What do you recommend for MET-80?",
+		"Open MET-77x and discuss it",
+		"Open MET-77? What do you recommend?",
 	]) {
 		const d = data();
 		const w = ticketBoard(d);
@@ -4056,11 +4070,16 @@ test("explicit navigation shortcut requires one observed target on the ticket pa
 		"malformed-context",
 		"answer-tool",
 		"plain-open",
+		"planning-variant",
 	] as const) {
 		const d = data();
 		const w = ticketBoard(d);
 		const canvas = required(w.observation.workspace.canvases[0]);
 		assert(canvas.kind === "center");
+		if (scenario === "planning-variant") {
+			d.ticket.identifier = "MET-80";
+			required(d.hub.tickets[0]).identifier = "MET-80";
+		}
 		if (scenario === "off-pane") canvas.section = "home";
 		if (scenario === "duplicate")
 			d.hub.tickets.push({ ...required(d.hub.tickets[0]), id: "duplicate" });
@@ -4083,9 +4102,17 @@ test("explicit navigation shortcut requires one observed target on the ticket pa
 			service.start({
 				...input,
 				text:
-					scenario === "plain-open" ? "Please open ticket MET77." : "Open MET-77 and explain it",
+					scenario === "plain-open"
+						? "Please open ticket MET77."
+						: scenario === "planning-variant"
+							? "Open MET-80. Before we change anything, what should I be thinking about?"
+							: "Open MET-77 and explain it",
 			});
-			if (scenario === "answer-tool" || scenario === "plain-open") {
+			if (
+				scenario === "answer-tool" ||
+				scenario === "plain-open" ||
+				scenario === "planning-variant"
+			) {
 				await eventually(() => w.commands.length === 1);
 				assert.equal(requests.length, 0);
 				w.settle();
@@ -4097,7 +4124,9 @@ test("explicit navigation shortcut requires one observed target on the ticket pa
 			);
 			assert.equal(
 				w.commands.length,
-				scenario === "answer-tool" || scenario === "plain-open" ? 1 : 0
+				scenario === "answer-tool" || scenario === "plain-open" || scenario === "planning-variant"
+					? 1
+					: 0
 			);
 			assert.equal(requests.length, 1);
 			if (scenario === "plain-open") {

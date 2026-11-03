@@ -98,11 +98,35 @@ export function explicitTicketNavigation(
 	observation: WorkspaceObservation | undefined,
 	context: unknown
 ): { selectedId: string; discussion: boolean } | undefined {
-	const match =
-		/^(?:please\s+)?open\s+(?:ticket\s+)?([a-z]+-?\d+)(?:\s+and\s+(discuss|explain|talk me through)\s+(?:it|(?:(?:the|its)\s+)?(?:design(?: decisions?)?|tradeoffs?|trade-offs?|choice|ticket)))?[.!]?$/i.exec(
-			text.trim()
-		);
+	const match = /^(?:please\s+)?open\s+(?:ticket\s+)?([a-z]+-?\d+)\b(.*)$/i.exec(text.trim());
 	if (!match || !observation?.capabilities.includes("center")) return undefined;
+	const rest = match[2]?.trim() ?? "";
+	const planning = !/^[.!]?$/.test(rest);
+	if (planning) {
+		if (!/^(?:and\s+|[.!]\s*)/i.test(rest)) return undefined;
+		// Strip only these non-action planning clauses, never a general permission,
+		// condition or instruction. Every remaining sentence must be recognized.
+		const clauses = rest
+			.replace(/\bbefore we (?:start|change anything)(?=\s*[,.!?]|\s*$)/gi, "")
+			.replace(/^(?:and\s+|[.!]\s*)/i, "")
+			.split(/[.!?]/)
+			.map((clause) => clause.trim().replace(/^,\s*|\s*,$/g, ""))
+			.filter(Boolean);
+		if (
+			!clauses.length ||
+			!clauses.every((clause) =>
+				/^(?:(?:discuss|explain|talk me through)\s+(?:it|(?:(?:the|its)\s+)?(?:product\s+)?(?:design(?: decisions?)?|tradeoffs?|trade-offs?|choice|ticket))|what do you recommend|what should I be thinking about)$/i.test(
+					clause
+				)
+			) ||
+			ticketDialogueMode(text, [], context) === "tools"
+		)
+			return undefined;
+	}
+	const ids = new Set(
+		(text.match(/\b[a-z]+-?\d+\b/gi) ?? []).map((id) => id.replace(/-/g, "").toUpperCase())
+	);
+	if (ids.size !== 1) return undefined;
 	const primary = observation.workspace.canvases.find(
 		(canvas) => canvas.id === observation.workspace.primaryId
 	);
@@ -123,5 +147,5 @@ export function explicitTicketNavigation(
 		parsed.data.target.displayed
 	)
 		return undefined;
-	return { selectedId: target.id, discussion: !!match[2] };
+	return { selectedId: target.id, discussion: planning };
 }
