@@ -164,6 +164,9 @@ async function readGhToken(): Promise<string> {
 }
 
 export class GitHubClient {
+	// Immutable source only; every hit still requires live current-account PR authorization.
+	private readonly reviewFiles = new Map<string, ReviewFile>();
+	private readonly reviewPages = new Map<string, z.infer<typeof reviewChangedFile>[]>();
 	private readonly posts = new Map<
 		string,
 		{ signature: string; result: Promise<{ url: string; id: number }> }
@@ -306,6 +309,14 @@ export class GitHubClient {
 		readLocal?: ReviewSourceReader
 	): Promise<ReviewFile> {
 		const request = PinnedReviewFileRequestSchema.parse(input);
+		const accountToken = await this.credentials.get("github");
+		const active = async () => {
+			if (signal?.aborted) throw new Error("GitHub review read cancelled");
+			if (!accountToken || (await this.credentials.get("github")) !== accountToken)
+				throw new Error("GitHub account changed during review read");
+			if (signal?.aborted) throw new Error("GitHub review read cancelled");
+		};
+		await active();
 		const { repository, number } = parsePRId(request.prId);
 		if (request.path.length > 4096) throw new Error("Review path is too long");
 		const prPath = `${repositoryPath(repository)}/pulls/${number}`;
@@ -314,17 +325,31 @@ export class GitHubClient {
 		if (current.base.repo.full_name.toLowerCase() !== repository.toLowerCase())
 			throw new Error("GitHub returned a PR for another repository");
 		this.assertReviewRevision(pr, request);
+		await active();
+		const cacheKey = createHash("sha256")
+			.update(JSON.stringify([accountToken, request, current.base.repo, current.head.repo]))
+			.digest("hex");
+		const cached = this.reviewFiles.get(cacheKey);
+		if (cached) return structuredClone(cached);
+		const revisionKey = createHash("sha256")
+			.update(JSON.stringify([accountToken, request.prId, request.baseSha, request.headSha]))
+			.digest("hex");
+		const pages = new Map<string, z.infer<typeof reviewChangedFile>[]>();
 		let changed: z.infer<typeof reviewChangedFile> | undefined;
 		for (let page = 1; page <= 30; page++) {
-			const batch = z
-				.array(reviewChangedFile)
-				.max(100)
-				.parse(
-					await this.request(`${prPath}/files?per_page=100&page=${page}`, {
-						signal,
-						maxBytes: 4_000_000,
-					})
-				);
+			const pageKey = `${revisionKey}:${page}`;
+			const batch =
+				this.reviewPages.get(pageKey) ??
+				z
+					.array(reviewChangedFile)
+					.max(100)
+					.parse(
+						await this.request(`${prPath}/files?per_page=100&page=${page}`, {
+							signal,
+							maxBytes: 4_000_000,
+						})
+					);
+			pages.set(pageKey, batch);
 			changed = batch.find((file) => file.filename === request.path);
 			if (changed || batch.length < 100) break;
 		}
@@ -348,21 +373,17 @@ export class GitHubClient {
 				throw new Error("Review source identity mismatch");
 			return result;
 		};
-		const base =
+		const [base, head] = await Promise.all([
 			changed.status === "added" || changed.status === "copied"
 				? missing(basePath, request.baseSha)
-				: await source(current.base.repo.full_name, basePath, request.baseSha, signal);
-		const head =
+				: source(current.base.repo.full_name, basePath, request.baseSha, signal),
 			changed.status === "removed"
 				? missing(request.path, request.headSha)
-				: await source(
-						current.head.repo?.full_name ?? repository,
-						request.path,
-						request.headSha,
-						signal
-					);
+				: source(current.head.repo?.full_name ?? repository, request.path, request.headSha, signal),
+		]);
 		this.assertReviewRevision(await this.readPullRequest(repository, number, signal), request);
-		return ReviewFileSchema.parse({
+		await active();
+		const result = ReviewFileSchema.parse({
 			prId: request.prId,
 			path: request.path,
 			status: changed.status,
@@ -370,6 +391,21 @@ export class GitHubClient {
 			base,
 			head,
 		});
+		// At most 16 bounded files (each source <= 300 KB); never cache failures or in-flight work.
+		if (this.reviewFiles.size >= 16) {
+			const oldest = this.reviewFiles.keys().next().value;
+			if (oldest !== undefined) this.reviewFiles.delete(oldest);
+		}
+		// Publish metadata only after the post-read revision/account checks succeed.
+		for (const [key, page] of pages) {
+			if (this.reviewPages.size >= 16) {
+				const oldest = this.reviewPages.keys().next().value;
+				if (oldest !== undefined) this.reviewPages.delete(oldest);
+			}
+			this.reviewPages.set(key, page);
+		}
+		this.reviewFiles.set(cacheKey, structuredClone(result));
+		return result;
 	}
 
 	private assertReviewRevision(pr: PullRequest, input: PinnedReviewFileRequest) {

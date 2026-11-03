@@ -239,3 +239,79 @@ test("trusted local source port avoids remote contents and only undefined falls 
 	);
 	assert.equal(failed.urls.filter((url) => url.pathname.includes("/contents/")).length, 0);
 });
+
+test("immutable file hits perform one live PR request and reject stale heads", async () => {
+	let moved = false;
+	const f = fixture({
+		getPR: () =>
+			moved ? { ...metadata, head: { ...metadata.head, sha: "c".repeat(40) } } : metadata,
+	});
+	const first = await f.client.reviewFile(input);
+	assert.equal(f.urls.length, 5);
+	first.head.content = "caller mutation";
+	const second = await f.client.reviewFile(input);
+	assert.equal(f.urls.length, 6);
+	assert.notEqual(second.head.content, first.head.content);
+	moved = true;
+	await assert.rejects(f.client.reviewFile(input), /revision changed/);
+	assert.equal(f.urls.length, 7);
+	const cancelled = new AbortController();
+	cancelled.abort();
+	await assert.rejects(f.client.reviewFile(input, cancelled.signal), /cancel/);
+	assert.equal(f.urls.length, 7);
+});
+
+test("cache never bypasses denied access or a changed account, including a late response", async () => {
+	let token = "account-one";
+	let denied = false;
+	let switchDuringRead = false;
+	let requests = 0;
+	const client = new GitHubClient({ ...credentials, get: async () => token }, (async (target) => {
+		requests++;
+		const path = new URL(String(target)).pathname;
+		if (switchDuringRead) token = "account-three";
+		if (denied) return new Response(null, { status: 403 });
+		if (path.endsWith("/pulls/7")) return Response.json(metadata);
+		if (path.endsWith("/files")) return Response.json([changed]);
+		return Response.json(contents(input.path, "source"));
+	}) as typeof fetch);
+	await client.reviewFile(input);
+	assert.equal(requests, 5);
+	token = "account-two";
+	await client.reviewFile(input);
+	assert.equal(requests, 10);
+	denied = true;
+	await assert.rejects(client.reviewFile(input), /denied/);
+	assert.equal(requests, 11);
+	denied = false;
+	switchDuringRead = true;
+	await assert.rejects(client.reviewFile(input), /account changed/);
+	assert.equal(requests, 12);
+});
+
+test("a cancelled cold source read cannot populate the immutable cache", async () => {
+	const controller = new AbortController();
+	let cancel = true;
+	const f = fixture({
+		source: () => {
+			if (cancel) controller.abort();
+			return Response.json(contents(input.path, "source"));
+		},
+	});
+	await assert.rejects(f.client.reviewFile(input, controller.signal), /cancel/);
+	cancel = false;
+	const before = f.urls.length;
+	await f.client.reviewFile(input);
+	assert.equal(f.urls.length - before, 5);
+});
+
+test("different files reuse verified revision pages but retain both live revision checks", async () => {
+	const other = { ...input, path: "src/other.ts" };
+	const f = fixture({ changed: [changed, { ...changed, filename: other.path }] });
+	await f.client.reviewFile(input);
+	const before = f.urls.length;
+	await f.client.reviewFile(other);
+	assert.equal(f.urls.length - before, 4);
+	assert.equal(f.urls.filter((url) => url.pathname.endsWith("/files")).length, 1);
+	assert.equal(f.urls.filter((url) => url.pathname.endsWith("/pulls/7")).length, 4);
+});
