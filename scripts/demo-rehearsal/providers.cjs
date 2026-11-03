@@ -78,7 +78,7 @@ function createSources(fixture, state, report) {
 						throw Error("Wrong controlled approval target");
 					const receipt = {
 						id: 900000 + report.simulatedWrites.length,
-						html_url: `${fixture.pulls[2].url}#simulated-review`,
+						html_url: `${fixture.pulls[2].url}#pullrequestreview-${900000 + report.simulatedWrites.length}`,
 						state: "APPROVED",
 						commit_id: body.commit_id,
 						user: { id: 43751036, login: "VrolixThomas" },
