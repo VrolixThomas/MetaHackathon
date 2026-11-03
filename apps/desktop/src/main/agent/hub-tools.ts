@@ -31,6 +31,7 @@ import {
 	decodePRFixViewTarget,
 	encodePRFixViewTarget,
 } from "../../shared/contracts";
+import type { StandingClarificationComposition } from "../composition/standing-clarification";
 import { type ApprovalToolPorts, ApprovalTools } from "./approval-tools";
 import { abortable, throwIfAborted } from "./cancellation";
 import { conversationErrorDiagnostic } from "./conversation-error-diagnostic";
@@ -54,11 +55,17 @@ import {
 	ConversationReviewRequestTools,
 } from "./review-request-tools";
 import { type ConversationSlackPorts, ConversationSlackTools } from "./slack-tools";
+import {
+	StandingClarificationTools,
+	isStandingClarificationTool,
+	standingClarificationToolDefinitions,
+} from "./standing-clarification-tools";
 import { type ConversationTeamPorts, ConversationTeamTools } from "./team-tools";
 import { type WorkAdmission, WorkAdmissionError } from "./work-admission";
 import { WorkspaceArgumentError } from "./workspace-tools";
 
 export interface ConversationHubPorts {
+	standing?: Pick<StandingClarificationComposition, "binding" | "ready">;
 	reviewRequests?: ConversationReviewRequestPorts;
 	team?: ConversationTeamPorts;
 	approvals?: ApprovalToolPorts;
@@ -334,6 +341,10 @@ export class ConversationHubTools {
 	private readonly observedRepositories = new Set<string>();
 	private readonly observedIssues = new Set<string>();
 	private readonly dayReviewChecks = new Map<string, WorkJob["checks"]>();
+	private standing?: StandingClarificationTools;
+	get standingWorkflow() {
+		return this.ports.standing?.binding(this.turn)?.workflow ?? false;
+	}
 	private readonly day?: ConversationDayTools;
 	private readonly knowledge?: ConversationKnowledgeTools;
 	private readonly slack?: ConversationSlackTools;
@@ -348,6 +359,7 @@ export class ConversationHubTools {
 		observation: import("../../shared/contracts").WorkspaceObservation | undefined,
 		prior?: DayClarificationReference
 	) {
+		if (this.standingWorkflow) return undefined;
 		const canvas = observation?.workspace.canvases.find(
 			(c) => c.id === observation.workspace.primaryId
 		);
@@ -356,10 +368,17 @@ export class ConversationHubTools {
 		return this.day?.selectedConfirmation(canvas.selectedId, prior);
 	}
 	async approvalContext() {
+		// ConversationService calls this preflight before any navigation/model work.
+		// Await the actual-user capture started by onUserTurn, then reuse its opaque token.
+		await this.ports.standing?.ready(this.turn, this.signal);
+		const standing = this.ports.standing?.binding(this.turn);
+		if (standing && !this.standing)
+			this.standing = new StandingClarificationTools(standing.rules, standing.ingress, this.signal);
 		return this.approvals?.confirmationContext();
 	}
 	get foregroundHandoff() {
 		return (
+			this.standing?.foregroundHandoff ??
 			this.day?.foregroundHandoff ??
 			this.approvals?.handoff ??
 			this.prComments?.foregroundHandoff ??
@@ -406,6 +425,9 @@ export class ConversationHubTools {
 			generation: turn.generation,
 		})
 	) {
+		const standing = ports.standing?.binding(turn);
+		if (standing)
+			this.standing = new StandingClarificationTools(standing.rules, standing.ingress, signal);
 		if (ports.reviewRequests)
 			this.reviewRequests = new ConversationReviewRequestTools(ports.reviewRequests, turn, signal);
 		if (ports.team) this.team = new ConversationTeamTools(ports.team, turn, signal);
@@ -621,6 +643,7 @@ export class ConversationHubTools {
 					description: descriptions[name as keyof typeof schemas],
 					parameters: z.toJSONSchema(schema),
 				})),
+			...(this.standing ? standingClarificationToolDefinitions : []),
 			...(this.day?.tools ?? []),
 			...(this.knowledge?.tools ?? []),
 			...(this.slack?.tools ?? []),
@@ -633,6 +656,7 @@ export class ConversationHubTools {
 	has(name: string) {
 		if (name.startsWith("inspect_suggested_") && !this.ports.fixes) return false;
 		return (
+			(!!this.standing && isStandingClarificationTool(name)) ||
 			!!this.team?.has(name) ||
 			!!this.reviewRequests?.has(name) ||
 			!!this.approvals?.has(name) ||
@@ -856,6 +880,8 @@ export class ConversationHubTools {
 	}
 	private async executeOperation(name: string, rawArguments: string): Promise<unknown> {
 		if (!this.has(name)) throw new GuidedReviewError("That hub operation is unavailable.");
+		if (this.standing && isStandingClarificationTool(name))
+			return this.standing.execute(name, rawArguments);
 		if (this.reviewRequests?.has(name)) return this.reviewRequests.execute(name, rawArguments);
 		if (this.team?.has(name)) return this.team.execute(name, rawArguments);
 		if (this.approvals?.has(name)) return this.approvals.execute(name, rawArguments);

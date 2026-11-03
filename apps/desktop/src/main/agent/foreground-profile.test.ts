@@ -7,6 +7,7 @@ import {
 	suggestedFixContextRequested,
 } from "./foreground-profile";
 import type { FunctionTool } from "./meta-client";
+import { standingClarificationToolDefinitions } from "./standing-clarification-tools";
 import { WorkspaceArgumentError } from "./workspace-tools";
 
 const tools: FunctionTool[] = [
@@ -579,4 +580,29 @@ test("posted incoming PR comments select actual fix preparation rather than expl
 	assert(profile.feedbackWorkflow);
 	assert.match(profile.workflowInstructions, /requested-review or own-PR/);
 	assert.match(profile.workflowInstructions, /start it now/);
+});
+
+test("standing clarification and distinct confirmation remain tools-capable off the Slack pane", () => {
+	for (const text of [
+		"Let Muse ask clarification on fresh mentions while I review",
+		"Propose a clarification rule",
+		"List clarification rules",
+		"Revoke this rule",
+		"yes",
+		"Activate this rule",
+		"yes activate that rule",
+	]) {
+		const profile = new ForegroundProfile();
+		profile.select(observation("completed"), false, text);
+		assert.equal(profile.sourceWorkflow, true, text);
+		const offered = profile.tools(standingClarificationToolDefinitions);
+		assert.ok(
+			offered.some((tool) => tool.name === "standing_clarification_propose"),
+			text
+		);
+		assert.ok(
+			offered.some((tool) => tool.name === "standing_clarification_confirm"),
+			text
+		);
+	}
 });

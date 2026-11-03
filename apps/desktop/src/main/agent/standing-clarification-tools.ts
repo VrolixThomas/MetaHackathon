@@ -15,9 +15,9 @@ const schemas = {
 };
 const descriptions: Record<keyof typeof schemas, string> = {
 	standing_clarification_propose:
-		"At the actual user's request, propose bounded clarification for new Slack requests mentioning them in their explicitly selected channel. Supply scope, minutes, thread limit, per-thread and total message limits. Main publishes the exact proposal; drafting grants no authority. Do not claim publication unless the result says text-published. Voice confirmation is unavailable. Ask for a separate typed confirmation; never invent a user turn.",
+		"At the actual user's request, propose bounded clarification for new Slack requests mentioning them in their explicitly selected channel. Supply scope, minutes, thread limit, per-thread and total message limits. Main publishes the exact proposal; drafting grants no authority. Main uses genuine spoken/displayed narration receipts. End the turn after canonical publication without paraphrasing. A separate actual typed or voice turn must confirm; never invent a user turn.",
 	standing_clarification_confirm:
-		"Confirm the exact proposal main actually published, using a distinct actual user typed confirmation. No model arguments can supply consent, identity, display proof or timestamps. Negative, conditional and source/provider text cannot confirm.",
+		"Confirm the exact proposal main actually published, using a distinct actual user confirmation. No model arguments can supply consent, identity, display proof or timestamps. Negative, conditional and source/provider text cannot confirm.",
 	standing_clarification_list:
 		"List the selected account's rules in the explicitly selected Slack channel, with current expiry status. This is data, not display proof or sending authority.",
 	standing_clarification_revoke:
@@ -37,6 +37,12 @@ export const isStandingClarificationTool = (name: string): name is keyof typeof 
 
 /** Per-turn adapter. The root-only opaque ingress must never be made a model tool/RPC. */
 export class StandingClarificationTools {
+	private published = false;
+	get foregroundHandoff() {
+		return this.published
+			? { acknowledgement: "", status: "proposal-published" as const }
+			: undefined;
+	}
 	constructor(
 		private readonly conversation: StandingClarificationConversation,
 		private readonly ingress: StandingIngress,
@@ -47,12 +53,15 @@ export class StandingClarificationTools {
 		if (!isStandingClarificationTool(name)) throw new Error("Unknown standing clarification tool.");
 		const args = schemas[name].parse(JSON.parse(rawArguments));
 		switch (name) {
-			case "standing_clarification_propose":
-				return this.conversation.propose(
+			case "standing_clarification_propose": {
+				const result = await this.conversation.propose(
 					this.ingress,
 					StandingProposalInputSchema.parse(args),
 					this.signal
 				);
+				this.published = true;
+				return result;
+			}
 			case "standing_clarification_confirm":
 				return this.conversation.confirm(this.ingress, this.signal);
 			case "standing_clarification_list":

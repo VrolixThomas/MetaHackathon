@@ -1,179 +1,123 @@
-# MET-8 standing Slack clarification wiring
+# MET-8 production standing Slack clarification
 
-These new modules are deliberately unregistered. Root still owns services, hub tools,
-foreground selection, ingress/publication plumbing, contracts and DayStore. No Slack sender,
-model call, native app launch or dependency change is included.
+Production wiring lives in `services.ts`, `standing-clarification.ts`,
+`standing-clarification-tools.ts`, `hub-tools.ts`, and `foreground-profile.ts`.
+No manifest, shared contract, renderer, or ConversationService change is required.
 
-## Durable controller and Day admission
+## Durable intake and delivery
 
-The existing APIs are `DayStore.standingTransaction`, `StandingClarification`,
-`DayPorts.standing`, `DayPorts.classifyStandingIncoming`, `DayPorts.readStandingAccess`,
-`getSlackWorkspace().client`, and `DayReplyPort.readClarification`.
-Create the controller against the existing store (do not substitute memory in production):
+`initializeDay` constructs `StandingClarification` against the existing
+`DayStore.standingTransaction`. The same controller serves foreground rules and
+DayService admission/parent authorization. The existing `replies` adapter and
+original-thread send ledger are unchanged; this composition has no sender.
 
-```ts
-const standing = new StandingClarification({
-  transaction: (mutate) => stores.day.standingTransaction(mutate),
-});
-const incoming = new StandingIncomingBindings();
-const readStandingAccess = (channelId: string, signal: AbortSignal) =>
-  readStandingSlackAccess(getSlackWorkspace().client, channelId, signal);
-```
+Slack intake captures the selected credential before `classifyDayMessage`, checks
+its actor and final current credential, then retains the original validated result
+before reducing it to Day metadata. It never reconstructs a classifier binding
+from summaries. `classifyStandingIncoming` obtains fresh channel access, checks the
+Day actor, and consumes the original source/body/connection binding once.
 
-In the existing `services.ts` `classify` callback, capture the selected credential **before**
-`classifyDayMessage` and retain the original validated result **before** reducing it to the
-current `{kind,title,summary,...}` return. Do not reconstruct a classification from that summary.
+Bindings require an unchanged, recent message from another author with a literal
+mention of the selected user. They expire after 30 seconds, are capped at 128,
+and clear during account refresh/Day replacement/shutdown. Backlog/cache/tool reads
+cannot mint bindings. DayService keeps its fresh complete thread checks, atomic
+parent budgets, explicit standing child with `confirmedAt: null`, parent expiry
+and revoke checks, and existing original-thread durable delivery ledger. Foreground
+speech cancellation does not cancel admitted children or independent workers.
 
-```ts
-const client = getSlackWorkspace().client;
-const credential = await client.credential(signal);
-if (credential.workspaceId !== actor.workspaceId || credential.userId !== actor.userId)
-  throw new Error("Slack account changed");
-const result = await classifyDayMessage(
-  conversationClient, { actor, message, repositories }, signal
-);
-await client.assertCurrent(credential, signal);
-signal.throwIfAborted();
-if (!result) return null;
-incoming.retain(actor, credential.connectionId, message, result);
-// Continue the existing own-promise handling and metadata return unchanged.
-```
+## Actual foreground ingress
 
-In `initializeDay`'s existing `new DayService({...})`, add these ports, retaining its actual
-`replies` adapter (including complete fresh thread reads):
+`onUserTurn` invokes `StandingClarificationComposition.admit` for **every actual
+user turn**, before model work. The previous opaque capability is retired
+synchronously. Unrelated/negative turns invalidate pending consent immediately and
+need no Slack network access. Assistant attention, model/source text and history
+never enter this hook. Existing teamShare, reviewRequests, comment and approval
+hooks remain intact.
 
-```ts
-standing,
-readStandingAccess,
-classifyStandingIncoming: async (message, signal) => {
-  const access = await readStandingAccess(message.citation.source.conversationId, signal);
-  if (access.actor.workspaceId !== currentActor.workspaceId ||
-      access.actor.userId !== currentActor.userId) throw new Error("Slack account changed");
-  return incoming.take(currentActor, access.connectionId, message);
-},
-```
+The existing `ConversationHubTools.approvalContext` call is the foreground
+preflight in ConversationService, before workspace observation/navigation/model
+work. It now awaits `standing.ready`, then constructs tools with the single
+captured opaque token. Rebuilding hub tools reuses that token, never registers
+another user event. Controlled tests hold capture and verify no model/navigation
+can overtake it. Both review and workspace runners use this preflight.
 
-The retention helper requires the original bound classifier result, a literal mention of the
-selected user, another author, unchanged source/body and a message no older than 30 seconds.
-Bindings expire after 30 seconds, are consumed once, and are capped at 128. This deliberately
-misses slow/offline requests rather than replaying history. Do not call it from backlog scans,
-manual captures, restored source caches or model tools. Clear it at account/connection changes.
-DayService additionally admits only messages created after parent confirmation, freshly rereads
-the thread, atomically reserves parent budgets and installs an explicit standing child.
-`confirmedAt` on that child stays **null**. Existing DayService revalidates parent authority at
-send boundaries; do not fabricate per-thread confirmation times or call thread confirmation.
+Capture uses only the acknowledged workspace snapshot. A unique Slack channel
+selected in the visible primary or secondary pane is required; hidden tabs,
+model-proposed channels, source text and multiple different visible channels do
+not qualify. A review may remain primary with Slack secondary. The selected
+channel is rechecked after fresh credential/membership access. The presentation
+label is the main-owned channel ID; no provider label grants authority. Missing
+selection/access omits rule tools and asks the human to select the channel.
 
-## Actual user ingress and model tools
+Session release, account/connection epoch changes, explicit Stop speech,
+foreground cancellation and shutdown retire pending authority. Each operation
+rechecks actor, connection, channel and fresh joined/reply access. Original
+request/turn identities reject same-turn consent. Only the immediately following
+actual affirmative turn may consume a pending proposal; even an unused affirmative
+cannot be replayed by a later yes.
 
-Create one `StandingClarificationConversation` per authenticated foreground conversation session,
-using the shared durable controller. Dispose it on session/account/connection retirement. Pending
-presentation receipts are intentionally ephemeral and cannot be restored as authority.
+## Canonical typed and voice publication
 
-```ts
-const rules = new StandingClarificationConversation({
-  controller: standing,
-  readAccess: readStandingAccess,
-  publish: publishStandingProposal, // root adapter described below; not present in this base
-});
-```
+A clear request such as “Let Muse ask clarification on fresh mentions while I
+review” selects standing-rule tools. Explicit propose/draft/set-up rule requests
+and list/revoke are supported. Bounds remain 5–30 minutes, 1–5 threads, 1–3
+messages per thread and 1–10 messages total. Model-selected defaults are proposals
+only. Scope, channel, every bound, exclusions and the final activation question
+are included verbatim in the canonical text.
 
-At actual user admission (before the model), bind the authenticated actor/connection and the
-channel the human explicitly selected. Do not obtain these from tool arguments or infer a channel
-from provider text. If selection is ambiguous, ask the user first. The label is a root-owned
-presentation label, not authority. The following `actualUserTurn` and `selectedChannel` are root
-bindings, not newly existing APIs:
+The production publisher calls **ConversationService.narrateProposal** directly
+while the tool awaits it. Its existing narration checkpoint returns `spoken`
+after the renderer's drained speech acknowledgement, or `displayed` after the
+renderer text receipt. The main-only standing receipt binds that delivery kind
+to exact proposal ID, digest, text, session, turn and request. Tool JSON is never
+publication proof. Voice proposals require `spoken`; typed proposals require
+`displayed`. A voice confirmation cannot activate a merely displayed proposal.
 
-```ts
-const ingress = rules.userIngress({
-  sessionId: actualUserTurn.sessionId,
-  turnId: actualUserTurn.turnId,
-  requestId: actualUserTurn.requestId,
-  text: actualUserTurn.text,
-  inputMode: actualUserTurn.inputMode, // app ingress, never model supplied
-  actor: selectedActor,
-  connectionId: selectedConnectionId,
-  channelId: selectedChannel.id,
-  channelLabel: selectedChannel.label,
-});
-const standingTools = new StandingClarificationTools(rules, ingress, turnSignal);
-```
+After verified publication the existing terminal foreground handoff returns an
+empty acknowledgement: the exact canonical question is already in the conversation,
+and neither runner makes another model request or appends a paraphrase. Proposal
+and confirmation must be distinct actual turns. Negative/conditional/quoted or
+extra-clause responses cannot confirm. Publication may drain for up to five minutes
+once admitted, so a full spoken canonical policy is not invalidated by the short
+30-second ingress admission window. The resulting receipt expires in five minutes.
+Cancellation/identity checks still apply throughout. There is no voice-unavailable
+fallback and no fabricated narration receipt.
 
-Register `standingClarificationToolDefinitions` beside the existing Day definitions in
-`hub-tools.ts`, and dispatch before the generic unknown-tool branch:
+## Controlled validation and remaining root acceptance
 
-```ts
-if (isStandingClarificationTool(name))
-  return standingTools.execute(name, rawArguments);
-```
-
-The adapter exposes propose/list/confirm/revoke only. Never expose `userIngress`, controller
-`confirm`, the publication callback or retained classifier bindings through tools/RPC. Wire every
-actual user turn through ingress, including unrelated or negative replies, so old proposals cannot
-be revived by a later bare yes. Never mint ingress from assistant/source/provider history or an
-attention turn. Pass the *same opaque ingress* when rebuilding tools for the same turn; duplicate
-turn/request registrations reject. Ingress expires after 30 seconds; ask again if access/publishing
-is too slow. Root must retain normal cancellation and account-epoch fences around its lifecycle.
-
-The conservative request grammar currently accepts “Propose a clarification rule …”, “Draft a
-clarification rule …”, and “Set up a clarification rule …”. Bounds are 5–30 minutes, 1–5 threads,
-1–3 messages per thread, and 1–10 total messages. Scope and all bounds appear verbatim in the
-canonical proposal. Defaults chosen by the model remain proposals only. Confirmation accepts a
-whole typed reply such as “Yes”, “Activate this rule”, or “I confirm this rule”. Negative, conditional,
-quoted and extra-clause responses invalidate the pending proposal. A receipt expires after five
-minutes. The list is scoped to the selected account/connection/channel and reports expired active
-records as expired. Revocation requires a list in the same turn plus “Revoke this rule” when exactly
-one rule exists, or the explicit typed command `revoke rule <observed-id>` for multiple rules.
-A future root-owned selector can improve that multi-rule UX without granting model consent.
-
-In `foreground-profile.ts`, keep standing proposal/list/revoke requests and a pending proposal's
-next actual user confirmation in the tools-capable path. Do not route a bare confirmation to the
-existing per-thread Day confirmation heuristic. These helper tools do not update shared contracts.
-
-## Publication is a required root dependency
-
-`publishStandingProposal` must publish `proposal.text` as the exact assistant conversation message
-and resolve **after actual text publication**, returning this exact receipt:
-
-```ts
-return {
-  kind: "text-published",
-  proposalId: proposal.id,
-  policyDigest: proposal.policyDigest,
-  text: proposal.text,
-  sessionId: proposal.sessionId,
-  turnId: proposal.turnId,
-  requestId: proposal.requestId,
-} satisfies StandingPublicationReceipt;
-```
-
-The callback receives an AbortSignal. Root must reject on cancellation, failed publication, stale
-session/generation or account change. It must use the real conversation publication path, not simply
-return the object above. Publish directly while the helper awaits the callback; do not wait for the
-same tool call to return before publishing (that deadlocks). End that assistant turn with the
-canonical question; do not append a model paraphrase or a different confirmation question.
-`StandingProposal` is a main-only typed DTO, not a claim that the current renderer already supports
-it. A renderer receipt contract or a main-owned publication callback still needs root implementation.
-Until that exists, omit the tools or make the callback reject. Returning JSON in model context is
-not publication. Tests use controlled receipts and establish no UI visibility.
-
-Voice proposal returns `presentation: "unpublished", confirmation: "voice-unavailable"`; voice
-confirmation always rejects, even after text publication. Do not silently convert this to a text
-receipt or enable voice yes. Root must add and validate exact drained narration/playback receipts
-before extending this contract. For now request a new typed proposal and typed confirmation.
-
-## Validation and handoff
-
-Run targeted tests with the integration node_modules symlink:
+Use integration's `node_modules` symlink. Focused validation:
 
 ```sh
-bun test apps/desktop/src/main/agent/standing-clarification-tools.test.ts apps/desktop/src/main/composition/standing-clarification.test.ts apps/desktop/src/main/day/standing-clarification.test.ts
+bun test apps/desktop/src/main/agent/standing-clarification-tools.test.ts apps/desktop/src/main/composition/standing-clarification.test.ts apps/desktop/src/main/day/standing-clarification.test.ts apps/desktop/src/main/day/service.test.ts apps/desktop/src/main/agent/foreground-profile.test.ts apps/desktop/src/main/agent/hub-tools.test.ts
 bunx tsc --noEmit -p apps/desktop/tsconfig.main.json
-bunx biome check apps/desktop/src/main/agent/standing-clarification-tools.ts apps/desktop/src/main/agent/standing-clarification-tools.test.ts apps/desktop/src/main/composition/standing-clarification.ts apps/desktop/src/main/composition/standing-clarification.test.ts
 ```
 
-Tests exercise the real controller with controlled transactional/access/publication ports. They
-cover exact distinct-turn consent, injection/negative/conditional replies, stale and changed
-identity/channel/access/source, no voice consent, budget schemas, expiry and revoke. Existing
-controller tests cover durable reservations, source freshness and child-parent revalidation.
-No live Slack send, native UI, microphone, model provider or production wiring is established.
-Root owns those remaining integrations and acceptance checks; do not mark the feature Done yet.
+Tests exercise the real controller, composition, ConversationService and both
+foreground runners with controlled persistence/access/provider/renderer receipts.
+They distinguish typed display from spoken delivery, block model work during
+capture, require distinct actual ingress, preserve the canonical terminal question,
+and cover account/source/access drift, cancellation, expiry/revocation and budgets.
+They do not establish native visibility, microphone/speaker acoustics, live Slack,
+or a production database restart.
+
+Root retains these acceptance steps in the integration checkout:
+
+1. Run normal integrated type/lint/unit/contracts/build checks and relevant native
+   Day, workspace and hands-free/attention regressions. Retest review requests and
+   team sharing in the integrated app; their existing ports/hooks were retained.
+2. With an authorized Slack account, select a real joined channel in an acknowledged
+   visible pane, keep review primary, and speak the fresh-mention request. Verify
+   full canonical speech drains, ends exactly at the activation question, and a
+   separate spoken yes activates the exact bounds. Repeat typed proposal/yes.
+3. Verify no activation from wrong delivery kind, interrupted speech, a conditional
+   reply, unrelated intervening turn, changed channel/account or expired proposal.
+   Explicit Stop must retire pending consent without stopping independent work.
+4. After confirmation, use an authorized fresh mention by another actor. Verify
+   original classifier/source binding, complete fresh thread read, original-thread
+   clarification only, and actual send-ledger identity/dedup. Old/edited/unmentioned
+   requests, changed access, exhausted budgets, expiry and revocation must not send.
+5. Restart the app and inspect real SQLite rules/children/send records. Confirm
+   durable active bounds survive but ephemeral presentation consent does not.
+
+No live providers, Slack messages, native launches or credentials are used by this
+handoff. Do not mark live/native acceptance complete from these controlled tests.

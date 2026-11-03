@@ -1,6 +1,8 @@
 import { randomUUID } from "node:crypto";
 import { isDeepStrictEqual } from "node:util";
 import { z } from "zod";
+import type { ConversationTurnInput, WorkspaceSnapshot } from "../../shared/contracts";
+import { decodeSlackViewTarget } from "../../shared/contracts/chat";
 import { type ChatMessage, ChatMessageSchema } from "../../shared/contracts/chat";
 import { IdSchema } from "../../shared/contracts/common";
 import { type DayActor, DayActorSchema } from "../../shared/contracts/day";
@@ -52,7 +54,7 @@ export interface StandingProposal {
 	requestId: string;
 }
 export interface StandingPublicationReceipt {
-	kind: "text-published";
+	kind: "spoken" | "displayed";
 	proposalId: string;
 	policyDigest: string;
 	text: string;
@@ -64,6 +66,8 @@ interface Pending {
 	proposal: StandingProposal;
 	ingress: StandingUserIngress;
 	publishedAt: number;
+	delivery: StandingPublicationReceipt["kind"];
+	confirmationRequestId?: string;
 }
 export interface StandingConversationPorts {
 	controller: StandingClarification;
@@ -74,6 +78,32 @@ export interface StandingConversationPorts {
 }
 const affirmative =
 	/^(?:yes|yes,? (?:please|activate (?:this|that|the) rule)|(?:i )?confirm (?:this|that|the) rule|activate (?:this|that|the) rule)[.!]?$/i;
+
+export function standingConfirmationReply(text: string): boolean {
+	return affirmative.test(text.trim());
+}
+
+/** Conservative actual-ingress grammar; provider text never enters this check. */
+export function standingProposalRequested(text: string): boolean {
+	const value = text.trim();
+	return (
+		/^(?:please )?(?:propose|draft|set up) (?:a |the )?(?:standing |slack )?clarification rule\b/i.test(
+			value
+		) ||
+		(/^(?:(?:please|can you|could you)\s+)?(?:let (?:Muse|you) |go ahead and )?ask\b/i.test(
+			value
+		) &&
+			/\bclarif\w*\b/i.test(value) &&
+			/\b(?:fresh|new) mentions?\b|\b(?:new|fresh) requests?\b/i.test(value) &&
+			!/\b(?:not|don't|never|unless)\b/i.test(value))
+	);
+}
+export function standingManagementRequested(text: string): boolean {
+	return (
+		standingProposalRequested(text) ||
+		/^(?:please )?(?:list|show|revoke|stop)\b[^.!?\n]*\brules?\b/i.test(text.trim())
+	);
+}
 
 /** Root owns one instance per authenticated conversation session; dispose on account/session change.
  * No sender exists here. Only root calls userIngress, once per actual user event before model work. */
@@ -92,7 +122,7 @@ export class StandingClarificationConversation {
 		private readonly now = Date.now
 	) {}
 
-	userIngress(raw: StandingUserIngress): StandingIngress {
+	userIngress(raw: StandingUserIngress, admittedAt = this.now()): StandingIngress {
 		const value = IngressSchema.parse(raw);
 		// A repeated request or turn cannot manufacture a distinct confirmation event.
 		const keys = [`request:${value.requestId}`, `turn:${value.sessionId}:${value.turnId}`];
@@ -101,34 +131,46 @@ export class StandingClarificationConversation {
 		for (const key of keys) this.seen.add(key);
 		if (
 			this.pending &&
-			(!affirmative.test(value.text.trim()) ||
-				value.inputMode !== "text" ||
+			(this.pending.confirmationRequestId !== undefined ||
+				!affirmative.test(value.text.trim()) ||
+				(value.inputMode === "voice" && this.pending.delivery !== "spoken") ||
 				value.sessionId !== this.pending.ingress.sessionId ||
 				!isDeepStrictEqual(value.actor, this.pending.ingress.actor) ||
 				value.connectionId !== this.pending.ingress.connectionId ||
 				value.channelId !== this.pending.ingress.channelId)
 		)
 			this.pending = undefined;
+		if (this.pending) this.pending.confirmationRequestId = value.requestId;
 		const token = Object.freeze({ requestId: value.requestId });
-		this.ingresses.set(token, { value, at: this.now() });
+		this.ingresses.set(token, { value, at: admittedAt });
 		this.current = token;
 		this.observed.clear();
 		return token;
+	}
+	/** Retire the previous turn immediately, before asynchronous credential/view capture. */
+	beginUserTurn(text: string) {
+		this.current = undefined;
+		this.observed.clear();
+		if (this.pending?.confirmationRequestId || !affirmative.test(text.trim()))
+			this.pending = undefined;
+	}
+	get pendingConfirmation() {
+		return !!this.pending;
 	}
 	dispose() {
 		this.current = undefined;
 		this.pending = undefined;
 		this.observed.clear();
 	}
-	private user(token: StandingIngress, signal: AbortSignal) {
+	private user(token: StandingIngress, signal: AbortSignal, maxAge = 30000) {
 		signal.throwIfAborted();
 		const entry = this.ingresses.get(token);
-		if (!entry || token !== this.current || this.now() - entry.at > 30000 || this.now() < entry.at)
+		if (!entry || token !== this.current || this.now() - entry.at > maxAge || this.now() < entry.at)
 			throw new Error("A fresh user request is required.");
 		return entry.value;
 	}
-	private async access(token: StandingIngress, signal: AbortSignal) {
-		const user = this.user(token, signal);
+	private async access(token: StandingIngress, signal: AbortSignal, maxAge = 30000) {
+		const user = this.user(token, signal, maxAge);
 		let access: StandingAccess;
 		try {
 			access = StandingAccessSchema.parse(await this.ports.readAccess(user.channelId, signal));
@@ -136,7 +178,7 @@ export class StandingClarificationConversation {
 			this.pending = undefined;
 			throw error;
 		}
-		this.user(token, signal);
+		this.user(token, signal, maxAge);
 		if (
 			!isDeepStrictEqual(access.actor, user.actor) ||
 			access.connectionId !== user.connectionId ||
@@ -161,11 +203,7 @@ export class StandingClarificationConversation {
 	propose(token: StandingIngress, raw: StandingProposalInput, signal: AbortSignal) {
 		return this.exclusive(async () => {
 			const user = await this.access(token, signal);
-			if (
-				!/^(?:please )?(?:propose|draft|set up) (?:a |the )?(?:standing |slack )?clarification rule\b/i.test(
-					user.text.trim()
-				)
-			)
+			if (!standingProposalRequested(user.text))
 				throw new Error("Ask me to propose a clarification rule first.");
 			const input = StandingProposalInputSchema.parse(raw);
 			const policy = StandingRulePolicySchema.parse({
@@ -191,17 +229,11 @@ export class StandingClarificationConversation {
 				turnId: user.turnId,
 				requestId: user.requestId,
 			};
-			// Voice has no trusted drained-narration adapter here. Never convert text to speech proof.
-			if (user.inputMode === "voice")
-				return {
-					proposal,
-					presentation: "unpublished" as const,
-					confirmation: "voice-unavailable" as const,
-				};
 			const receipt = await this.ports.publish(structuredClone(proposal), signal);
-			await this.access(token, signal);
+			// The already admitted canonical voice proposal may take longer than 30s to drain.
+			await this.access(token, signal, 300000);
 			const expected: StandingPublicationReceipt = {
-				kind: "text-published",
+				kind: user.inputMode === "voice" ? "spoken" : "displayed",
 				proposalId: proposal.id,
 				policyDigest: proposal.policyDigest,
 				text,
@@ -215,10 +247,11 @@ export class StandingClarificationConversation {
 				proposal: structuredClone(proposal),
 				ingress: user,
 				publishedAt: this.now(),
+				delivery: receipt.kind,
 			};
 			return {
 				proposal,
-				presentation: "text-published" as const,
+				presentation: receipt.kind,
 				confirmation: "separate-user-turn-required" as const,
 			};
 		});
@@ -229,18 +262,19 @@ export class StandingClarificationConversation {
 			const pending = this.pending;
 			if (
 				!pending ||
-				user.inputMode !== "text" ||
+				(user.inputMode === "voice" && pending.delivery !== "spoken") ||
 				!affirmative.test(user.text.trim()) ||
 				user.sessionId !== pending.ingress.sessionId ||
 				user.turnId === pending.ingress.turnId ||
 				user.requestId === pending.ingress.requestId ||
+				pending.confirmationRequestId !== user.requestId ||
 				!isDeepStrictEqual(user.actor, pending.ingress.actor) ||
 				user.connectionId !== pending.ingress.connectionId ||
 				user.channelId !== pending.ingress.channelId ||
 				this.now() - pending.publishedAt > 300000 ||
 				this.now() < pending.publishedAt
 			)
-				throw new Error("Confirm the exact presented rule in a separate typed reply.");
+				throw new Error("Confirm the exact presented rule in a separate actual user reply.");
 			await this.ports.controller.confirm(pending.proposal.id, {
 				kind: "explicit-standing-rule-confirmation",
 				requestId: user.requestId,
@@ -387,5 +421,216 @@ export class StandingIncomingBindings {
 			targetUserId: actor.userId,
 			source: structuredClone(message.citation.source),
 		};
+	}
+}
+
+/** Only committed, visible Slack selections may bind a channel; never source/model text. */
+export function selectedStandingChannel(snapshot: WorkspaceSnapshot): string | undefined {
+	const channels = new Set<string>();
+	for (const canvas of snapshot.canvases) {
+		if (canvas.id !== snapshot.primaryId && canvas.id !== snapshot.secondaryId) continue;
+		if (canvas.kind !== "center" || canvas.section !== "slack" || !canvas.selectedId) continue;
+		try {
+			channels.add(decodeSlackViewTarget(canvas.selectedId).conversationId);
+		} catch {
+			return undefined;
+		}
+	}
+	return channels.size === 1 ? [...channels][0] : undefined;
+}
+export interface StandingCompositionPorts {
+	controller: StandingClarification;
+	epoch(): string | number;
+	observe(sessionId: string, signal: AbortSignal): Promise<WorkspaceSnapshot>;
+	readAccess(channelId: string, signal: AbortSignal): Promise<StandingAccess>;
+	narrate(
+		turn: ConversationTurnInput,
+		text: string,
+		signal: AbortSignal
+	): Promise<"spoken" | "displayed">;
+}
+/** Production seam: every actual ingress retires old capabilities before asynchronous reads. */
+export class StandingClarificationComposition {
+	private readonly admissions = new Map<
+		string,
+		{ turn: ConversationTurnInput; controller: AbortController; ready: Promise<void> }
+	>();
+	/** Synchronous actual-user hook: start capture before model work, gate it at hub preflight. */
+	admit(turn: ConversationTurnInput) {
+		const previous = this.admissions.get(turn.sessionId);
+		previous?.controller.abort();
+		const controller = new AbortController();
+		const entry = { turn, controller, ready: Promise.resolve() };
+		this.admissions.set(turn.sessionId, entry);
+		entry.ready = this.capture(turn, controller.signal).catch(() => {
+			/* Capture fails closed; ordinary conversation remains available. */
+		});
+	}
+	async ready(turn: ConversationTurnInput, signal: AbortSignal) {
+		const entry = this.admissions.get(turn.sessionId);
+		if (!entry || !isDeepStrictEqual(entry.turn, turn)) return;
+		const cancel = () => entry.controller.abort();
+		signal.addEventListener("abort", cancel, { once: true });
+		try {
+			signal.throwIfAborted();
+			await entry.ready;
+			signal.throwIfAborted();
+		} finally {
+			signal.removeEventListener("abort", cancel);
+			if (this.admissions.get(turn.sessionId) === entry) this.admissions.delete(turn.sessionId);
+		}
+	}
+	private readonly captures = new Map<string, object>();
+	private readonly sessions = new Map<
+		string,
+		{ rules: StandingClarificationConversation; epoch: string | number }
+	>();
+	private readonly turns = new Map<
+		string,
+		{
+			turn: ConversationTurnInput;
+			rules: StandingClarificationConversation;
+			ingress: StandingIngress;
+			workflow: boolean;
+		}
+	>();
+	constructor(private readonly ports: StandingCompositionPorts) {}
+	clear(sessionId?: string) {
+		for (const [id, entry] of this.admissions)
+			if (!sessionId || id === sessionId) {
+				entry.controller.abort();
+				this.admissions.delete(id);
+			}
+		this.retireState(sessionId);
+	}
+	private retireState(sessionId?: string) {
+		if (sessionId) this.captures.delete(sessionId);
+		else this.captures.clear();
+		for (const [id, entry] of this.sessions)
+			if (!sessionId || id === sessionId) {
+				entry.rules.dispose();
+				this.sessions.delete(id);
+			}
+		for (const [id, entry] of this.turns)
+			if (!sessionId || entry.turn.sessionId === sessionId) this.turns.delete(id);
+	}
+	cancel(turn: Pick<ConversationTurnInput, "sessionId" | "turnId" | "generation">) {
+		const admission = this.admissions.get(turn.sessionId);
+		if (admission?.turn.turnId === turn.turnId && admission.turn.generation === turn.generation) {
+			admission.controller.abort();
+			this.admissions.delete(turn.sessionId);
+		}
+		for (const entry of this.turns.values())
+			if (
+				entry.turn.sessionId === turn.sessionId &&
+				entry.turn.turnId === turn.turnId &&
+				entry.turn.generation === turn.generation
+			)
+				this.clear(turn.sessionId);
+	}
+	async capture(turn: ConversationTurnInput, signal: AbortSignal) {
+		const admittedAt = Date.now();
+		let session = this.sessions.get(turn.sessionId);
+		session?.rules.beginUserTurn(turn.text);
+		for (const [id, entry] of this.turns)
+			if (entry.turn.sessionId === turn.sessionId) this.turns.delete(id);
+		if (!standingManagementRequested(turn.text) && !session?.rules.pendingConfirmation) {
+			this.retireState(turn.sessionId);
+			return;
+		}
+		const epoch = this.ports.epoch();
+		if (session && session.epoch !== epoch) {
+			this.retireState(turn.sessionId);
+			session = undefined;
+		}
+		const capture = {};
+		this.captures.set(turn.sessionId, capture);
+		const check = () => {
+			signal.throwIfAborted();
+			if (Date.now() - admittedAt > 30000) throw new Error("Rule ingress expired");
+			if (this.captures.get(turn.sessionId) !== capture) throw new Error("Rule ingress retired");
+			if (this.ports.epoch() !== epoch) throw new Error("Slack account changed");
+		};
+		try {
+			const snapshot = await this.ports.observe(turn.sessionId, signal);
+			check();
+			const channelId = selectedStandingChannel(snapshot);
+			if (!channelId) {
+				this.retireState(turn.sessionId);
+				return;
+			}
+			const access = await this.ports.readAccess(channelId, signal);
+			check();
+			const after = await this.ports.observe(turn.sessionId, signal);
+			check();
+			if (selectedStandingChannel(after) !== channelId) throw new Error("Slack selection changed");
+			if (!session) {
+				const rules = new StandingClarificationConversation({
+					controller: this.ports.controller,
+					readAccess: async (channel, active) => {
+						active.throwIfAborted();
+						if (this.ports.epoch() !== epoch) throw new Error("Slack account changed");
+						const value = await this.ports.readAccess(channel, active);
+						active.throwIfAborted();
+						if (this.ports.epoch() !== epoch) throw new Error("Slack account changed");
+						return value;
+					},
+					publish: async (proposal, active) => {
+						const entry = this.turns.get(proposal.requestId);
+						if (!entry || entry.rules !== rules) throw new Error("Rule turn retired");
+						active.throwIfAborted();
+						if (this.ports.epoch() !== epoch) throw new Error("Slack account changed");
+						const kind = await this.ports.narrate(entry.turn, proposal.text, active);
+						active.throwIfAborted();
+						if (this.ports.epoch() !== epoch || this.turns.get(proposal.requestId) !== entry)
+							throw new Error("Rule turn retired");
+						return {
+							kind,
+							proposalId: proposal.id,
+							policyDigest: proposal.policyDigest,
+							text: proposal.text,
+							sessionId: proposal.sessionId,
+							turnId: proposal.turnId,
+							requestId: proposal.requestId,
+						};
+					},
+				});
+				session = { rules, epoch };
+				this.sessions.set(turn.sessionId, session);
+			}
+			const ingress = session.rules.userIngress(
+				{
+					sessionId: turn.sessionId,
+					turnId: turn.turnId,
+					requestId: turn.requestId,
+					text: turn.text,
+					inputMode: turn.inputMode === "voice" ? "voice" : "text",
+					actor: access.actor,
+					connectionId: access.connectionId,
+					channelId,
+					channelLabel: `Slack channel ${channelId}`,
+				},
+				admittedAt
+			);
+			this.turns.set(turn.requestId, {
+				turn,
+				rules: session.rules,
+				ingress,
+				workflow: standingManagementRequested(turn.text) || session.rules.pendingConfirmation,
+			});
+		} catch (error) {
+			if (this.captures.get(turn.sessionId) === capture) this.retireState(turn.sessionId);
+			signal.throwIfAborted();
+			// Missing Slack/access must not prevent unrelated foreground conversation.
+		}
+	}
+	binding(turn: ConversationTurnInput) {
+		const entry = this.turns.get(turn.requestId);
+		const session = this.sessions.get(turn.sessionId);
+		if (session && session.epoch !== this.ports.epoch()) {
+			this.clear(turn.sessionId);
+			return undefined;
+		}
+		return entry && isDeepStrictEqual(entry.turn, turn) ? entry : undefined;
 	}
 }

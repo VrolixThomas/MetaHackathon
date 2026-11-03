@@ -36,6 +36,11 @@ import { ReviewCoordinator } from "./composition/reviews";
 import { SlackConnection } from "./composition/slack-connection";
 import { SlackReader } from "./composition/slack-reader";
 import { SlackWorkspaceCoordinator } from "./composition/slack-workspace";
+import {
+	StandingClarificationComposition,
+	StandingIncomingBindings,
+	readStandingSlackAccess,
+} from "./composition/standing-clarification";
 import { createTeamComposition } from "./composition/team";
 import { TeamShareIntentRegistry } from "./composition/team-share-intent";
 import { type VoiceCompositionOptions, createVoiceComposition } from "./composition/voice";
@@ -45,6 +50,7 @@ import type { EnvConfiguration } from "./config/env";
 import type { AppConfigurationPorts } from "./config/router";
 import { analyzeClarification } from "./day/clarification";
 import { type DayReplyPort, DayService } from "./day/service";
+import { StandingClarification } from "./day/standing-clarification";
 import type { DayStore } from "./db/day-store";
 import type { HubStore } from "./db/hub-store";
 import type { KnowledgeStore } from "./db/knowledge-store";
@@ -136,6 +142,10 @@ export const commentPresentations: CommentPresentationCoordinator =
 		narrate: (input, text, signal) =>
 			conversationService.narrateProposal(input, `${input.requestId}-speech`, text, signal),
 	});
+const standingIncoming = new StandingIncomingBindings();
+let standingConversation: StandingClarificationComposition | undefined;
+const readStandingAccess = (channelId: string, signal: AbortSignal) =>
+	readStandingSlackAccess(getSlackWorkspace().client, channelId, signal);
 let reviewRequests: ReviewRequestComposition | undefined;
 let prFixes: PRFixService | undefined;
 let foregroundPreview: ForegroundLocalPreview | undefined;
@@ -271,12 +281,14 @@ export const conversationService: ConversationService = new ConversationService(
 	{
 		onTiming: (event) => diagnostics?.record(event),
 		onUserTurn: (input) => {
+			standingConversation?.admit(input);
 			teamShareIntents.capture(input);
 			reviewRequests?.capture(input);
 			commentPresentations.confirmation.acceptUserTurn(input, input.inputMode ?? "typed");
 			approvalConfirmation.acceptUserTurn(input);
 		},
 		onSessionRelease: (sessionId) => {
+			standingConversation?.clear(sessionId);
 			teamShareIntents.clear(sessionId);
 			reviewRequests?.clear(sessionId);
 			commentPresentations.invalidate(sessionId);
@@ -288,6 +300,12 @@ export const conversationService: ConversationService = new ConversationService(
 			validate: (input, signal) => getAttention().validate(input, signal),
 		},
 		hub: {
+			standing: {
+				binding: (turn) => standingConversation?.binding(turn),
+				ready: async (turn, signal) => {
+					await standingConversation?.ready(turn, signal);
+				},
+			},
 			team: teamSharePorts,
 			reviewRequests: {
 				intent: (turn, signal) => reviewRequests?.tools.intent(turn, signal) ?? null,
@@ -393,7 +411,10 @@ export const conversationService: ConversationService = new ConversationService(
 			observe: (sessionId, signal) => getWorkspace().observe(sessionId, signal),
 			execute: (command, turn, signal, onAction) =>
 				getWorkspace().execute(command, turn, signal, onAction),
-			cancel: (turn) => workspace?.cancel(turn),
+			cancel: (turn) => {
+				standingConversation?.cancel(turn);
+				return workspace?.cancel(turn);
+			},
 		},
 		getContext: (prId, signal) => getRuntime().github.prContext(prId, signal),
 		review: {
@@ -457,6 +478,20 @@ export async function initializeDay(
 	actor: DayActor = { workspaceId: "local", userId: "local" },
 	replies?: DayReplyPort
 ) {
+	standingConversation?.clear();
+	standingIncoming.clear();
+	const standing = new StandingClarification({
+		transaction: (mutate) => store.standingTransaction(mutate),
+	});
+	standingConversation = new StandingClarificationComposition({
+		controller: standing,
+		epoch: () => slackConnection?.epoch ?? 0,
+		observe: async (sessionId, signal) =>
+			(await getWorkspace().observe(sessionId, signal)).workspace,
+		readAccess: readStandingAccess,
+		narrate: (turn, text, signal) =>
+			conversationService.narrateProposal(turn, `${turn.requestId}-standing-speech`, text, signal),
+	});
 	await day?.dispose();
 	const currentActor = structuredClone(actor);
 	const internalJob = async (id: string) => {
@@ -472,6 +507,17 @@ export async function initializeDay(
 	day = new DayService({
 		store,
 		actor: currentActor,
+		standing,
+		readStandingAccess,
+		classifyStandingIncoming: async (message, signal) => {
+			const access = await readStandingAccess(message.citation.source.conversationId, signal);
+			if (
+				access.actor.workspaceId !== currentActor.workspaceId ||
+				access.actor.userId !== currentActor.userId
+			)
+				throw new Error("Slack account changed");
+			return standingIncoming.take(currentActor, access.connectionId, message);
+		},
 		replies,
 		analyzeClarification: (c, read, signal) =>
 			analyzeClarification(conversationClient, c, read, signal),
@@ -633,6 +679,10 @@ export async function initializeSlack(
 		getAppToken: async () => (await getConfiguration().slackSettings()).appToken,
 		invalidateSource: (input) => getDay().invalidateSource(input),
 		classify: async ({ actor, message }, signal) => {
+			const client = getSlackWorkspace().client;
+			const credential = await client.credential(signal);
+			if (credential.workspaceId !== actor.workspaceId || credential.userId !== actor.userId)
+				throw new Error("Slack account changed");
 			const repositories = (await getHub().snapshot()).repositories.map((row) => ({
 				id: row.id,
 				repository: row.repository,
@@ -642,7 +692,10 @@ export async function initializeSlack(
 				{ actor, message, repositories },
 				signal
 			);
+			await client.assertCurrent(credential, signal);
+			signal.throwIfAborted();
 			if (!result) return null;
+			standingIncoming.retain(actor, credential.connectionId, message, result);
 			if (result.explicitOwnPromise) {
 				if (ownPromises.size >= 128)
 					ownPromises.delete(ownPromises.values().next().value as string);
@@ -755,6 +808,8 @@ export async function initializeSlack(
 		getEpoch: () => getSlackConnection().epoch,
 	});
 	refreshSlackAccount = () => {
+		standingIncoming.clear();
+		standingConversation?.clear();
 		const work = slackAccountTransition
 			.catch(() => {})
 			.then(async () => {
@@ -1396,7 +1451,10 @@ export function initializeVoice(
 	if (voice) throw new Error("Voice has already been initialized");
 	voice = createVoiceComposition({
 		...options,
-		onStopSpeech: (identity) => conversationService.invalidateDayConfirmation(identity),
+		onStopSpeech: (identity) => {
+			standingConversation?.cancel(identity);
+			conversationService.invalidateDayConfirmation(identity);
+		},
 		getDataDirectory: () => {
 			if (!dataDirectory) throw new Error("Application storage is unavailable");
 			return dataDirectory;
@@ -1445,6 +1503,8 @@ export async function disposeRuntime(): Promise<void> {
 	const current = runtime;
 	closing = true;
 	reviewRequests?.clear();
+	standingConversation?.clear();
+	standingIncoming.clear();
 	await foregroundPreview?.dispose();
 	teamComposition?.dispose();
 	images?.dispose();

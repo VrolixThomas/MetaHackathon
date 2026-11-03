@@ -21,6 +21,13 @@ import type {
 	WorkspaceCommand,
 	WorkspaceObservation,
 } from "../../shared/contracts";
+import { encodeSlackViewTarget } from "../../shared/contracts/chat";
+import { StandingClarificationComposition } from "../composition/standing-clarification";
+import {
+	StandingClarification,
+	emptyStandingState,
+	parseStandingState,
+} from "../day/standing-clarification";
 import { ApprovalConfirmation, approvalProposal } from "../work/pr-approvals/confirmation";
 import {
 	at as approvalAt,
@@ -6040,3 +6047,194 @@ test("optional review request tool dispatches actual ingress without changing dr
 	assert.equal(sent, 1);
 	assert.equal(d.operations.length, 0);
 });
+
+for (const [mode, selected] of [
+	["typed", false],
+	["voice", false],
+	["typed", true],
+	["voice", true],
+] as const) {
+	test(`standing ${mode} ${selected ? "review" : "workspace"} production ingress preflight and terminal canonical proposal`, async () => {
+		const d = data();
+		const w = workspace(d);
+		w.observation.workspace.canvases = [
+			{ id: "center", kind: "center", section: "reviews", title: "Reviews", revision: 1 },
+			{
+				id: "slack",
+				kind: "center",
+				section: "slack",
+				title: "Slack",
+				revision: 1,
+				selectedId: encodeSlackViewTarget({ conversationId: "C1", threadTs: null }),
+			},
+		];
+		w.observation.workspace.secondaryId = "slack";
+		const pr = required(d.hub.reviews[0]).pr;
+		if (selected) {
+			w.observation.workspace.canvases[0] = {
+				id: "center",
+				kind: "review",
+				title: "Review",
+				revision: 1,
+			};
+			w.observation.workspace.review = { sequence: 0, mode: "review", prId: pr.id };
+		}
+		let state = emptyStandingState();
+		const standing = new StandingClarification({
+			async transaction(mutate) {
+				const copy = parseStandingState(structuredClone(state));
+				const result = mutate(copy);
+				state = parseStandingState(copy);
+				return result;
+			},
+		});
+		let release!: () => void;
+		const captureHeld = new Promise<void>((resolve) => {
+			release = resolve;
+		});
+		let captureStarted = false;
+		const requests: MetaRequest[] = [];
+		let service!: ConversationService;
+		const composition = new StandingClarificationComposition({
+			controller: standing,
+			epoch: () => 1,
+			observe: async () => {
+				captureStarted = true;
+				await captureHeld;
+				return w.observation.workspace;
+			},
+			readAccess: async (channelId) => ({
+				actor: { workspaceId: "T1", userId: "U1" },
+				connectionId: "conn",
+				channelId,
+				joined: true,
+				canReply: true,
+				observedAt: new Date().toISOString(),
+			}),
+			narrate: (turn, text, signal) =>
+				service.narrateProposal(turn, `${turn.requestId}-standing-speech`, text, signal),
+		});
+		d.ports.standing = composition;
+		service = new ConversationService(
+			client(
+				[
+					[
+						call(
+							"standing_clarification_propose",
+							{
+								scope: "missing reproduction details",
+								durationMinutes: 5,
+								maxThreads: 2,
+								messagesPerThread: 1,
+								globalMessageBudget: 2,
+							},
+							"standing-propose"
+						),
+					],
+					[call("standing_clarification_confirm", {}, "standing-confirm")],
+					answer("The rule is active."),
+				],
+				requests
+			),
+			{
+				hub: d.ports,
+				...(selected
+					? {
+							review: {
+								getReady: async (): Promise<PreparedReview> => ({
+									id: "ready",
+									version: 1,
+									pr,
+									createdAt: time,
+									summary: "Inferred",
+									orderRationale: "Inferred",
+									coverage: "complete",
+									evidence: "inferred-from-github",
+									files: [
+										{
+											path: "changed.ts",
+											reason: "Inferred",
+											summary: "Inferred",
+											suggestedComments: [],
+										},
+									],
+								}),
+								getProgress: async () => null,
+								getScreen: async (): Promise<ReviewScreen> => ({
+									sequence: 0,
+									mode: "conversation",
+									prId: pr.id,
+								}),
+								navigate: async () => {
+									throw new Error("No review navigation requested");
+								},
+							},
+						}
+					: {}),
+				workspace: w.ports,
+				onUserTurn: (turn) => composition.admit(turn),
+				onSessionRelease: (id) => composition.clear(id),
+				narrationCheckpoints: true,
+			}
+		);
+		const turn = {
+			...input,
+			inputMode: mode,
+			text: "Let Muse ask clarification on fresh mentions while I review",
+		};
+		const drain = async (current: ConversationTurnInput) => {
+			const acknowledged = new Set<string>();
+			await eventually(() => {
+				const poll = service.poll(identity(current));
+				for (const action of poll.actions)
+					if (action.kind === "narration-checkpoint" && !acknowledged.has(action.requestId)) {
+						acknowledged.add(action.requestId);
+						service.narrationApplied({
+							...identity(current),
+							requestId: action.requestId,
+							status: mode === "voice" ? "spoken" : "displayed",
+						});
+					}
+				return poll.status !== "running";
+			});
+			assert.equal(
+				service.poll(identity(current)).status,
+				"completed",
+				JSON.stringify({
+					poll: service.poll(identity(current)),
+					tools: requests.map((r) => r.tools?.map((t) => t.name)),
+				})
+			);
+		};
+		try {
+			service.start(turn);
+			await eventually(() => captureStarted);
+			assert.equal(requests.length, 0);
+			assert.equal(w.commands.length, 0);
+			release();
+			await drain(turn);
+			assert.equal(requests.length, 1, "no model paraphrase after canonical question");
+			assert.ok(requests[0]?.tools?.some((tool) => tool.name === "standing_clarification_propose"));
+			const text = service.poll(identity(turn)).text;
+			assert.ok(text.startsWith("For 5 minutes after you confirm,"));
+			assert.ok(text.endsWith("Activate this rule?"));
+			assert.equal(text.includes("TOOL FILLER"), false);
+			assert.equal(state.rules[0]?.status, "proposed");
+			const next = {
+				...turn,
+				generation: 2,
+				turnId: "confirm-turn",
+				requestId: "confirm-request",
+				text: "yes",
+			};
+			service.start(next);
+			await drain(next);
+			assert.equal(state.rules[0]?.status, "active");
+			assert.equal(w.commands.length, 0, "rule does not navigate or disturb review");
+			assert.equal(d.operations.length, 0, "rule does not start independent work");
+		} finally {
+			release();
+			await service.dispose();
+		}
+	});
+}

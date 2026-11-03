@@ -1,7 +1,12 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
+import type { ConversationTurnInput, WorkspaceSnapshot } from "../../shared/contracts";
+import { encodeSlackViewTarget } from "../../shared/contracts/chat";
 import type { ChatMessage } from "../../shared/contracts/chat";
+import { ConversationService } from "../agent/conversation";
 import { type DayIntakeClassification, dayIntakeSourceBinding } from "../agent/day-intake";
+import { StandingClarificationTools } from "../agent/standing-clarification-tools";
+import { eventually } from "../agent/test-support";
 import {
 	type StandingAccess,
 	StandingClarification,
@@ -10,12 +15,14 @@ import {
 	parseStandingState,
 } from "../day/standing-clarification";
 import {
+	StandingClarificationComposition,
 	StandingClarificationConversation,
 	type StandingConversationPorts,
 	StandingIncomingBindings,
 	type StandingPublicationReceipt,
 	type StandingUserIngress,
 	readStandingSlackAccess,
+	selectedStandingChannel,
 } from "./standing-clarification";
 
 const actor = { workspaceId: "T1", userId: "U1" };
@@ -28,7 +35,7 @@ const input = {
 	globalMessageBudget: 3,
 };
 const signal = () => new AbortController().signal;
-function harness() {
+function harness(realClock = false) {
 	let now = start;
 	let state = emptyStandingState();
 	let seq = 0;
@@ -43,7 +50,7 @@ function harness() {
 				return result;
 			},
 		},
-		() => now
+		() => (realClock ? Date.now() : now)
 	);
 	const ports: StandingConversationPorts = {
 		controller,
@@ -60,7 +67,7 @@ function harness() {
 		},
 		async publish(p) {
 			return publication({
-				kind: "text-published",
+				kind: "displayed",
 				proposalId: p.id,
 				policyDigest: p.policyDigest,
 				text: p.text,
@@ -114,7 +121,7 @@ test("actual publication plus a distinct actual user turn activates the real con
 	const h = harness();
 	const token = h.ingress();
 	const result = await h.conversation.propose(token, input, signal());
-	assert.equal(result.presentation, "text-published");
+	assert.equal(result.presentation, "displayed");
 	assert.match(result.proposal.text, /#support/);
 	assert.match(result.proposal.text, /2 original threads/);
 	assert.match(result.proposal.text, /3 messages total/);
@@ -169,7 +176,6 @@ for (const changes of [
 	{ connectionId: "new" },
 	{ actor: { workspaceId: "T1", userId: "U2" } },
 	{ sessionId: "other" },
-	{ inputMode: "voice" as const },
 ]) {
 	test(`ingress drift cannot reuse presentation ${JSON.stringify(changes)}`, async () => {
 		const h = harness();
@@ -177,17 +183,36 @@ for (const changes of [
 		await assert.rejects(h.conversation.confirm(h.ingress("yes", changes), signal()));
 	});
 }
-test("voice proposal does not pretend text publication or enable later voice/text consent", async () => {
+for (const mode of ["text", "voice"] as const) {
+	test(`${mode} proposal requires its genuine receipt before a distinct actual confirmation`, async () => {
+		const h = harness();
+		h.publication((r) => ({ ...r, kind: mode === "voice" ? "spoken" : "displayed" }));
+		const token = h.ingress("propose a clarification rule", { inputMode: mode });
+		const result = await h.conversation.propose(token, input, signal());
+		assert.equal(result.presentation, mode === "voice" ? "spoken" : "displayed");
+		await assert.rejects(h.conversation.confirm(token, signal()));
+		assert.equal(
+			(await h.conversation.confirm(h.ingress("yes", { inputMode: mode }), signal())).status,
+			"active"
+		);
+	});
+	test(`${mode} proposal rejects the other delivery kind`, async () => {
+		const h = harness();
+		h.publication((r) => ({ ...r, kind: mode === "voice" ? "displayed" : "spoken" }));
+		await assert.rejects(
+			h.conversation.propose(
+				h.ingress("propose a clarification rule", { inputMode: mode }),
+				input,
+				signal()
+			)
+		);
+		await assert.rejects(h.conversation.confirm(h.ingress("yes", { inputMode: mode }), signal()));
+	});
+}
+test("an unused affirmative turn cannot be replayed by a later yes", async () => {
 	const h = harness();
-	h.ports.publish = async () => {
-		throw new Error("must not publish");
-	};
-	const result = await h.conversation.propose(
-		h.ingress("propose a clarification rule", { inputMode: "voice" }),
-		input,
-		signal()
-	);
-	assert.equal(result.presentation, "unpublished");
+	await h.propose();
+	h.ingress("yes");
 	await assert.rejects(h.conversation.confirm(h.ingress("yes"), signal()));
 });
 test("exact publication mismatch and failed publication grant nothing", async () => {
@@ -445,4 +470,200 @@ test("cancellation while publishing does not retain a presentation receipt", asy
 	await assert.rejects(h.conversation.propose(h.ingress(), input, abort.signal));
 	await assert.rejects(h.conversation.confirm(h.ingress("yes"), signal()));
 	assert.equal(h.state().rules[0]?.status, "proposed");
+});
+
+function selectedWorkspace(): WorkspaceSnapshot {
+	return {
+		sequence: 1,
+		primaryId: "review",
+		secondaryId: "slack",
+		codeView: "diff",
+		browser: null,
+		review: { sequence: 0, mode: "conversation", prId: null },
+		canvases: [
+			{ id: "review", kind: "center", section: "reviews", title: "Reviews", revision: 1 },
+			{
+				id: "slack",
+				kind: "center",
+				section: "slack",
+				title: "Slack",
+				revision: 1,
+				selectedId: encodeSlackViewTarget({ conversationId: "C1", threadTs: null }),
+			},
+		],
+	};
+}
+for (const mode of ["voice", "typed"] as const) {
+	test(`production composition awaits actual ${mode} ConversationService publication`, async () => {
+		const h = harness(true);
+		// Real clock for production ingress/access freshness; controlled durable transaction port.
+		const controller = h.controller;
+		let release!: () => void;
+		const held = new Promise<void>((resolve) => {
+			release = resolve;
+		});
+		const service = new ConversationService({
+			async *stream() {
+				await held;
+				yield {
+					type: "completed",
+					response: { id: "controlled", model: "muse-spark-1.3", output: [] },
+				};
+			},
+		});
+		const active = new AbortController();
+		const turn: ConversationTurnInput = {
+			sessionId: "real-session",
+			turnId: "real-turn",
+			requestId: "real-request",
+			generation: 1,
+			inputMode: mode,
+			text: "Let Muse ask clarification on fresh mentions while I review",
+		};
+		let epoch = 1;
+		const composition = new StandingClarificationComposition({
+			controller,
+			epoch: () => epoch,
+			observe: async () => selectedWorkspace(),
+			readAccess: async (channelId) => ({
+				actor,
+				connectionId: "conn",
+				channelId,
+				joined: true,
+				canReply: true,
+				observedAt: new Date().toISOString(),
+			}),
+			narrate: (ingress, text, signal) =>
+				service.narrateProposal(ingress, `${ingress.requestId}-standing-speech`, text, signal),
+		});
+		try {
+			service.start(turn);
+			await composition.capture(turn, active.signal);
+			const bound = composition.binding(turn);
+			assert.ok(bound);
+			assert.equal(bound.workflow, true);
+			const tools = new StandingClarificationTools(bound.rules, bound.ingress, active.signal);
+			let settled = false;
+			const proposing = tools
+				.execute("standing_clarification_propose", JSON.stringify(input))
+				.finally(() => {
+					settled = true;
+				});
+			await eventually(
+				() =>
+					service.poll({
+						sessionId: turn.sessionId,
+						turnId: turn.turnId,
+						generation: turn.generation,
+					}).actions.length > 0
+			);
+			const action = service.poll({
+				sessionId: turn.sessionId,
+				turnId: turn.turnId,
+				generation: turn.generation,
+			}).actions[0];
+			assert.ok(action);
+			assert.equal(action.kind, "narration-checkpoint");
+			assert.equal(settled, false);
+			assert.equal(!!tools.foregroundHandoff, false);
+			assert.equal(
+				service.narrationApplied({
+					sessionId: turn.sessionId,
+					turnId: turn.turnId,
+					requestId: action.requestId,
+					generation: 99,
+					status: mode === "voice" ? "spoken" : "displayed",
+				}).status,
+				"stale"
+			);
+			// Actual renderer boundary acknowledgement; controlled ports do not prove physical audio.
+			const identity = {
+				sessionId: turn.sessionId,
+				turnId: turn.turnId,
+				generation: turn.generation,
+			};
+			assert.equal(
+				service.narrationApplied({
+					...identity,
+					requestId: action.requestId,
+					status: mode === "voice" ? "spoken" : "displayed",
+				}).status,
+				"accepted"
+			);
+			await proposing;
+			assert.equal(tools.foregroundHandoff?.acknowledgement, "");
+			assert.ok(
+				service
+					.poll({ sessionId: turn.sessionId, turnId: turn.turnId, generation: turn.generation })
+					.text.endsWith("Activate this rule?")
+			);
+			await assert.rejects(tools.execute("standing_clarification_confirm", "{}"));
+			const next = {
+				...turn,
+				generation: 2,
+				requestId: "next-request",
+				turnId: "next-turn",
+				text: "yes",
+			};
+			service.start(next);
+			await composition.capture(next, active.signal);
+			const consent = composition.binding(next);
+			assert.ok(consent);
+			await new StandingClarificationTools(consent.rules, consent.ingress, active.signal).execute(
+				"standing_clarification_confirm",
+				"{}"
+			);
+			assert.equal((await controller.list(actor, "conn"))[0]?.status, "active");
+			epoch++;
+			assert.equal(composition.binding(next), undefined);
+		} finally {
+			active.abort();
+			composition.clear();
+			release();
+			await service.dispose();
+		}
+	});
+}
+
+test("standing selection is only one acknowledged visible Slack channel", () => {
+	const snapshot = selectedWorkspace();
+	assert.equal(selectedStandingChannel(snapshot), "C1");
+	snapshot.secondaryId = null;
+	assert.equal(selectedStandingChannel(snapshot), undefined);
+	snapshot.primaryId = "slack";
+	assert.equal(selectedStandingChannel(snapshot), "C1");
+	snapshot.canvases.push({
+		id: "other",
+		kind: "center",
+		section: "slack",
+		title: "Other",
+		revision: 1,
+		selectedId: encodeSlackViewTarget({ conversationId: "C2", threadTs: null }),
+	});
+	snapshot.secondaryId = "other";
+	assert.equal(selectedStandingChannel(snapshot), undefined);
+});
+
+test("voice yes cannot confirm a merely displayed typed proposal", async () => {
+	const h = harness();
+	await h.propose();
+	await assert.rejects(h.conversation.confirm(h.ingress("yes", { inputMode: "voice" }), signal()));
+	await assert.rejects(h.conversation.confirm(h.ingress("yes"), signal()));
+});
+test("already admitted exact speech may drain beyond the short ingress admission window", async () => {
+	const h = harness();
+	h.publication((receipt) => {
+		h.advance(45000);
+		return { ...receipt, kind: "spoken" };
+	});
+	const result = await h.conversation.propose(
+		h.ingress("propose a clarification rule", { inputMode: "voice" }),
+		input,
+		signal()
+	);
+	assert.equal(result.presentation, "spoken");
+	assert.equal(
+		(await h.conversation.confirm(h.ingress("yes", { inputMode: "voice" }), signal())).status,
+		"active"
+	);
 });

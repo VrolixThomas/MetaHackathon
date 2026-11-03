@@ -39,7 +39,7 @@ function harness() {
 		},
 		async publish(p) {
 			return {
-				kind: "text-published",
+				kind: "displayed",
 				proposalId: p.id,
 				policyDigest: p.policyDigest,
 				text: p.text,
