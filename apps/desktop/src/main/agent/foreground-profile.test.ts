@@ -1,7 +1,11 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import type { WorkspaceObservation } from "../../shared/contracts";
-import { ForegroundProfile, SOURCE_WORKFLOW_INSTRUCTIONS } from "./foreground-profile";
+import { HubSnapshotSchema, type WorkspaceObservation } from "../../shared/contracts";
+import {
+	ForegroundProfile,
+	SOURCE_WORKFLOW_INSTRUCTIONS,
+	suggestedFixContextRequested,
+} from "./foreground-profile";
 import type { FunctionTool } from "./meta-client";
 import { WorkspaceArgumentError } from "./workspace-tools";
 
@@ -455,4 +459,53 @@ test("coding reasoning selection is turn-local and does not escalate discussion 
 		profile.select(observation("tickets"), false, text);
 		assert(!profile.workWorkflow);
 	}
+});
+
+test("an explicit observed ticket overrides stale fix context while a fix comparison keeps it", () => {
+	const view = observation("home");
+	view.workspace.canvases = [
+		{ id: "home", kind: "center", title: "Fix", revision: 1, section: "fixes", selectedId: "fix" },
+	];
+	view.hub = HubSnapshotSchema.parse({
+		sequence: 1,
+		refreshedAt: "2026-11-03T00:00:00Z",
+		refreshing: false,
+		viewer: { githubLogin: "test", linearName: "Test" },
+		connections: { github: true, linear: true, model: true },
+		repositories: [],
+		reviews: [],
+		jobs: [],
+		notices: [],
+		errors: [],
+		preferences: {
+			linearTeamIds: [],
+			linearProjectIds: [],
+			maxWorkers: 1,
+			autoApplySuggestions: false,
+		},
+		tickets: [
+			{
+				id: "ticket",
+				identifier: "TASK-12",
+				title: "Actual ticket",
+				url: "https://linear.app/test/TASK-12",
+				updatedAt: "2026-11-03T00:00:00Z",
+				state: { id: "todo", name: "Todo", type: "unstarted" },
+				priority: 1,
+				teamId: "team",
+				teamName: "Team",
+				projectId: null,
+				projectName: null,
+				assigneeId: "self",
+				assigneeName: "Self",
+			},
+		],
+	});
+	const profile = new ForegroundProfile();
+	profile.select(view, false, "Show me the completed TASK-12 work.");
+	assert(!profile.candidateWorkflow);
+	assert(profile.has("work"));
+	assert(!suggestedFixContextRequested(view, "Open TASK-12 and discuss its decision."));
+	assert(suggestedFixContextRequested(view, "How does this suggested fix relate to TASK-12?"));
+	assert(suggestedFixContextRequested(view, "Explain this fix."));
 });

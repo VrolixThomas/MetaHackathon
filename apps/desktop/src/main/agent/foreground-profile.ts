@@ -68,13 +68,27 @@ function family(name: string): Family {
 	return "canvases";
 }
 
+function mentionsObservedTicket(observation: WorkspaceObservation | undefined, text: string) {
+	const ids = new Set(
+		(text.match(/\b[a-z]+-?\d+\b/gi) ?? []).map((id) => id.replace(/-/g, "").toUpperCase())
+	);
+	return (observation?.hub?.tickets ?? []).some((ticket) =>
+		ids.has(ticket.identifier.replace(/-/g, "").toUpperCase())
+	);
+}
+
 /** Read-only capability/context selection from actual ingress or the primary pane. */
 export function suggestedFixContextRequested(observation?: WorkspaceObservation, userText = "") {
 	const primary = observation?.workspace.canvases.find(
 		(canvas) => canvas.id === observation.workspace.primaryId
 	);
 	return (
-		(primary?.kind === "center" && primary.section === "fixes") ||
+		(primary?.kind === "center" &&
+			primary.section === "fixes" &&
+			!(
+				mentionsObservedTicket(observation, userText) &&
+				!/\b(?:fix(?:es)?|candidate)\b/i.test(userText)
+			)) ||
 		(!/^(?:please\s+)?(?:prepare|start|create|build|implement)\b/i.test(userText.trim()) &&
 			/\b(?:suggested|prepared|local)\b[^.!?\n]{0,100}\bfix(?:es)?\b/i.test(userText))
 	);
@@ -144,6 +158,7 @@ export class ForegroundProfile {
 		else if (canvas?.kind === "browser") this.active.add("browser");
 		else if (canvas) this.active.add("canvases");
 		if (userText !== undefined) {
+			if (mentionsObservedTicket(observation, userText)) this.active.add("work");
 			// Only actual ingress text and the actual pane select capabilities. Titles,
 			// descriptions, model output and source content never enter this selector.
 			const prContext =
