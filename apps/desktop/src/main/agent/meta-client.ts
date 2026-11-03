@@ -178,7 +178,7 @@ export class MetaClient implements AgentModelClient {
 				store: false,
 				include: ["reasoning.encrypted_content"],
 				reasoning: {
-					effort: codingModel?.reasoning ?? (request.workload === "quick" ? "minimal" : "high"),
+					effort: codingModel?.reasoning ?? (request.workload === "deep" ? "high" : "minimal"),
 				},
 				max_output_tokens: maxOutputTokens,
 			});

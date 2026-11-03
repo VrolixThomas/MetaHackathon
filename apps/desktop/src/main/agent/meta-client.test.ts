@@ -279,6 +279,7 @@ test("timings expose missing credentials and consumer interruption without inven
 test("routes only allowlisted standard models and prices cached input separately", () => {
 	assert.equal(routeModel("quick"), "muse-spark-1.3");
 	assert.equal(routeModel("deep"), "muse-wonder-1.0");
+	assert.equal(routeModel("conversation"), "muse-wonder-1.0");
 	assert.throws(() => assertStandardModel("muse-spark-1.3-contributor"));
 	assert.throws(() => assertStandardModel("muse-wonder-full"));
 	assert.equal(
@@ -604,4 +605,21 @@ test("a rejected pinned Wonder request never retries with Spark or another provi
 	});
 	await assert.rejects(collect(client, { ...request, codingModel: NEW_CODING_MODEL }));
 	assert.equal(calls, 1);
+});
+
+test("conversation routing uses Wonder minimal without changing ordinary tool or deep routing", async () => {
+	for (const workload of ["quick", "conversation", "deep"] as const) {
+		const model = workload === "quick" ? "muse-spark-1.3" : "muse-wonder-1.0";
+		const client = new MetaClient({
+			getApiKey: async () => "controlled-key",
+			recordUsage: () => {},
+			fetch: async (_url, init) => {
+				const body = JSON.parse(String(init?.body));
+				assert.equal(body.model, model);
+				assert.deepEqual(body.reasoning, { effort: workload === "deep" ? "high" : "minimal" });
+				return sseResponse([responseEvent([], model)]);
+			},
+		});
+		await collect(client, { ...request, workload });
+	}
 });

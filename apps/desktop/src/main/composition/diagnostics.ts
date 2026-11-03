@@ -45,7 +45,7 @@ const modelTiming = z.strictObject({
 	stage: z.literal("model-timing"),
 	requestHash: z.string().regex(/^[a-f0-9]{64}$/),
 	attemptHash: z.string().regex(/^[a-f0-9]{64}$/),
-	workload: z.enum(["quick", "deep"]),
+	workload: z.enum(["quick", "conversation", "deep"]),
 	status: z.enum(["completed", "failed", "incomplete", "cancelled", "interrupted"]),
 	inputBytes: count,
 	instructionBytes: count,

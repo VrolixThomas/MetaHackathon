@@ -4,7 +4,7 @@
 export const MODEL_API_URL = "https://api.meta.ai/v1/responses";
 export const STANDARD_MODELS = ["muse-spark-1.3", "muse-wonder-1.0"] as const;
 export type StandardModel = (typeof STANDARD_MODELS)[number];
-export type Workload = "quick" | "deep";
+export type Workload = "quick" | "conversation" | "deep";
 
 export function routeModel(workload: Workload): StandardModel {
 	return workload === "quick" ? "muse-spark-1.3" : "muse-wonder-1.0";

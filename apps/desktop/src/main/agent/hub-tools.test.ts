@@ -3081,7 +3081,7 @@ test("selected ticket supplies freshly authorized details in the first fast requ
 		assert.equal(service.poll(identity()).status, "completed");
 		assert.equal(reads, 1);
 		assert.equal(requests.length, 1);
-		assert.equal(requests[0]?.workload, "quick");
+		assert.equal(requests[0]?.workload, "conversation");
 		const content = requests[0]?.input.at(-1)?.["content"] as { text: string }[];
 		const packet = JSON.parse(content[0]?.text ?? "{}");
 		assert.equal(packet.currentContext.ticket.description, d.ticket.description);
