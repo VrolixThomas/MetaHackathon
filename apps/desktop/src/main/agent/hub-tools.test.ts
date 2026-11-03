@@ -6238,3 +6238,93 @@ for (const [mode, selected] of [
 		}
 	});
 }
+
+test("selected completed implementation supplies actual patches before ticket planning context", async () => {
+	const d = data();
+	d.ticket.identifier = "MET-81";
+	required(d.hub.tickets[0]).identifier = "MET-81";
+	const observed = await selectedTicketWorkspace(d).observe(
+		input.sessionId,
+		new AbortController().signal
+	);
+	const canvas = observed.workspace.canvases.find((c) => c.id === observed.workspace.primaryId);
+	assert.ok(canvas && canvas.kind === "center");
+	canvas.section = "completed";
+	canvas.selectedId = d.job.id;
+	let ticketReads = 0;
+	let reviewReads = 0;
+	const read = d.ports.reviewWork;
+	d.ports.ticket = async () => {
+		ticketReads++;
+		return structuredClone(d.ticket);
+	};
+	d.ports.reviewWork = async (id, signal) => {
+		reviewReads++;
+		const review = await read(id, signal);
+		return {
+			...review,
+			files: review.files.map((f) => ({ ...f, patch: "@@ -1 +1 @@\n-old\n+new\n" })),
+		};
+	};
+	const tools = new ConversationHubTools(
+		d.ports,
+		{ ...input, text: "Talk me through the MET-81 implementation and its regression test." },
+		new AbortController().signal
+	);
+	await tools.observe();
+	const packet = (await tools.currentContext(observed)) as {
+		job: { id: string; state: string };
+		patches: { patch: string }[];
+	};
+	assert.equal(packet.job.id, d.job.id);
+	assert.equal(packet.job.state, "ready");
+	assert.match(packet.patches[0]?.patch ?? "", /\+new/);
+	assert.equal(ticketReads, 0);
+	assert.equal(reviewReads, 1);
+	const planning = new ConversationHubTools(
+		d.ports,
+		{ ...input, text: "Before we start MET-81, what decisions do you need?" },
+		new AbortController().signal
+	);
+	await planning.observe();
+	const plan = (await planning.currentContext(observed)) as { ticket: { id: string } };
+	assert.equal(plan.ticket.id, d.ticket.id);
+	assert.equal(ticketReads, 1);
+});
+
+test("implementation questions open completed work while product planning still opens the ticket", async () => {
+	const d = data();
+	d.ticket.identifier = "MET-81";
+	required(d.hub.tickets[0]).identifier = "MET-81";
+	const observed = await selectedTicketWorkspace(d).observe(
+		input.sessionId,
+		new AbortController().signal
+	);
+	assert.deepEqual(
+		explicitWorkspaceNavigation(
+			"Talk me through the MET-81 implementation and its regression test.",
+			observed
+		)?.args,
+		{ section: "completed", selectedId: d.job.id }
+	);
+	assert.deepEqual(
+		explicitWorkspaceNavigation("Before we start MET-81, explain the product tradeoff.", observed)
+			?.args,
+		{ section: "tickets", selectedId: d.ticket.id }
+	);
+	const copy = structuredClone(required(observed.hub?.jobs[0]));
+	copy.id = "other-job";
+	observed.hub?.jobs.push(copy);
+	assert.equal(
+		explicitWorkspaceNavigation("Explain the MET-81 implementation.", observed),
+		undefined
+	);
+	const primary = observed.workspace.canvases.find((c) => c.id === observed.workspace.primaryId);
+	assert.ok(primary && primary.kind === "center");
+	primary.section = "completed";
+	primary.selectedId = d.job.id;
+	assert.equal(
+		explicitWorkspaceNavigation("Explain the MET-81 implementation.", observed)?.selectedId,
+		d.job.id
+	);
+});

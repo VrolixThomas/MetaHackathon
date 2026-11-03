@@ -245,6 +245,44 @@ function observedQuestionNavigation(text: string, observed?: WorkspaceObservatio
 	);
 	if (tickets.length + prs.length !== 1) return;
 	const ticket = tickets[0];
+	const primary = observed.workspace.canvases.find(
+		(canvas) => canvas.id === observed.workspace.primaryId
+	);
+	const selectedWork =
+		primary?.kind === "center" && ["completed", "activity"].includes(primary.section)
+			? observed.hub?.jobs.find(
+					(job) => job.id === primary.selectedId && job.ticket?.id === ticket?.id
+				)
+			: undefined;
+	const planning =
+		/^before we\b/i.test(request) ||
+		/\b(?:design decisions?|scope|planning|plan the ticket)\b/i.test(request);
+	if (
+		ticket &&
+		!planning &&
+		(selectedWork ||
+			/\b(?:implementation|implemented|diff|changes|regression|built|completed work)\b/i.test(
+				request
+			))
+	) {
+		const jobs = (observed.hub?.jobs ?? []).filter(
+			(job) => job.ticket?.id === ticket.id && job.state !== "cancelled"
+		);
+		const job = selectedWork ?? (jobs.length === 1 ? jobs[0] : undefined);
+		if (!job || !observed.capabilities.includes("center")) return;
+		return {
+			kind: "completed-work" as const,
+			tool: "open_command_center",
+			args: {
+				section: ["ready", "failed"].includes(job.state) ? "completed" : "activity",
+				selectedId: job.id,
+			},
+			selectedId: job.id,
+			discussion: true as const,
+			jobId: job.id,
+			acknowledgement: "The implementation is open.",
+		};
+	}
 	if (ticket && observed.capabilities.includes("center"))
 		return {
 			kind: "ticket" as const,

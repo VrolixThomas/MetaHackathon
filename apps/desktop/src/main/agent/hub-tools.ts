@@ -561,6 +561,25 @@ export class ConversationHubTools {
 							word === ticket.identifier.split("-").at(-1))
 				);
 			}) ?? [];
+		const selectedWork =
+			canvas?.kind === "center" && ["completed", "activity"].includes(canvas.section)
+				? this.latest?.jobs.find((job) => job.id === canvas.selectedId)
+				: undefined;
+		const planning =
+			/^(?:(?:please|can you|could you)\s+)?(?:before\b|plan\b|clarify\b|scope\b|start\b|build\b|implement\b|work on\b)/i.test(
+				this.turn.text.trim()
+			);
+		if (
+			selectedWork &&
+			!planning &&
+			(mentioned.length === 0 ||
+				(mentioned.length === 1 && mentioned[0]?.id === selectedWork.ticket?.id))
+		) {
+			return this.execute(
+				selectedWork.headSha ? "inspect_work_review" : "inspect_work_job",
+				JSON.stringify(selectedWork.headSha ? { jobId: selectedWork.id } : { id: selectedWork.id })
+			);
+		}
 		const selected =
 			canvas?.kind === "center" && canvas.section === "tickets"
 				? this.latest?.tickets.find((ticket) => ticket.id === canvas.selectedId)
@@ -1114,6 +1133,11 @@ export class ConversationHubTools {
 					base: { path: f.base.path, commitSha: f.base.commitSha, status: f.base.status },
 					head: { path: f.head.path, commitSha: f.head.commitSha, status: f.head.status },
 				})),
+				patches: review?.files.slice(0, 4).map((file) => ({
+					path: file.path,
+					patch: file.patch ? clipBytes(file.patch, 2400) : null,
+					truncated: !!file.patch && size(file.patch) > 2400,
+				})),
 				truncated:
 					size(job.brief) > 2000 ||
 					size(job.summary) > 2000 ||
@@ -1121,9 +1145,10 @@ export class ConversationHubTools {
 					job.decisions.filter((d) => d.answer === null).length > 8 ||
 					job.checks.length > 8 ||
 					job.changedFiles.length > 60 ||
-					(review?.files.length ?? 0) > 40,
+					(review?.files.length ?? 0) > 4 ||
+					!!review?.files.some((file) => file.patch && size(file.patch) > 2400),
 				omitted:
-					"Ticket description, answered decisions and original file contents are omitted; inspect the ticket or read pinned source explicitly.",
+					"Patch excerpts are actual committed differences. Full source and answered decisions are omitted; read pinned source for additional context. Explain the current implemented behavior from supplied patches and actual checks, not a hypothetical plan. Patch inspection alone is not full-source display proof.",
 				evidencePolicy: policy,
 			};
 			const bounded = boundedDetails(packet, [
@@ -1131,6 +1156,7 @@ export class ConversationHubTools {
 				packet.job.checks,
 				packet.job.changedFiles,
 				packet.files ?? [],
+				packet.patches ?? [],
 			]);
 			if (review && job.headSha && job.state === "ready")
 				this.dayReviewChecks.set(
