@@ -446,7 +446,33 @@ export class TeamService {
 		z.uuid().parse(requestId);
 		signal.throwIfAborted();
 	}
+	private async diagnose<T>(
+		operation: "proposal-list" | "proposal-preview" | "proposal-share",
+		run: () => Promise<T>
+	): Promise<T> {
+		try {
+			return await run();
+		} catch (error) {
+			console.warn(
+				JSON.stringify({
+					stage: "team-operation-error",
+					operation,
+					code:
+						error instanceof TeamError
+							? error.code
+							: error instanceof z.ZodError
+								? "schema"
+								: "unknown",
+					httpStatus: error instanceof TeamError ? error.status : 0,
+				})
+			);
+			throw error;
+		}
+	}
 	async proposals(raw: unknown = {}) {
+		return this.diagnose("proposal-list", () => this.readProposals(raw));
+	}
+	private async readProposals(raw: unknown) {
 		const input = ProposalsInputSchema.parse(raw);
 		const c = await this.scope(input.repository);
 		const result = z
@@ -513,6 +539,9 @@ export class TeamService {
 		return (await this.find(raw)).detail;
 	}
 	async previewProposal(raw: unknown) {
+		return this.diagnose("proposal-preview", () => this.readProposalPreview(raw));
+	}
+	private async readProposalPreview(raw: unknown) {
 		const input = PreviewLocalProposalSchema.parse(raw);
 		if (!this.options.readLocalFix) throw new TeamError("unavailable");
 		const c = await this.scope(input.repository);
@@ -533,6 +562,9 @@ export class TeamService {
 		});
 	}
 	async shareProposal(raw: unknown) {
+		return this.diagnose("proposal-share", () => this.writeProposal(raw));
+	}
+	private async writeProposal(raw: unknown) {
 		const input = ShareLocalProposalSchema.parse(raw);
 		const c = await this.scope(input.repository);
 		const preview = await this.previewProposal({

@@ -912,6 +912,10 @@ test("bootstrap binds original nested manifests/lock to owned worktree and prese
 	await fixture(
 		async ({ root, source, runtime, prepare }) => {
 			await writeFile(join(source, "bun.lock"), "controlled frozen lock\n");
+			await writeFile(
+				join(source, ".gitignore"),
+				`${await readFile(join(source, ".gitignore"), "utf8").catch(() => "")}\n.next/\n`
+			);
 			await mkdir(join(source, "packages"));
 			await writeFile(join(source, "packages/package.json"), "{}");
 			await git(source, "add", ".");
@@ -934,6 +938,9 @@ test("bootstrap binds original nested manifests/lock to owned worktree and prese
 					"installed\n"
 				);
 				assert.equal(await readFile(join(source, "source.txt"), "utf8"), "user dirty source");
+				await mkdir(join(job.worktreePath as string, ".next/types"), { recursive: true });
+				await writeFile(join(job.worktreePath as string, ".next/types/package.json"), "{}");
+				await runtime.bootstrap(job, signal());
 				await assert.rejects(
 					runtime.bootstrap({ ...job, baseSha: "a".repeat(40) }, signal()),
 					/ownership mismatch/

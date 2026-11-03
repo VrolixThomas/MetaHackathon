@@ -597,7 +597,9 @@ export class WorkJobRuntime {
 			const result = await runProcess({
 				command: "git",
 				args: [
-					...GIT_OPTIONS,
+					...GIT_OPTIONS.filter(
+						(option) => args[0] !== "check-ignore" || option !== "--literal-pathspecs"
+					),
 					...(args[0] === "commit" ? [] : ["-c", "core.hooksPath=/dev/null"]),
 					...args,
 				],
