@@ -461,7 +461,7 @@ async function native() {
 			assert.equal(file.path, S.FILES[i]);
 			if (i) {
 				const start = trace.length;
-				await click(".pr-fix-review button", "Next file");
+				await click(".pr-fix-review button", "Next file", true);
 				await receipt(
 					{ id: ready.id, baseSha: fixture.headSha, headSha: ready.headSha, path: file.path },
 					start
@@ -503,7 +503,7 @@ async function native() {
 			assert.equal(file.head.content, S.text(3));
 		}
 		const previousStart = trace.length;
-		await click(".pr-fix-review button", "Previous file");
+		await click(".pr-fix-review button", "Previous file", true);
 		await receipt(
 			{ id: ready.id, baseSha: fixture.headSha, headSha: ready.headSha, path: S.FILES[0] },
 			previousStart

@@ -31,6 +31,16 @@ function validateRequest(body, index) {
 	assert.ok(index < 3, "Unexpected additional model request");
 	const workspaceTools = new Set([
 		"expand_tools",
+		"run_local_preview",
+		"inspect_team_sharing",
+		"share_reviewed_fix",
+		"send_work_for_review",
+		"draft_pr_delegation_from_fix",
+		"standing_clarification_propose",
+		"standing_clarification_confirm",
+		"standing_clarification_list",
+		"standing_clarification_revoke",
+
 		"analyze_current_context",
 		"inspect_workspace",
 		"probe_browser",

@@ -81,6 +81,28 @@ async function native() {
 	fs.writeFileSync(envPath, "MODEL_API_KEY=local-browser-smoke-unused-dummy\n", { mode: 0o600 });
 	process.env.METAHACKATHON_ENV_FILE = envPath;
 	app.setPath("userData", owned);
+	fs.mkdirSync(join(owned, "workspace"), { recursive: true, mode: 0o700 });
+	fs.writeFileSync(
+		join(owned, "workspace", "canvases.json"),
+		JSON.stringify({
+			version: 1,
+			canvases: [
+				{
+					closed: true,
+					canvas: {
+						id: "browser-test-reference",
+						kind: "document",
+						title: "Browser test reference",
+						revision: 1,
+						markdown: "# Browser test reference\n\nControlled native-layout fixture.",
+						references: [],
+						provenance: "agent-draft",
+					},
+				},
+			],
+		}),
+		{ mode: 0o600 }
+	);
 	const reportPath = join(__dirname, "../../out/local-browser-smoke-report.json");
 	fs.mkdirSync(dirname(reportPath), { recursive: true });
 	const report = {
@@ -245,6 +267,34 @@ async function native() {
 		await wait("workspace options", () =>
 			js(`!!document.querySelector('[data-testid="workspace-more"]')`)
 		);
+		const openReference = async () => {
+			if (await js(`!!document.getElementById('canvas-tab-browser-test-reference')`)) {
+				await js(`document.getElementById('canvas-tab-browser-test-reference').click()`);
+				await wait("existing reference canvas committed", settledCanvas);
+				return;
+			}
+			await wait("recent canvas control", () =>
+				js(
+					`[...document.querySelectorAll('.canvas-layout-button')].some(b=>b.textContent.trim()==='Recent')`
+				)
+			);
+			await js(
+				`[...document.querySelectorAll('.canvas-layout-button')].find(b=>b.textContent.trim()==='Recent').click()`
+			);
+			await wait("saved reference", () =>
+				js(`!!document.querySelector('.canvas-history-list button')`)
+			);
+			await js(
+				`[...document.querySelectorAll('.canvas-history-list button')].find(b=>b.textContent.includes('Browser test reference')).click()`
+			);
+			await wait("explicit reference canvas", () =>
+				js(
+					`!!document.querySelector('[data-canvas-id="browser-test-reference"][data-canvas-kind="document"]')`
+				)
+			);
+			await wait("reference canvas committed", settledCanvas);
+		};
+		await openReference();
 		await openOption("local-preview-toggle");
 		await wait("local URL form", () =>
 			js(`!!document.querySelector('input[name="local-preview-url"]')`)
@@ -257,7 +307,7 @@ async function native() {
 		await wait("opened canvas committed", settledCanvas);
 		await wait("split canvas control", () =>
 			js(
-				`!![...document.querySelectorAll('.canvas-layout-button')].find(e => e.textContent === 'Split panes')`
+				`!![...document.querySelectorAll('.canvas-layout-button')].find(e => e.textContent === 'Split panes' && !e.disabled)`
 			)
 		);
 		await js(
@@ -324,42 +374,49 @@ async function native() {
 		);
 		const beforeBrowsing = (await rpc("query", "workspace.observe", { sessionId: sidebarSession }))
 			.workspace;
-		const visibleBeforeBrowsing = view.getBounds();
-		const nativeSetVisible = view.setVisible;
-		let sidebarHides = 0;
-		view.setVisible = function (visible) {
-			if (!visible) sidebarHides++;
-			return nativeSetVisible.call(this, visible);
-		};
-		try {
-			for (const label of ["My tickets", "Own PR feedback", "Incoming reviews"]) {
-				await js(
-					`document.querySelector(${JSON.stringify(`.command-rail button[aria-label^="${label}"]`)}).click()`
-				);
-				await wait(`sidebar category ${label}`, () =>
-					js(
-						`document.querySelector('.command-sidebar > header strong')?.textContent === ${JSON.stringify(label)}`
-					)
-				);
-				await wait("sidebar-only receipt committed", settledCanvas);
-				const after = (await rpc("query", "workspace.observe", { sessionId: sidebarSession }))
+		for (const [selector, section] of [
+			['.command-rail button[aria-label^="Tickets"]', "tickets"],
+			['.command-rail button[aria-label^="Reviews"]', "reviews"],
+			['.command-subsections[aria-label="Review queues"] button', "feedback"],
+			['.command-rail button[aria-label^="Work"]', "completed"],
+			['.command-subsections[aria-label="Work queues"] button', "activity"],
+		]) {
+			await js(
+				`(()=>{const buttons=[...document.querySelectorAll(${JSON.stringify(selector)})];const button=${JSON.stringify(section)}==='feedback'?buttons.find(b=>b.textContent==='My PRs'):buttons[0];if(!button)throw Error('Section control missing');button.click();})()`
+			);
+			await wait(`main content follows ${section}`, async () => {
+				const state = (await rpc("query", "workspace.observe", { sessionId: sidebarSession }))
 					.workspace;
-				const {
-					sequence: _beforeSequence,
-					centerSection: _beforeCategory,
-					...content
-				} = beforeBrowsing;
-				const { sequence: _afterSequence, centerSection: _afterCategory, ...nextContent } = after;
-				assert.deepEqual(nextContent, content);
-				assert.equal(view.getVisible(), true);
-				assert.deepEqual(view.getBounds(), visibleBeforeBrowsing);
-				assert.equal(guest.id, guestId);
-			}
-			assert.equal(sidebarHides, 0, "Sidebar browsing must never hide the persistent browser");
-			report.sidebarBrowsingPreservesNativePage = true;
-		} finally {
-			view.setVisible = nativeSetVisible;
+				const primary = state.canvases.find((c) => c.id === state.primaryId);
+				return (
+					state.centerSection === section &&
+					primary?.kind === "center" &&
+					primary.section === section &&
+					(await js(`!!document.querySelector('[data-center-section="${section}"]')`))
+				);
+			});
+			assert.equal(view.getVisible(), false, "Section navigation hides the old browser surface");
+			assert.equal(guest.id, guestId, "Section navigation retains the native page instance");
 		}
+		await openReference();
+		await js(
+			`document.getElementById(${JSON.stringify(`canvas-tab-${beforeBrowsing.primaryId}`)}).click()`
+		);
+		await wait("returning browser tab is presented", () => view.getVisible());
+		await wait("restored split control enabled", () =>
+			js(
+				`[...document.querySelectorAll('.canvas-layout-button')].some(e=>e.textContent==='Split panes' && !e.disabled)`
+			)
+		);
+		await js(
+			`[...document.querySelectorAll('.canvas-layout-button')].find(e=>e.textContent==='Split panes').click()`
+		);
+		await wait("restored split layout", () => js(`!!document.querySelector('.workspace-divider')`));
+		await wait("browser return receipt committed", settledCanvas);
+		assert.equal(guest.id, guestId);
+		assert.equal(guest.getURL(), `${origin}/one`);
+		report.sectionNavigationUpdatesMainAndPreservesNativePage = true;
+
 		const preferences = guest.getLastWebPreferences();
 		assert.equal(preferences.sandbox, true);
 		assert.equal(preferences.contextIsolation, true);

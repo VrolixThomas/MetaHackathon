@@ -59,6 +59,7 @@ async function fixture(t: TestContext, check = "console.log('actual inert declar
 	const pkg = JSON.stringify({ packageManager: "bun@1.3.9", scripts: { test: "node check.cjs" } });
 	await writeFile(join(source, "package.json"), pkg);
 	await writeFile(join(source, "check.cjs"), check);
+	await writeFile(join(source, ".gitignore"), "node_modules/\n");
 	await writeFile(join(source, "file.txt"), "\uFEFFold\r\nexact bytes\r\n");
 	await writeFile(join(source, "remove.txt"), "remove this\n");
 	await git(source, "add", ".");
@@ -458,4 +459,28 @@ test("cancellation interrupts an unresponsive authorization read before any job 
 	controller.abort();
 	await assert.rejects(pending, { name: "AbortError" });
 	assert.equal(await lstat(f.owned).catch(() => null), null);
+});
+
+test("accepted source application prepares baseline dependencies before edits and ignores generated dependency artifacts", async (t) => {
+	const f = await fixture(
+		t,
+		"const fs=require('node:fs');if(fs.readFileSync('node_modules/proof','utf8')!=='prepared')process.exit(1);\n"
+	);
+	const bootstrap = f.ports.runtime.bootstrap.bind(f.ports.runtime);
+	let setups = 0;
+	f.ports.runtime.bootstrap = async (job, active) => {
+		setups++;
+		assert.equal(
+			await readFile(join(job.worktreePath as string, "file.txt"), "utf8"),
+			"\uFEFFold\r\nexact bytes\r\n"
+		);
+		const receipt = await bootstrap(job, active);
+		await mkdir(join(job.worktreePath as string, "node_modules"), { recursive: true });
+		await writeFile(join(job.worktreePath as string, "node_modules/proof"), "prepared");
+		return receipt;
+	};
+	const result = await applyAcceptedTeamProposal(f.input, f.ports, signal());
+	assert.equal(setups, 1);
+	assert.ok(result.checks.every((c) => c.exitCode === 0));
+	assert.deepEqual(result.review.job.changedFiles, ["file.txt"]);
 });

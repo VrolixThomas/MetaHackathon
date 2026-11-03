@@ -76,6 +76,7 @@ async function setup(t: TestContext) {
 		epoch: 0,
 		sources: new Map([[source.feedback.id, source]]),
 		prepares: 0,
+		bootstraps: 0,
 		workers: 0,
 		finalizes: 0,
 		reviews: 0,
@@ -86,6 +87,7 @@ async function setup(t: TestContext) {
 		result: { status: "completed", summary: "Handled empty data." } as CodingTaskResult,
 		onRead: async () => {},
 		onPrepare: async () => {},
+		onBootstrap: async () => {},
 		onWorker: async (_signal: AbortSignal) => {},
 		onReview: async () => {},
 	};
@@ -103,6 +105,13 @@ async function setup(t: TestContext) {
 			return structuredClone(current);
 		},
 		runtime: {
+			bootstrap: async (job) => {
+				assert.ok(job.worktreePath);
+				assert.equal(job.repository, "test/repo");
+				state.bootstraps++;
+				await state.onBootstrap();
+				return "Baseline dependencies ready";
+			},
 			prepare: async (_repository, job, _signal, input) => {
 				state.prepares++;
 				assert.match(input?.baseCommit ?? "", /^[a-f0-9]{40}$/);
@@ -163,6 +172,10 @@ async function setup(t: TestContext) {
 			},
 		},
 		runWorker: async (input, signal) => {
+			assert.ok(
+				state.bootstraps > state.workers,
+				"Dependency setup must finish before every coding child"
+			);
 			state.workers++;
 			state.workerInputs.push(structuredClone(input));
 			await state.onWorker(signal);
@@ -766,4 +779,17 @@ test("legacy private admission without model or checkpoint is never upgraded or 
 	assert.equal(replay.phase, "interrupted");
 	assert.equal(ctx.state.workers, 1, "unconfirmed admission cannot run again");
 	assert.equal((await ctx.disk.read("alice")).entries[0]?.codingModel, undefined);
+});
+
+test("failed baseline dependency setup stops a proposed fix before coding or validation", async (t) => {
+	const ctx = await setup(t);
+	ctx.state.onBootstrap = async () => {
+		throw new Error("Controlled frozen install failure");
+	};
+	const admitted = await ctx.service.start(ctx.input);
+	const result = await ctx.settle(admitted.id);
+	assert.equal(result.phase, "interrupted");
+	assert.equal(ctx.state.bootstraps, 1);
+	assert.equal(ctx.state.workers, 0);
+	assert.equal(ctx.state.finalizes, 0);
 });

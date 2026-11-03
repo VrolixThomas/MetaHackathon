@@ -58,7 +58,7 @@ function SectionPrompt({
 				? "Connect GitHub to load pull requests"
 				: "Connect Linear to load your tickets";
 	const description = count
-		? "Choose an item in the sidebar to inspect its details. Browsing categories keeps the current workspace in place."
+		? "Choose an item in the sidebar to inspect its details."
 		: failed
 			? "Check the connection message above and refresh to try again."
 			: source === "github"

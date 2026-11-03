@@ -30,7 +30,7 @@ import { readDaySource } from "./composition/day-source";
 import { ConversationDiagnostics } from "./composition/diagnostics";
 import { createKnowledgeService } from "./composition/knowledge";
 import { ForegroundLocalPreview } from "./composition/local-preview";
-import { sourceFromPRFix } from "./composition/pr-fix-source";
+import { candidateSourceMatches, sourceFromPRFix } from "./composition/pr-fix-source";
 import { ReviewRequestComposition } from "./composition/review-request";
 import { ReviewCoordinator } from "./composition/reviews";
 import { SlackConnection } from "./composition/slack-connection";
@@ -224,10 +224,7 @@ async function resolvePinnedSource(raw: unknown, signal = AbortSignal.timeout(30
 		const fixes = await prFixes.list().catch(() => []);
 		signal.throwIfAborted();
 		for (const fix of fixes) {
-			if (
-				fix.pr.repository === request.repository &&
-				(request.commitSha === fix.headSha || request.commitSha === fix.baseSha)
-			) {
+			if (candidateSourceMatches(fix, request)) {
 				const detail = await prFixes.detail(fix.id);
 				signal.throwIfAborted();
 				const revision = request.revision ?? "head";

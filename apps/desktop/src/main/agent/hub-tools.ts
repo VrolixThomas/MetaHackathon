@@ -32,6 +32,7 @@ import {
 	encodePRFixViewTarget,
 } from "../../shared/contracts";
 import type { StandingClarificationComposition } from "../composition/standing-clarification";
+import { HubFailure } from "../work/hub";
 import { type ApprovalToolPorts, ApprovalTools } from "./approval-tools";
 import { abortable, throwIfAborted } from "./cancellation";
 import { conversationErrorDiagnostic } from "./conversation-error-diagnostic";
@@ -1206,8 +1207,9 @@ export class ConversationHubTools {
 				throw new WorkspaceArgumentError(
 					"Source lines must be ordered. No operation was performed."
 				);
-			const source = PinnedSourceSchema.parse(
-				await abortable(
+			let rawSource: unknown;
+			try {
+				rawSource = await abortable(
 					this.ports.source(
 						{
 							...request,
@@ -1219,8 +1221,21 @@ export class ConversationHubTools {
 						this.signal
 					),
 					this.signal
-				)
-			);
+				);
+			} catch (error) {
+				throwIfAborted(this.signal);
+				if (!(error instanceof HubFailure) || error.kind !== "notFound") throw error;
+				return {
+					status: "unavailable",
+					reason: "path-or-range-not-found",
+					request,
+					source: null,
+					instruction:
+						"No source was inspected and no display authority was granted. Use search_pinned_source to locate the actual caller or retry an observed valid file/range at the same pinned revision.",
+					evidencePolicy: policy,
+				};
+			}
+			const source = PinnedSourceSchema.parse(rawSource);
 			const loc = source.location;
 			if (
 				loc.repository !== request.repository ||

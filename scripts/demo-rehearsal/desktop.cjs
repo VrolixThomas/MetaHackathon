@@ -18,6 +18,7 @@ const root = path.resolve(__dirname, "../..");
 const desktop = path.join(root, "apps/desktop");
 const textDiagnostics = process.argv.includes("--text-diagnostics");
 const mockTTS = process.argv.includes("--mock-tts");
+const liveImages = process.argv.includes("--live-images");
 assert(
 	!(mockTTS && textDiagnostics),
 	"Mock TTS exercises the media path; do not combine with text diagnostics"
@@ -65,6 +66,8 @@ const report = {
 			.trim()
 	),
 	liveModels: true,
+	liveMuseImages: liveImages,
+	imageRequests: [],
 	liveElevenLabs: !textDiagnostics && !mockTTS,
 	mockTTS,
 	mockTTSDescription: mockTTS
@@ -144,6 +147,31 @@ const originalFork = cp.fork;
 const originalSpawn = cp.spawn;
 const originalHandle = ipcMain.handle;
 const js = (code) => win.webContents.executeJavaScript(code, true);
+async function capture(name) {
+	assert(/^[a-z0-9-]+$/.test(name));
+	const file = path.join(owned, `${name}.png`);
+	fs.writeFileSync(file, (await win.webContents.capturePage()).toPNG(), { mode: 0o600 });
+	report.screenshots ??= [];
+	report.screenshots.push({
+		name,
+		path: file,
+		provenance: "actual-app-renderer; live model; controlled source transports",
+	});
+	return file;
+}
+async function exportImage(asset) {
+	const result = await rpc("query", "images.read", { id: asset.id });
+	assert.equal(result.asset.sha256, asset.sha256);
+	const match = /^data:image\/(png|jpeg);base64,(.+)$/.exec(result.dataUrl);
+	assert(match);
+	const bytes = Buffer.from(match[2], "base64");
+	assert.equal(createHash("sha256").update(bytes).digest("hex"), asset.sha256);
+	const file = path.join(owned, `ladder-image.${match[1] === "jpeg" ? "jpg" : "png"}`);
+	fs.writeFileSync(file, bytes, { mode: 0o600 });
+	report.generatedImage = { asset, path: file, liveProvider: true };
+	save();
+}
+
 async function wait(label, read, timeout = 60000) {
 	const end = Date.now() + timeout;
 	while (Date.now() < end) {
@@ -428,6 +456,20 @@ async function main() {
 	globalThis.fetch = async (input, init = {}) => {
 		const url = new URL(String(input.url ?? input));
 		if (url.href === "https://api.meta.ai/v1/responses") return live(input, init);
+		if (url.href === "https://api.meta.ai/v1/images/generations") {
+			assert(liveImages, "Image generation requires explicit --live-images");
+			assert(report.imageRequests.length < 2, "Live image budget exceeded");
+			const body = JSON.parse(String(init.body));
+			assert.equal(body.model, "muse-image-1.0");
+			const row = { model: body.model, startedAt: new Date().toISOString(), httpStatus: null };
+			report.imageRequests.push(row);
+			save();
+			const response = await originalFetch(input, init);
+			row.httpStatus = response.status;
+			row.headersAt = new Date().toISOString();
+			save();
+			return response;
+		}
 		if (
 			["https://api.github.com", "https://api.linear.app", "https://slack.com"].includes(url.origin)
 		)
@@ -704,6 +746,9 @@ async function main() {
 			await variants({ say, rpc, ui, state, fixture, report, assert, js, wait, button, owned });
 		else if (process.argv.includes("--suite=review"))
 			await review({
+				capture,
+				exportImage,
+				liveImages,
 				say,
 				rpc,
 				ui,
@@ -746,6 +791,9 @@ async function main() {
 			process.argv.includes("--suite=work")
 		)
 			await full({
+				capture,
+				exportImage,
+				liveImages,
 				workOnly: process.argv.includes("--suite=work"),
 				say,
 				rpc,

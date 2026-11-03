@@ -624,3 +624,16 @@ test("ladder and sequence requests offer actual visual tools while retaining sou
 	profile.select(observation("home"), true, "Show the entire source flow.");
 	assert.match(profile.workflowInstructions, /create_source_flow/);
 });
+
+test("explicit image-generated ladder diagram selects Muse raster generation without replacing editable diagrams", () => {
+	const profile = new ForegroundProfile();
+	profile.select(
+		observation("home"),
+		true,
+		"Generate an image of a ladder diagram explaining this PR architecture."
+	);
+	assert(profile.sourceFlowWorkflow);
+	assert(profile.has("canvases"));
+	assert.match(profile.workflowInstructions, /generate_raster_image/);
+	assert.doesNotMatch(profile.workflowInstructions, /Use create_visual_mock/);
+});

@@ -96,7 +96,7 @@ export function CommandSidebar({
 									key="slack"
 									controller={slack}
 									selected={section === "slack"}
-									onBrowse={() => command({ kind: "browse-center", section: "slack" })}
+									onBrowse={() => select("slack")}
 								/>
 							);
 						if (item.id === "day" && day)
@@ -105,7 +105,7 @@ export function CommandSidebar({
 									key="day"
 									day={day}
 									selected={section === "day"}
-									onBrowse={() => command({ kind: "browse-center", section: "day" })}
+									onBrowse={() => select("day")}
 								/>
 							);
 						const count = snapshot ? sectionCount(snapshot, item.id) : null;
@@ -132,11 +132,7 @@ export function CommandSidebar({
 										? "page"
 										: undefined
 								}
-								onClick={() =>
-									item.id === "home"
-										? select("home")
-										: command({ kind: "browse-center", section: item.id })
-								}
+								onClick={() => select(item.id)}
 							>
 								<HubIcon name={item.id} />
 								<span className="command-rail-label">{railLabel}</span>
@@ -208,7 +204,7 @@ export function CommandSidebar({
 								className="quiet"
 								key={id}
 								aria-current={section === id ? "page" : undefined}
-								onClick={() => command({ kind: "browse-center", section: id })}
+								onClick={() => select(id)}
 							>
 								{label}
 							</button>
@@ -228,7 +224,7 @@ export function CommandSidebar({
 								className="quiet"
 								key={id}
 								aria-current={section === id ? "page" : undefined}
-								onClick={() => command({ kind: "browse-center", section: id })}
+								onClick={() => select(id)}
 							>
 								{label}
 							</button>

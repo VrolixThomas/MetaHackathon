@@ -28,6 +28,7 @@ import {
 	emptyStandingState,
 	parseStandingState,
 } from "../day/standing-clarification";
+import { HubFailure } from "../work/hub";
 import { ApprovalConfirmation, approvalProposal } from "../work/pr-approvals/confirmation";
 import {
 	at as approvalAt,
@@ -6327,4 +6328,33 @@ test("implementation questions open completed work while product planning still 
 		explicitWorkspaceNavigation("Explain the MET-81 implementation.", observed)?.selectedId,
 		d.job.id
 	);
+});
+
+test("missing pinned path is recoverable without source authority while authorization errors remain fatal", async () => {
+	const d = data();
+	const seen: PinnedSource[] = [];
+	const tools = new ConversationHubTools(d.ports, input, new AbortController().signal, (s) =>
+		seen.push(s)
+	);
+	await tools.observe();
+	await tools.execute("inspect_work_job", JSON.stringify({ id: d.job.id }));
+	d.ports.source = async () => {
+		throw new HubFailure("notFound");
+	};
+	const args = JSON.stringify(d.source.location);
+	const unavailable = (await tools.execute("read_pinned_source", args)) as {
+		status: string;
+		source: null;
+	};
+	assert.equal(unavailable.status, "unavailable");
+	assert.equal(unavailable.source, null);
+	assert.equal(seen.length, 0);
+	d.ports.source = async () => d.source;
+	await tools.execute("read_pinned_source", args);
+	assert.equal(seen.length, 1);
+	d.ports.source = async () => {
+		throw new HubFailure("github");
+	};
+	await assert.rejects(tools.execute("read_pinned_source", args));
+	assert.equal(seen.length, 1);
 });

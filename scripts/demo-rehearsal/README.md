@@ -38,7 +38,7 @@ Available suites:
   Slack clarification, and actual ready-job/candidate review/checks.
 - `--suite=actions`: the latter action scenes alone.
 - `--suite=work`: actual coding admission, independent checks, behavioral review, and a fresh foreground session that must recognize historical work without admitting another job.
-- `--suite=review`: PR explanation, pinned flow and persistent browser/phone.
+- `--suite=review`: PR explanation, the complete pinned browser-to-result source flow, persistent browser/phone, and (with `--live-images`) an actual Muse Image ladder diagram. Exports actual renderer PNGs and the original generated image, labeled as live-model rehearsal with controlled source transports. `--live-images` explicitly permits up to two calls to the fixed official Meta image endpoint; it never substitutes an SVG mock.
 - `--suite=navigation`: actual user navigation phrasing, implicit PR-topic opening, manual next-file during speech, native Command-period interruption, and spoken Stop. Requires real or explicitly mocked speech.
 - `--suite=variants`: a second ticket, different planning phrases and a source question.
 - `--suite=planning`: the initial planning/choice/followup questions without voice control cases.

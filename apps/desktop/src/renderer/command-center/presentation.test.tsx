@@ -196,9 +196,12 @@ function sidebarControls(
 	return {
 		html,
 		click(label: string) {
-			const matches = buttons.filter(
-				(button) => button["aria-label"] === label || nodeText(button.children).includes(label)
+			const exact = buttons.filter(
+				(button) => button["aria-label"] === label || nodeText(button.children).trim() === label
 			);
+			const matches = exact.length
+				? exact
+				: buttons.filter((button) => nodeText(button.children).includes(label));
 			assert.equal(matches.length, 1, `Expected one sidebar control for ${label}`);
 			const click = matches[0]?.onClick;
 			assert.ok(click);
@@ -287,7 +290,7 @@ it("uses one counted rail and browses categories independently of the selected m
 		assert.ok(sidebar.html.includes(`title="${label}" aria-label="${label}"`));
 		sidebar.click(label);
 		assert.deepEqual(commands.pop(), {
-			kind: section.id === "home" ? "open-center" : "browse-center",
+			kind: "open-center",
 			section: section.id,
 		});
 	}
@@ -825,4 +828,28 @@ it("implementation review presents actual files, diff counts and pinned revision
 	assert.match(html, /Before/);
 	assert.match(html, /After/);
 	assert.doesNotMatch(html, /Commit changes|Stage All/);
+});
+
+it("review and work submenus navigate the main canvas rather than only browsing the sidebar", () => {
+	const snapshot = makeSnapshot();
+	const hub = suppliedHub(snapshot);
+	const commands: WorkspaceCommand[] = [];
+	const workspace = (section: CenterSection) => ({
+		...suppliedWorkspace(section),
+		command: async (command: WorkspaceCommand) => {
+			commands.push(command);
+			return "applied" as const;
+		},
+	});
+	const reviews = sidebarControls(hub, workspace("reviews"));
+	reviews.click("My PRs");
+	assert.deepEqual(commands.pop(), { kind: "open-center", section: "feedback" });
+	reviews.click("Requested");
+	assert.deepEqual(commands.pop(), { kind: "open-center", section: "reviews" });
+	const work = sidebarControls(hub, workspace("completed"));
+	work.click("In progress");
+	assert.deepEqual(commands.pop(), { kind: "open-center", section: "activity" });
+	work.click("Completed");
+	assert.deepEqual(commands.pop(), { kind: "open-center", section: "completed" });
+	hub.dispose();
 });

@@ -53,7 +53,7 @@ export class PRFixError extends Error {
 }
 export interface PRFixServiceOptions {
 	directory: string;
-	runtime: Pick<WorkJobRuntime, "prepare" | "finalize" | "review">;
+	runtime: Pick<WorkJobRuntime, "prepare" | "bootstrap" | "finalize" | "review">;
 	workerEntry: string;
 	envPath: string;
 	codingSettings?: () => Promise<CodingProviderSettings>;
@@ -337,6 +337,17 @@ export class PRFixService {
 						...raw,
 						...(entry.codingModel ? { codingModel: entry.codingModel } : {}),
 					};
+					await this.guard(context);
+					const saved = (await this.entry(context, run.id)).record;
+					if (
+						!saved ||
+						saved.phase !== "executing" ||
+						saved.job.id !== input.jobId ||
+						saved.job.worktreePath !== input.worktreePath ||
+						saved.job.repository !== input.repository
+					)
+						throw new PRFixError("source");
+					await this.call(context, () => this.options.runtime.bootstrap(saved.job, signal));
 					await this.guard(context);
 					this.assertLive(context);
 					const operation = this.options.runWorker

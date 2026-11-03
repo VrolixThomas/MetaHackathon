@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { getReviewFixture } from "../../shared/fixtures/review";
-import { sourceFromPRFix } from "./pr-fix-source";
+import { candidateSourceMatches, sourceFromPRFix } from "./pr-fix-source";
 
 function candidate() {
 	const pr = getReviewFixture().preparation.pr;
@@ -129,4 +129,16 @@ test("candidate reads reject a different revision, missing path, oversized range
 		)
 	);
 	assert.throws(() => sourceFromPRFix({ ...detail, review: null }, location));
+});
+
+test("original PR head is not mistaken for the candidate head when resolving source", () => {
+	const { detail, location } = candidate();
+	assert.equal(candidateSourceMatches(detail.fix, location), true);
+	const originalHead = { ...location, commitSha: detail.fix.baseSha };
+	assert.equal(candidateSourceMatches(detail.fix, originalHead), false);
+	assert.equal(candidateSourceMatches(detail.fix, { ...originalHead, revision: "base" }), true);
+	assert.equal(
+		candidateSourceMatches(detail.fix, { ...location, repository: "other/repo" }),
+		false
+	);
 });

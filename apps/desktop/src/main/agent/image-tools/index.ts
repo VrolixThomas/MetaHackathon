@@ -38,7 +38,7 @@ export class ConversationImageTools {
 				type: "function",
 				name: "generate_raster_image",
 				description:
-					"Generate a real provider raster image privately and display it in the workspace. Use for photos, paintings and raster illustrations; typed visual mocks remain separate. Requires configured image-provider credentials; errors do not block other tools. No fixture success, remote image fetch, screenshot or PR execution claim. Waits for actual image decode and workspace display acknowledgement.",
+					"Generate a real provider raster image privately and display it in the workspace. Use for photos, paintings, raster illustrations and explicitly image-generated architecture or ladder diagrams; typed visual mocks remain separate. Requires configured image-provider credentials; errors do not block other tools. No fixture success, remote image fetch, screenshot or PR execution claim. Waits for actual image decode and workspace display acknowledgement.",
 				parameters: z.toJSONSchema(argumentsSchema),
 			},
 		];

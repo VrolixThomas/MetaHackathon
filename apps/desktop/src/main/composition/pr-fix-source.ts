@@ -1,4 +1,16 @@
+import type { CodeLocation, PRFixSummary } from "../../shared/contracts";
 import { CodeLocationSchema, PRFixDetailSchema, PinnedSourceSchema } from "../../shared/contracts";
+
+/** Revision labels are relative to the request; an original PR head is not a candidate head. */
+export function candidateSourceMatches(
+	fix: Pick<PRFixSummary, "pr" | "baseSha" | "headSha">,
+	location: Pick<CodeLocation, "repository" | "commitSha" | "revision">
+) {
+	return (
+		fix.pr.repository === location.repository &&
+		location.commitSha === (location.revision === "base" ? fix.baseSha : fix.headSha)
+	);
+}
 
 /** The isolated candidate has Git objects that may not exist in the user's clone. */
 export function sourceFromPRFix(rawDetail: unknown, rawLocation: unknown) {

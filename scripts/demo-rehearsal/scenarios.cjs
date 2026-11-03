@@ -333,9 +333,12 @@ async function review(d) {
 	await say("What could still interrupt me while focus is on? Ground it in the code.", {
 		id: "pr-risk",
 	});
-	await say("Show me the entire flow from the browser request to delivering an update.", {
-		id: "source-flow",
-	});
+	await say(
+		"Show me the entire flow from clicking Check for an update in the browser, through the server and focus policy, to what the user sees. Include unchanged callers and explain where questions can still slip through focus mode.",
+		{
+			id: "source-flow",
+		}
+	);
 	const flowObservation = await rpc("query", "workspace.observe", {
 		sessionId: report.turns.at(-1).identity.sessionId,
 	});
@@ -343,16 +346,42 @@ async function review(d) {
 		(c) => c.id === flowObservation.workspace.primaryId && c.kind === "flow"
 	);
 	assert(flow, "Flow must be the acknowledged primary canvas");
+	report.sourceFlow = flow;
+	await d.capture?.("source-flow");
 	const paths = flow.flow.steps.map((step) => step.source.location.path);
 	assert(
-		paths.includes("src/http/app.mjs") && paths.includes("src/attention/build-update.mjs"),
-		"Entire flow must include the unchanged request entry and delivery orchestration"
+		[
+			"public/app.mjs",
+			"src/http/app.mjs",
+			"src/attention/build-update.mjs",
+			"src/attention/select-update.mjs",
+			"src/attention/focus-policy.mjs",
+			"src/work/store.mjs",
+		].every((path) => paths.includes(path)),
+		"Entire flow must include browser entry/result, HTTP handler, orchestration, selection, policy and store"
 	);
 	assert(
 		flow.flow.steps.every((step) => step.source.location.commitSha === d.fixture.pulls[0].headSha),
 		"Flow source must stay pinned to the actual PR revision"
 	);
-	report.sourceFlow = flow;
+	if (d.liveImages) {
+		await say(
+			"Generate an image of a ladder diagram explaining this flow, including the focus-mode design decision. Use Muse image generation.",
+			{ id: "ladder-diagram-image" }
+		);
+		const view = await rpc("query", "workspace.observe", {
+			sessionId: report.turns.at(-1).identity.sessionId,
+		});
+		const diagram = view.workspace.canvases.find(
+			(c) => c.id === view.workspace.primaryId && c.kind === "image"
+		);
+		assert(diagram, "The generated ladder image must be the acknowledged primary image canvas");
+		assert.equal(diagram.asset.provider, "meta");
+		assert.equal(diagram.asset.model, "muse-image-1.0");
+		report.ladderDiagram = diagram;
+		await d.exportImage(diagram.asset);
+		await d.capture?.("ladder-diagram-image");
+	} else report.diagramNotRun = "Enable --live-images to verify actual Muse image generation.";
 	await say(`Open ${d.previewUrl} in the browser so we can try the companion.`, {
 		id: "local-browser",
 	});

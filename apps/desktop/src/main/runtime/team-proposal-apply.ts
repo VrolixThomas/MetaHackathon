@@ -294,6 +294,10 @@ export async function applyAcceptedTeamProposal(
 		0o600
 	);
 	await lease.close();
+	await ports.runtime.bootstrap(job, signal);
+	await fresh();
+	await root();
+	await verify("before");
 	for (const file of bundle.files) {
 		await fresh();
 		await parents(file.path, true);
@@ -370,7 +374,9 @@ export async function applyAcceptedTeamProposal(
 				)
 					.split("\0")
 					.filter(Boolean),
-				...(await git(tree, signal, "ls-files", "--others", "-z")).split("\0").filter(Boolean),
+				...(await git(tree, signal, "ls-files", "--others", "--exclude-standard", "-z"))
+					.split("\0")
+					.filter(Boolean),
 			]),
 		].sort();
 	if (canonical(await changed("HEAD")) !== canonical(expected))
