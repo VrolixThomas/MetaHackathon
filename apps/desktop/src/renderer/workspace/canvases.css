@@ -1145,3 +1145,47 @@ button.hub-line-number {
 		grid-column: 2;
 	}
 }
+.hub-center:has(> .job-detail) {
+	padding-top: 14px;
+}
+.hub-center:has(> .job-detail) > .hub-center-header {
+	margin-bottom: 12px;
+	justify-content: flex-end;
+}
+.hub-center:has(> .job-detail) > .hub-center-header > div:first-child {
+	display: none;
+}
+.job-overview {
+	display: grid;
+	grid-template-columns: minmax(0, 1fr) auto;
+	column-gap: 20px;
+	align-items: center;
+}
+.job-overview > :not(.hub-actions) {
+	grid-column: 1;
+}
+.job-overview > .hub-actions {
+	grid-column: 2;
+	grid-row: 1 / span 3;
+	margin: 0;
+}
+.job-overview h1 {
+	font-size: 21px;
+	margin: 8px 0;
+}
+.job-overview .hub-branch {
+	margin: 0;
+	font-size: 11px;
+	color: #8792a5;
+}
+.job-detail > section {
+	margin-top: 18px;
+}
+@media (max-width: 1050px) {
+	.job-overview {
+		display: block;
+	}
+	.job-overview > .hub-actions {
+		margin-top: 12px;
+	}
+}

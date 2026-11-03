@@ -725,71 +725,73 @@ export function JobView({
 			data-job-head={job.headSha ?? "pending"}
 			data-job-repository={job.repository}
 		>
-			<div className="hub-detail-meta">
-				<span>{jobReference(job)}</span>
-				<span>{job.repository}</span>
-				<span className={`hub-status status-${job.state}`}>{jobOutcomeLabel(job)}</span>
-			</div>
-			<h1>{jobTitle(job)}</h1>
-			<p className="hub-muted hub-branch">{job.branch}</p>
-			{error && (
-				<p className="hub-error" role="alert">
-					{error}
-				</p>
-			)}
-			{job.error && (
-				<p className="hub-error" role="alert">
-					{job.error}
-				</p>
-			)}
-			<div className="hub-actions">
-				{active && (
-					<button
-						type="button"
-						disabled={busy}
-						onClick={() => void hub.operate({ kind: "pause-work", jobId: id })}
-					>
-						Pause work
-					</button>
+			<div className="job-overview">
+				<div className="hub-detail-meta">
+					<span>{jobReference(job)}</span>
+					<span>{job.repository}</span>
+					<span className={`hub-status status-${job.state}`}>{jobOutcomeLabel(job)}</span>
+				</div>
+				<h1>{jobTitle(job)}</h1>
+				<p className="hub-muted hub-branch">{job.branch}</p>
+				{error && (
+					<p className="hub-error" role="alert">
+						{error}
+					</p>
 				)}
-				{job.state === "ready" && !job.pullRequest && job.changedFiles.length > 0 && (
-					<button
-						type="button"
-						disabled={busy}
-						onClick={() => void hub.operate({ kind: "publish-work", jobId: id })}
-					>
-						Publish draft PR
-					</button>
+				{job.error && (
+					<p className="hub-error" role="alert">
+						{job.error}
+					</p>
 				)}
-				{resumable && (
-					<button
-						type="button"
-						disabled={busy}
-						onClick={() => void hub.operate({ kind: "resume-work", jobId: id })}
-					>
-						Resume work
-					</button>
-				)}
-				{(active || job.state === "paused") && (
-					<button
-						type="button"
-						className="quiet"
-						disabled={busy}
-						onClick={() => void hub.operate({ kind: "cancel-work", jobId: id })}
-					>
-						Cancel job
-					</button>
-				)}
-				{job.pullRequest && (
-					<button
-						type="button"
-						onClick={() => {
-							if (job.pullRequest) command({ kind: "show-review", prId: job.pullRequest.id });
-						}}
-					>
-						Open PR #{job.pullRequest.number}
-					</button>
-				)}
+				<div className="hub-actions">
+					{active && (
+						<button
+							type="button"
+							disabled={busy}
+							onClick={() => void hub.operate({ kind: "pause-work", jobId: id })}
+						>
+							Pause work
+						</button>
+					)}
+					{job.state === "ready" && !job.pullRequest && job.changedFiles.length > 0 && (
+						<button
+							type="button"
+							disabled={busy}
+							onClick={() => void hub.operate({ kind: "publish-work", jobId: id })}
+						>
+							Publish draft PR
+						</button>
+					)}
+					{resumable && (
+						<button
+							type="button"
+							disabled={busy}
+							onClick={() => void hub.operate({ kind: "resume-work", jobId: id })}
+						>
+							Resume work
+						</button>
+					)}
+					{(active || job.state === "paused") && (
+						<button
+							type="button"
+							className="quiet"
+							disabled={busy}
+							onClick={() => void hub.operate({ kind: "cancel-work", jobId: id })}
+						>
+							Cancel job
+						</button>
+					)}
+					{job.pullRequest && (
+						<button
+							type="button"
+							onClick={() => {
+								if (job.pullRequest) command({ kind: "show-review", prId: job.pullRequest.id });
+							}}
+						>
+							Open PR #{job.pullRequest.number}
+						</button>
+					)}
+				</div>
 			</div>
 			<section>
 				<div className="hub-section-heading">
