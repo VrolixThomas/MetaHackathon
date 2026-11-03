@@ -365,7 +365,7 @@ test("cancelled, ignored or timed-out narration never advances and rejects late 
 				h.service.cancel({ ...h.identity, requestId: "cancel", reason: "user" });
 			else if (mode === "ignored")
 				h.service.narrationApplied(narrationReceipt(checkpoint, "ignored"));
-			await finish(h, mode === "cancel" ? "cancelled" : "error");
+			await finish(h, mode === "cancel" ? "cancelled" : mode === "ignored" ? "completed" : "error");
 			assert.equal(h.service.narrationApplied(narrationReceipt(checkpoint)).status, "stale");
 			assert.equal(h.navigations.length, 1);
 			assert.equal(h.requests.length, 2);
@@ -1449,7 +1449,7 @@ test("safe-phase incomplete never completes/replays spoken text, but empty outpu
 	}
 });
 
-test("cancel and screen changes suppress late safe-phase text and terminal, aborting even an uncooperative stream", async () => {
+test("cancellation suppresses late text while manual browsing preserves the grounded answer", async () => {
 	for (const mode of ["cancel", "screen"] as const) {
 		const late = barrier();
 		let answerSignal: AbortSignal | undefined;
@@ -1474,10 +1474,16 @@ test("cancel and screen changes suppress late safe-phase text and terminal, abor
 			if (mode === "cancel") h.service.cancel({ ...h.identity, requestId: "stop", reason: "user" });
 			else h.setScreen({ sequence: 99, mode: "conversation", prId: h.prepared.pr.id });
 			late.release();
-			const result = await finish(h, mode === "cancel" ? "cancelled" : "error");
-			assert.equal(result.text, "First safe sentence.");
-			assert(!result.events.some((event) => event.kind === "completed"));
-			assert(answerSignal?.aborted);
+			const result = await finish(h, mode === "cancel" ? "cancelled" : "completed");
+			assert.equal(
+				result.text,
+				mode === "cancel" ? "First safe sentence." : "First safe sentence.LATE TEXT"
+			);
+			assert.equal(
+				result.events.some((event) => event.kind === "completed"),
+				mode === "screen"
+			);
+			if (mode === "cancel") assert(answerSignal?.aborted);
 			assert.equal(h.requests.length, 2);
 		} finally {
 			late.release();
@@ -1708,3 +1714,23 @@ for (const direction of ["next", "previous"] as const) {
 		});
 	}
 }
+
+test("retired narration completes the answer without advancing an old walkthrough", async () => {
+	const h = harness([[call("start_walkthrough")], [], []]);
+	try {
+		h.service.start(h.input);
+		await h.service.actionApplied(h.receipt(await h.action()));
+		const checkpoint = await nextEffect(h, 2);
+		assert(checkpoint.kind === "narration-checkpoint");
+		h.setScreen({ sequence: 99, mode: "conversation", prId: h.prepared.pr.id });
+		assert.equal(h.poll().status, "running");
+		h.service.narrationApplied({ ...narrationReceipt(checkpoint), status: "ignored" });
+		const result = await finish(h);
+		assert.equal(result.text, "This file changes the timeout.");
+		assert.equal(h.navigations.length, 1);
+		assert.equal(h.requests.length, 2);
+		assert.equal(h.service.narrationApplied(narrationReceipt(checkpoint)).status, "stale");
+	} finally {
+		await h.service.dispose();
+	}
+});

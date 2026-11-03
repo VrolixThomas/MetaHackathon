@@ -132,7 +132,7 @@ test("fresh unique PR offers resolve only an actual affirmative, never source in
 		explicitWorkspaceNavigation("Yes lets start number three open it", view, history)?.args,
 		{ prId: pr.id }
 	);
-	assert.deepEqual(explicitWorkspaceNavigation("Open PR three please", view)?.args, {
+	assert.deepEqual(explicitWorkspaceNavigation("Open PR number three please", view)?.args, {
 		prId: pr.id,
 	});
 	assert.equal(
@@ -168,4 +168,40 @@ test("fresh unique PR offers resolve only an actual affirmative, never source in
 	assert.equal(explicitWorkspaceNavigation("Yes please.", view, history), undefined);
 	view.reviews = [];
 	assert.equal(explicitWorkspaceNavigation("Yes please.", view, history), undefined);
+});
+
+test("unique observed PR questions request display and an answer, respecting ambiguity and no navigation", () => {
+	const view = observed();
+	view.capabilities.push("review");
+	const pr = {
+		id: "real",
+		number: 3,
+		repository: "org/repo",
+		url: "https://github.com/org/repo/pull/3",
+		title: "Improve voice continuity",
+		author: "author",
+		baseSha: "a".repeat(40),
+		headSha: "b".repeat(40),
+	};
+	view.reviews = [{ pr, status: "ready" }];
+	for (const text of [
+		"Explain PR 3",
+		"What is PR3 about?",
+		"What is the purpose of PR number three?",
+		"Why improve voice continuity?",
+	]) {
+		const route = explicitWorkspaceNavigation(text, view);
+		assert.equal(route?.kind, "review");
+		assert(route && "discussion" in route && route.discussion);
+	}
+	for (const text of [
+		"Explain PR 3 without opening it",
+		"What is PR 3? Stay here.",
+		"Explain PR 3 and PR 4",
+		"They said explain PR 3",
+		"Explain PR 33",
+	])
+		assert.equal(explicitWorkspaceNavigation(text, view), undefined, text);
+	view.reviews.push({ pr: { ...pr, id: "other", repository: "other/repo" }, status: "ready" });
+	assert.equal(explicitWorkspaceNavigation("Explain PR 3", view), undefined);
 });

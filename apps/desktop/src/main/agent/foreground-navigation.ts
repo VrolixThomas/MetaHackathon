@@ -43,6 +43,8 @@ export function explicitWorkspaceNavigation(
 	history: MetaItem[] = []
 ) {
 	const request = navigationRequest(text);
+	const question = observedQuestionNavigation(text, observed);
+	if (question) return question;
 	const ticket = ticketNavigationTarget(text, observed);
 	if (ticket && !ticket.rest)
 		return {
@@ -87,13 +89,13 @@ export function explicitWorkspaceNavigation(
 				: "";
 		// Keep this to a single explicit offer, excluding interrupted/unconfirmed history.
 		const match =
-			/^(?:(?:Shall I|Should I|Would you like me to|Want me to) open|(?:Shall we|Should we|Would you like to) start with) (?:PR|pull request) #?(\d+)\?$/i.exec(
+			/^(?:(?:Shall I|Should I|Would you like me to|Want me to) open|(?:Shall we|Should we|Would you like to) start with) (?:PR|pull request) (?:number )?#?(\d+)\?$/i.exec(
 				offer
 			);
 		if (match && (!namedAcceptance || namedAcceptance[1] === match[1]))
 			reviewRequest = `open PR ${match[1]}`;
 	}
-	const pr = /^(?:let['’]?s )?(?:open|show(?: me)?) (?:PR|pull request) #?(\d+)$/i.exec(
+	const pr = /^(?:let['’]?s )?(?:open|show(?: me)?) (?:PR|pull request) (?:number )?#?(\d+)$/i.exec(
 		reviewRequest
 	);
 	if (pr && observed?.capabilities.includes("review")) {
@@ -185,4 +187,77 @@ export function explicitWorkspaceNavigation(
 		},
 		acknowledgement: `It's at ${phone ? "phone" : "desktop"} size now.`,
 	};
+}
+
+/** Only real ingress and uniquely observed labels/titles grant implicit display. */
+function observedQuestionNavigation(text: string, observed?: WorkspaceObservation) {
+	if (
+		!observed ||
+		/\b(?:don['’]t|do not|without|stay|keep|instead|unless|if|later|no navigation|just discuss here)\b/i.test(
+			text
+		)
+	)
+		return;
+	const request = navigationRequest(text).replace(
+		/\b(PR|pull request) (?:number )?(one|two|three|four|five|six|seven|eight|nine|ten)\b/gi,
+		(_, kind: string, number: string) =>
+			`${kind} ${["one", "two", "three", "four", "five", "six", "seven", "eight", "nine", "ten"].indexOf(number.toLowerCase()) + 1}`
+	);
+	if (!/^(?:what|why|how|explain|tell me about|discuss|talk me through)\b/i.test(request)) return;
+	// Compound execution requests belong to the ordinary gated tool workflow.
+	if (
+		/\b(?:and|then|also)\s+(?:start|implement|publish|post|send|merge|approve|delete|open|show)\b/i.test(
+			request
+		)
+	)
+		return;
+	// Questions comparing multiple items must not choose an arbitrary destination.
+	const labels =
+		request.match(
+			/\b(?:ticket\s*(?:[a-z]+-?)?\d+|[a-z]+-?\d+|(?:PR|pull request)\s*(?:number\s+)?#?\d+)\b/gi
+		) ?? [];
+	if (labels.length > 1) return;
+	const normalized = request.toLowerCase();
+	const tickets = (observed.hub?.tickets ?? []).filter((ticket) => {
+		const label = labels[0]
+			?.replace(/^ticket\s*/i, "")
+			.replace(/-/g, "")
+			.toUpperCase();
+		return label
+			? /^\d+$/.test(label)
+				? ticket.identifier.split("-").at(-1) === label
+				: ticket.identifier.replace(/-/g, "").toUpperCase() === label
+			: ticket.title.length >= 4 && normalized.includes(ticket.title.toLowerCase());
+	});
+	const reviews = new Map(
+		(observed.hub?.reviews ?? []).map((r) => [r.pr.id, { pr: r.pr, status: r.preparationStatus }])
+	);
+	for (const review of observed.reviews) reviews.set(review.pr.id, review);
+	const prNumber = /^(?:PR|pull request)\s*(?:number\s+)?#?(\d+)$/i.exec(labels[0] ?? "");
+	const prs = [...reviews.values()].filter((r) =>
+		labels.length
+			? prNumber && r.pr.number === Number(prNumber[1])
+			: r.pr.title.length >= 4 && normalized.includes(r.pr.title.toLowerCase())
+	);
+	if (tickets.length + prs.length !== 1) return;
+	const ticket = tickets[0];
+	if (ticket && observed.capabilities.includes("center"))
+		return {
+			kind: "ticket" as const,
+			tool: "open_command_center",
+			args: { section: "tickets", selectedId: ticket.id },
+			selectedId: ticket.id,
+			discussion: true as const,
+			acknowledgement: "That ticket is open.",
+		};
+	const review = prs[0];
+	if (review?.status === "ready" && observed.capabilities.includes("review"))
+		return {
+			kind: "review" as const,
+			tool: "open_ready_review",
+			args: { prId: review.pr.id },
+			prId: review.pr.id,
+			discussion: true as const,
+			acknowledgement: `PR #${review.pr.number} is open.`,
+		};
 }

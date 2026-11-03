@@ -47,7 +47,11 @@ import {
 } from "./guided-review";
 import { type ConversationHubPorts, ConversationHubTools } from "./hub-tools";
 import { type AgentModelClient, MetaApiError, type MetaItem } from "./meta-client";
-import { NarrationReceiptGate, type NarrationReceiptOptions } from "./narration";
+import {
+	NarrationReceiptGate,
+	type NarrationReceiptOptions,
+	NarrationRetiredError,
+} from "./narration";
 import { WorkAdmission } from "./work-admission";
 import { runWorkspaceConversation } from "./workspace-conversation";
 import {
@@ -977,6 +981,15 @@ export class ConversationService {
 			if (!turn.dayConfirmationInvalidated) session.dayProposal = turn.presentedDayProposal;
 			this.emit(turn, { kind: "completed" });
 		} catch (error) {
+			if (this.active(session, turn) && error instanceof NarrationRetiredError) {
+				// Ignored is never spoken/display/consent proof. Stop the workflow here,
+				// retaining its answer without advancing walkthroughs or announcements.
+				session.walkthrough.paused = true;
+				this.rememberExchange(session, turn);
+				turn.record.status = "completed";
+				this.emit(turn, { kind: "completed" });
+				return;
+			}
 			if (this.active(session, turn)) {
 				try {
 					console.warn(JSON.stringify(conversationErrorDiagnostic(error)));

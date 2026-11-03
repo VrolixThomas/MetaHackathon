@@ -6,6 +6,8 @@ import {
 import { throwIfAborted } from "./cancellation";
 import { GuidedReviewError } from "./guided-review";
 
+export class NarrationRetiredError extends GuidedReviewError {}
+
 type Checkpoint = Extract<AgentAction, { kind: "narration-checkpoint" }>;
 export interface NarrationReceiptOptions {
 	timeoutMs?: number;
@@ -76,7 +78,7 @@ export class NarrationReceiptGate {
 			return { status: "stale" };
 		pending.finish(
 			receipt.status === "ignored"
-				? new GuidedReviewError("Narration was interrupted. Continue from the current file.")
+				? new NarrationRetiredError("Narration effects were retired.")
 				: undefined
 		);
 		return { status: "accepted" };

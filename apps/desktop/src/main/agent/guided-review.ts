@@ -338,7 +338,6 @@ export async function runGuidedReview(
 	);
 	let pinned: PreparedReview | undefined;
 	let navigated = false;
-	let workspaceEffectApplied = false;
 	let acknowledgedScreen: ReviewScreen | undefined;
 	const recovery = workflow?.recovery ?? { used: false };
 	let emitted = false;
@@ -394,20 +393,10 @@ export async function runGuidedReview(
 		);
 		const emitText = async (delta: string) => {
 			if (!delta || !onText) return;
-			if (profile.candidateWorkflow) await hub?.currentContext(await workspace?.observe());
-			assertSameScreen(snapshot.screen, await screen(ports, input, signal));
-			if (
-				workspace &&
-				observation &&
-				(workspaceEffectApplied || terminalAnswer || profile.candidateWorkflow)
-			) {
-				const current = (await workspace.observe()).workspace;
-				if (
-					(current.contentSequence ?? current.sequence) !==
-					(observation.workspace.contentSequence ?? observation.workspace.sequence)
-				)
-					throw changed();
-			}
+			// Source was pinned and checked before inference. Manual browsing retires
+			// effects, not this grounded answer; tool/consent gates remain below.
+			// Reauthorize the original private candidate, not whatever pane is now open.
+			if (profile.candidateWorkflow) await hub?.currentContext(observation);
 			throwIfAborted(signal);
 			emitted = true;
 			await abortable(Promise.resolve(onText(delta)), signal);
@@ -460,7 +449,7 @@ export async function runGuidedReview(
 					: MAX_OUTPUT_TOKENS,
 		};
 		// Only the phase with tools disabled may stream. Navigation and its durable receipt
-		// have already completed; every delta is still fenced against a changed screen.
+		// have already completed; cancellation still fences every delta.
 		const streamText = answerOnly && onText ? emitText : undefined;
 		let response: Awaited<ReturnType<typeof modelRound>>;
 		try {
@@ -498,7 +487,6 @@ export async function runGuidedReview(
 		const calls = response.completion.output.filter((item) => item["type"] === "function_call");
 		// Navigation-round prose is intentionally not spoken or replayed as an already-spoken answer.
 		if (!calls.length) {
-			assertSameScreen(snapshot.screen, await screen(ports, input, signal));
 			if (!response.text.trim())
 				throw new GuidedReviewError("The review reply was empty. Please try again.");
 			if (!streamText) await emitText(response.text);
@@ -608,7 +596,6 @@ export async function runGuidedReview(
 				call_id: call.call_id,
 				output: JSON.stringify({ status: "applied", workspaceSequence: result.workspace.sequence }),
 			});
-			workspaceEffectApplied = true;
 			throwIfAborted(signal);
 			const primary = result.workspace.canvases.find(
 				(canvas) => canvas.id === result.workspace.primaryId
@@ -806,7 +793,6 @@ async function runWalkthrough(
 		assertSameScreen(acknowledged, await screen(ports, input, signal));
 		const emit = async (delta: string) => {
 			throwIfAborted(signal);
-			assertSameScreen(acknowledged, await screen(ports, input, signal));
 			if (text.length + delta.length > MAX_REPLY_CHARS)
 				throw new GuidedReviewError("The review reply was too long. Ask a narrower question.");
 			text += delta;
@@ -859,7 +845,6 @@ async function runWalkthrough(
 		}
 		if (!response.text.trim())
 			throw new GuidedReviewError("The review reply was empty. Please try again.");
-		assertSameScreen(acknowledged, await screen(ports, input, signal));
 		await abortable(narrate(text.length, acknowledged.sequence), signal);
 		throwIfAborted(signal);
 		assertSameScreen(acknowledged, await screen(ports, input, signal));

@@ -136,6 +136,19 @@ export async function runWorkspaceConversation(
 					}),
 				}
 			);
+			if ("discussion" in direct && direct.discussion) {
+				if (direct.kind === "review") {
+					if (!onReview) throw new GuidedReviewError("Review source is not connected.");
+					return onReview(direct.prId, history);
+				}
+				if (direct.kind === "ticket")
+					directNavigation = {
+						selectedId: direct.selectedId,
+						discussion: true,
+						contentSequence: result.workspace.contentSequence ?? result.workspace.sequence,
+					};
+				continue;
+			}
 			if (direct.kind === "completed-work") continue;
 			await onText(direct.acknowledgement);
 			return direct.acknowledgement;

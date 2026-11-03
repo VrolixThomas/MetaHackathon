@@ -28,6 +28,7 @@ import {
 	pr as approvalPR,
 } from "../work/pr-approvals/test-support";
 import { ConversationService } from "./conversation";
+import { explicitWorkspaceNavigation } from "./foreground-navigation";
 import { SOURCE_WORKFLOW_INSTRUCTIONS } from "./foreground-profile";
 import { type ConversationHubPorts, ConversationHubTools, hubModelContext } from "./hub-tools";
 import type { AgentModelClient, MetaItem, MetaRequest } from "./meta-client";
@@ -4134,9 +4135,8 @@ for (const outcome of ["applied", "cancelled", "changed", "revoked", "foreign-ef
 	});
 }
 
-test("strict imperative shortcut leaves questions, negation, conditionals, compounds and unknown targets to the model", async () => {
+test("navigation shortcut leaves ambiguous questions, negation, conditionals, compounds and unknown targets to the model", async () => {
 	for (const text of [
-		"Why should we open MET-77?",
 		"Should we open MET-77 and discuss it?",
 		"Don't open MET-77",
 		"Do not open MET-77; explain it",
@@ -5626,6 +5626,10 @@ for (const text of [
 	"Could you open my tickets please?",
 	"Please open ticket77?",
 	"Okay lets zoom into ticket77 can you talk me through design tradeoff",
+	"What tradeoff matters for ticket 77?",
+	"Explain MET-77 tradeoffs",
+	"What tradeoffs matter for MET77?",
+	"Explain TEST ONLY tradeoffs",
 ]) {
 	test(`transcript navigation waits for display and avoids redundant calls: ${text}`, async () => {
 		const d = data();
@@ -5644,7 +5648,7 @@ for (const text of [
 			assert.deepEqual(w.commands[0], {
 				kind: "open-center",
 				section: "tickets",
-				...(text.includes("77") ? { selectedId: d.ticket.id } : {}),
+				...(text.includes("77") || discussion ? { selectedId: d.ticket.id } : {}),
 			});
 			w.settle();
 			await eventually(() => service.poll(identity()).status !== "running");
@@ -5689,7 +5693,7 @@ for (const outcome of [
 			client(offered ? [answer(`Shall I open PR #${pr.number}?`)] : [], requests),
 			{ hub: d.ports, workspace: w.ports }
 		);
-		let turn = { ...input, text: `Could you open PR ${pr.number} for me?` };
+		let turn = { ...input, text: `Could you open PR number ${pr.number} for me?` };
 		if (offered) {
 			service.start({ ...input, text: "Which review can we open?" });
 			await eventually(() => service.poll(identity(turn)).status !== "running");
@@ -5726,3 +5730,97 @@ for (const outcome of [
 		}
 	});
 }
+
+for (const outcome of ["applied", "cancelled", "wrong-target"] as const) {
+	test(`PR question answers only after actual unique display: ${outcome}`, async () => {
+		const d = data();
+		const w = workspace(d);
+		const requests: MetaRequest[] = [];
+		const pr = { ...required(d.hub.reviews[0]).pr, number: 3 };
+		const prepared: PreparedReview = {
+			id: "question-review",
+			version: 1,
+			pr,
+			createdAt: time,
+			summary: "Grounded purpose",
+			orderRationale: "Prepared order",
+			coverage: "complete",
+			evidence: "inferred-from-github",
+			files: [],
+		};
+		w.observation.reviews = [{ pr, status: "ready" }];
+		w.observation.capabilities.push("review");
+		const execute = w.ports.execute;
+		w.ports.execute = async (...args) => {
+			const result = await execute(...args);
+			if (outcome !== "wrong-target") {
+				result.workspace.canvases = [
+					{ id: "review", kind: "review", title: "Review", revision: 1 },
+				];
+				result.workspace.primaryId = "review";
+				result.workspace.review = {
+					sequence: 1,
+					mode: "review",
+					prId: pr.id,
+					reviewId: prepared.id,
+					baseSha: pr.baseSha,
+					headSha: pr.headSha,
+				};
+				w.observation.workspace = result.workspace;
+			}
+			return result;
+		};
+		const service = new ConversationService(
+			client([answer("Its prepared purpose is grounded.")], requests),
+			{
+				hub: d.ports,
+				workspace: w.ports,
+				review: {
+					getReady: async () => prepared,
+					getProgress: async () => null,
+					getScreen: async () => w.observation.workspace.review,
+					navigate: async () => {
+						throw new Error("No walkthrough requested");
+					},
+				},
+			}
+		);
+		try {
+			service.start({ ...input, text: "Explain the purpose of PR number three" });
+			await eventually(() => w.commands.length === 1);
+			assert.equal(requests.length, 0);
+			assert.equal(service.poll(identity()).text, "");
+			if (outcome === "cancelled")
+				service.cancel({ ...identity(), requestId: "cancel-question", reason: "user" });
+			w.settle();
+			await eventually(() => service.poll(identity()).status !== "running");
+			assert.equal(
+				service.poll(identity()).status,
+				outcome === "applied" ? "completed" : outcome === "cancelled" ? "cancelled" : "error"
+			);
+			assert.equal(requests.length, outcome === "applied" ? 1 : 0);
+			if (outcome === "applied")
+				assert(JSON.stringify(requests[0]?.input).includes("Grounded purpose"));
+		} finally {
+			w.settle();
+			await service.dispose();
+		}
+	});
+}
+
+test("ticket question resolution respects explicit no-navigation and ambiguous observed topics", () => {
+	const d = data();
+	const w = ticketBoard(d);
+	for (const text of [
+		"Explain ticket 77 without opening it",
+		"Explain MET-77. No navigation.",
+		"Why MET-77? Don’t open it.",
+		"Explain MET-77 and MET-78",
+		"Explain MET-77 and start work",
+	])
+		assert.equal(explicitWorkspaceNavigation(text, w.observation), undefined, text);
+	d.hub.tickets.push({ ...required(d.hub.tickets[0]), id: "another", identifier: "OTHER-77" });
+	assert.equal(explicitWorkspaceNavigation("Explain ticket 77", w.observation), undefined);
+	assert.equal(explicitWorkspaceNavigation("Explain TEST ONLY", w.observation), undefined);
+	assert.equal(explicitWorkspaceNavigation("Explain MET-77", w.observation)?.kind, "ticket");
+});
