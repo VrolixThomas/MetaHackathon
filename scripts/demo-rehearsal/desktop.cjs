@@ -20,8 +20,8 @@ const textDiagnostics = process.argv.includes("--text-diagnostics");
 assert(
 	!textDiagnostics ||
 		process.argv.includes("--interactive") ||
-		["review", "collaboration", "delegation", "slack", "variants", "actions"].some((suite) =>
-			process.argv.includes(`--suite=${suite}`)
+		["review", "collaboration", "delegation", "slack", "variants", "actions", "planning"].some(
+			(suite) => process.argv.includes(`--suite=${suite}`)
 		),
 	"Text diagnostics are limited to named subsets; full acceptance requires live voice"
 );
@@ -628,8 +628,18 @@ async function main() {
 	);
 	console.log(`${textDiagnostics ? "TEXT_DIAGNOSTIC_READY" : "LIVE_REHEARSAL_READY"} ${owned}`);
 	if (!process.argv.includes("--interactive")) {
-		const { common, full, collaboration, slack, review, variants } = require("./scenarios.cjs");
-		if (process.argv.includes("--suite=variants"))
+		const {
+			common,
+			full,
+			collaboration,
+			slack,
+			review,
+			variants,
+			planning,
+		} = require("./scenarios.cjs");
+		if (process.argv.includes("--suite=planning"))
+			await planning({ say, rpc, ui, state, fixture, report, assert, js, wait, button, owned });
+		else if (process.argv.includes("--suite=variants"))
 			await variants({ say, rpc, ui, state, fixture, report, assert, js, wait, button, owned });
 		else if (process.argv.includes("--suite=review"))
 			await review({
@@ -687,7 +697,9 @@ async function main() {
 			});
 		report.status = "completed";
 		save();
-		console.log(`LIVE_REHEARSAL_COMPLETED ${path.join(owned, "report.json")}`);
+		console.log(
+			`${textDiagnostics ? "TEXT_DIAGNOSTIC_COMPLETED" : "LIVE_REHEARSAL_COMPLETED"} ${path.join(owned, "report.json")}`
+		);
 		if (process.argv.includes("--exit")) app.quit();
 	}
 }
@@ -712,7 +724,9 @@ main().catch(async (error) => {
 	report.error = error.message;
 	if (win && !win.isDestroyed()) report.lastUI = await ui().catch(() => null);
 	save();
-	console.error(`LIVE_REHEARSAL_FAILED ${error.message}\n${path.join(owned, "report.json")}`);
+	console.error(
+		`${textDiagnostics ? "TEXT_DIAGNOSTIC_FAILED" : "LIVE_REHEARSAL_FAILED"} ${error.message}\n${path.join(owned, "report.json")}`
+	);
 	cleanup();
 	app.exit(1);
 });

@@ -1,5 +1,4 @@
-// Actual user turns for a public/synthetic demo. Never supplies model answers or positive receipts.
-async function common(d) {
+async function planning(d) {
 	const { say, rpc, report, assert } = d;
 	const before = (await rpc("query", "hub.snapshot")).jobs.length;
 	assert.equal(before, 0);
@@ -20,6 +19,14 @@ async function common(d) {
 	await say("What could surprise me about that choice?", { id: "scope-consequence" });
 	await say("Why keep it device-local for the first version?", { id: "scope-rationale" });
 	await say("What happens for someone whose browser blocks storage?", { id: "scope-failure" });
+	report.assertions.push({
+		name: "Planning and preference remain discussion without execution",
+		passed: true,
+	});
+}
+async function common(d) {
+	const { say, rpc, report, assert } = d;
+	await planning(d);
 	await say("Explain a little more about how you would keep this small.", {
 		id: "interrupt-target",
 		firstAudioOnly: true,
@@ -115,6 +122,23 @@ async function collaboration(d) {
 		"Open the source-link PR, number 3. Set a follow-up to notify me only once demo-checks succeeds, expiring in one hour. Do not approve or merge.",
 		{ id: "approval-proposal" }
 	);
+	const notification = (await rpc("query", "prApprovals.list")).find(
+		(p) => p.pr.id === d.fixture.pulls[2].id && p.status === "draft"
+	);
+	assert(notification, "An actual notification policy must exist before confirmation");
+	assert.equal(notification.terms.action, "notify");
+	assert(
+		notification.terms.conditions.length === 1 &&
+			notification.terms.conditions[0].kind === "check" &&
+			notification.terms.conditions[0].name === "demo-checks"
+	);
+	assert(
+		Math.abs(
+			Date.parse(notification.terms.expiresAt) - report.turns.at(-1).submittedAt - 3600000
+		) <= 90000,
+		"The actual deadline must match the requested one-hour bound"
+	);
+	report.notificationProposal = notification;
 	await say("Confirm this delegation.", { id: "approval-confirm" });
 	state.checkStatus = "success";
 	await wait(
@@ -134,6 +158,23 @@ async function collaboration(d) {
 		"For this reviewed head of PR 3, approve automatically only when demo-checks succeeds, expiring in one hour. Do not merge.",
 		{ id: "automatic-approval-proposal" }
 	);
+	const approval = (await rpc("query", "prApprovals.list")).find(
+		(p) => p.pr.id === d.fixture.pulls[2].id && p.status === "draft"
+	);
+	assert(
+		approval && approval.terms.action === "approve",
+		"The exact approval proposal must exist before confirmation"
+	);
+	assert(
+		approval.terms.conditions.length === 1 &&
+			approval.terms.conditions[0].kind === "check" &&
+			approval.terms.conditions[0].name === "demo-checks"
+	);
+	assert(
+		Math.abs(Date.parse(approval.terms.expiresAt) - report.turns.at(-1).submittedAt - 3600000) <=
+			90000
+	);
+	report.approvalProposal = approval;
 	state.allowApproval = true;
 	await say("Confirm this delegation.", { id: "automatic-approval-confirm" });
 	assert(
@@ -200,6 +241,13 @@ async function slack(d) {
 		"Open the Slack request about the focus page. Ask the requester which page and what happened before it failed. Clarification only; do not start work.",
 		{ id: "slack-proposal" }
 	);
+	const proposed = (await rpc("query", "day.snapshot")).items.find((i) => i.id === item.id);
+	assert(
+		proposed?.clarificationMetadata?.status === "proposed" ||
+			proposed?.clarification?.status === "proposed",
+		"An actual clarification proposal must exist before confirmation"
+	);
+	report.clarificationProposal = proposed;
 	state.allowSlackQuestion = true;
 	await say("Confirm this clarification delegation.", { id: "slack-confirm" });
 	await wait(
@@ -307,4 +355,4 @@ async function variants(d) {
 		passed: true,
 	});
 }
-module.exports = { common, full, collaboration, slack, review, variants };
+module.exports = { common, full, collaboration, slack, review, variants, planning };
