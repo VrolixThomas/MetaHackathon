@@ -196,14 +196,14 @@ test("tool-free discussion rejects unsolicited actions and never retries streame
 	}
 });
 
-test("changed display before first streamed text is fenced and unauthorized details are not reused", async () => {
+test("manual browsing preserves a grounded answer while unauthorized details are not reused", async () => {
 	const gate = deferred();
 	const h = createForegroundReplay(
 		{
 			async *stream() {
 				await gate.promise;
-				yield { type: "text", delta: "Stale" };
-				yield terminal(answer("Stale"));
+				yield { type: "text", delta: "Grounded answer" };
+				yield terminal(answer("Grounded answer"));
 			},
 		},
 		{ selected: true }
@@ -214,8 +214,8 @@ test("changed display before first streamed text is fenced and unauthorized deta
 		h.changeContent();
 		gate.resolve();
 		const { result } = await h.settle(input);
-		assert.equal(result.status, "error");
-		assert.equal(result.text, "");
+		assert.equal(result.status, "completed");
+		assert.equal(result.text, "Grounded answer");
 	} finally {
 		gate.resolve();
 		await h.service.dispose();

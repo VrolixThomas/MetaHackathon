@@ -85,7 +85,32 @@ function instrumentModels(forward, emit, context = () => null, limit = 120) {
 		});
 		const response = await forward(input, init);
 		emit({ kind: "model-headers", id, at: Date.now(), status: response.status });
-		if (!response.ok || !response.body) return response;
+		if (!response.ok) {
+			const error = await response
+				.clone()
+				.json()
+				.catch(() => null);
+			// Fixed diagnostic categories only; never retain provider message/source text.
+			const details = error?.error;
+			emit({
+				kind: "model-error",
+				id,
+				status: response.status,
+				code:
+					typeof details?.code === "string" && /^[a-z_]{1,80}$/i.test(details.code)
+						? details.code
+						: null,
+				parameter:
+					typeof details?.param === "string" && /^[a-z0-9_.\[\]]{1,120}$/i.test(details.param)
+						? details.param
+						: null,
+				callIdTooLong:
+					/call_id|call id/i.test(String(details?.message)) &&
+					/length|long|64/i.test(String(details?.message)),
+			});
+			return response;
+		}
+		if (!response.body) return response;
 		const reader = response.body.getReader();
 		const decoder = new TextDecoder();
 		let pending = "";

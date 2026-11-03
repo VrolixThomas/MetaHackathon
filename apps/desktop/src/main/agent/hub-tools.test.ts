@@ -5806,11 +5806,7 @@ for (const outcome of ["applied", "cancelled", "wrong-target"] as const) {
 			await eventually(() => service.poll(identity()).status !== "running");
 			assert.equal(
 				service.poll(identity()).status,
-				outcome === "applied" || outcome === "content-changed"
-					? "completed"
-					: outcome === "cancelled"
-						? "cancelled"
-						: "error"
+				outcome === "applied" ? "completed" : outcome === "cancelled" ? "cancelled" : "error"
 			);
 			assert.equal(requests.length, outcome === "applied" ? 1 : 0);
 			if (outcome === "applied")
@@ -5837,4 +5833,31 @@ test("ticket question resolution respects explicit no-navigation and ambiguous o
 	assert.equal(explicitWorkspaceNavigation("Explain ticket 77", w.observation), undefined);
 	assert.equal(explicitWorkspaceNavigation("Explain TEST ONLY", w.observation), undefined);
 	assert.equal(explicitWorkspaceNavigation("Explain MET-77", w.observation)?.kind, "ticket");
+});
+
+test("natural zoom-and-design question displays its ticket before a single answer request", async () => {
+	const d = data();
+	const w = ticketBoard(d);
+	const requests: MetaRequest[] = [];
+	const service = new ConversationService(client([answer("Grounded design tradeoff.")], requests), {
+		hub: d.ports,
+		workspace: w.ports,
+	});
+	try {
+		service.start({
+			...input,
+			text: "Okay, let's zoom into ticket 77. Can you talk me through the design trade-off and what you need me to decide before we can start?",
+		});
+		await eventually(() => w.commands.length === 1);
+		assert.equal(requests.length, 0);
+		w.settle();
+		await eventually(() => service.poll(identity()).status !== "running");
+		assert.equal(service.poll(identity()).status, "completed");
+		assert.equal(requests.length, 1);
+		assert.deepEqual(requests[0]?.tools, []);
+		assert.equal(d.operations.length, 0);
+	} finally {
+		w.settle();
+		await service.dispose();
+	}
 });

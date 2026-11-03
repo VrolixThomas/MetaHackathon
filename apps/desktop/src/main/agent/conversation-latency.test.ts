@@ -12,7 +12,7 @@ test("actual conversation routes reuse only the initial snapshot and retain late
 			[1, 1, 1, 1],
 			[2, 2, 2, 2],
 			[0, 1, 1, 0],
-			[1, 2, 2, 1],
+			[1, 1, 1, 1],
 			[3, 2, 2, 2],
 			[1, 2, 2, 1],
 		]

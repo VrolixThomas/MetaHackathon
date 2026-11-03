@@ -117,7 +117,7 @@ export async function runWorkspaceConversation(
 											: result.workspace.browser?.viewportMode === "desktop"));
 			if (!displayed)
 				throw new GuidedReviewError("The requested view was not confirmed as displayed.");
-			const callId = `${input.requestId}:explicit-workspace-navigation`;
+			const callId = `${input.requestId}:ui-navigation`;
 			history.push(
 				{
 					type: "function_call",
