@@ -39,6 +39,7 @@ Available suites:
 - `--suite=actions`: the latter action scenes alone.
 - `--suite=work`: actual coding admission, independent checks, behavioral review, and a fresh foreground session that must recognize historical work without admitting another job.
 - `--suite=review`: PR explanation, pinned flow and persistent browser/phone.
+- `--suite=navigation`: actual user navigation phrasing, implicit PR-topic opening, manual next-file during speech, native Command-period interruption, and spoken Stop. Requires real or explicitly mocked speech.
 - `--suite=variants`: a second ticket, different planning phrases and a source question.
 - `--suite=planning`: the initial planning/choice/followup questions without voice control cases.
 - `--suite=fix`: real fix admission, coding/check completion and pinned candidate Before/After review.

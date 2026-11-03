@@ -82,9 +82,14 @@ validates an actual locally served page and native lifecycle. Integration alone 
 - One explicit Start/End controls the hands-free microphone session. Each detected utterance still
   has its own cancellable turn/generation. Speech onset buffers locally while media connects;
   release waits for buffered PCM to drain. No filler acknowledgement speech.
-- Manual source/PR changes interrupt the current reply and retain the listening session. Opening
-  workspace menus/settings does not end voice. A handled dialog Escape never cancels voice;
-  unhandled app Escape and native guest Escape end the session.
+- User direction (2026-11-03): manual source/PR/file navigation and workspace menus/settings
+  do not interrupt the current reply or end listening. Retire stale UI effects without cutting
+  grounded speech; old walkthroughs must not reclaim the manually selected view. Stop speech,
+  a new user question, Stop response and Command/Control-period explicitly interrupt the reply.
+  A handled dialog Escape never cancels voice; unhandled app/native guest Escape ends the session.
+- A question about a uniquely resolved ticket or PR brings that item into view before answering,
+  without requiring an explicit open command. Respect explicit requests to stay on the current
+  view; ambiguous targets require clarification. Data lookup alone is never display proof.
 - Native browser hiding must bypass renderer and main page-operation queues. Older show/resize
   completions cannot cover an open modal. Keep the page state when hidden.
 - Show a compact explanation of what changes and why this file comes next; full cached overview,

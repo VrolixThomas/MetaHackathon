@@ -559,6 +559,20 @@ async function navigation(d) {
 		next.path,
 		"Old narration must not hijack manual file selection"
 	);
+	const shortcutTurn = await say("Explain the tradeoffs in more detail.", {
+		id: "shortcut-target",
+		firstAudioOnly: true,
+	});
+	await d.interruptShortcut();
+	await wait("Command-period stops reply and keeps listening", async () => {
+		const state = await ui();
+		assert.equal(state.voice, "true");
+		return (
+			state.messages.find((m) => m.id === shortcutTurn.identity.turnId)?.phase === "cancelled" &&
+			state.phase === "idle"
+		);
+	});
+	report.interruptShortcut = { key: "Command+Period", keptListening: true };
 	await say("Explain the tradeoffs in more detail.", {
 		id: "explicit-stop-target",
 		firstAudioOnly: true,

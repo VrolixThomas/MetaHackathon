@@ -676,7 +676,26 @@ async function main() {
 			navigation,
 		} = require("./scenarios.cjs");
 		if (process.argv.includes("--suite=navigation"))
-			await navigation({ say, rpc, ui, state, fixture, report, assert, js, wait, button, owned });
+			await navigation({
+				say,
+				rpc,
+				ui,
+				state,
+				fixture,
+				report,
+				assert,
+				js,
+				wait,
+				button,
+				owned,
+				interruptShortcut: () => {
+					win.setFocusable(true);
+					win.focus();
+					win.webContents.focus();
+					win.webContents.sendInputEvent({ type: "keyDown", keyCode: ".", modifiers: ["meta"] });
+					win.webContents.sendInputEvent({ type: "keyUp", keyCode: ".", modifiers: ["meta"] });
+				},
+			});
 		else if (process.argv.includes("--suite=fix"))
 			await fix({ say, rpc, ui, state, fixture, report, assert, js, wait, button, owned });
 		else if (process.argv.includes("--suite=planning"))
