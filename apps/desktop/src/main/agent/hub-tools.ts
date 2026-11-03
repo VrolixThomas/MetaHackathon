@@ -33,6 +33,7 @@ import {
 } from "../../shared/contracts";
 import { type ApprovalToolPorts, ApprovalTools } from "./approval-tools";
 import { abortable, throwIfAborted } from "./cancellation";
+import { conversationErrorDiagnostic } from "./conversation-error-diagnostic";
 import {
 	type ConversationDayPorts,
 	ConversationDayTools,
@@ -837,6 +838,23 @@ export class ConversationHubTools {
 		return result;
 	}
 	async execute(name: string, rawArguments: string): Promise<unknown> {
+		try {
+			return await this.executeOperation(name, rawArguments);
+		} catch (error) {
+			console.warn(
+				JSON.stringify({
+					...conversationErrorDiagnostic(error),
+					stage: "foreground-tool-error",
+					tool: this.has(name) ? name : "unknown",
+					...(error instanceof Error && error.cause
+						? { cause: conversationErrorDiagnostic(error.cause) }
+						: {}),
+				})
+			);
+			throw error;
+		}
+	}
+	private async executeOperation(name: string, rawArguments: string): Promise<unknown> {
 		if (!this.has(name)) throw new GuidedReviewError("That hub operation is unavailable.");
 		if (this.reviewRequests?.has(name)) return this.reviewRequests.execute(name, rawArguments);
 		if (this.team?.has(name)) return this.team.execute(name, rawArguments);

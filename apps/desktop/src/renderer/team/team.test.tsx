@@ -205,3 +205,28 @@ test("controller startup resolves current context, real org/repo responses and p
 	assert.equal(controller.store.getState().proposals[0]?.id, detail.id);
 	controller.dispose();
 });
+
+test("status polling preserves a failed sharing outcome until the next user action", async () => {
+	const controller = createTeamController(async (_kind, path) => {
+		if (path === "team.status") return status;
+		if (path === "team.progressConflicts") return [];
+		if (path === "team.shareProposal") throw new Error("controlled failure");
+		throw new Error(`Unexpected controlled RPC ${path}`);
+	});
+	try {
+		controller.store.setState({
+			status,
+			organizations: [{ id: org, name: "Demo" }],
+			orgId: org,
+			context: { repository: "test/repo" },
+			preview: { candidateId: "candidate", bundle, bundleDigest: "d".repeat(64) },
+		});
+		await controller.shareProposal(true);
+		const failure = controller.store.getState().error;
+		assert.ok(failure);
+		await controller.refresh();
+		assert.equal(controller.store.getState().error, failure);
+	} finally {
+		controller.dispose();
+	}
+});

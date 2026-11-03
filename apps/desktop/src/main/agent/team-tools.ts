@@ -81,8 +81,11 @@ const messages = {
 		"Team sharing could not be verified. Check the Team connection and current candidate before requesting sharing again.",
 } as const;
 class TeamToolError extends Error {
-	constructor(code: keyof typeof messages) {
-		super(`team-sharing-${code}: ${messages[code]}`);
+	constructor(
+		readonly code: keyof typeof messages,
+		options?: ErrorOptions
+	) {
+		super(`team-sharing-${code}: ${messages[code]}`, options);
 	}
 }
 const samePR = (a: PullRequest, b: PullRequest) =>
@@ -311,7 +314,7 @@ export class ConversationTeamTools {
 		} catch (error) {
 			throwIfAborted(this.signal);
 			if (error instanceof TeamToolError) throw error;
-			throw new TeamToolError("unavailable");
+			throw new TeamToolError("unavailable", { cause: error });
 		}
 	}
 }

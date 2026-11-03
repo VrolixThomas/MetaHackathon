@@ -58,8 +58,8 @@ test("Previous/Next file controls use actual adjacent candidate paths", () => {
 	assert.ok(detail.review);
 	const review = detail.review;
 	for (const [selectedPath, label, expected] of [
-		["src/main.ts", "Next file", "empty.test.ts"],
-		["empty.test.ts", "Previous file", "src/main.ts"],
+		["src/main.ts", "Next file j", "empty.test.ts"],
+		["empty.test.ts", "Previous file k", "src/main.ts"],
 	]) {
 		const selected: string[] = [];
 		let controls: ReturnType<typeof buttons> = [];
@@ -432,7 +432,10 @@ test("sidebar optional fixes rail and jobs use independent actual counts without
 	const current = renderToStaticMarkup(
 		<CommandSidebar {...props} fixes={ssrController(h.controller)} />
 	);
-	assert.match(current, /aria-label="Suggested fixes \(1\)"/);
+	assert.doesNotMatch(current, /aria-label="Suggested fixes \(1\)"/);
+	assert.match(current, /aria-label="Review queues"/);
+	assert.match(current, /aria-current="page">Fixes<\/button>/);
+	assert.match(current, /Suggested fixes<\/span><span>1<\/span>/);
 	assert.match(current, /Handle empty input/);
 	workspace.dispose();
 	reviews.dispose();

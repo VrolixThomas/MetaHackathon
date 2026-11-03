@@ -23,3 +23,16 @@ it("logs only fixed error and frame categories, never source, keys, messages or 
 		frame: "unknown",
 	});
 });
+
+it("distinguishes fixed source failures without logging provider messages", () => {
+	class HubFailure extends Error {
+		constructor(readonly kind: string) {
+			super("private provider detail");
+		}
+	}
+	assert.equal(conversationErrorDiagnostic(new HubFailure("notFound")).sourceFailure, "notFound");
+	assert.equal(
+		conversationErrorDiagnostic(new HubFailure("private-source-data")).sourceFailure,
+		undefined
+	);
+});

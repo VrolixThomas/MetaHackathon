@@ -224,11 +224,12 @@ test("new proposal and intervening actual user turn retire old approval", () => 
 
 test("exact displayed comment ends the foreground proposal without another model round", async () => {
 	const h = harness();
-	assert.equal(h.tools.foregroundHandoff, undefined);
+	const handoff = () => h.tools.foregroundHandoff;
+	assert.equal(handoff(), undefined);
 	await h.tools.execute("inspect_pr_comment", "{}");
-	assert.equal(h.tools.foregroundHandoff, undefined);
+	assert.equal(handoff(), undefined);
 	await h.tools.execute("create_pr_comment_draft", JSON.stringify({ body: draft.body }));
-	assert.match(h.tools.foregroundHandoff?.acknowledgement ?? "", /ready in the review dialog/);
+	assert.match(handoff()?.acknowledgement ?? "", /ready in the review dialog/);
 	assert.equal(h.posts(), 0);
 	const ignored = harness();
 	await ignored.tools.execute("inspect_pr_comment", "{}");

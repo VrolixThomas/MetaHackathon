@@ -375,7 +375,8 @@ export class WorkJobRuntime {
 						args: command.args,
 						cwd: tree,
 						signal,
-						timeoutMs: 120_000,
+						// Repository-wide suites can outlast a foreground command budget.
+						timeoutMs: command.args[1]?.startsWith("test") ? 600_000 : 120_000,
 						maxOutputBytes: 64_000,
 						env: this.environment({
 							MUSE_WORK_HOME: join(root, "home"),

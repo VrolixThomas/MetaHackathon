@@ -1,5 +1,7 @@
 .pr-fix-review {
 	display: grid;
+	grid-template-columns: minmax(0, 1fr);
+	min-width: 0;
 	gap: 0.85rem;
 }
 .hub-detail.pr-fix-review > section {
@@ -54,4 +56,20 @@
 }
 .pr-fix-list > button {
 	margin-bottom: 0.4rem;
+}
+
+.pr-fix-review > * {
+	min-width: 0;
+	overflow-wrap: anywhere;
+}
+.pr-fix-summary p,
+.pr-fix-summary ul,
+.pr-fix-summary ol {
+	margin: 0 0 .7rem;
+}
+.pr-fix-summary code {
+	overflow-wrap: anywhere;
+}
+.pr-fix-summary pre {
+	overflow: auto;
 }

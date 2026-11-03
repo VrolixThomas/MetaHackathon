@@ -16,6 +16,10 @@ export function conversationErrorDiagnostic(error: unknown) {
 		"WorkAdmissionError",
 		"AbortError",
 		"TimeoutError",
+		"HubFailure",
+		"PRFixError",
+		"TeamToolError",
+		"TeamError",
 	] as const;
 	const frames = [
 		"runGuidedReview",
@@ -27,6 +31,10 @@ export function conversationErrorDiagnostic(error: unknown) {
 		"ConversationWorkspaceTools.execute",
 		"ConversationWorkspaceTools.observe",
 		"ConversationHubTools.observe",
+		"ConversationHubTools.execute",
+		"CommandCenter.source",
+		"CommandCenter.search",
+		"resolvePinnedSource",
 		"ConversationHubTools.currentContext",
 		"ForegroundProfile.select",
 		"workspaceModelContext",
@@ -39,7 +47,44 @@ export function conversationErrorDiagnostic(error: unknown) {
 		error instanceof Error && typeof error.stack === "string"
 			? error.stack.split("\n").slice(1)
 			: [];
+	const sourceCode =
+		error instanceof Error && "kind" in error
+			? error.kind
+			: error instanceof Error && "code" in error
+				? error.code
+				: undefined;
+	const knownSourceCodes = [
+		"github",
+		"linear",
+		"repository",
+		"notFound",
+		"busy",
+		"failed",
+		"source",
+		"capacity",
+		"missing",
+		"request",
+		"review",
+		"interrupted",
+		"permission",
+		"selection",
+		"connection",
+		"changed",
+		"unknown",
+		"unavailable",
+		"unauthorized",
+		"forbidden",
+		"conflict",
+		"offline",
+	];
+	const sourceFailure =
+		["HubFailure", "PRFixError", "TeamToolError", "TeamError"].includes(constructorName) &&
+		typeof sourceCode === "string" &&
+		knownSourceCodes.includes(sourceCode)
+			? sourceCode
+			: undefined;
 	return {
+		...(sourceFailure ? { sourceFailure } : {}),
 		stage: "conversation-error" as const,
 		errorClass:
 			classes.find((value) => value === constructorName && value !== "Error") ??

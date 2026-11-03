@@ -31,6 +31,7 @@ import { ConversationDiagnostics } from "./composition/diagnostics";
 import { createKnowledgeService } from "./composition/knowledge";
 import { ForegroundLocalPreview } from "./composition/local-preview";
 import { sourceFromPRFix } from "./composition/pr-fix-source";
+import { ReviewRequestComposition } from "./composition/review-request";
 import { ReviewCoordinator } from "./composition/reviews";
 import { SlackConnection } from "./composition/slack-connection";
 import { SlackReader } from "./composition/slack-reader";
@@ -135,6 +136,7 @@ export const commentPresentations: CommentPresentationCoordinator =
 		narrate: (input, text, signal) =>
 			conversationService.narrateProposal(input, `${input.requestId}-speech`, text, signal),
 	});
+let reviewRequests: ReviewRequestComposition | undefined;
 let prFixes: PRFixService | undefined;
 let foregroundPreview: ForegroundLocalPreview | undefined;
 let readPRAccount: (() => Promise<string | null>) | undefined;
@@ -183,6 +185,7 @@ function retirePRWork() {
 	prWorkEpoch++;
 	approvalConfirmation.clear();
 	teamShareIntents.clear();
+	reviewRequests?.clear();
 	void foregroundPreview?.invalidate().catch(() => {});
 	void prApprovals?.accountChanged().catch(() => {});
 	teamComposition?.abortApplications();
@@ -269,11 +272,13 @@ export const conversationService: ConversationService = new ConversationService(
 		onTiming: (event) => diagnostics?.record(event),
 		onUserTurn: (input) => {
 			teamShareIntents.capture(input);
+			reviewRequests?.capture(input);
 			commentPresentations.confirmation.acceptUserTurn(input, input.inputMode ?? "typed");
 			approvalConfirmation.acceptUserTurn(input);
 		},
 		onSessionRelease: (sessionId) => {
 			teamShareIntents.clear(sessionId);
+			reviewRequests?.clear(sessionId);
 			commentPresentations.invalidate(sessionId);
 			approvalConfirmation.invalidate(sessionId);
 		},
@@ -284,6 +289,13 @@ export const conversationService: ConversationService = new ConversationService(
 		},
 		hub: {
 			team: teamSharePorts,
+			reviewRequests: {
+				intent: (turn, signal) => reviewRequests?.tools.intent(turn, signal) ?? null,
+				send: (intent, names, signal) => {
+					if (!reviewRequests || closing) throw new Error("Review requests are unavailable");
+					return reviewRequests.tools.send(intent, names, signal);
+				},
+			},
 			approvals: {
 				service: getPRApprovals,
 				confirmation: approvalConfirmation,
@@ -1089,6 +1101,25 @@ export async function initializeHub(
 		},
 		focused,
 	});
+	reviewRequests = new ReviewRequestComposition(
+		{
+			epoch: () => prWorkEpoch,
+			observe: async (sessionId, signal) => {
+				const blocked = () => closing || !focused() || getAttention().workspaceObscured(sessionId);
+				if (blocked()) return null;
+				const observed = await getWorkspace().observe(sessionId, signal);
+				return blocked() ? null : observed.workspace;
+			},
+			review: (jobId) => getWorkJobs().review(jobId),
+			account: async (signal) => {
+				const { login } = await github.account(signal);
+				return { accountKey: `github:${login.toLowerCase()}`, login };
+			},
+			token: async () => (await getGitHubToken()) ?? null,
+			publish: (jobId) => getWorkJobs().publish(jobId),
+		},
+		userDataPath
+	);
 	stopAttentionObserver = hub.subscribe(() => {
 		void attention?.changed().catch(() => {});
 	});
@@ -1413,6 +1444,7 @@ function runtimeForActiveJobs(): RuntimeService {
 export async function disposeRuntime(): Promise<void> {
 	const current = runtime;
 	closing = true;
+	reviewRequests?.clear();
 	await foregroundPreview?.dispose();
 	teamComposition?.dispose();
 	images?.dispose();

@@ -7,6 +7,7 @@ import {
 	encodePRFixViewTarget,
 } from "../../shared/contracts";
 import { WorkDiff } from "../command-center/WorkViews";
+import { MarkdownContent } from "../workspace/MarkdownContent";
 import type { PRFixController } from "./controller";
 import { diffLineCounts, fixPhaseLabel, hasCandidateSource, loadedReviewMatchesFix } from "./model";
 
@@ -211,7 +212,9 @@ export function PRFixReview({
 			</section>
 			<section aria-label="Agent summary">
 				<h2>Agent summary</h2>
-				<p className="hub-preserve">{explanation || "No agent summary has been recorded yet."}</p>
+				<div className="pr-fix-summary">
+					<MarkdownContent markdown={explanation || "No agent summary has been recorded yet."} />
+				</div>
 				{workerNotes && (
 					<details className="pr-fix-revisions">
 						<summary>Worker notes</summary>

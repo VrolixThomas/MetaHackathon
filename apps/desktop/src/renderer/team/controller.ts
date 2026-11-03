@@ -125,7 +125,8 @@ export function createTeamController(call: TeamCall) {
 					applyReceipt: null,
 				});
 			}
-			store.setState({ status, error: null });
+			// A background status poll must not erase the outcome of a user action.
+			store.setState({ status });
 			if (
 				status.connection === "connected" &&
 				(!store.getState().organizations.length || previous?.connection !== "connected")
