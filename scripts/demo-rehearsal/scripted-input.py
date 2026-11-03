@@ -1,7 +1,9 @@
-"""Test bootstrap: replace ASR only; retain actual session/RTC/Pipecat/ElevenLabs."""
+"""Explicit test bootstrap: scripted ASR and optional synthetic PCM TTS; real RTC/Pipecat."""
 import asyncio
 import hashlib
 import json
+import math
+import struct
 from pathlib import Path
 import runpy
 import sys
@@ -46,6 +48,18 @@ class ScriptedInput:
 
 
 original_tts = session.eleven_pcm
+MOCK_TTS = (ROOT / "mock-tts.enabled").exists()
+
+
+async def mock_tts(http, config, text):
+    # Test-only tone, never a claimed spoken rendition or live provider measurement.
+    await asyncio.sleep(0.08)
+    frames = max(100, min(800, len(text.split()) * 12))
+    for frame in range(frames):
+        chunk = b"".join(struct.pack("<h", int(1800 * math.sin(2 * math.pi * 330 * (frame * 240 + i) / 24000))) for i in range(240))
+        yield chunk
+        await asyncio.sleep(0.01)
+
 
 
 async def capture_tts(http, config, text):
@@ -53,18 +67,19 @@ async def capture_tts(http, config, text):
     audio.mkdir(exist_ok=True)
     file = audio / (str(uuid.uuid4()) + ".pcm")
     digest = hashlib.sha256(text.encode()).hexdigest()
-    record({"kind": "live-tts-start", "textDigest": digest, "path": str(file), "chars": len(text)})
+    prefix = "mock-tts" if MOCK_TTS else "live-tts"
+    record({"kind": prefix + "-start", "textDigest": digest, "path": str(file), "chars": len(text)})
     count = 0
     with file.open("wb") as target:
         try:
-            async for chunk in original_tts(http, config, text):
+            async for chunk in (mock_tts if MOCK_TTS else original_tts)(http, config, text):
                 if count == 0:
-                    record({"kind": "live-tts-first-pcm", "textDigest": digest, "path": str(file)})
+                    record({"kind": prefix + "-first-pcm", "textDigest": digest, "path": str(file)})
                 target.write(chunk)
                 count += len(chunk)
                 yield chunk
         except Exception as error:
-            record({"kind": "live-tts-error", "diagnostic": session.classify(error, "elevenlabs").diagnostic})
+            record({"kind": prefix + "-error", "diagnostic": session.classify(error, "elevenlabs").diagnostic})
             raise
     wav = file.with_suffix(".wav")
     with wave.open(str(wav), "wb") as target:
@@ -72,7 +87,7 @@ async def capture_tts(http, config, text):
         target.setsampwidth(2)
         target.setframerate(24000)
         target.writeframes(file.read_bytes())
-    record({"kind": "live-tts-ended", "textDigest": digest, "path": str(file), "wav": str(wav), "bytes": count})
+    record({"kind": prefix + "-ended", "textDigest": digest, "path": str(file), "wav": str(wav), "bytes": count})
 
 
 session.MetaStream = ScriptedInput

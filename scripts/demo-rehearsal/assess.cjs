@@ -3,6 +3,7 @@ const fs = require("node:fs");
 const file = process.argv[2];
 if (!file) throw Error("Pass the report.json from a completed live rehearsal");
 const report = JSON.parse(fs.readFileSync(file, "utf8"));
+const allowMock = process.argv.includes("--allow-mock-tts");
 const commonIds = new Set([
 	"scope-choice",
 	"scope-consequence",
@@ -29,7 +30,9 @@ const navigation = report.turns.filter((t) =>
 );
 const checks = {
 	actualSpeechPipeline:
-		report.liveModels === true && report.liveElevenLabs === true && !report.textDiagnostics,
+		report.liveModels === true &&
+		!report.textDiagnostics &&
+		(report.liveElevenLabs === true || (allowMock && report.mockTTS === true)),
 	complete: report.status === "completed",
 	enoughSamples: sorted.length >= 5,
 	commonMedian: median !== null && median <= 3000,
@@ -44,6 +47,10 @@ console.log(
 	JSON.stringify(
 		{
 			sourceCommit: report.sourceCommit,
+			acceptanceMode: report.mockTTS
+				? "mocked speech; real models/tools/media, not live speech latency"
+				: "live speech",
+			mockTTSAllowed: allowMock,
 			scriptedASR: report.scriptedASR === true,
 			actualModelAndTTS: report.liveModels === true && report.liveElevenLabs === true,
 			physicalAcousticsTested: false,

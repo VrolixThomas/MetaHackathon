@@ -46,6 +46,22 @@ Available suites:
 - `--suite=delegation`: approval and Slack scenes alone.
 - `--suite=slack`: Slack clarification alone.
 
+`--mock-tts` replaces only ElevenLabs synthesis with deterministic synthetic tone PCM.
+It keeps actual models/tools and the production voice session, RTC playback, drain,
+cancellation and narration checkpoints. It does not produce intelligible speech or
+measure ElevenLabs latency, and uses a dummy speech key in the isolated profile.
+Reports set `mockTTS: true` and `liveElevenLabs: false`. Use `--audible` only if you
+want to hear the test tones. Normal builds and user profiles never use this mock.
+
+```sh
+node scripts/demo-rehearsal/run.cjs --live --mock-tts --suite=all --exit
+node scripts/demo-rehearsal/assess.cjs /absolute/path/to/report.json --allow-mock-tts
+```
+
+The assessor requires explicit `--allow-mock-tts` for mocked media acceptance.
+Its timings describe the real model/tool/media path plus the fixed mock startup;
+repeat without `--mock-tts` to verify actual speech latency after credits are restored.
+
 While speech quota is unavailable, `--text-diagnostics` uses the real typed renderer form, models, tools and native receipts for named subsets. It does not synthesize or simulate voice. Reports explicitly set voice/ASR flags to false; these runs cannot pass spoken acceptance. A displayed proposal dialog is closed through its real Close button before a typed followup, preserving its actual presentation receipt.
 
 Subset completion is not full-demo acceptance. Required scenes fail on missing

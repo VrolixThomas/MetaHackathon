@@ -17,6 +17,11 @@ const { installSyntheticInput } = require("./media.cjs");
 const root = path.resolve(__dirname, "../..");
 const desktop = path.join(root, "apps/desktop");
 const textDiagnostics = process.argv.includes("--text-diagnostics");
+const mockTTS = process.argv.includes("--mock-tts");
+assert(
+	!(mockTTS && textDiagnostics),
+	"Mock TTS exercises the media path; do not combine with text diagnostics"
+);
 assert(
 	!textDiagnostics ||
 		process.argv.includes("--interactive") ||
@@ -51,8 +56,20 @@ const report = {
 	sourceCommit: cp
 		.execFileSync("git", ["rev-parse", "HEAD"], { cwd: root, encoding: "utf8" })
 		.trim(),
+	sourceDirty: Boolean(
+		cp
+			.execFileSync("git", ["status", "--porcelain", "--untracked-files=no"], {
+				cwd: root,
+				encoding: "utf8",
+			})
+			.trim()
+	),
 	liveModels: true,
-	liveElevenLabs: !textDiagnostics,
+	liveElevenLabs: !textDiagnostics && !mockTTS,
+	mockTTS,
+	mockTTSDescription: mockTTS
+		? "Synthetic tone PCM; no intelligible speech or ElevenLabs latency claimed"
+		: null,
 	scriptedASR: !textDiagnostics,
 	textDiagnostics,
 	physicalMicrophone: false,
@@ -245,6 +262,7 @@ async function say(text, options = {}) {
 		answer: e?.answer ?? "",
 		phase: e?.phase ?? result.phase,
 		firstAudioAt: a?.at ?? null,
+		mockTTS,
 		textAcceptedToAudioMs: a ? Math.round(Date.parse(a.at) - accepted.at) : null,
 		transcriptToAudioMs: a && t ? Math.round(a.elapsedMs - t.elapsedMs) : null,
 		submittedToAudioMs: a ? Math.round(Date.parse(a.at) - submittedAt) : null,
@@ -354,15 +372,17 @@ async function main() {
 	const values = parseEnv(fs.readFileSync(envFile, "utf8"));
 	const key = values.MODEL_API_KEY ?? values.META_API_KEY;
 	assert(
-		key && values.ELEVENLABS_API_KEY && values.ELEVENLABS_VOICE_ID,
+		key && (mockTTS || (values.ELEVENLABS_API_KEY && values.ELEVENLABS_VOICE_ID)),
 		"Configure model, ElevenLabs and voice ID in the supplied private .env"
 	);
 	const cfg = path.join(owned, "rehearsal.env");
 	fs.writeFileSync(
 		cfg,
-		`MODEL_API_KEY=${JSON.stringify(key)}\nELEVENLABS_API_KEY=${JSON.stringify(values.ELEVENLABS_API_KEY)}\nELEVENLABS_VOICE_ID=${JSON.stringify(values.ELEVENLABS_VOICE_ID)}\nGITHUB_TOKEN=rehearsal-controlled-github\nLINEAR_API_KEY=rehearsal-controlled-linear\nSLACK_USER_TOKEN=xoxp-rehearsal-controlled\nSLACK_APP_ID=ADEMO01\nSLACK_INTERNAL_APP=1\nCODING_PROVIDER=meta-api\n`,
+		`MODEL_API_KEY=${JSON.stringify(key)}\nELEVENLABS_API_KEY=${JSON.stringify(mockTTS ? "mock-tts-no-provider-key" : values.ELEVENLABS_API_KEY)}\nELEVENLABS_VOICE_ID=${JSON.stringify(mockTTS ? "mock-tts-voice" : values.ELEVENLABS_VOICE_ID)}\nGITHUB_TOKEN=rehearsal-controlled-github\nLINEAR_API_KEY=rehearsal-controlled-linear\nSLACK_USER_TOKEN=xoxp-rehearsal-controlled\nSLACK_APP_ID=ADEMO01\nSLACK_INTERNAL_APP=1\nCODING_PROVIDER=meta-api\n`,
 		{ mode: 0o600 }
 	);
+	if (mockTTS)
+		fs.writeFileSync(path.join(owned, "mock-tts.enabled"), "synthetic PCM only\n", { mode: 0o600 });
 	fs.copyFileSync(path.join(__dirname, "scripted-input.py"), path.join(owned, "scripted-input.py"));
 	const python = path.join(root, "services/voice/.venv/bin/python");
 	assert(fs.existsSync(python), "Prepare the repository voice Python environment first");
@@ -544,7 +564,9 @@ async function main() {
 	win.setTitle(
 		textDiagnostics
 			? "MuseFocus — live model text diagnostics, voice NOT exercised"
-			: "MuseFocus — live model/voice rehearsal, source writes simulated"
+			: mockTTS
+				? "MuseFocus — real models, MOCK speech, simulated source writes"
+				: "MuseFocus — live model/voice rehearsal, source writes simulated"
 	);
 	await js(`(${installSyntheticInput.toString()})()`);
 	await wait(
