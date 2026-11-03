@@ -209,3 +209,30 @@ test("unprompted preferences do not need a question but fragments and pending st
 			"tools"
 		);
 });
+
+test("explicit planning continuation stays conversational without reopening execution tools", () => {
+	for (const text of [
+		"Continue with the decision we were discussing. No coding yet.",
+		"Continue our planning discussion.",
+	]) {
+		assert.equal(
+			ticketDialogueMode(
+				text,
+				[
+					{ role: "user", content: "What are the tradeoffs?" },
+					{ role: "assistant", content: "A benefit and a cost." },
+					{ role: "user", content: text },
+				],
+				context()
+			),
+			"answer"
+		);
+	}
+	for (const text of [
+		"Continue planning, then build it.",
+		"Continue the discussion and publish the work.",
+		"Continue the implementation.",
+	]) {
+		assert.equal(ticketDialogueMode(text, [{ role: "user", content: text }], context()), "tools");
+	}
+});
