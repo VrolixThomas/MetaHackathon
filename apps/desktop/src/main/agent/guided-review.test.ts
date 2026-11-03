@@ -1684,3 +1684,27 @@ test("workflow snapshot omits automatic source reads while ordinary source quest
 		}
 	}
 });
+
+for (const direction of ["next", "previous"] as const) {
+	for (const cancelled of [false, true]) {
+		test(`direct ${direction} file waits for receipt without inference; cancelled=${cancelled}`, async () => {
+			const h = harness([]);
+			try {
+				h.service.start({ ...h.input, text: `Please ${direction} file.` });
+				const action = await h.action();
+				assert.equal(h.poll().text, "");
+				assert.equal(h.requests.length, 0);
+				if (cancelled)
+					h.service.cancel({ ...h.identity, requestId: "cancel-step", reason: "user" });
+				else await h.service.actionApplied(h.receipt(action));
+				await eventually(() => h.poll().status !== "running");
+				assert.equal(h.poll().status, cancelled ? "cancelled" : "completed");
+				assert.equal(h.requests.length, 0);
+				assert.equal(h.navigations[0]?.direction, direction);
+				if (cancelled) assert.equal(h.poll().text, "");
+			} finally {
+				await h.service.dispose();
+			}
+		});
+	}
+}

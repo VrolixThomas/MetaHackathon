@@ -291,6 +291,45 @@ export async function runGuidedReview(
 	);
 	let input = initialInput;
 	if (!input.prId) throw new Error("Selected PR required for guided review");
+	// A single explicit file movement needs no interpretation or closing model call.
+	// Questions and walkthrough/Continue requests remain on the explanation path.
+	const step =
+		/^(?:please )?(?:(?:go|move|take me) to (?:the )?)?(next|previous|prev) file(?: please)?[.!?]?$/i.exec(
+			input.text.trim()
+		);
+	if (step) {
+		const snapshot = await getSnapshot(ports, input, signal);
+		const direction = step[1]?.toLowerCase() === "next" ? "next" : "previous";
+		const callId = `${input.requestId}:explicit-file-navigation`;
+		const result = await navigateReview(
+			ports,
+			input,
+			signal,
+			snapshot,
+			{ direction },
+			callId,
+			onAction,
+			workflow?.workspace
+		);
+		throwIfAborted(signal);
+		history.push(
+			{
+				type: "function_call",
+				call_id: callId,
+				name: `${direction}_review_file`,
+				arguments: "{}",
+				status: "completed",
+			},
+			{
+				type: "function_call_output",
+				call_id: callId,
+				output: JSON.stringify({ status: "applied", screen: result.acknowledged }),
+			}
+		);
+		const text = `The ${direction} file is open.`;
+		await onText?.(text);
+		return text;
+	}
 	const seen = new Set<string>();
 	const questionIndex = history.reduce(
 		(latest, item, index) =>
