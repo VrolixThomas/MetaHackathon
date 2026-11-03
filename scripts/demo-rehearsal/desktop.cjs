@@ -690,7 +690,11 @@ async function main() {
 			});
 		else if (!process.argv.includes("--suite=actions") && !process.argv.includes("--suite=work"))
 			await common({ say, rpc, ui, state, fixture, report, assert, js, wait, button, owned });
-		if (process.argv.includes("--suite=all") || process.argv.includes("--suite=actions") || process.argv.includes("--suite=work"))
+		if (
+			process.argv.includes("--suite=all") ||
+			process.argv.includes("--suite=actions") ||
+			process.argv.includes("--suite=work")
+		)
 			await full({
 				workOnly: process.argv.includes("--suite=work"),
 				say,

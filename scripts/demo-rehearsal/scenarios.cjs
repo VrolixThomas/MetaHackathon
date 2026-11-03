@@ -108,7 +108,9 @@ async function full(d) {
 	});
 
 	report.assertions.push({
-		name: d.workOnly ? "live coding, checks, review and historical work continuity executed" : "live coding/model/tool flow and review/flow/fix/conditional-followup/Slack clarification executed",
+		name: d.workOnly
+			? "live coding, checks, review and historical work continuity executed"
+			: "live coding/model/tool flow and review/flow/fix/conditional-followup/Slack clarification executed",
 		passed: true,
 	});
 }
