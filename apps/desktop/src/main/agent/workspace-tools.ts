@@ -211,7 +211,9 @@ export class ConversationWorkspaceTools {
 							parameters.properties = withoutId;
 						} else
 							parameters.properties["id"] = {
-								...parameters.properties["id"],
+								...(typeof parameters.properties["id"] === "object"
+									? parameters.properties["id"]
+									: {}),
 								enum: ids,
 								description: "Optional existing flow canvas ID to update. Omit for a new flow.",
 							};
