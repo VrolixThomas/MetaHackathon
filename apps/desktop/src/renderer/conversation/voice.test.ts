@@ -17,8 +17,9 @@ async function until(condition: () => boolean) {
 		await new Promise((resolve) => setTimeout(resolve, 5));
 	}
 }
-it("speaks without a PR, starts once per final utterance and shares identity with typed follow-up", async () => {
+it("keeps actual speech draining through manual file changes and shares identity with typed follow-up", async () => {
 	const paths: string[] = [];
+	const checkpoints: string[] = [];
 	const starts: ConversationTurnInput[] = [];
 	const events: VoiceEvent[] = [];
 	const spoken: string[] = [];
@@ -69,6 +70,10 @@ it("speaks without a PR, starts once per final utterance and shares identity wit
 				status: "running",
 			};
 		}
+		if (request.path === "conversation.narrationApplied") {
+			checkpoints.push(String(input["status"]));
+			value = { status: "accepted" };
+		}
 		if (request.path === "conversation.poll") {
 			const turn = starts.at(-1);
 			assert.ok(turn);
@@ -80,12 +85,24 @@ it("speaks without a PR, starts once per final utterance and shares identity wit
 			value = {
 				...identity,
 				status: "completed",
-				sequence: 2,
+				sequence: 3,
 				text: "Provider reply.",
 				actions: [],
 				events: [
 					{ ...identity, sequence: 1, kind: "text-delta", delta: "Provider reply." },
-					{ ...identity, sequence: 2, kind: "completed" },
+					{
+						...identity,
+						sequence: 2,
+						kind: "action",
+						action: {
+							...identity,
+							kind: "narration-checkpoint",
+							requestId: "proof",
+							screenSequence: 0,
+							throughTextLength: "Provider reply.".length,
+						},
+					},
+					{ ...identity, sequence: 3, kind: "completed" },
 				],
 			};
 		}
@@ -99,21 +116,42 @@ it("speaks without a PR, starts once per final utterance and shares identity wit
 			};
 		return { result: { data: superjson.serialize(value) } };
 	});
+	let draining = false;
+	let releaseDrain!: () => void;
+	const drained = new Promise<void>((resolve) => {
+		releaseDrain = resolve;
+	});
+	let closed = false;
 	const ui = createConversationController(api);
 	const disconnect = connectConversationVoice(api, ui, () => ({
 		connect: async (offer) => {
 			await offer({ type: "offer", sdp: "test-offer" });
 		},
 		stopCapture() {},
-		drain: async () => {},
-		close() {},
+		drain: async () => {
+			draining = true;
+			await drained;
+		},
+		close() {
+			closed = true;
+		},
 	}));
 	try {
 		await ui.configure();
 		ui.press();
 		await until(() => ui.store.getState().phase === "listening");
 		ui.release();
+		await until(() => draining);
+		const active = ui.store.getState().active;
+		ui.manualChange();
+		await ui.selectPR(null);
+		assert.deepEqual(ui.store.getState().active, active);
+		assert.equal(closed, false);
+		assert.equal(paths.includes("voice.cancel"), false);
+		assert.equal(paths.includes("conversation.cancel"), false);
+		releaseDrain();
 		await until(() => ui.store.getState().exchanges[0]?.phase === "complete");
+		assert.deepEqual(checkpoints, ["ignored"]);
 		assert.equal(starts.length, 1);
 		assert.equal(ui.store.getState().exchanges[0]?.requestId, starts[0]?.requestId);
 		assert.equal(starts[0]?.prId, undefined);

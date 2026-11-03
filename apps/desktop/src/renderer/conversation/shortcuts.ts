@@ -1,7 +1,8 @@
 import type { ElectronAPI } from "../../shared/types";
 import type { ConversationController } from "./controller";
 
-/** Native shortcut events are explicit; ordinary keyboard input never passes through here. */
+/** Escape explicitly ends speech and listening, unless a dialog consumed it.
+ * Native guest Escape does the same. Ordinary browsing never interrupts a reply. */
 export function connectShortcuts(
 	shortcuts: ElectronAPI["voiceShortcut"] | undefined,
 	controller: Pick<ConversationController, "press" | "release" | "toggle" | "stop">,

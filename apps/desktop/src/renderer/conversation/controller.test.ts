@@ -756,3 +756,67 @@ it("cancelled substantive voice messages remain real messages", () => {
 		controller.dispose();
 	}
 });
+
+it("manual file/view changes fence pending and future effects while speech and listening survive", async () => {
+	const receipts: unknown[] = [];
+	const h = harness({
+		call: async (_type, path, input) => {
+			if (path === "conversation.narrationApplied") receipts.push(input);
+			return { status: "accepted" };
+		},
+	});
+	let interrupts = 0;
+	h.controller.attachVoice({
+		beginCapture() {},
+		endCapture() {},
+		dispose() {},
+		interrupt() {
+			interrupts++;
+		},
+	});
+	h.controller.store.setState({ handsFree: true });
+	const turn = h.controller.allocateIdentity();
+	h.controller.beginVoice(turn);
+	h.controller.answer(turn, "Explaining the first file.");
+	h.controller.voicePhase("speaking");
+	let effectSignal: AbortSignal | undefined;
+	let valid: (() => boolean) | undefined;
+	h.controller.attachWorkspace({
+		getContext: () => undefined,
+		applyAction: async (_action, live, signal) => {
+			valid = live;
+			effectSignal = signal;
+			return "ignored";
+		},
+	});
+	const action = { ...turn, kind: "workspace-canvas", requestId: "pending" } as AgentAction;
+	await h.controller.applyConversationAction(action);
+	assert.equal(valid?.(), true);
+	h.controller.manualChange();
+	assert.equal(effectSignal?.aborted, true);
+	assert.equal(valid?.(), false);
+	assert.equal(h.controller.store.getState().phase, "speaking");
+	assert.equal(h.controller.store.getState().handsFree, true);
+	assert.deepEqual(h.controller.store.getState().active, turn);
+	assert.equal(interrupts, 0);
+	h.controller.answer(turn, "The reply keeps playing.");
+	assert.equal(h.controller.store.getState().exchanges.at(-1)?.answer, "The reply keeps playing.");
+	await h.controller.applyConversationAction({ ...action, requestId: "later" });
+	assert.equal(valid?.(), false);
+	await h.controller.applyConversationAction({
+		...turn,
+		kind: "narration-checkpoint",
+		requestId: "proof",
+		throughTextLength: 1,
+		screenSequence: 0,
+	});
+	assert.equal((receipts[0] as { status: string }).status, "ignored");
+	const next = h.controller.allocateIdentity();
+	h.controller.beginVoice(next);
+	assert.equal(h.controller.canApplyEffects(next), true);
+	assert.equal(h.controller.canApplyEffects(turn), false);
+	h.controller.interruptReply();
+	assert.equal(interrupts, 1);
+	assert.equal(h.controller.canApplyEffects(next), false);
+	h.controller.dispose();
+});

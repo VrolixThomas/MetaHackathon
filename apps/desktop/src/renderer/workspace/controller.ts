@@ -441,6 +441,7 @@ export function createWorkspaceController(
 			if (obscured === value) return;
 			obscured = value;
 			if (value) {
+				manualInteraction?.();
 				invalidate();
 				store.setState({ busy: false });
 				void browser.present(null).catch(() => {});

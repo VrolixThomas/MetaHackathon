@@ -134,10 +134,10 @@ export function connectConversationVoice(
 				turnId: action.turnId,
 				generation: action.generation,
 				requestId: action.requestId,
-				status: "spoken",
+				status: ui.canApplyEffects(action) ? "spoken" : "ignored",
 			})) as { status?: string };
 			signal.throwIfAborted();
-			if (result?.status !== "accepted")
+			if (result?.status !== "accepted" && ui.canApplyEffects(action))
 				throw new Error("Narration checkpoint is no longer current");
 		},
 		onTranscript: (update) => {

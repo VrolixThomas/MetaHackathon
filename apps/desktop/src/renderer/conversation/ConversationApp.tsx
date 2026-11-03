@@ -289,7 +289,7 @@ export function ConversationApp({
 						void apiCall("mutation", "prComments.invalidate", {
 							sessionId: controller.sessionId,
 						}).catch(() => {});
-						if (previous.open && !next.open) controller.interruptReply();
+						controller.manualChange();
 					}
 					previous = next;
 				});
@@ -473,7 +473,7 @@ export function ConversationApp({
 										className="quiet"
 										aria-label="Remove PR context"
 										onClick={() => {
-											controller.interruptReply();
+											controller.manualChange();
 											void controller.selectPR(null);
 										}}
 									>
@@ -562,7 +562,7 @@ export function ConversationApp({
 									day={day}
 									slack={slack}
 									fixes={fixes}
-									onManualInteraction={controller.interruptReply}
+									onManualInteraction={controller.manualChange}
 									controller={workspace}
 									reviews={reviews}
 									browser={browser}
@@ -571,7 +571,7 @@ export function ConversationApp({
 									onOpenSettings={() => setOverlay("configuration")}
 								/>
 							) : reviewOpen ? (
-								<ReviewWorkspace controller={reviews} onInteraction={controller.interruptReply} />
+								<ReviewWorkspace controller={reviews} onInteraction={controller.manualChange} />
 							) : (
 								<div className="review-empty">
 									<span className="eyebrow">Review workspace</span>
@@ -615,7 +615,7 @@ export function ConversationApp({
 								workspace.setObscured(false);
 								void workspace.command({ kind: "show-review", prId: detail.pr.id });
 							} else {
-								controller.interruptReply();
+								controller.manualChange();
 								void reviews.open(detail.pr.id);
 							}
 						}}

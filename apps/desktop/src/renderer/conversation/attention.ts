@@ -105,7 +105,8 @@ export function createAttentionBinding(
 			epoch++;
 			safetyEpoch++;
 		}
-		if (delivery && (changed || !safe(state))) ui.interruptAttention();
+		// Activity defers new initiative; explicit opt-out still stops delivery.
+		if (delivery && !state.enabled) ui.interruptAttention();
 	});
 	return {
 		async poll() {

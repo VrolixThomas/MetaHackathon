@@ -58,6 +58,8 @@ export type HandsFreeHandle = {
 };
 type Active = TurnIdentity & {
 	abort: AbortController;
+	/** Manual browsing retires effects without cancelling speech or polling. */
+	effects: AbortController;
 	source: Exchange["source"] | "attention";
 	context: Pick<ConversationTurnInput, "prId" | "screen" | "workspace">;
 };
@@ -271,6 +273,13 @@ export function createConversationController(
 			});
 		}
 	}
+	function manualChange() {
+		if (active?.source !== "attention") active?.effects.abort();
+		void api.call("mutation", "prComments.invalidate", { sessionId }).catch(() => {});
+	}
+	function canApplyEffects(turn: TurnIdentity) {
+		return live(turn) && !active?.effects.signal.aborted;
+	}
 	function interruptReply() {
 		cancelActive("user", store.getState().handsFree);
 	}
@@ -290,7 +299,13 @@ export function createConversationController(
 			if (active.source === "typed") cancelRemote(active, "push-to-talk");
 		}
 		if (source === "attention" && attentionCompletion) attentionCompletion.turn = identity(turn);
-		active = { ...turn, source, abort: new AbortController(), context: getConversationContext() };
+		active = {
+			...turn,
+			source,
+			abort: new AbortController(),
+			context: getConversationContext(),
+			effects: new AbortController(),
+		};
 		store.setState((state) => ({
 			active: identity(turn),
 			phase: source === "voice" ? "connecting" : "thinking",
@@ -580,6 +595,7 @@ export function createConversationController(
 		}
 	}
 	async function selectPR(pr: PullRequest | null) {
+		manualChange();
 		const epoch = ++selectionEpoch;
 		store.setState({ selected: null, githubError: "", githubBusy: false });
 		if (!pr) return;
@@ -614,14 +630,18 @@ export function createConversationController(
 	}
 	async function applyConversationAction(action: AgentAction, signal?: AbortSignal) {
 		const turn = active;
-		const isCurrent = () => !!turn && live(turn) && same(turn, action) && !signal?.aborted;
+		const isCurrent = () =>
+			!!turn && canApplyEffects(turn) && same(turn, action) && !signal?.aborted;
+		const effectSignal = turn
+			? AbortSignal.any([turn.abort.signal, turn.effects.signal, ...(signal ? [signal] : [])])
+			: signal;
 		if (
 			((action.kind === "draft-comment" && action.reviewId) ||
 				action.kind === "comment-post-state") &&
 			commentPresenter
 		) {
 			if (!isCurrent() || !turn) return "ignored" as const;
-			return commentPresenter(action, signal ?? turn.abort.signal);
+			return commentPresenter(action, effectSignal ?? turn.abort.signal);
 		}
 		if (action.kind === "narration-checkpoint") {
 			const entry = store.getState().exchanges.find((item) => same(item, action));
@@ -634,7 +654,7 @@ export function createConversationController(
 			return displayed ? ("applied" as const) : ("ignored" as const);
 		}
 		if (action.kind === "workspace-canvas") {
-			const applied = (await workspace?.applyAction(action, isCurrent, signal)) ?? "ignored";
+			const applied = (await workspace?.applyAction(action, isCurrent, effectSignal)) ?? "ignored";
 			if (applied === "applied" && isCurrent() && turn) turn.context = getConversationContext();
 			return applied;
 		}
@@ -642,7 +662,7 @@ export function createConversationController(
 			review?.applyAction(
 				action,
 				() => {
-					if (!turn || !live(turn) || !same(turn, action) || signal?.aborted) return false;
+					if (!isCurrent() || !turn) return false;
 					if (action.kind !== "review-navigation") return true;
 					const context = turn.context;
 					return (
@@ -652,7 +672,7 @@ export function createConversationController(
 						(!context.screen?.baseSha || context.screen.baseSha === action.navigation.baseSha)
 					);
 				},
-				signal
+				effectSignal
 			) ?? Promise.resolve("ignored" as const)
 		);
 	}
@@ -677,6 +697,8 @@ export function createConversationController(
 			else void startConversation();
 		},
 		interruptReply,
+		manualChange,
+		canApplyEffects,
 		configure,
 		requestMicrophone,
 		refreshGitHub,

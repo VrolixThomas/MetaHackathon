@@ -223,25 +223,26 @@ for (const [name, patch] of Object.entries({
 }
 
 for (const [name, patch] of Object.entries({
-	optout: { enabled: false },
 	blur: { focused: false },
 	modal: { obscured: true },
 	typing: { typing: true },
 	interaction: { recentInteraction: true },
 	nativeActivity: { activitySequence: 1 },
 })) {
-	test(`${name} during attention interrupts only that update and preserves the microphone`, async () => {
+	test(`${name} during attention preserves speech until an actual new question`, async () => {
 		const h = await harness();
 		h.setPoll(async () => ({ claim: h.claim() }));
 		await h.binding.poll();
 		h.change(patch);
-		await until(() => h.settles().length === 1);
-		assert.equal(h.settles()[0]?.status, "interrupted");
-		assert.equal(h.interrupts(), 1);
+		assert.equal(h.settles().length, 0);
+		assert.equal(h.interrupts(), 0);
+		assert.deepEqual(h.ui.store.getState().active, h.turn());
 		assert.equal(h.ui.store.getState().handsFree, true);
 		const user = h.ui.allocateIdentity();
 		assert.equal(h.ui.beginVoice(user), true);
 		h.ui.transcript(user, "My actual question");
+		await until(() => h.settles().length === 1);
+		assert.equal(h.settles()[0]?.status, "interrupted");
 		h.ui.finishVoice(h.turn(), "complete");
 		h.change({ activitySequence: 2 });
 		assert.deepEqual(h.ui.store.getState().active, user);
@@ -377,4 +378,14 @@ test("disposing the binding during playback sends interrupted and keeps the expl
 	assert.equal(h.settles()[0]?.status, "interrupted");
 	assert.equal(h.ui.store.getState().handsFree, true);
 	assert.equal(h.ui.store.getState().active, null);
+});
+
+test("explicit attention opt-out interrupts delivery", async () => {
+	const h = await harness();
+	h.setPoll(async () => ({ claim: h.claim() }));
+	await h.binding.poll();
+	h.change({ enabled: false });
+	await until(() => h.settles().length === 1);
+	assert.equal(h.settles()[0]?.status, "interrupted");
+	assert.equal(h.interrupts(), 1);
 });

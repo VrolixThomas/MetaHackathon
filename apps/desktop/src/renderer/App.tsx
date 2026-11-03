@@ -53,7 +53,7 @@ export function App() {
 				)
 					throw new Error(PR_FIX_SOURCE_CHANGED);
 			},
-			onManualChange: controller.interruptReply,
+			onManualChange: controller.manualChange,
 			ensureSlackTarget: async (target) => {
 				if (slack.store.getState().loadedTarget === target) await slack.refreshCurrent();
 				await slack.ensureTarget(target);

@@ -257,7 +257,7 @@ it("rejects a second browser canvas before mounting competing native hosts", asy
 	}
 });
 
-it("manual commands interrupt once and use the same apply/receipt path", async () => {
+it("manual commands notify the effect fence once and use the same apply/receipt path", async () => {
 	const h = harness();
 	try {
 		await h.controller.start();
