@@ -79,7 +79,7 @@ const names: Partial<Record<WorkspaceCommand["kind"], [string, string]>> = {
 	],
 	"open-center": [
 		"open_command_center",
-		"Open the actual executive center section home, day, reviews, feedback, tickets, completed or activity, optionally selecting an observed item. Day is the private internal commitments queue, including incoming Slack requests. Discover its exact selectedId through day_inspect_queue; Slack conversation targets are separate. Waits for displayed receipt.",
+		"Open the actual executive center section home, day, reviews, feedback, fixes, tickets, completed or activity, optionally selecting an observed item. Day is the private internal commitments queue, including incoming Slack requests. Discover its exact selectedId through day_inspect_queue; Slack conversation targets are separate. For Suggested fixes use the exact encoded selectedId from inspect_suggested_fix.commandProposal. Waits for displayed receipt.",
 	],
 	"open-source": [
 		"open_pinned_source",

@@ -9,11 +9,7 @@ import {
 	explicitTicketNavigation,
 	ticketDialogueMode,
 } from "./foreground-dialogue";
-import {
-	ForegroundProfile,
-	PROFILE_INSTRUCTIONS,
-	SOURCE_WORKFLOW_INSTRUCTIONS,
-} from "./foreground-profile";
+import { ForegroundProfile, PROFILE_INSTRUCTIONS } from "./foreground-profile";
 import { ForegroundTrace } from "./foreground-timing";
 import { GuidedReviewError, modelRound } from "./guided-review";
 import type { ConversationHubTools } from "./hub-tools";
@@ -96,8 +92,9 @@ export async function runWorkspaceConversation(
 			currentContext = await trace.measure("current-context", signal, async () =>
 				hub?.currentContext(observation)
 			);
-		} catch {
+		} catch (error) {
 			throwIfAborted(signal);
+			if (profile.candidateWorkflow) throw error;
 			currentContext = {
 				status: "unavailable",
 				message: "Current item details could not be read; do not infer missing content.",
@@ -223,7 +220,7 @@ export async function runWorkspaceConversation(
 			instructions: answerOnly
 				? `${TICKET_DISCUSSION_INSTRUCTIONS}${directNavigation && !directNavigation.discussion ? "\nThe explicit navigation has its actual applied receipt. Acknowledge it in one brief sentence and stop." : ""}`
 				: profile.sourceWorkflow
-					? SOURCE_WORKFLOW_INSTRUCTIONS
+					? profile.workflowInstructions
 					: `${WORKSPACE_INSTRUCTIONS}\n${COPARTNER_INSTRUCTIONS}\n${PROFILE_INSTRUCTIONS}`,
 			input: modelInput(),
 			tools: answerOnly
@@ -281,6 +278,18 @@ export async function runWorkspaceConversation(
 		if (!calls.length) {
 			if (!response.text.trim())
 				throw new GuidedReviewError("The conversation reply was empty. Please try again.");
+			if (profile.candidateWorkflow) {
+				const current = await workspace?.observe();
+				if (
+					(current?.workspace.contentSequence ?? current?.workspace.sequence) !==
+					(observation?.workspace.contentSequence ?? observation?.workspace.sequence)
+				)
+					throw new GuidedReviewError(
+						"The workspace changed. Ask again from the current candidate."
+					);
+				await hub?.currentContext(current);
+				throwIfAborted(signal);
+			}
 			if (!answerOnly) await onText(response.text);
 			return response.text;
 		}

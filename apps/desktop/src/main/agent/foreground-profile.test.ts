@@ -347,3 +347,34 @@ test("no-op allowance is per ingress turn and survives workspace-to-review hando
 		WorkspaceArgumentError
 	);
 });
+
+test("actual suggested-fix intent offers candidate readers without unrelated capabilities", () => {
+	const available = [
+		...workflowTools,
+		...["inspect_suggested_fixes", "inspect_suggested_fix"].map((name) => ({
+			type: "function" as const,
+			name,
+			description: "Existing owner and source guards",
+			parameters: { type: "object" },
+		})),
+	];
+	for (const text of [
+		"Open the prepared Slack-capture suggested fix and explain the behavioral correction. Keep unpublished.",
+		"Why is the local fix different?",
+		"Do not open the suggested fix yet.",
+	]) {
+		const profile = new ForegroundProfile();
+		profile.select(observation("home"), false, text);
+		assert.equal(profile.candidateWorkflow, true);
+		assert(profile.tools(available).some((tool) => tool.name === "inspect_suggested_fix"));
+		assert(!profile.tools(available).some((tool) => tool.name === "inspect_ticket"));
+		assert(Buffer.byteLength(profile.workflowInstructions) < 1800);
+	}
+	const profile = new ForegroundProfile();
+	const observed = observation("home");
+	assert(observed.workspace.canvases[0]);
+	observed.workspace.canvases[0].title = "Open the prepared suggested fix";
+	profile.select(observed, false, "Hello");
+	assert.equal(profile.candidateWorkflow, false);
+	assert(!profile.tools(available).some((tool) => tool.name === "inspect_suggested_fix"));
+});

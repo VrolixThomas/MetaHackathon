@@ -28,11 +28,13 @@ import {
 	WorkJobSchema,
 	WorkLogPageSchema,
 	WorkReviewSchema,
+	decodePRFixViewTarget,
 	encodePRFixViewTarget,
 } from "../../shared/contracts";
 import { type ApprovalToolPorts, ApprovalTools } from "./approval-tools";
 import { abortable, throwIfAborted } from "./cancellation";
 import { type ConversationDayPorts, ConversationDayTools } from "./day-tools";
+import { suggestedFixContextRequested } from "./foreground-profile";
 import { ForegroundTrace } from "./foreground-timing";
 import { GuidedReviewError } from "./guided-review";
 import {
@@ -416,6 +418,44 @@ export class ConversationHubTools {
 		const canvas = observation?.workspace.canvases.find(
 			(canvas) => canvas.id === observation.workspace.primaryId
 		);
+		if (suggestedFixContextRequested(observation, this.turn.text)) {
+			if (!this.ports.fixes)
+				return {
+					status: "unavailable",
+					message: "Suggested-fix service is unavailable; the original PR is not a substitute.",
+				};
+			const queue = await this.execute("inspect_suggested_fixes", "{}");
+			if (canvas?.kind !== "center" || canvas.section !== "fixes" || !canvas.selectedId)
+				return { suggestedFixes: queue, display: "not-established" };
+			const target = decodePRFixViewTarget(canvas.selectedId);
+			const detail = (await this.execute(
+				"inspect_suggested_fix",
+				JSON.stringify({ id: target.id, ...(target.path ? { path: target.path } : {}) })
+			)) as {
+				fix: { id: string; baseSha: string; headSha: string | null };
+				file: { path: string } | null;
+			};
+			const pin = canvas.fixSource;
+			if (
+				!pin ||
+				pin.id !== detail.fix.id ||
+				pin.baseSha !== detail.fix.baseSha ||
+				pin.headSha !== detail.fix.headSha ||
+				pin.path !== (detail.file?.path ?? null)
+			)
+				throw new GuidedReviewError(
+					"The selected candidate changed. Inspect and reopen its current target."
+				);
+			return {
+				suggestedFixes: queue,
+				selectedFix: detail,
+				presentation: {
+					target: canvas.selectedId,
+					source: detail.file ? "displayed" : "status-only",
+					pin,
+				},
+			};
+		}
 		// Resolve only actual observed identifiers. A bare number is useful on the
 		// ticket board only when unique; it is never a fabricated provider ID.
 		const mentioned =
@@ -753,6 +793,9 @@ export class ConversationHubTools {
 				fixes: rows.slice(0, 20).map((row) => ({
 					id: row.id,
 					prId: row.pr.id,
+					prTitle: clipBytes(row.pr.title, 500),
+					feedback: clipBytes(row.feedback.body, 1000),
+					baseSha: row.baseSha,
 					phase: row.phase,
 					summary: clipBytes(row.summary, 1500),
 					question: row.question,
@@ -762,7 +805,13 @@ export class ConversationHubTools {
 				})),
 				truncated:
 					rows.length > 20 ||
-					rows.some((row) => size(row.summary) > 1500 || row.changedFiles.length > 30),
+					rows.some(
+						(row) =>
+							size(row.summary) > 1500 ||
+							size(row.pr.title) > 500 ||
+							size(row.feedback.body) > 1000 ||
+							row.changedFiles.length > 30
+					),
 				display: "not-established",
 				evidencePolicy: policy,
 			};
@@ -772,7 +821,8 @@ export class ConversationHubTools {
 			const detail = PRFixDetailSchema.parse(
 				await abortable(this.ports.fixes.detail(args["id"] as string, this.signal), this.signal)
 			);
-			const { fix, review } = detail;
+			const { fix } = detail;
+			const review = fix.phase === "ready" ? detail.review : null;
 			if (
 				fix.id !== args["id"] ||
 				fix.baseSha !== fix.pr.headSha ||

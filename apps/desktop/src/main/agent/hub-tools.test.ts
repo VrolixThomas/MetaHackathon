@@ -306,7 +306,7 @@ test("hub-only foreground tools inspect actual ticket/job/feedback/local review 
 	const review = await tools.execute("inspect_work_review", JSON.stringify({ jobId: "job" }));
 	assert(JSON.stringify(review).includes('"pullRequest":null'));
 	assert(!JSON.stringify(review).includes('"prId"'));
-	assert(!JSON.stringify(review).includes('"content":"new"'));
+	assert(!JSON.stringify(review).includes('\\"content\\":\\"new\\"'));
 	const feedback = await tools.execute("inspect_pr_feedback", JSON.stringify({ prId: "own-pr" }));
 	assert(JSON.stringify(feedback).includes("Actual requested fix"));
 	await assert.rejects(
@@ -4839,3 +4839,218 @@ for (const cancelled of [false, true]) {
 		}
 	});
 }
+
+async function candidateData() {
+	const d = data();
+	const pr = { ...required(d.hub.reviews[0]).pr, headSha: required(d.job.baseSha) };
+	const feedback = { ...required((await d.ports.feedback(pr.id))[0]), commitSha: pr.headSha };
+	const fix: PRFixSummary = {
+		id: "candidate",
+		jobId: d.job.id,
+		pr,
+		feedback,
+		phase: "ready",
+		summary: "Actual local correction",
+		question: null,
+		baseSha: pr.headSha,
+		headSha: d.job.headSha,
+		checks: [],
+		changedFiles: d.job.changedFiles,
+		createdAt: time,
+		updatedAt: time,
+		reviewedAt: null,
+		error: null,
+		publication: "not-published",
+	};
+	const review = await d.ports.reviewWork(d.job.id);
+	review.job = { ...review.job, ticket: null, pullRequest: pr, feedback };
+	const state = { allowed: true, lists: 0, details: 0 };
+	d.ports.fixes = {
+		list: async () => {
+			state.lists++;
+			if (!state.allowed) throw new Error("Owner changed");
+			return [structuredClone(fix)];
+		},
+		detail: async () => {
+			state.details++;
+			if (!state.allowed) throw new Error("Owner changed");
+			return structuredClone({ fix, review });
+		},
+		start: async () => {
+			throw new Error("No new coding requested");
+		},
+	};
+	return { d, fix, review, state };
+}
+
+for (const selected of [false, true]) {
+	for (const outcome of [
+		"applied",
+		"cancelled",
+		"stale-pin",
+		"owner-changed",
+		"changed-before-answer",
+		"content-changed",
+	] as const) {
+		test(`${selected ? "review" : "workspace"}: exact candidate context and receipt fence ${outcome}`, async () => {
+			const { d, fix, state } = await candidateData();
+			const w = workspace(d);
+			const pr = fix.pr;
+			if (selected) {
+				w.observation.workspace.canvases = [
+					{ id: "review", kind: "review", title: "Original PR", revision: 1 },
+				];
+				w.observation.workspace.primaryId = "review";
+				w.observation.workspace.review = { sequence: 0, mode: "review", prId: pr.id };
+			}
+			const execute = w.ports.execute;
+			w.ports.execute = async (...args) => {
+				const result = await execute(...args);
+				const canvas = required(result.workspace.canvases[0]);
+				assert(canvas.kind === "center");
+				canvas.fixSource = {
+					id: fix.id,
+					baseSha: fix.baseSha,
+					headSha: outcome === "stale-pin" ? "c".repeat(40) : fix.headSha,
+					path: "changed.ts",
+				};
+				if (outcome === "owner-changed") state.allowed = false;
+				return result;
+			};
+			const requests: MetaRequest[] = [];
+			const controlled = client(
+				[
+					[call("inspect_suggested_fix", { id: fix.id })],
+					[
+						call("open_command_center", {
+							section: "fixes",
+							selectedId: "candidate?file=changed.ts",
+						}),
+					],
+					answer("Controlled explanation of the inspected candidate."),
+				],
+				requests
+			);
+			const service = new ConversationService(
+				{
+					async *stream(request, signal) {
+						for await (const event of controlled.stream(request, signal)) {
+							if (requests.length === 3 && outcome === "changed-before-answer")
+								state.allowed = false;
+							if (requests.length === 3 && outcome === "content-changed")
+								w.observation.workspace.sequence++;
+							yield event;
+						}
+					},
+				},
+				{
+					hub: d.ports,
+					workspace: w.ports,
+					review: {
+						getReady: async () => ({
+							id: "original",
+							version: 1,
+							pr,
+							createdAt: time,
+							summary: "Original plan",
+							orderRationale: "Inferred",
+							coverage: "complete",
+							evidence: "inferred-from-github",
+							files: [
+								{
+									path: "changed.ts",
+									reason: "Inferred",
+									summary: "Original bug",
+									suggestedComments: [],
+								},
+							],
+						}),
+						getProgress: async () => null,
+						getScreen: async () => ({ sequence: 0, mode: "review", prId: pr.id }),
+						getFile: async () => {
+							throw new Error("Do not preload original PR source for a candidate request");
+						},
+						navigate: async () => {
+							throw new Error("Never substitute original PR navigation");
+						},
+					},
+				}
+			);
+			try {
+				service.start({
+					...input,
+					text: "Open the prepared Slack-capture suggested fix and explain the behavioral correction. Keep unpublished.",
+				});
+				await eventually(
+					() => w.commands.length === 1 || service.poll(identity()).status !== "running"
+				);
+				assert.equal(w.commands.length, 1, JSON.stringify(service.poll(identity())));
+				assert.equal(requests.length, 2);
+				assert.equal(service.poll(identity()).text, "");
+				assert(requests[0]?.requestId.includes(selected ? ":review:" : ":workspace:"));
+				assert(requests[0]?.tools?.some((tool) => tool.name === "inspect_suggested_fix"));
+				assert(JSON.stringify(requests[0]?.input).includes("suggestedFixes"));
+				assert(JSON.stringify(requests[0]?.input).includes(fix.headSha as string));
+				assert.deepEqual(w.commands[0], {
+					kind: "open-center",
+					section: "fixes",
+					selectedId: "candidate?file=changed.ts",
+				});
+				if (outcome === "cancelled")
+					service.cancel({ ...identity(), requestId: "cancel-candidate", reason: "user" });
+				w.settle();
+				await eventually(() => service.poll(identity()).status !== "running");
+				assert.equal(
+					service.poll(identity()).status,
+					outcome === "applied" ? "completed" : outcome === "cancelled" ? "cancelled" : "error"
+				);
+				if (outcome === "applied") {
+					assert.equal(requests.length, 3);
+					assert(requests[2]?.requestId.includes(":workspace:"));
+					const final = JSON.stringify(requests[2]?.input);
+					assert(final.includes("selectedFix"));
+					assert(final.includes('\\"content\\":\\"new\\"'));
+					assert(!final.includes("currentFilePresentation"));
+					assert.equal(
+						requests[2]?.input.filter(
+							(item) => item["role"] === "user" && typeof item["content"] === "string"
+						).length,
+						1
+					);
+				} else assert.equal(service.poll(identity()).text, "");
+				assert.equal(d.operations.length, 0);
+			} finally {
+				w.settle();
+				await service.dispose();
+			}
+		});
+	}
+}
+
+test("candidate prefill is read-only, preserves ambiguous actual IDs and withholds non-ready source", async () => {
+	const { d, fix, review, state } = await candidateData();
+	const w = workspace(d);
+	const tools = new ConversationHubTools(
+		d.ports,
+		{ ...input, text: "Open the prepared fix" },
+		new AbortController().signal
+	);
+	assert(d.ports.fixes);
+	d.ports.fixes.list = async () => [fix, { ...fix, id: "second-candidate" }];
+	const packet = JSON.stringify(await tools.currentContext(w.observation));
+	assert(packet.includes('"candidate"') && packet.includes('"second-candidate"'));
+	assert.equal(state.details, 0);
+	assert.equal(w.commands.length, 0);
+	fix.phase = "preparing";
+	const pending = (await tools.execute(
+		"inspect_suggested_fix",
+		JSON.stringify({ id: fix.id })
+	)) as { file: unknown; commandProposal: WorkspaceCommand };
+	assert.equal(pending.file, null);
+	assert(review.files.length > 0, "Even stale available review bytes must not become ready source");
+	assert.deepEqual(pending.commandProposal, {
+		kind: "open-center",
+		section: "fixes",
+		selectedId: fix.id,
+	});
+});

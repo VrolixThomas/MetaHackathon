@@ -744,7 +744,26 @@ export class ConversationService {
 					: undefined;
 				const recovery = { used: false };
 				const reviewPorts = this.options.review;
-				const runReview = async (prId: string, reviewHistory: MetaItem[]) => {
+				let returnedToWorkspace = false;
+				const runWorkspace = (
+					workspaceHistory: MetaItem[],
+					observation: import("../../shared/contracts").WorkspaceObservation | undefined
+				): Promise<string> =>
+					runWorkspaceConversation(
+						client,
+						workspace,
+						turn.input,
+						workspaceHistory,
+						signal,
+						onText,
+						reviewPorts ? runReview : undefined,
+						recovery,
+						hub,
+						observation,
+						session.profile,
+						trace
+					);
+				const runReview = async (prId: string, reviewHistory: MetaItem[]): Promise<string> => {
 					if (!reviewPorts) throw new GuidedReviewError("Review source is not connected.");
 					const reply = await runGuidedReview(
 						client,
@@ -760,6 +779,15 @@ export class ConversationService {
 						onText,
 						{
 							state: session.walkthrough,
+							onWorkspace: async (nextHistory, observation) => {
+								throwIfAborted(signal);
+								if (returnedToWorkspace)
+									throw new GuidedReviewError(
+										"The workspace changed repeatedly. Continue from the current view."
+									);
+								returnedToWorkspace = true;
+								return runWorkspace(nextHistory, observation);
+							},
 							onNarration,
 							workspace,
 							hub,
@@ -782,21 +810,7 @@ export class ConversationService {
 						: undefined
 					: turn.input.prId;
 				if (effectivePrId && reviewPorts) await runReview(effectivePrId, history);
-				else if (workspace || hub)
-					await runWorkspaceConversation(
-						client,
-						workspace,
-						turn.input,
-						history,
-						signal,
-						onText,
-						reviewPorts ? runReview : undefined,
-						recovery,
-						hub,
-						observed,
-						session.profile,
-						trace
-					);
+				else if (workspace || hub) await runWorkspace(history, observed);
 				if (!this.active(session, turn)) return;
 				if ((hub?.hasAnnouncements || turn.input.inputMode === "voice") && turn.text.trim()) {
 					if (onNarration && narratedThrough < turn.text.length)

@@ -18,14 +18,11 @@ import {
 	ReviewProgressSchema,
 	type ReviewScreen,
 	ReviewScreenSchema,
+	type WorkspaceObservation,
 } from "../../shared/contracts";
 import { abortable, throwIfAborted } from "./cancellation";
 import { COPARTNER_INSTRUCTIONS } from "./foreground-dialogue";
-import {
-	ForegroundProfile,
-	PROFILE_INSTRUCTIONS,
-	SOURCE_WORKFLOW_INSTRUCTIONS,
-} from "./foreground-profile";
+import { ForegroundProfile, PROFILE_INSTRUCTIONS } from "./foreground-profile";
 import type { ConversationHubTools } from "./hub-tools";
 import {
 	type AgentModelClient,
@@ -96,6 +93,7 @@ export interface WalkthroughState {
 }
 export interface GuidedReviewWorkflow {
 	state: WalkthroughState;
+	onWorkspace?: (history: MetaItem[], observation: WorkspaceObservation) => Promise<string>;
 	onNarration?: (throughTextLength: number, screenSequence: number) => Promise<void>;
 	workspace?: ConversationWorkspaceTools;
 	hub?: ConversationHubTools;
@@ -337,12 +335,22 @@ export async function runGuidedReview(
 			(base, head) => {
 				if (snapshot.review) workspace?.allowSource(snapshot.review, source.file, base, head);
 			},
-			profile.context(hub?.context)
+			{
+				...profile.context(hub?.context),
+				...(profile.candidateWorkflow
+					? { currentContext: await hub?.currentContext(observation) }
+					: {}),
+			}
 		);
 		const emitText = async (delta: string) => {
 			if (!delta || !onText) return;
+			if (profile.candidateWorkflow) await hub?.currentContext(await workspace?.observe());
 			assertSameScreen(snapshot.screen, await screen(ports, input, signal));
-			if (workspace && observation && (workspaceEffectApplied || terminalAnswer)) {
+			if (
+				workspace &&
+				observation &&
+				(workspaceEffectApplied || terminalAnswer || profile.candidateWorkflow)
+			) {
 				const current = (await workspace.observe()).workspace;
 				if (
 					(current.contentSequence ?? current.sequence) !==
@@ -358,7 +366,7 @@ export async function runGuidedReview(
 		const request = {
 			requestId: `${input.requestId}:review:${modelAttempt++}`,
 			workload: "quick" as const,
-			instructions: `${profile.sourceWorkflow ? SOURCE_WORKFLOW_INSTRUCTIONS : `${workspace || hub ? `${INSTRUCTIONS}\n${WORKSPACE_INSTRUCTIONS}` : INSTRUCTIONS}\n${COPARTNER_INSTRUCTIONS}\n${PROFILE_INSTRUCTIONS}`}${terminalAnswer ? "\nTool budget is exhausted. Answer from actual results only, briefly naming any unfinished part. Do not claim rejected or unacknowledged effects succeeded." : `\nAt most ${toolRoundLimit - round} tool calls remain, plus one final answer.${profile.sourceWorkflow ? "" : " Inspect missing links before proposing a source flow."}`}`,
+			instructions: `${profile.sourceWorkflow ? profile.workflowInstructions : `${workspace || hub ? `${INSTRUCTIONS}\n${WORKSPACE_INSTRUCTIONS}` : INSTRUCTIONS}\n${COPARTNER_INSTRUCTIONS}\n${PROFILE_INSTRUCTIONS}`}${terminalAnswer ? "\nTool budget is exhausted. Answer from actual results only, briefly naming any unfinished part. Do not claim rejected or unacknowledged effects succeeded." : `\nAt most ${toolRoundLimit - round} tool calls remain, plus one final answer.${profile.sourceWorkflow ? "" : " Inspect missing links before proposing a source flow."}`}`,
 			input: modelInput,
 			tools: answerOnly
 				? profile.tools([])
@@ -524,6 +532,13 @@ export async function runGuidedReview(
 				output: JSON.stringify({ status: "applied", workspaceSequence: result.workspace.sequence }),
 			});
 			workspaceEffectApplied = true;
+			throwIfAborted(signal);
+			const primary = result.workspace.canvases.find(
+				(canvas) => canvas.id === result.workspace.primaryId
+			);
+			if (primary?.kind === "center" && workflow?.onWorkspace)
+				return workflow.onWorkspace(history, result);
+
 			if (call.name === "open_ready_review" && result.workspace.review.prId) {
 				input = { ...input, prId: result.workspace.review.prId, screen: result.workspace.review };
 				pinned = undefined;
