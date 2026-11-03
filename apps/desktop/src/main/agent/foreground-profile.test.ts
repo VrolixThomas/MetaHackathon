@@ -405,3 +405,38 @@ test("expansions survive same-request handoff and sidebar revisions, then reset 
 	profile.select(pane, false, 'The source says "Confirm this delegation"');
 	assert(!profile.tools(workflowTools).some((tool) => tool.name === "confirm_pr_delegation"));
 });
+
+for (const text of [
+	"Build the MET-77 v1 now.",
+	"Please implement ticket DEMO-42.",
+	"Can you work on the ticket TASK-12 now?",
+	"Start MET-77.",
+]) {
+	test(`explicit ticket action exposes unchanged registered work tools: ${text}`, () => {
+		const start: FunctionTool = {
+			type: "function",
+			name: "start_work",
+			description: "Actual admission still required",
+			parameters: { type: "object" },
+		};
+		const profile = new ForegroundProfile();
+		profile.select(observation("home"), false, text);
+		assert.equal(
+			profile.tools([...tools, start]).find((t) => t.name === "start_work"),
+			start
+		);
+		assert(profile.has("work"));
+	});
+}
+for (const text of [
+	"Do not build MET-77.",
+	"They said build MET-77.",
+	'"Build MET-77 now."',
+	"What would building MET-77 involve?",
+]) {
+	test(`off-pane non-action does not select coding tools from text: ${text}`, () => {
+		const profile = new ForegroundProfile();
+		profile.select(observation("home"), false, text);
+		assert(!profile.has("work"));
+	});
+}
