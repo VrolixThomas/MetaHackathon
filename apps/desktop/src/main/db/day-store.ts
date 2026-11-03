@@ -1,5 +1,10 @@
 import type Database from "better-sqlite3";
 import { type DayState, parseDayState } from "../day/model";
+import {
+	type StandingState,
+	emptyStandingState,
+	parseStandingState,
+} from "../day/standing-clarification";
 
 export const MAX_DAY_STATE_BYTES = 32 * 1024 * 1024;
 /** Root registers this additive migration on the existing SQLite connection before creating DayStore. */
@@ -9,12 +14,35 @@ export const DAY_STORE_MIGRATION_SQL = `
 		sequence INTEGER NOT NULL CHECK(sequence>=0),
 		data_json TEXT NOT NULL
 	);
+ CREATE TABLE IF NOT EXISTS standing_clarification_state (id INTEGER PRIMARY KEY CHECK(id=1), data_json TEXT NOT NULL);
 `;
 const STORED = "Stored day data is invalid or unreadable; existing records were preserved";
 const INPUT = "Day data is invalid or could not be saved; existing records were preserved";
 
 export class DayStore {
 	constructor(private readonly sqlite: Database.Database) {}
+	async standingTransaction<T>(mutate: (state: StandingState) => T): Promise<T> {
+		return this.sqlite.transaction(() => {
+			const row = this.sqlite
+				.prepare("SELECT data_json FROM standing_clarification_state WHERE id=1")
+				.get() as { data_json: string } | undefined;
+			if (row && Buffer.byteLength(row.data_json) > MAX_DAY_STATE_BYTES) throw new Error(STORED);
+			const state = row ? parseStandingState(JSON.parse(row.data_json)) : emptyStandingState();
+			const result = mutate(state);
+			if (result && typeof result === "object" && "then" in result)
+				throw new Error("Standing transactions must be synchronous");
+			const copy = structuredClone(result);
+			const data = JSON.stringify(parseStandingState(state));
+			if (Buffer.byteLength(data) > MAX_DAY_STATE_BYTES) throw new Error(INPUT);
+			if (data !== row?.data_json)
+				this.sqlite
+					.prepare(
+						"INSERT INTO standing_clarification_state(id,data_json) VALUES(1,?) ON CONFLICT(id) DO UPDATE SET data_json=excluded.data_json"
+					)
+					.run(data);
+			return copy;
+		})();
+	}
 	async loadState(): Promise<DayState | null> {
 		try {
 			return this.sqlite.transaction(() => {
