@@ -1234,3 +1234,46 @@ describe("review navigation, actual progress and canonical screens", () => {
 		assert.equal(calls, 2);
 	});
 });
+
+describe("operation-scoped navigation preparation", () => {
+	it("returns matching review/navigation with exactly one live check per operation", async (t) => {
+		const h = harness(t);
+		await h.coordinator.connect({ repository: repo });
+		await ready(h.coordinator);
+		let reads = 0;
+		h.ports.readPR = async () => {
+			reads++;
+			return pr();
+		};
+		const result = await h.coordinator.prepareNavigation(
+			pr().id,
+			{ path: "src/second.ts" },
+			signal()
+		);
+		assert.equal(reads, 1);
+		assert.equal(result.navigation.reviewId, result.review.id);
+		assert.equal(result.navigation.path, "src/second.ts");
+		await h.coordinator.prepareNavigation(pr().id, {}, signal());
+		assert.equal(reads, 2);
+		h.state.current.set(pr().id, pr(1, nextHead));
+		h.ports.readPR = async () => pr(1, nextHead);
+		await assert.rejects(h.coordinator.prepareNavigation(pr().id, {}, signal()), /changed/);
+	});
+	it("rejects cancellation while the shared check is pending", async (t) => {
+		const h = harness(t);
+		await h.coordinator.connect({ repository: repo });
+		await ready(h.coordinator);
+		const pending = deferred<PullRequest>();
+		let started = false;
+		h.ports.readPR = async () => {
+			started = true;
+			return pending.promise;
+		};
+		const abort = new AbortController();
+		const operation = h.coordinator.prepareNavigation(pr().id, {}, abort.signal);
+		await until(() => started);
+		abort.abort();
+		pending.resolve(pr());
+		await assert.rejects(operation, /cancel/);
+	});
+});

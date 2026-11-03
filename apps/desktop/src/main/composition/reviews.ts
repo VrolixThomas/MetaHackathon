@@ -831,53 +831,75 @@ export class ReviewCoordinator {
 			return this.commitProgress(entry, review, input.path, input.paused, signal);
 		});
 	}
+	/** One live authorization/revision check for workspace preparation and target selection.
+	 * Main-only seam: callers must still validate the displayed/durable receipt separately.
+	 */
+	prepareNavigation(
+		prId: string,
+		raw: z.infer<typeof NavigateSchema>,
+		caller: AbortSignal
+	): Promise<{ review: PreparedReview; navigation: ReviewNavigation }> {
+		return this.request(async (signal) => {
+			const input = NavigateSchema.parse(raw);
+			const { entry, review } = await this.ready(prId, signal);
+			const navigation = await this.navigation(entry, review, input, signal);
+			this.current(entry, signal);
+			return { review: clone(review), navigation };
+		}, caller);
+	}
 	navigate(
 		prId: string,
 		raw: z.infer<typeof NavigateSchema>,
 		caller: AbortSignal
 	): Promise<ReviewNavigation> {
-		return this.request(async (signal) => {
-			const input = NavigateSchema.parse(raw);
-			const { entry, review } = await this.ready(prId, signal);
-			const paths = review.files.map((file) => file.path);
-			const previous = entry.progress?.path;
-			let index = previous ? Math.max(0, paths.indexOf(previous)) : 0;
-			if (input.direction === "start") index = 0;
-			if (input.direction === "next" && previous) index = Math.min(paths.length - 1, index + 1);
-			if (input.direction === "previous") index = Math.max(0, index - 1);
-			const path = input.path ?? paths[index];
-			if (!path) fail("This prepared review has no readable files.");
-			this.assertPath(review, review.id, path);
-			let highlight: ReviewNavigation["highlight"];
-			if (input.line) {
-				const side = input.side ?? "head";
-				const file = await this.readFile(entry, review, path, signal);
-				const source = file[side];
-				const lines = source.content
-					? source.content.split("\n").length - (source.content.endsWith("\n") ? 1 : 0)
-					: 0;
-				if (source.status !== "available" || input.line > lines)
-					fail("That line is unavailable in the pinned file. Choose an existing line.");
-				highlight = {
-					repository: review.pr.repository,
-					revision: side,
-					commitSha: source.commitSha,
-					path: source.path,
-					startLine: input.line,
-					endLine: input.line,
-				};
-			}
-			return ReviewNavigationSchema.parse({
-				reviewId: review.id,
-				prId,
-				baseSha: review.pr.baseSha,
-				headSha: review.pr.headSha,
-				path,
-				paused: input.direction === "pause",
-				...(highlight ? { highlight } : {}),
-			});
-		}, caller);
+		return this.prepareNavigation(prId, raw, caller).then(({ navigation }) => navigation);
 	}
+	private async navigation(
+		entry: Entry,
+		review: PreparedReview,
+		input: z.infer<typeof NavigateSchema>,
+		signal: AbortSignal
+	): Promise<ReviewNavigation> {
+		const prId = review.pr.id;
+		const paths = review.files.map((file) => file.path);
+		const previous = entry.progress?.path;
+		let index = previous ? Math.max(0, paths.indexOf(previous)) : 0;
+		if (input.direction === "start") index = 0;
+		if (input.direction === "next" && previous) index = Math.min(paths.length - 1, index + 1);
+		if (input.direction === "previous") index = Math.max(0, index - 1);
+		const path = input.path ?? paths[index];
+		if (!path) fail("This prepared review has no readable files.");
+		this.assertPath(review, review.id, path);
+		let highlight: ReviewNavigation["highlight"];
+		if (input.line) {
+			const side = input.side ?? "head";
+			const file = await this.readFile(entry, review, path, signal);
+			const source = file[side];
+			const lines = source.content
+				? source.content.split("\n").length - (source.content.endsWith("\n") ? 1 : 0)
+				: 0;
+			if (source.status !== "available" || input.line > lines)
+				fail("That line is unavailable in the pinned file. Choose an existing line.");
+			highlight = {
+				repository: review.pr.repository,
+				revision: side,
+				commitSha: source.commitSha,
+				path: source.path,
+				startLine: input.line,
+				endLine: input.line,
+			};
+		}
+		return ReviewNavigationSchema.parse({
+			reviewId: review.id,
+			prId,
+			baseSha: review.pr.baseSha,
+			headSha: review.pr.headSha,
+			path,
+			paused: input.direction === "pause",
+			...(highlight ? { highlight } : {}),
+		});
+	}
+
 	private validateScreen(screen: ReviewScreen) {
 		if (screen.mode === "review" || screen.reviewId !== undefined) {
 			const entry = screen.prId ? this.entry(screen.prId) : undefined;
