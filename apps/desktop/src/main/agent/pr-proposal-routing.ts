@@ -4,6 +4,10 @@ export function conditionalPRProposalRequested(text: string): boolean {
 	const request = text
 		.trim()
 		.replace(
+			/^(?:for|on)\s+(?:this\s+|the\s+)?(?:reviewed\s+)?(?:head\s+of\s+)?(?:PR|pull request)\s*#?\d+\s*,\s*/i,
+			""
+		)
+		.replace(
 			/^(?:(?:please\s+)?(?:(?:can|could|would|will) you\s+)?(?:please\s+)?)open\b[^.!?\n;]{0,200}(?:[.!?;]\s*|\s+and\s+)(?=(?:(?:can|could|would|will) you\s+)?(?:please\s+)?(?:set|configure|draft|edit|update|change|prepare|create|approve|notify|watch|monitor)\b)/i,
 			""
 		);

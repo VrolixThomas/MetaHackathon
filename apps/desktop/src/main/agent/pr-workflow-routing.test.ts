@@ -445,6 +445,13 @@ for (const [text, workload] of [
 		"deep",
 	],
 	["Approve automatically only when demo-checks passes, expiring in one hour.", "deep"],
+	[
+		"For this reviewed head of PR 3, approve automatically only when demo-checks succeeds, expiring in one hour. Do not merge.",
+		"deep",
+	],
+	["On PR #3, please set a notification when CI passes within an hour.", "deep"],
+	["For this reviewed head of PR 3, why would approval require passing checks?", "quick"],
+	["On PR #3, do not approve automatically when checks pass.", "quick"],
 	["Edit this delegation to notify only when demo-checks passes, expiring in one hour.", "deep"],
 	["How do I set a follow-up to notify me when demo-checks passes?", "quick"],
 	["Can you explain why automatic approval waits for checks?", "quick"],
