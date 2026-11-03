@@ -21,7 +21,7 @@ import type {
 	WorkspaceCommand,
 	WorkspaceObservation,
 } from "../../shared/contracts";
-import { ApprovalConfirmation } from "../work/pr-approvals/confirmation";
+import { ApprovalConfirmation, approvalProposal } from "../work/pr-approvals/confirmation";
 import {
 	at as approvalAt,
 	harness as approvalHarness,
@@ -5180,7 +5180,7 @@ for (const inputMode of ["typed", "voice"] as const) {
 				assert.equal(approval.p.confirmedAt, null);
 				const text = service.poll(identity(draft)).text;
 				if (inputMode === "voice")
-					assert.equal(text.split("Delegate notification only").length - 1, 1);
+					assert.equal(text.split(approvalProposal(approval.p)).length - 1, 1);
 				else assert.match(text, /notification-only proposal.*new turn/);
 				service.start(confirm);
 				if (inputMode === "voice") await drain(confirm, 0);
