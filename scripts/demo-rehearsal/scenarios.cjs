@@ -178,12 +178,7 @@ async function full(d) {
 }
 async function collaboration(d) {
 	const { say, rpc, wait, state, report, assert } = d;
-	if (!d.skipFix) {
-		await say(
-			"Prepare a suggested fix for the reviewer feedback on my Slack-capture PR. Keep it local and run its real checks.",
-			{ id: "proposed-fix" }
-		);
-	}
+	if (!d.skipFix) await prepareFix(d);
 	await say(
 		"Open the source-link PR, number 3. Set a follow-up to notify me only once demo-checks succeeds, expiring in one hour. Do not approve or merge.",
 		{ id: "approval-proposal" }
@@ -461,11 +456,19 @@ async function reviewFix(d) {
 		passed: true,
 	});
 }
-async function fix(d) {
+async function prepareFix(d) {
 	await d.say(
 		"Prepare a suggested fix for the reviewer feedback on my Slack-capture PR. Keep it local and run its real checks.",
 		{ id: "proposed-fix" }
 	);
+	const candidate = (await d.rpc("query", "prFixes.list")).find(
+		(f) => f.pr.id === d.fixture.pulls[1].id
+	);
+	d.assert(candidate, "Preparing a fix must return an actual durable candidate admission");
+	d.report.fixAdmission = { id: candidate.id, phase: candidate.phase, prId: candidate.pr.id };
+}
+async function fix(d) {
+	await prepareFix(d);
 	await reviewFix(d);
 	d.assert.equal(d.report.simulatedWrites.length, 0, "Local fix must not publish or send");
 }

@@ -535,3 +535,36 @@ test("full source flows get focused reasoning guidance without affecting ordinar
 		assert(!profile.sourceFlowWorkflow);
 	}
 });
+
+test("explicit reviewer-feedback fixes expose preparation tools from a browser or fix pane", () => {
+	const view = observation("home");
+	const prepare =
+		"Prepare a suggested fix for the reviewer feedback on my Slack-capture PR. Keep it local and run its real checks.";
+	const profile = new ForegroundProfile();
+	profile.select(view, false, prepare);
+	assert(profile.feedbackWorkflow);
+	assert(profile.has("reviews"));
+	assert.match(profile.workflowInstructions, /inspect_pr_feedback/);
+	assert.match(profile.workflowInstructions, /start_feedback_work/);
+	view.workspace.canvases = [
+		{
+			id: "home",
+			kind: "center",
+			title: "Existing fix",
+			revision: 1,
+			section: "fixes",
+			selectedId: "old-fix",
+		},
+	];
+	profile.select(view, false, prepare);
+	assert(profile.feedbackWorkflow);
+	assert(!profile.candidateWorkflow);
+	for (const text of [
+		"What fix would you suggest for that feedback?",
+		"Don't prepare a fix for the feedback.",
+		'They said "prepare a fix for the feedback".',
+	]) {
+		profile.select(observation("home"), false, text);
+		assert(!profile.feedbackWorkflow);
+	}
+});

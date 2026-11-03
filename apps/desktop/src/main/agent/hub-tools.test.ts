@@ -3876,10 +3876,9 @@ for (const inputMode of ["typed", "voice"] as const) {
 					assert.ok(Date.parse(clock.observedAt) >= Date.parse(clock.turnReferenceAt));
 					assert.ok(Date.parse(clock.observedAt) <= Date.now());
 				}
-				assert.match(
-					required(requests[0]).instructions,
-					/exact duration and UTC timestamp without rounding/
-				);
+				assert.match(required(requests[0]).instructions, /inspect_pr_feedback/);
+				assert.match(required(requests[0]).instructions, /start_feedback_work/);
+				assert.equal(required(requests[0]).workload, "conversation");
 				assert.equal(starts, 1);
 				assert.equal(lists, 0);
 				assert.equal(details, 0);

@@ -269,6 +269,7 @@ export async function runWorkspaceConversation(
 				profile.workWorkflow && !answerOnly
 					? ("deep" as const)
 					: profile.sourceFlowWorkflow ||
+							profile.feedbackWorkflow ||
 							(answerOnly && (!directNavigation || directNavigation.discussion))
 						? ("conversation" as const)
 						: ("quick" as const),
