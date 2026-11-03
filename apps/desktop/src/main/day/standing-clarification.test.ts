@@ -1,5 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
+import type { DayClarification } from "../../shared/contracts/day";
+import { standingClarificationChild } from "./clarification";
 import {
 	type StandingCandidate,
 	StandingClarification,
@@ -418,4 +420,64 @@ test("a reply in an already-admitted thread cannot create a second child", async
 	c.message.citation.source.threadId = "1.000001";
 	assert.equal(await h.service.admit(policy.id, c), null);
 	assert.equal(h.state().admissions.length, 1);
+});
+
+test("child authorization binds immutable parent scope, source, limits, revision and expiration", async () => {
+	const h = await harness();
+	const c = candidate();
+	const a = await h.service.admit(policy.id, c);
+	assert.ok(a);
+	const child = standingClarificationChild(policy, a, c.read);
+	assert.equal(await h.service.authorizeChild(child, actor, policy.connectionId, a.itemId), true);
+	for (const mutate of [
+		(v: DayClarification) => {
+			v.policy.scope = "Expanded scope";
+		},
+		(v: DayClarification) => {
+			v.policy.id = "another-child";
+		},
+		(v: DayClarification) => {
+			v.policy.revision++;
+		},
+		(v: DayClarification) => {
+			v.policy.maxMessages++;
+		},
+		(v: DayClarification) => {
+			v.policy.durationMinutes++;
+		},
+		(v: DayClarification) => {
+			v.expiresAt = iso(700000);
+		},
+		(v: DayClarification) => {
+			v.confirmedAt = iso();
+		},
+		(v: DayClarification) => {
+			v.policy.source.revisionId = "changed";
+		},
+		(v: DayClarification) => {
+			v.policy.standingAuthority = { ruleId: "wrong", ruleRevision: 1, admissionId: a.id };
+		},
+	]) {
+		const changed = structuredClone(child);
+		mutate(changed);
+		assert.equal(
+			await h.service.authorizeChild(changed, actor, policy.connectionId, a.itemId),
+			false
+		);
+	}
+	await h.service.revoke(policy.id, actor);
+	assert.equal(await h.service.authorizeChild(child, actor, policy.connectionId, a.itemId), false);
+});
+
+test("listing is detached and excludes other selected actors and connections", async () => {
+	const h = await harness();
+	await h.service.propose({ ...policy, id: "other-rule", actor: { ...actor, userId: "U2" } });
+	const rows = await h.service.list(actor, policy.connectionId);
+	assert.deepEqual(
+		rows.map((r) => r.policy.id),
+		[policy.id]
+	);
+	first(rows).policy.scope = "Tampered local copy";
+	assert.equal(first(await h.service.list(actor)).policy.scope, policy.scope);
+	assert.equal((await h.service.list(actor, "another-connection")).length, 0);
 });

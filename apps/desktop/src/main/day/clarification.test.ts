@@ -10,9 +10,12 @@ import {
 	type ClarificationAnalysis,
 	analyzeClarification,
 	clarificationFailureCategory,
+	standingClarificationChild,
 } from "./clarification";
 import { type DayState, parseDayState, sha256 } from "./model";
 import { type DayPorts, DayService } from "./service";
+
+import type { StandingAdmission, StandingRulePolicy } from "./standing-clarification";
 
 const actor = { workspaceId: "T123", userId: "U123" };
 const start = "2026-11-01T16:00:00.000Z";
@@ -1109,4 +1112,64 @@ test("cancellation at either attempt boundary prevents a correction or analysis 
 			await h.close();
 		}
 	}
+});
+
+test("standing child factory preserves exact evidence and parent authority without per-thread confirmation", () => {
+	const original = message();
+	const source = original.citation.source;
+	const policy: StandingRulePolicy = {
+		id: "parent-rule",
+		revision: 2,
+		actor,
+		connectionId: "connection-1",
+		channelId: source.conversationId,
+		scope: "Ask only for reproduction context",
+		durationMinutes: 10,
+		messagesPerThread: 2,
+		globalMessageBudget: 4,
+		maxThreads: 2,
+		sendAuthority: "clarification-only-original-thread",
+	};
+	const admission: StandingAdmission = {
+		id: "reserved-child",
+		ruleId: policy.id,
+		ruleRevision: policy.revision,
+		itemId: "item-1",
+		source,
+		sourceDigest: sha256(JSON.stringify(original)),
+		threadKey: "thread-key",
+		reservedMessages: 2,
+		admittedAt: start,
+		expiresAt: "2026-11-01T16:10:00.000Z",
+		authority: "standing-rule",
+	};
+	const read = { connectionId: policy.connectionId, messages: [original], complete: true };
+	const child = standingClarificationChild(policy, admission, read);
+	assert.equal(child.confirmedAt, null);
+	assert.equal(child.status, "active");
+	assert.deepEqual(child.policy.standingAuthority, {
+		ruleId: policy.id,
+		ruleRevision: 2,
+		admissionId: admission.id,
+	});
+	assert.equal(child.policy.originalRequest, original.text);
+	assert.equal(child.expiresAt, admission.expiresAt);
+	assert.equal(child.policy.maxMessages, admission.reservedMessages);
+	assert.deepEqual(child.evidence, read.messages);
+	assert.throws(() =>
+		standingClarificationChild({ ...policy, id: "wrong-parent" }, admission, read)
+	);
+	assert.throws(() =>
+		standingClarificationChild(policy, { ...admission, reservedMessages: 3 }, read)
+	);
+	assert.throws(() => standingClarificationChild(policy, admission, { ...read, complete: false }));
+	assert.throws(() =>
+		standingClarificationChild(policy, admission, { ...read, connectionId: "other-account" })
+	);
+	assert.throws(() =>
+		standingClarificationChild(policy, admission, {
+			...read,
+			messages: [{ ...original, text: "Changed" }],
+		})
+	);
 });

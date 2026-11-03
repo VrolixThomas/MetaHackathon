@@ -1,8 +1,9 @@
 import { z } from "zod";
 import { ChatMessageSchema } from "../../shared/contracts/chat";
-import type { DayClarification } from "../../shared/contracts/day";
+import { type DayClarification, DayClarificationSchema } from "../../shared/contracts/day";
 import type { AgentModelClient } from "../agent/meta-client";
 import { sha256 } from "./model";
+import type { StandingAdmission, StandingRulePolicy } from "./standing-clarification";
 
 export const ClarificationReadSchema = z.strictObject({
 	connectionId: z.string().min(1).max(200),
@@ -208,4 +209,52 @@ export async function analyzeClarification(
 		signal.throwIfAborted();
 		return result;
 	}
+}
+
+/** Install only a newly returned durable reservation. Never call this to replay an orphan. */
+export function standingClarificationChild(
+	policy: StandingRulePolicy,
+	admission: StandingAdmission,
+	read: ClarificationRead
+): DayClarification {
+	const original = read.messages.find(
+		(m) => JSON.stringify(m.citation.source) === JSON.stringify(admission.source)
+	);
+	if (
+		!original ||
+		sha256(JSON.stringify(original)) !== admission.sourceDigest ||
+		admission.ruleId !== policy.id ||
+		admission.ruleRevision !== policy.revision ||
+		admission.reservedMessages !== policy.messagesPerThread ||
+		read.connectionId !== policy.connectionId ||
+		!read.complete
+	)
+		throw new Error("Standing child binding mismatch");
+	return DayClarificationSchema.parse({
+		policy: {
+			id: admission.id,
+			revision: 1,
+			actor: policy.actor,
+			connectionId: policy.connectionId,
+			source: admission.source,
+			originalRequest: original.text,
+			scope: policy.scope,
+			maxMessages: admission.reservedMessages,
+			durationMinutes: policy.durationMinutes,
+			sendAuthority: policy.sendAuthority,
+			standingAuthority: {
+				ruleId: policy.id,
+				ruleRevision: policy.revision,
+				admissionId: admission.id,
+			},
+		},
+		status: "active",
+		confirmedAt: null,
+		expiresAt: admission.expiresAt,
+		summary: "",
+		missing: [],
+		reason: null,
+		evidence: read.messages,
+		attempts: [],
+	});
 }

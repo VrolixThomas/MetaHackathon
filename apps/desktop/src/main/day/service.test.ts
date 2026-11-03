@@ -11,6 +11,15 @@ import {
 	DayService,
 } from "./service";
 
+import {
+	StandingClarification,
+	type StandingRulePolicy,
+	type StandingState,
+	emptyStandingState,
+	parseStandingState,
+	standingPolicyDigest,
+} from "./standing-clarification";
+
 const actor = { workspaceId: "test-workspace", userId: "current-user" };
 
 test("personal answer confirmation closes only source-less work and never records a Slack send", async () => {
@@ -1269,4 +1278,364 @@ test("a failed admitted worker is not reported as working or ready for review", 
 	assert.equal((await first(h.service)).reviewedAt, null);
 	assert.deepEqual(h.store.state?.records[0]?.preparation?.job?.checks, []);
 	await h.service.dispose();
+});
+
+// Controlled standing-rule integration: no Slack, model, native process or provider transport.
+async function standingHarness(activate = true) {
+	const h = harness();
+	const now = h.ports.now;
+	assert.ok(now);
+	let standingState = emptyStandingState();
+	let tail: Promise<unknown> = Promise.resolve();
+	const standing = new StandingClarification(
+		{
+			transaction<T>(mutate: (state: StandingState) => T): Promise<T> {
+				const task = tail
+					.catch(() => {})
+					.then(() => {
+						const next = structuredClone(standingState);
+						const result = mutate(next);
+						standingState = parseStandingState(next);
+						return result;
+					});
+				tail = task;
+				return task;
+			},
+		},
+		h.ports.now
+	);
+	const policy: StandingRulePolicy = {
+		id: "standing-rule",
+		revision: 1,
+		actor,
+		connectionId: "connection-1",
+		channelId: message().citation.source.conversationId,
+		scope: "Ask for missing reproduction context only",
+		durationMinutes: 10,
+		maxThreads: 2,
+		messagesPerThread: 2,
+		globalMessageBudget: 4,
+		sendAuthority: "clarification-only-original-thread",
+	};
+	await standing.propose(policy);
+	if (activate)
+		await standing.confirm(policy.id, {
+			kind: "explicit-standing-rule-confirmation",
+			requestId: "confirm-parent",
+			actor,
+			policyDigest: standingPolicyDigest(policy),
+			confirmedAt: timestamp,
+		});
+	h.advance();
+	let currentMessage = message();
+	currentMessage.citation.audience.visibility = "public_channel";
+	currentMessage.createdAt = new Date(now()).toISOString();
+	currentMessage.updatedAt = currentMessage.createdAt;
+	let access = true;
+	let selectedActor = actor;
+	let connectionId = "connection-1";
+	let classify = true;
+	let analyses = 0;
+	let accessReads = 0;
+	let beforeAnalyze: (() => Promise<void>) | undefined;
+	let beforeSend: ((input: DayReplyRequest) => Promise<void>) | undefined;
+	h.ports.standing = standing;
+	h.ports.classifyStandingIncoming = async (m) =>
+		classify
+			? {
+					kind: "incoming-request",
+					targetUserId: actor.userId,
+					source: m.citation.source,
+				}
+			: null;
+	h.ports.readStandingAccess = async (channelId) => {
+		accessReads++;
+		if (!access) throw new Error("Current membership unavailable");
+		return {
+			actor: selectedActor,
+			connectionId,
+			channelId,
+			joined: true,
+			canReply: true,
+			observedAt: new Date(now()).toISOString(),
+		};
+	};
+	h.ports.analyzeClarification = async () => {
+		analyses++;
+		await beforeAnalyze?.();
+		return {
+			summary: "Missing context",
+			missing: ["reproduction"],
+			questions: ["What are the reproduction steps?"],
+			escalation: null,
+		};
+	};
+	h.ports.replies = {
+		readClarification: async () => {
+			const m = structuredClone(currentMessage);
+			m.citation.audience.observedAt = new Date(now()).toISOString();
+			return { connectionId, messages: [m], complete: true };
+		},
+		send: async (input) => {
+			await beforeSend?.(input);
+			const key = `${connectionId}:${input.requestId}`;
+			const binding = sha256(JSON.stringify([input.source, input.body]));
+			assert.deepEqual(await h.service.replyLedger.reserve(key, binding), { state: "reserved" });
+			await h.service.replyLedger.authorize(key, binding);
+			h.calls.sends.push(input);
+			const proof = receipt(input);
+			await h.service.replyLedger.delivered(key, binding, proof);
+			return proof;
+		},
+		reconcile: (input) => h.service.reconcileReply(input),
+	};
+	return {
+		...h,
+		standing,
+		policy,
+		state: () => structuredClone(standingState),
+		incoming: () => structuredClone(currentMessage),
+		capture: (requestId = "standing-capture") =>
+			h.service.capture({
+				requestId,
+				message: currentMessage,
+				kind: "request",
+				title: "Incoming request",
+				summary: "Context missing",
+			}),
+		setMessage: (m: ChatMessage) => {
+			currentMessage = m;
+		},
+		denyAccess: () => {
+			access = false;
+		},
+		changeActor: () => {
+			selectedActor = { ...actor, userId: "other-user" };
+		},
+		changeConnection: () => {
+			connectionId = "other-connection";
+		},
+		denyClassification: () => {
+			classify = false;
+		},
+		beforeAnalyze: (f: () => Promise<void>) => {
+			beforeAnalyze = f;
+		},
+		beforeSend: (f: (input: DayReplyRequest) => Promise<void>) => {
+			beforeSend = f;
+		},
+		counts: () => ({ analyses, accessReads }),
+	};
+}
+
+test("fresh trusted incoming request automatically installs a standing child and sends under parent authority only", async () => {
+	const h = await standingHarness();
+	try {
+		await h.capture();
+		const item = await first(h.service);
+		assert.equal(item.acceptance, "pending");
+		assert.equal(item.acceptedAt, null);
+		assert.equal(item.clarification?.status, "active");
+		assert.equal(item.clarification?.confirmedAt, null);
+		assert.equal(item.clarification?.policy.standingAuthority?.ruleId, h.policy.id);
+		assert.equal(h.state().admissions.length, 1);
+		await h.service.tick();
+		assert.equal(h.calls.sends.length, 1);
+		const outbox = h.store.state?.records[0]?.outbox[0];
+		assert.equal(outbox?.confirmedAt, null);
+		assert.deepEqual(
+			outbox?.clarification?.standingAuthority,
+			item.clarification?.policy.standingAuthority
+		);
+		assert.equal(h.calls.executes.length, 0);
+		assert.equal((await first(h.service)).answerReceipt, null);
+		assert.ok(h.counts().accessReads >= 5);
+		await h.capture("replayed-intake");
+		h.advance();
+		await h.service.tick();
+		assert.equal(h.calls.sends.length, 1);
+		assert.equal(h.state().admissions.length, 1);
+	} finally {
+		await h.service.dispose();
+	}
+});
+
+for (const denied of [
+	"unconfirmed",
+	"classifier",
+	"access",
+	"actor",
+	"connection",
+	"old",
+	"edited",
+] as const)
+	test(`automatic standing admission rejects ${denied} without granting ownership or spending budget`, async () => {
+		const h = await standingHarness(denied !== "unconfirmed");
+		try {
+			if (denied === "classifier") h.denyClassification();
+			if (denied === "access") h.denyAccess();
+			if (denied === "actor") h.changeActor();
+			if (denied === "connection") h.changeConnection();
+			if (denied === "old") h.setMessage(message());
+			if (denied === "edited")
+				h.setMessage({
+					...h.incoming(),
+					updatedAt: new Date(Date.parse(timestamp) + 2000).toISOString(),
+				});
+			await h.capture();
+			await h.service.tick();
+			assert.equal((await first(h.service)).clarification, undefined);
+			assert.equal((await first(h.service)).acceptance, "pending");
+			assert.equal(h.state().admissions.length, 0);
+			assert.equal(h.calls.sends.length, 0);
+		} finally {
+			await h.service.dispose();
+		}
+	});
+
+for (const boundary of [
+	"before-question",
+	"during-analysis",
+	"before-provider-reservation",
+	"expiry",
+	"membership",
+	"account",
+] as const)
+	test(`standing parent and fresh access fence ${boundary}`, async () => {
+		const h = await standingHarness();
+		try {
+			await h.capture();
+			const revoke = () => h.standing.revoke(h.policy.id, actor);
+			if (boundary === "before-question") await revoke();
+			if (boundary === "during-analysis") h.beforeAnalyze(revoke);
+			if (boundary === "before-provider-reservation") h.beforeSend(revoke);
+			if (boundary === "expiry") h.advance(600000);
+			if (boundary === "membership") h.denyAccess();
+			if (boundary === "account") h.changeActor();
+			if (boundary === "before-provider-reservation")
+				await assert.rejects(h.service.tick(), /checkpoints were retained/);
+			else await h.service.tick();
+			assert.equal(h.calls.sends.length, 0);
+			assert.equal(h.state().admissions.length, 1);
+			if (["before-question", "membership", "account", "expiry"].includes(boundary))
+				assert.equal(h.counts().analyses, 0);
+		} finally {
+			await h.service.dispose();
+		}
+	});
+
+test("failed child installation burns durable reservation; capture replay and restart never recover an orphan", async () => {
+	const h = await standingHarness();
+	try {
+		h.store.fail = (state) => !!state.records[0]?.item.clarification;
+		await h.capture();
+		assert.equal(h.state().admissions.length, 1);
+		assert.equal((await first(h.service)).clarification, undefined);
+		h.store.fail = undefined;
+		await h.capture("retry-intake");
+		await h.service.dispose();
+		const reopened = new DayService(h.ports);
+		try {
+			await reopened.capture({
+				requestId: "restart-intake",
+				message: h.incoming(),
+				kind: "request",
+				title: "Incoming request",
+				summary: "Context missing",
+			});
+			assert.equal((await first(reopened)).clarification, undefined);
+			await reopened.tick();
+			assert.equal(h.calls.sends.length, 0);
+			assert.equal(h.state().admissions.length, 1);
+		} finally {
+			await reopened.dispose();
+		}
+	} finally {
+		await h.service.dispose();
+	}
+});
+
+test("standing inventory is selected actor and optionally connection scoped", async () => {
+	const h = await standingHarness();
+	try {
+		await h.standing.propose({
+			...h.policy,
+			id: "other-actor-rule",
+			actor: { ...actor, userId: "other-user" },
+		});
+		assert.deepEqual(
+			(await h.service.listStandingRules()).map((r) => r.policy.id),
+			[h.policy.id]
+		);
+		assert.equal((await h.service.listStandingRules("other-connection")).length, 0);
+	} finally {
+		await h.service.dispose();
+	}
+});
+
+test("standing provider reservation without a receipt survives restart and never automatically sends again", async () => {
+	const h = await standingHarness();
+	try {
+		await h.capture();
+		h.beforeSend(async (input) => {
+			await h.service.replyLedger.reserve(
+				`connection-1:${input.requestId}`,
+				sha256(JSON.stringify([input.source, input.body]))
+			);
+			throw new Error("Crash after provider reservation");
+		});
+		await assert.rejects(h.service.tick());
+		assert.equal(h.store.state?.records[0]?.outbox[0]?.status, "uncertain");
+		assert.ok(h.store.state?.records[0]?.outbox[0]?.providerKey);
+		await h.service.dispose();
+		const reopened = new DayService(h.ports);
+		assert.ok(h.ports.replies);
+		h.ports.replies.reconcile = (input) => reopened.reconcileReply(input);
+		h.ports.replies.send = async () => {
+			assert.fail("An uncertain standing send must not replay");
+		};
+		try {
+			h.advance(60000);
+			await assert.rejects(reopened.tick());
+			assert.equal((await first(reopened)).clarification?.reason, "uncertain_send");
+			assert.equal(h.store.state?.records[0]?.outbox[0]?.status, "uncertain");
+			assert.equal(
+				h.state().admissions.reduce((n, a) => n + a.reservedMessages, 0),
+				2
+			);
+			assert.equal(h.calls.sends.length, 0);
+		} finally {
+			await reopened.dispose();
+		}
+	} finally {
+		await h.service.dispose();
+	}
+});
+
+test("automatic admissions consume the global reservation budget even before any questions are sent", async () => {
+	const h = await standingHarness();
+	try {
+		for (let n = 1; n <= 3; n++) {
+			const m = h.incoming();
+			m.citation.source.messageId = `incoming-${n}`;
+			m.citation.source.revisionId = `revision-${n}`;
+			h.setMessage(m);
+			await h.capture(`capture-${n}`);
+		}
+		const items = (await h.service.snapshot()).items;
+		assert.equal(items.length, 3);
+		assert.equal(items.filter((i) => i.clarification?.status === "active").length, 2);
+		assert.equal(
+			h.state().admissions.reduce((n, a) => n + a.reservedMessages, 0),
+			4
+		);
+		assert.equal(h.calls.sends.length, 0);
+		await h.standing.revoke(h.policy.id, actor);
+		assert.equal(
+			h.state().admissions.reduce((n, a) => n + a.reservedMessages, 0),
+			4
+		);
+	} finally {
+		await h.service.dispose();
+	}
 });

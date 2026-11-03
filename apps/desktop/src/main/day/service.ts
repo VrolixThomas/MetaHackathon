@@ -9,6 +9,7 @@ import {
 	WorkJobSchema,
 } from "../../shared/contracts";
 import {
+	type ChatMessage,
 	type ChatReplyReceipt,
 	ChatReplyReceiptSchema,
 	type ChatSource,
@@ -37,6 +38,7 @@ import {
 	clarificationDigest,
 	clarificationFailureCategory,
 	clarificationFailureIssues,
+	standingClarificationChild,
 } from "./clarification";
 import {
 	type DayCapture,
@@ -50,6 +52,12 @@ import {
 	sha256,
 	sourceKey,
 } from "./model";
+import {
+	type StandingAccess,
+	StandingAccessSchema,
+	type StandingCandidate,
+	type StandingClarification,
+} from "./standing-clarification";
 import { type DayAvailability, DaySupervisor } from "./supervisor";
 
 export interface DayPreparationRequest {
@@ -116,6 +124,15 @@ export interface DayReplyPort {
 	>;
 }
 export interface DayPorts {
+	/** Main-only optional hooks. No renderer/model-supplied classification or access authority. */
+	standing?: StandingClarification;
+	/** Resolve the original trusted classifier binding for these exact source bytes. Never infer authority from mentions/text. */
+	classifyStandingIncoming?(
+		message: ChatMessage,
+		signal: AbortSignal
+	): Promise<StandingCandidate["classification"] | null>;
+	/** Query selected account/connection and current joined channel/reply permission; fail closed on account errors. */
+	readStandingAccess?(channelId: string, signal: AbortSignal): Promise<StandingAccess>;
 	store: Pick<DayStore, "loadState" | "saveState">;
 	actor: DayActor;
 	availability(): DayAvailability;
@@ -178,6 +195,9 @@ export class DayService {
 					!this.replyEligible(record, reply)
 				)
 					throw unavailable();
+				await this.authorizeStandingReply(record, reply, this.lifetime.signal);
+				const latest = this.ledgerReply(this.state, key, binding);
+				if (!this.replyEligible(latest.record, latest.reply)) throw unavailable();
 			},
 			reserve: (key, binding) => this.reserveReply(key, binding),
 			delivered: (key, binding, receipt) => this.providerDelivered(key, binding, receipt),
@@ -410,6 +430,7 @@ export class DayService {
 				ownPromise,
 			])
 		);
+		let created = false;
 		const itemId = await this.update((state) => {
 			this.assertOpen();
 			const replay = this.replay(state, input.requestId, digest);
@@ -493,6 +514,7 @@ export class DayService {
 					ownPromise,
 				});
 				state.records.push(record);
+				created = true;
 			}
 			record.sourceUpdatedAt = message.updatedAt;
 			record.sourceDigest = sourceDigest;
@@ -504,7 +526,131 @@ export class DayService {
 			this.remember(state, input.requestId, digest, record.item.id);
 			return record.item.id;
 		});
+		if (created && ["request", "coding"].includes(input.kind) && !ownPromise) {
+			const signal = AbortSignal.any([
+				this.lifetime.signal,
+				AbortSignal.timeout(Math.max(1000, this.ports.operationTimeoutMs ?? 30_000)),
+			]);
+			// Capture remains durable if admission fails. Do not replay a potentially burned reservation.
+			try {
+				await this.admitStandingRequest(itemId, message, signal);
+			} catch {
+				this.ensureAvailable(this.lifetime.signal);
+			}
+		}
 		return this.result(input.requestId, itemId);
+	}
+
+	/** Selected DayService actor only; root uses this private inventory for its UI/API adapter. */
+	async listStandingRules(connectionId?: string) {
+		this.assertOpen();
+		return this.ports.standing ? this.ports.standing.list(this.actor, connectionId) : [];
+	}
+	private async standingAccess(channelId: string, signal: AbortSignal) {
+		if (!this.ports.readStandingAccess) throw unavailable();
+		const access = StandingAccessSchema.parse(
+			await abortable(this.ports.readStandingAccess(channelId, signal), signal)
+		);
+		this.ensureAvailable(signal);
+		if (
+			!sameActor(access.actor, this.actor) ||
+			access.channelId !== channelId ||
+			Date.parse(access.observedAt) > this.now() ||
+			this.now() - Date.parse(access.observedAt) > 5000
+		)
+			throw unavailable();
+		return access;
+	}
+	private async admitStandingRequest(id: string, message: ChatMessage, signal: AbortSignal) {
+		const standing = this.ports.standing;
+		if (!standing || !this.ports.classifyStandingIncoming || !this.ports.readStandingAccess) return;
+		const record = this.current(id);
+		if (
+			record.item.clarification ||
+			record.sourceDeleted ||
+			record.paused ||
+			record.item.acceptance !== "pending"
+		)
+			return;
+		const classification = await abortable(
+			this.ports.classifyStandingIncoming(message, signal),
+			signal
+		);
+		if (!classification) return;
+		const read = await this.readClarification(record, signal);
+		const original = read.messages.find((m) =>
+			isDeepStrictEqual(m.citation.source, message.citation.source)
+		);
+		if (
+			!original ||
+			original.authorId !== message.authorId ||
+			original.text !== message.text ||
+			original.createdAt !== message.createdAt ||
+			original.updatedAt !== message.updatedAt
+		)
+			return;
+		const access = await this.standingAccess(message.citation.source.conversationId, signal);
+		const rules = await standing.list(this.actor, access.connectionId);
+		for (const rule of rules) {
+			const admission = await standing.admit(rule.policy.id, {
+				itemId: id,
+				owner: this.actor,
+				message: original,
+				classification,
+				access,
+				read,
+			});
+			if (!admission) continue;
+			const child = standingClarificationChild(rule.policy, admission, read);
+			if (!(await standing.authorizeChild(child, access.actor, access.connectionId, id))) return;
+			await this.update((state) => {
+				this.ensureAvailable(signal);
+				const current = this.record(state, id);
+				if (
+					current.item.revision !== record.item.revision ||
+					current.item.clarification ||
+					current.sourceDeleted ||
+					current.paused ||
+					current.item.acceptance !== "pending"
+				)
+					return;
+				current.item.clarification = child;
+				this.touch(current);
+				this.due(state, current);
+			});
+			return;
+		}
+	}
+	private async authorizeStandingReply(record: DayRecord, reply: DayOutbox, signal: AbortSignal) {
+		const child = record.item.clarification;
+		if (
+			!reply.clarification ||
+			(!child?.policy.standingAuthority && !reply.clarification.standingAuthority)
+		)
+			return;
+		if (
+			!child?.policy.standingAuthority ||
+			!isDeepStrictEqual(reply.clarification.standingAuthority, child.policy.standingAuthority) ||
+			reply.confirmedAt !== null
+		)
+			throw unavailable();
+		await this.authorizeStandingChild(record, signal);
+	}
+	private async authorizeStandingChild(record: DayRecord, signal: AbortSignal) {
+		const child = record.item.clarification;
+		if (!child?.policy.standingAuthority) throw unavailable();
+		const access = await this.standingAccess(child.policy.source.conversationId, signal);
+		if (
+			!this.ports.standing ||
+			!(await this.ports.standing.authorizeChild(
+				child,
+				access.actor,
+				access.connectionId,
+				record.item.id
+			))
+		)
+			throw unavailable();
+		return access;
 	}
 
 	/** Trusted connector invalidation, including identity-only deletes; never fabricates a message. */
@@ -1175,6 +1321,23 @@ export class DayService {
 				read.connectionId !== record.item.clarification.policy.connectionId)
 		)
 			throw unavailable();
+		const child = record.item.clarification;
+		if (child?.policy.standingAuthority) {
+			if (child.policy.originalRequest !== original.text) throw unavailable();
+			if (
+				read.messages.some(
+					(m) =>
+						!["public_channel", "private_channel"].includes(m.citation.audience.visibility) ||
+						m.citation.audience.workspaceId !== this.actor.workspaceId ||
+						m.citation.audience.conversationId !== source.conversationId ||
+						Date.parse(m.citation.audience.observedAt) > this.now() ||
+						this.now() - Date.parse(m.citation.audience.observedAt) > 5000
+				)
+			)
+				throw unavailable();
+			const access = await this.authorizeStandingChild(record, signal);
+			if (access.connectionId !== read.connectionId) throw unavailable();
+		}
 		return read;
 	}
 	private async deferClarification(id: string, error: unknown) {
@@ -1246,6 +1409,10 @@ export class DayService {
 			const analysis = ClarificationAnalysisSchema.parse(
 				await abortable(this.ports.analyzeClarification(c, read, signal), signal)
 			);
+			if (c.policy.standingAuthority) {
+				// Recheck parent authority after inference without another paced thread-history request.
+				await this.authorizeStandingChild(this.current(id), signal);
+			}
 			stage = "state_update";
 			const fresh = read; // A separate fresh provider read gates the actual send, possibly on a later paced tick.
 			await this.update((state) => {
@@ -1288,7 +1455,7 @@ export class DayService {
 								body,
 								bodyDigest: sha256(body),
 								draftRevision: target.policy.revision,
-								confirmedAt: target.confirmedAt ?? this.iso(),
+								confirmedAt: target.confirmedAt,
 								status: "pending",
 								superseded: false,
 								attempts: 0,
@@ -1297,6 +1464,9 @@ export class DayService {
 								providerBindingDigest: null,
 								receipt: null,
 								clarification: {
+									...(target.policy.standingAuthority
+										? { standingAuthority: target.policy.standingAuthority }
+										: {}),
 									policyId: target.policy.id,
 									policyRevision: target.policy.revision,
 									connectionId: target.policy.connectionId,
@@ -1575,7 +1745,13 @@ export class DayService {
 			return (
 				!!c &&
 				c.status === "active" &&
-				c.confirmedAt !== null &&
+				(c.policy.standingAuthority
+					? c.confirmedAt === null &&
+						reply.confirmedAt === null &&
+						isDeepStrictEqual(reply.clarification.standingAuthority, c.policy.standingAuthority)
+					: c.confirmedAt !== null &&
+						reply.confirmedAt === c.confirmedAt &&
+						!reply.clarification.standingAuthority) &&
 				c.expiresAt !== null &&
 				Date.parse(c.expiresAt) > this.now() &&
 				!reply.superseded &&
@@ -1591,6 +1767,7 @@ export class DayService {
 		}
 		const job = record.preparation?.job;
 		return (
+			reply.confirmedAt !== null &&
 			!reply.superseded &&
 			!record.paused &&
 			!record.sourceDeleted &&
@@ -1627,11 +1804,15 @@ export class DayService {
 		}
 		throw unavailable();
 	}
-	private reserveReply(
+	private async reserveReply(
 		key: string,
 		binding: string
 	): ReturnType<DayProviderReplyLedger["reserve"]> {
 		this.assertOpen();
+		await this.initialize();
+		const before = this.ledgerReply(this.state, key, binding);
+		if (!before.reply.receipt && !before.reply.providerKey)
+			await this.authorizeStandingReply(before.record, before.reply, this.lifetime.signal);
 		return this.update((state) => {
 			this.assertOpen();
 			const { record, reply } = this.ledgerReply(state, key, binding);
@@ -1832,6 +2013,7 @@ export class DayService {
 		const latest = this.current(id);
 		const latestReply = latest.outbox.find((reply) => reply.requestId === initial.requestId);
 		if (!latestReply || !this.replyEligible(latest, latestReply)) return;
+		await this.authorizeStandingReply(latest, latestReply, signal);
 		let receipt: ChatReplyReceipt;
 		try {
 			receipt = await abortable(this.ports.replies.send(input, signal), signal);

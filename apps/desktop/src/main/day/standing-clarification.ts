@@ -1,7 +1,7 @@
 import { z } from "zod";
 import { ChatMessageSchema, ChatSourceSchema } from "../../shared/contracts/chat";
 import { DateTimeSchema, IdSchema } from "../../shared/contracts/common";
-import { DayActorSchema } from "../../shared/contracts/day";
+import { DayActorSchema, type DayClarification } from "../../shared/contracts/day";
 import { ClarificationReadSchema } from "./clarification";
 import { sha256, sourceKey } from "./model";
 
@@ -140,6 +140,15 @@ export function parseStandingState(raw: unknown): StandingState {
 export interface StandingClarificationStore {
 	transaction<T>(mutate: (state: StandingState) => T): Promise<T>;
 }
+export const StandingAccessSchema = z.strictObject({
+	actor: DayActorSchema,
+	connectionId: IdSchema,
+	channelId: IdSchema,
+	joined: z.literal(true),
+	canReply: z.literal(true),
+	observedAt: DateTimeSchema,
+});
+export type StandingAccess = z.infer<typeof StandingAccessSchema>;
 const CandidateSchema = z.strictObject({
 	itemId: IdSchema,
 	owner: DayActorSchema,
@@ -151,14 +160,7 @@ const CandidateSchema = z.strictObject({
 		source: ChatSourceSchema,
 	}),
 	/** Fresh provider identity/membership, never reconstructed from the cached audience. */
-	access: z.strictObject({
-		actor: DayActorSchema,
-		connectionId: IdSchema,
-		channelId: IdSchema,
-		joined: z.literal(true),
-		canReply: z.literal(true),
-		observedAt: DateTimeSchema,
-	}),
+	access: StandingAccessSchema,
 	read: ClarificationReadSchema,
 });
 export type StandingCandidate = z.infer<typeof CandidateSchema>;
@@ -177,6 +179,55 @@ export class StandingClarification {
 			return structuredClone(result);
 		});
 	}
+	/** Private actor-scoped policy inventory; no source content or other accounts' rules. */
+	list(actor: z.infer<typeof DayActorSchema>, connectionId?: string) {
+		const parsed = DayActorSchema.parse(actor);
+		return this.transact((state) =>
+			state.rules.filter(
+				(r) =>
+					sameActor(r.policy.actor, parsed) &&
+					(!connectionId || r.policy.connectionId === connectionId)
+			)
+		);
+	}
+	/** Validate the entire installed child against its immutable parent reservation. */
+	authorizeChild(
+		child: DayClarification,
+		actor: z.infer<typeof DayActorSchema>,
+		connectionId: string,
+		itemId: string
+	): Promise<boolean> {
+		const binding = child.policy.standingAuthority;
+		if (!binding || child.confirmedAt !== null || child.status !== "active")
+			return Promise.resolve(false);
+		const parsedActor = DayActorSchema.parse(actor);
+		return this.transact((state) => {
+			const a = state.admissions.find((a) => a.id === binding.admissionId);
+			const r = state.rules.find((r) => r.policy.id === a?.ruleId);
+			return (
+				!!a &&
+				!!r &&
+				r.status === "active" &&
+				Date.parse(a.expiresAt) > this.now() &&
+				a.itemId === itemId &&
+				sameActor(r.policy.actor, parsedActor) &&
+				r.policy.connectionId === connectionId &&
+				JSON.stringify(a.source) === JSON.stringify(child.policy.source) &&
+				binding.ruleId === r.policy.id &&
+				binding.ruleRevision === r.policy.revision &&
+				child.policy.id === a.id &&
+				child.policy.revision === 1 &&
+				sameActor(child.policy.actor, r.policy.actor) &&
+				child.policy.connectionId === r.policy.connectionId &&
+				child.policy.scope === r.policy.scope &&
+				child.policy.durationMinutes === r.policy.durationMinutes &&
+				child.policy.maxMessages === a.reservedMessages &&
+				child.expiresAt === a.expiresAt &&
+				child.policy.sendAuthority === r.policy.sendAuthority
+			);
+		});
+	}
+
 	propose(raw: StandingRulePolicy): Promise<void> {
 		const policy = StandingRulePolicySchema.parse(raw);
 		return this.transact((state) => {
@@ -256,6 +307,10 @@ export class StandingClarification {
 				c.read.messages.some(
 					(m) =>
 						m.deletedAt ||
+						m.citation.audience.workspaceId !== p.actor.workspaceId ||
+						m.citation.audience.conversationId !== p.channelId ||
+						Date.parse(m.citation.audience.observedAt) > now ||
+						now - Date.parse(m.citation.audience.observedAt) > 5000 ||
 						m.truncated ||
 						threadKey(m.citation.source) !== threadKey(source) ||
 						!m.citation.audience.readerIds.includes(p.actor.userId) ||
