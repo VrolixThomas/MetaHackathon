@@ -827,7 +827,7 @@ export class ConversationService {
 						session.dayProposal = undefined;
 						throwIfAborted(signal);
 						onText(
-							"Clarification delegation is active for the confirmed scope, original thread and bounds. This does not authorize execution or accept ownership."
+							"I’ll ask in the original Slack thread, within the limits you approved."
 						);
 					} else {
 						const primary = observed?.workspace.canvases.find(

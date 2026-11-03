@@ -249,7 +249,7 @@ async function slack(d) {
 				});
 				return detail.clarification?.evidence.some((message) => message.text === state.answerText);
 			} catch (error) {
-				if (String(error).includes("clarification changed")) return false;
+				if (/This (?:clarification|source) changed/.test(String(error))) return false;
 				throw error;
 			}
 		},
