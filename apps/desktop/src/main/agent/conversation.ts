@@ -844,7 +844,11 @@ export class ConversationService {
 				}
 				if (!this.active(session, turn)) return;
 				if ((hub?.hasAnnouncements || turn.input.inputMode === "voice") && turn.text.trim()) {
-					if (onNarration && narratedThrough < turn.text.length)
+					if (
+						onNarration &&
+						narratedThrough < turn.text.length &&
+						(turn.spokenThrough ?? 0) < turn.text.length
+					)
 						await onNarration(
 							turn.text.length,
 							(await workspace?.observe())?.workspace.sequence ?? narratedScreenSequence

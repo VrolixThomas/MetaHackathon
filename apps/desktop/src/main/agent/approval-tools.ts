@@ -176,7 +176,7 @@ export class ApprovalTools {
 			this.completion = {
 				acknowledgement:
 					this.turn.inputMode === "voice"
-						? "The proposal is ready for your confirmation."
+						? ""
 						: `The ${p.terms.action === "notify" ? "notification-only" : "conditional approval"} proposal for PR ${p.pr.number} is displayed and awaits confirmation. Say “confirm this delegation” in a new turn to activate it.`,
 			};
 			return result;

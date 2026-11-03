@@ -5171,7 +5171,6 @@ for (const inputMode of ["typed", "voice"] as const) {
 				confirmation.presented(confirmation.pending(input.sessionId));
 				if (inputMode === "voice") {
 					await drain(draft, 0); // Exact proposal narration.
-					await drain(draft, 1); // Normal final acknowledgement still waits for drain.
 				}
 				await eventually(() => service.poll(identity(draft)).status !== "running");
 				assert.equal(service.poll(identity(draft)).status, "completed");
@@ -5179,8 +5178,7 @@ for (const inputMode of ["typed", "voice"] as const) {
 				assert.equal(approval.p.status, "draft");
 				assert.equal(approval.p.confirmedAt, null);
 				const text = service.poll(identity(draft)).text;
-				if (inputMode === "voice")
-					assert.equal(text.split(approvalProposal(approval.p)).length - 1, 1);
+				if (inputMode === "voice") assert.equal(text, approvalProposal(approval.p));
 				else assert.match(text, /notification-only proposal.*new turn/);
 				service.start(confirm);
 				if (inputMode === "voice") await drain(confirm, 0);
