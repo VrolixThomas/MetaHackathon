@@ -455,6 +455,35 @@ export function CanvasWorkspace({
 									data-canvas-revision={canvas.revision}
 								>
 									{renderCanvas(canvas, visible)}
+									{pane === "primary" && state.loadingReview && !blocked && (
+										<div
+											className="review-loading-skeleton"
+											aria-live="polite"
+											aria-label={state.loadingReview.label}
+										>
+											<output className="review-loading-caption">
+												{state.loadingReview.label}
+											</output>
+											<div className="review-skeleton-title" aria-hidden="true" />
+											<div className="review-skeleton-controls" aria-hidden="true">
+												<span />
+												<span />
+												<span />
+											</div>
+											<div className="review-skeleton-summary" aria-hidden="true">
+												<span />
+												<span />
+											</div>
+											<div className="review-skeleton-code" aria-hidden="true">
+												{[66, 48, 76, 35, 59, 83, 42, 64, 72, 41, 55, 27, 70, 58].map((width) => (
+													<div key={width}>
+														<span className="review-skeleton-number" />
+														<span style={{ width: `${width}%` }} />
+													</div>
+												))}
+											</div>
+										</div>
+									)}
 								</div>
 							);
 						}}

@@ -67,8 +67,9 @@ export function createWorkspaceController(
 		workspace: WorkspaceSnapshot | null;
 		observation: WorkspaceObservation | null;
 		busy: boolean;
+		loadingReview: { prId: string; label: string } | null;
 		error: string;
-	}>(() => ({ workspace: null, observation: null, busy: false, error: "" }));
+	}>(() => ({ workspace: null, observation: null, busy: false, loadingReview: null, error: "" }));
 	let disposed = false;
 	let obscured = false;
 	let epoch = 0;
@@ -213,7 +214,15 @@ export function createWorkspaceController(
 			const cancelled = new Promise<"ignored">((resolve) =>
 				abort.signal.addEventListener("abort", () => resolve("ignored"), { once: true })
 			);
-			store.setState({ busy: true, error: "" });
+			store.setState({
+				busy: true,
+				error: "",
+				...(action.effect.navigation
+					? {
+							loadingReview: { prId: action.effect.navigation.prId, label: "Loading review file…" },
+						}
+					: {}),
+			});
 			const timeout = setTimeout(() => {
 				if (!disposed && current === epoch)
 					store.setState({ error: "The canvas did not finish displaying. Try again." });
@@ -280,7 +289,7 @@ export function createWorkspaceController(
 						),
 					};
 				});
-				store.setState({ workspace: snapshot });
+				store.setState({ workspace: snapshot, loadingReview: null });
 				status = await Promise.race([displayed, cancelled]);
 				if (!valid()) status = "ignored";
 				if (status === "ignored" && valid())
@@ -303,7 +312,7 @@ export function createWorkspaceController(
 					pending = undefined;
 					operation = undefined;
 					activeRequest = undefined;
-					store.setState({ busy: false });
+					store.setState({ busy: false, loadingReview: null });
 				}
 			}
 		})();
@@ -349,7 +358,30 @@ export function createWorkspaceController(
 		const request = ++manualEpoch;
 		invalidate();
 		const current = epoch;
-		store.setState({ busy: true, error: "" });
+		const reviewId =
+			command.kind === "show-review"
+				? command.prId
+				: command.kind === "navigate-review"
+					? getContext()?.review.prId
+					: null;
+		const reviewNumber = store.getState().observation?.reviews.find((row) => row.pr.id === reviewId)
+			?.pr.number;
+		store.setState({
+			busy: true,
+			error: "",
+			loadingReview: reviewId
+				? {
+						prId: reviewId,
+						label:
+							command.kind === "navigate-review"
+								? "Loading review file…"
+								: reviewNumber
+									? `Opening PR #${reviewNumber}…`
+									: "Opening review…",
+					}
+				: null,
+		});
+		if (reviewId) void browser.present(null).catch(() => {});
 		try {
 			// Main can reconcile review/source changes while a picker or another turn is open.
 			// Every manual intent must prepare against that current canonical snapshot.
@@ -393,7 +425,8 @@ export function createWorkspaceController(
 				});
 			return "ignored" as const;
 		} finally {
-			if (!disposed && request === manualEpoch) store.setState({ busy: false });
+			if (!disposed && request === manualEpoch)
+				store.setState({ busy: false, loadingReview: null });
 		}
 	}
 	async function start() {
@@ -444,7 +477,7 @@ export function createWorkspaceController(
 				// Obscuring may be an agent-opened composer, not manual navigation.
 				// Reject underlying canvas effects without retiring the presenting turn.
 				invalidate();
-				store.setState({ busy: false });
+				store.setState({ busy: false, loadingReview: null });
 				void browser.present(null).catch(() => {});
 			}
 		},

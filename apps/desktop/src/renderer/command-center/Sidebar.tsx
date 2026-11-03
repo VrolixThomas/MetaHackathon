@@ -332,6 +332,9 @@ export function CommandSidebar({
 															className="command-item quiet"
 															key={item.pr.id}
 															aria-current={selectedId === item.pr.id ? "true" : undefined}
+															aria-busy={
+																workspaceState.loadingReview?.prId === item.pr.id || undefined
+															}
 															onClick={() =>
 																queueKind === "own" || item.preparationStatus !== "ready"
 																	? select(queueKind === "own" ? "feedback" : "reviews", item.pr.id)

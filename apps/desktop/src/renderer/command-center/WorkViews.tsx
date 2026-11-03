@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import type { z } from "zod";
 import { useStore } from "zustand";
 import type {
@@ -10,6 +10,7 @@ import type {
 	WorkReviewSchema,
 	WorkspaceCommand,
 } from "../../shared/contracts";
+import { reviewFileStep } from "../keyboard-target";
 import { SyntaxText } from "../prepared/ReviewWorkspace";
 import { patchLines, sourceLines } from "../prepared/diff";
 import { type HighlightedSource, highlightSource } from "../prepared/highlighting";
@@ -214,7 +215,46 @@ export function WorkDiff({
 	const view = controlledView ?? localView;
 	const file =
 		review.files.find((item) => item.path === (selectedPath ?? selected)) ?? review.files[0];
-	const selectFile = (path: string) => (onSelectFile ? onSelectFile(path) : setSelected(path));
+	const selectFile = useCallback(
+		(path: string) => (onSelectFile ? onSelectFile(path) : setSelected(path)),
+		[onSelectFile]
+	);
+	const root = useRef<HTMLElement>(null);
+	useEffect(() => {
+		if (!fileSidebar) return;
+		const down = (event: KeyboardEvent) => {
+			const element = root.current;
+			if (
+				!element ||
+				!element.getBoundingClientRect().width ||
+				element.closest("[hidden], [inert]")
+			)
+				return;
+			const pane = element.closest("[data-canvas-id]");
+			const workspace = element.closest("[data-primary-canvas]");
+			if (
+				pane &&
+				workspace &&
+				pane.getAttribute("data-canvas-id") !== workspace.getAttribute("data-primary-canvas") &&
+				!element.contains(document.activeElement)
+			)
+				return;
+			const ownNavigation = (target: EventTarget | null) =>
+				target instanceof Element &&
+				element.contains(target) &&
+				!!target.closest(
+					".job-file-row, .hub-view-controls button, [aria-label='Changed file navigation'] button"
+				);
+			const step = reviewFileStep(event, document, ownNavigation);
+			if (step === null || !file) return;
+			const next = review.files[review.files.indexOf(file) + step];
+			// Consume at boundaries too, so a second visible review cannot move instead.
+			event.preventDefault();
+			if (next) selectFile(next.path);
+		};
+		window.addEventListener("keydown", down, true);
+		return () => window.removeEventListener("keydown", down, true);
+	}, [fileSidebar, file, review.files, selectFile]);
 	const [syntax, setSyntax] = useState<{
 		file: typeof file;
 		base: HighlightedSource;
@@ -256,6 +296,7 @@ export function WorkDiff({
 		<section
 			className={`hub-work-review ${fileSidebar ? "job-review-grid" : ""}`}
 			aria-label="Local work review"
+			ref={root}
 		>
 			{fileSidebar && (
 				<aside className="job-change-sidebar" aria-label="Implementation changes">
@@ -378,7 +419,7 @@ export function WorkDiff({
 									if (previous) selectFile(previous.path);
 								}}
 							>
-								Previous file
+								Previous file <kbd>k</kbd>
 							</button>
 							<span>
 								File {review.files.indexOf(file) + 1} of {review.files.length}
@@ -392,7 +433,7 @@ export function WorkDiff({
 									if (next) selectFile(next.path);
 								}}
 							>
-								Next file
+								Next file <kbd>j</kbd>
 							</button>
 						</div>
 					)}

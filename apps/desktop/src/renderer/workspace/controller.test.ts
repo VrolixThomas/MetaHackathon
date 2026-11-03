@@ -613,3 +613,49 @@ it("late presentation failures do not label an already settled canvas as a brows
 		h.dispose();
 	}
 });
+
+it("review loading is immediate and ends before display receipts can settle", async () => {
+	let release!: (value: AgentAction) => void;
+	const delayed = new Promise<AgentAction>((resolve) => {
+		release = resolve;
+	});
+	const h = harness({ prepare: () => delayed });
+	try {
+		await h.controller.start();
+		const work = h.controller.command({ kind: "show-review", prId: "owner/repo#3" });
+		assert.equal(h.controller.store.getState().loadingReview?.prId, "owner/repo#3");
+		assert.equal(h.receipts.length, 0);
+		release(action());
+		await until(() => h.controller.store.getState().workspace?.sequence === 1);
+		assert.equal(
+			h.controller.store.getState().loadingReview,
+			null,
+			"Skeleton must leave before the committed frames are acknowledged"
+		);
+		assert.equal(h.receipts.length, 0);
+		h.controller.rendered(1);
+		h.controller.presented(1, null);
+		assert.equal(await work, "applied");
+	} finally {
+		h.dispose();
+	}
+});
+it("failed review preparation clears the skeleton and retains the previous canvas", async () => {
+	const h = harness({
+		prepare: async () => {
+			throw new Error("Controlled unavailable review");
+		},
+	});
+	try {
+		await h.controller.start();
+		const before = h.controller.getContext();
+		const work = h.controller.command({ kind: "show-review", prId: "owner/repo#3" });
+		assert(h.controller.store.getState().loadingReview);
+		assert.equal(await work, "ignored");
+		assert.equal(h.controller.store.getState().loadingReview, null);
+		assert.deepEqual(h.controller.getContext(), before);
+		assert(h.controller.store.getState().error);
+	} finally {
+		h.dispose();
+	}
+});

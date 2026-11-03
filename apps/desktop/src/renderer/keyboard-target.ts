@@ -30,7 +30,11 @@ export type ReviewKeyboardDocument = Pick<
 >;
 
 /** Only bare, unhandled j/k presses belong to file navigation. */
-export function reviewFileStep(event: KeyboardEvent, doc: ReviewKeyboardDocument): 1 | -1 | null {
+export function reviewFileStep(
+	event: KeyboardEvent,
+	doc: ReviewKeyboardDocument,
+	navigationControl?: (target: EventTarget | null) => boolean
+): 1 | -1 | null {
 	if (
 		event.defaultPrevented ||
 		event.repeat ||
@@ -45,8 +49,10 @@ export function reviewFileStep(event: KeyboardEvent, doc: ReviewKeyboardDocument
 	)
 		return null;
 	if (
-		isInteractiveTarget(doc.activeElement) ||
-		event.composedPath().some(isInteractiveTarget) ||
+		(isInteractiveTarget(doc.activeElement) && !navigationControl?.(doc.activeElement)) ||
+		event
+			.composedPath()
+			.some((target) => isInteractiveTarget(target) && !navigationControl?.(target)) ||
 		doc.querySelector(
 			"dialog[open], [role='dialog']:not([hidden]):not([aria-hidden='true']), [role='alertdialog']:not([hidden]):not([aria-hidden='true']), [aria-modal='true']:not([hidden]):not([aria-hidden='true']), [role='menu']:not([hidden]):not([aria-hidden='true'])"
 		)
