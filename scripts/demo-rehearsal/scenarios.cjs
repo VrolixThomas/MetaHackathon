@@ -206,7 +206,7 @@ async function collaboration(d) {
 	});
 }
 async function slack(d) {
-	const { say, rpc, wait, state, report } = d;
+	const { say, rpc, wait, state, report, assert } = d;
 	state.slackEnabled = true;
 	const item = await wait(
 		"actual intake captures original Slack request",

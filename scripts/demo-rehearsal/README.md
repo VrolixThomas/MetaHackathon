@@ -74,8 +74,8 @@ browser-origin requests. The CLI reads that token without printing it.
 argument property/type/enum diagnostics, real first-PCM timings, UI/state assertions,
 and separately labeled controlled provider writes. Raw model inputs, reasoning,
 credentials and raw tool arguments are excluded. Audio segments are actual provider
-PCM, with WAV copies for completed segments. The owned directory also contains
-private development configuration; share selected reports/audio, not the whole run.
+PCM, with WAV copies for completed segments. The private development configuration is removed at clean exit. Share selected
+reports/audio rather than the whole run directory, particularly after a forced termination.
 
 ```sh
 node scripts/demo-rehearsal/assess.cjs /absolute/path/to/report.json

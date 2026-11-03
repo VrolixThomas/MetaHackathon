@@ -742,5 +742,6 @@ main().catch(async (error) => {
 });
 app.on("quit", () => {
 	clearTimeout(deadline);
+	fs.rmSync(path.join(owned, "rehearsal.env"), { force: true });
 	if (report.status === "failed") process.exitCode = 1;
 });
