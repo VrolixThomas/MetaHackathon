@@ -15,6 +15,17 @@ export function explicitWorkspaceNavigation(text: string, observed?: WorkspaceOb
 			args: { section: "tickets" },
 			acknowledgement: "You're at your ticket boards.",
 		};
+	const url =
+		/^(?:(?:please|can you|could you) )?open (https?:\/\/\S+)(?: in (?:the )?browser(?: so (?:we|I) can (?:try|test|view|see) (?:it|this|that|the (?:app|site|page|companion)))?)?[.!?]?$/i.exec(
+			request
+		);
+	if (url?.[1] && observed?.capabilities.includes("browser") && !/[.!?]$/.test(url[1]))
+		return {
+			kind: "browser" as const,
+			tool: "open_browser",
+			args: { url: url[1] },
+			acknowledgement: "It's open in the browser.",
+		};
 	const primary = observed?.workspace.canvases.find((c) => c.id === observed.workspace.primaryId);
 	if (primary?.kind !== "browser" || !observed?.browser?.presented) return undefined;
 	const viewport =

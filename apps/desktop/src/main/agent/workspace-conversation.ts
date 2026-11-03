@@ -98,9 +98,10 @@ export async function runWorkspaceConversation(
 					? primary?.kind === "center" && primary.section === "tickets"
 					: primary?.kind === "browser" &&
 						result.browser?.presented &&
-						(direct.kind === "phone"
-							? result.browser.viewport.width === 390 && result.browser.viewport.height === 844
-							: result.workspace.browser?.viewportMode === "desktop");
+						(direct.kind === "browser" ||
+							(direct.kind === "phone"
+								? result.browser.viewport.width === 390 && result.browser.viewport.height === 844
+								: result.workspace.browser?.viewportMode === "desktop"));
 			if (!displayed)
 				throw new GuidedReviewError("The requested view was not confirmed as displayed.");
 			const callId = `${input.requestId}:explicit-workspace-navigation`;

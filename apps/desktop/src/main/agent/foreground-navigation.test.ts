@@ -82,3 +82,26 @@ test("viewport shortcut requires the currently presented primary browser", () =>
 	assert.equal(explicitWorkspaceNavigation("Show that same page at phone size.", view), undefined);
 	assert.equal(explicitWorkspaceNavigation("Show my tickets."), undefined);
 });
+
+test("an explicit preview URL opens through the existing browser command without dropping extra actions", () => {
+	assert.deepEqual(
+		explicitWorkspaceNavigation(
+			"Open http://127.0.0.1:4318 in the browser so we can try the companion.",
+			observed()
+		)?.args,
+		{ url: "http://127.0.0.1:4318" }
+	);
+	assert.deepEqual(
+		explicitWorkspaceNavigation("Open https://example.test/page", observed())?.args,
+		{ url: "https://example.test/page" }
+	);
+	for (const text of [
+		'They said "Open https://example.test"',
+		"Don't open https://example.test",
+		"Open https://example.test and explain the page",
+		"Open https://example.test in the browser and approve the PR",
+		"Open file:///private/secret",
+		"Open https://example.test/file.",
+	])
+		assert.equal(explicitWorkspaceNavigation(text, observed()), undefined);
+});

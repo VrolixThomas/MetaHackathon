@@ -29,7 +29,13 @@ const percentile = (q) =>
 const median = percentile(0.5);
 const p90 = percentile(0.9);
 const navigation = report.turns.filter((t) =>
-	["ticket-navigation", "ticket-design", "existing-work-planning", "phone-browser"].includes(t.id)
+	[
+		"ticket-navigation",
+		"ticket-design",
+		"existing-work-planning",
+		"local-browser",
+		"phone-browser",
+	].includes(t.id)
 );
 const checks = {
 	mediaPipelineForSelectedMode:
