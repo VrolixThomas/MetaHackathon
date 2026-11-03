@@ -1187,7 +1187,7 @@ for (const change of [
 for (const text of [
 	'"Confirm this clarification delegation."',
 	"They said confirm this clarification delegation.",
-	"yes",
+	"Yes, but change the scope.",
 	"Confirm this clarification delegation and change scope.",
 ]) {
 	test(`selected shortcut ignores noncanonical ingress: ${text}`, async () => {
@@ -1427,4 +1427,49 @@ test("selected confirmation still fences drift after argument derivation and can
 		name: "AbortError",
 	});
 	assert.equal(cancelled.operations.length, 0);
+});
+
+for (const text of [
+	"Yes.",
+	"Go ahead.",
+	"Confirm.",
+	"Please do.",
+	"Yes, authorize that thread-only clarification scope, send authority and those limits.",
+]) {
+	test(`natural confirmation binds the exact presented proposal: ${text}`, async () => {
+		const h = await proposedConfirmation({ ...confirmationTurn, text });
+		const args = await h.tools.selectedConfirmation("item", h.prior);
+		assert(args);
+		await h.tools.execute("day_confirm_clarification", JSON.stringify(args));
+		assert.equal(h.row.clarification?.status, "active");
+		assert.equal(h.operations.length, 1);
+	});
+}
+test("short confirmation without a prior main-owned proposal cannot authorize a tool call", async () => {
+	const h = await proposedConfirmation({ ...confirmationTurn, text: "Yes." });
+	assert.equal(await h.tools.selectedConfirmation("item"), undefined);
+	await assert.rejects(
+		h.tools.execute("day_confirm_clarification", JSON.stringify(confirmationArgs))
+	);
+	assert.equal(h.operations.length, 0);
+});
+test("short confirmation cannot activate a changed proposal", async () => {
+	const h = await proposedConfirmation({ ...confirmationTurn, text: "Go ahead." });
+	assert(h.row.clarification);
+	h.row.clarification.policy.scope = "Different scope";
+	await assert.rejects(h.tools.selectedConfirmation("item", h.prior));
+	await assert.rejects(
+		h.tools.execute("day_confirm_clarification", JSON.stringify(confirmationArgs))
+	);
+	assert.equal(h.operations.length, 0);
+});
+
+test("short confirmation binding cannot be reused for model-altered policy arguments", async () => {
+	const h = await proposedConfirmation({ ...confirmationTurn, text: "Confirm." });
+	const args = await h.tools.selectedConfirmation("item", h.prior);
+	assert(args);
+	await assert.rejects(
+		h.tools.execute("day_confirm_clarification", JSON.stringify({ ...args, policyId: "other" }))
+	);
+	assert.equal(h.operations.length, 0);
 });

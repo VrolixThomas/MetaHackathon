@@ -65,7 +65,7 @@ const operationTools = DayOperationSchema.options.map((schema) => {
 // Deliberately bounded whole-utterance intent: quotes, reported instructions and
 // incidental affirmation cannot turn model arguments into user consent.
 function confirmsClarification(text: string) {
-	return /^(?:please\s+)?(?:confirm|i confirm|yes,? confirm) (?:this|the|that) (?:proposed )?clarification delegation[.!]?$/i.test(
+	return /^(?:please\s+|yes,?\s+)?(?:confirm|i confirm|authorize|i authorize) (?:(?:this|the|that) )?(?:proposed |thread-only )?clarification(?: delegation| scope)?(?:, send authority and (?:those|these|the) limits)?[.!]?$/i.test(
 		text.trim()
 	);
 }
@@ -238,6 +238,12 @@ function confirmationBinding(item: DayWorkItem) {
 export class ConversationDayTools {
 	private latest?: DaySnapshot;
 	private proposalReference?: DayClarificationReference;
+	private boundConfirmation?: {
+		itemId: string;
+		expectedRevision: number;
+		policyId: string;
+		policyRevision: number;
+	};
 	private readonly proposed = new Set<string>();
 	private readonly observed = new Map<string, number>();
 	private readonly navigation = new Map<string, string>();
@@ -301,7 +307,12 @@ export class ConversationDayTools {
 		return this.execute("day_inspect_item", JSON.stringify({ itemId }));
 	}
 	async selectedConfirmation(itemId: string, prior?: DayClarificationReference) {
-		if (!confirmsClarification(this.turn.text) || !prior) return undefined;
+		if (!prior) return undefined;
+		const shortConfirmation =
+			/^(?:yes|yes,? go ahead|go ahead|confirm|confirmed|please do)[.!]?$/i.test(
+				this.turn.text.trim()
+			);
+		if (!confirmsClarification(this.turn.text) && !shortConfirmation) return undefined;
 		if (
 			prior.itemId !== itemId ||
 			prior.requestId === this.turn.requestId ||
@@ -320,12 +331,15 @@ export class ConversationDayTools {
 			throw new GuidedReviewError(
 				"The clarification proposal changed. Inspect and explain it before a new confirmation."
 			);
-		return {
+		// Short acknowledgements gain authority only from this freshly checked,
+		// main-owned previous proposal, never from model-selected tool arguments.
+		this.boundConfirmation = {
 			itemId,
 			expectedRevision: item.revision,
 			policyId: item.clarification.policy.id,
 			policyRevision: item.clarification.policy.revision,
 		};
+		return { ...this.boundConfirmation };
 	}
 	private accept(raw: DaySnapshot) {
 		throwIfAborted(this.signal);
@@ -512,7 +526,13 @@ export class ConversationDayTools {
 			);
 		args["userCommand"] = this.turn.text;
 		if (tool.kind === "confirm_clarification") {
-			if (!confirmsClarification(this.turn.text))
+			if (
+				!confirmsClarification(this.turn.text) &&
+				!(
+					this.boundConfirmation &&
+					Object.entries(this.boundConfirmation).every(([key, value]) => args[key] === value)
+				)
+			)
 				throw new GuidedReviewError(
 					"A current explicit real user confirmation of clarification delegation is required."
 				);
