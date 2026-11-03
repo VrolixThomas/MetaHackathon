@@ -177,7 +177,16 @@ export class TeamClient {
 				currentToken !== token
 			)
 				throw new TeamError("unauthorized");
-			if (!response.ok)
+			if (!response.ok) {
+				const operation =
+					/^(?:organizations(?:\/create)?|repositories(?:\/(?:resolve|register))?|reviews\/(?:read|publish|status|retry|request)|progress\/(?:read|write)|proposals\/(?:browse|get|authorize-apply|list|read|share|decide))$/.test(
+						path
+					)
+						? path
+						: "unknown";
+				console.warn(
+					JSON.stringify({ stage: "team-request-error", operation, httpStatus: response.status })
+				);
 				throw new TeamError(
 					response.status === 401
 						? "unauthorized"
@@ -190,6 +199,7 @@ export class TeamClient {
 									: "invalid",
 					response.status
 				);
+			}
 			return { userId: session.user.id, value };
 		});
 	}

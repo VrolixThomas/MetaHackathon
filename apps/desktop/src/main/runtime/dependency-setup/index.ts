@@ -17,6 +17,7 @@ export async function setupDependencies(options: {
 	baseline: Record<string, string>;
 	signal: AbortSignal;
 	verify: () => Promise<void>;
+	ignoredBuildOutput?: (path: string) => Promise<boolean>;
 }): Promise<string> {
 	const { tree, directory, baseline, signal, verify } = options;
 	const receipt = join(directory, "dependency-setup.json");
@@ -59,6 +60,15 @@ export async function setupDependencies(options: {
 					continue;
 				}
 				const name = path ? `${path}/${entry.name}` : entry.name;
+				// Next emits nested manifests during a successful build. They are not
+				// dependency inputs when Git ignores the output and baseline tracks none.
+				if (
+					entry.name === ".next" &&
+					entry.isDirectory() &&
+					!Object.keys(baseline).some((file) => file.startsWith(`${name}/`)) &&
+					(await options.ignoredBuildOutput?.(name))
+				)
+					continue;
 				if (dependencyFile(name)) found.push(name);
 				if (entry.isDirectory()) await walk(name);
 				else if (entry.isSymbolicLink())

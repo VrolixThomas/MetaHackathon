@@ -324,6 +324,17 @@ export class WorkJobRuntime {
 				directory: root,
 				baseline,
 				signal,
+				ignoredBuildOutput: async (path) => {
+					const result = await this.git(
+						this.tree(job.id),
+						["check-ignore", "--quiet", "--", path],
+						signal,
+						true
+					);
+					if (result.exitCode !== 0 && result.exitCode !== 1)
+						throw new Error("Could not verify generated build output");
+					return result.exitCode === 0;
+				},
 				verify: async () => {
 					await this.forJob(job, signal);
 					if ((await this.head(record, signal)) !== head)

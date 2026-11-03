@@ -168,3 +168,24 @@ test("dependency-free standalone projects need no lockfile or package manager in
 		await assert.rejects(run(), /frozen lockfile/);
 	});
 });
+
+test("ignored Next build manifests do not block resume but source metadata still does", async () => {
+	await fixture("npm", async ({ tree, root, baseline }) => {
+		await mkdir(join(tree, "apps/site/.next/types"), { recursive: true });
+		await writeFile(join(tree, "apps/site/.next/package.json"), "{}");
+		await writeFile(join(tree, "apps/site/.next/types/package.json"), "{}");
+		const run = (ignored: boolean) =>
+			setupDependencies({
+				tree,
+				directory: join(root, "private"),
+				baseline,
+				signal: new AbortController().signal,
+				verify: async () => {},
+				ignoredBuildOutput: async (p) => ignored && p === "apps/site/.next",
+			});
+		await assert.rejects(run(false), /metadata differs/);
+		await run(true);
+		await writeFile(join(tree, "apps/site/package.json"), "{}");
+		await assert.rejects(run(true), /metadata differs/);
+	});
+});
