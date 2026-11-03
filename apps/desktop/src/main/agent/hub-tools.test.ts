@@ -5998,3 +5998,45 @@ test("Team tools compose only with injected ports and cannot grant themselves in
 	);
 	assert.equal(writes, 0);
 });
+
+test("optional review request tool dispatches actual ingress without changing draft publish", async () => {
+	const d = data();
+	const turn = { ...input, text: "Send this work to alice for review" };
+	const signal = new AbortController().signal;
+	assert.equal(new ConversationHubTools(d.ports, turn, signal).has("send_work_for_review"), false);
+	let sent = 0;
+	d.ports.reviewRequests = {
+		intent: () => ({
+			requestId: turn.requestId,
+			jobId: d.job.id,
+			accountKey: "epoch",
+			actor: "test",
+			repository: d.job.repository,
+			headSha: d.job.headSha as string,
+			text: turn.text,
+		}),
+		send: async (intent, reviewers) => {
+			sent++;
+			return {
+				operationId: "op",
+				jobId: intent.jobId,
+				repository: intent.repository,
+				prNumber: 42,
+				prUrl: "https://github.com/test/repo/pull/42",
+				headSha: intent.headSha,
+				reviewers,
+				requestedAt: time,
+				evidence: "request-response",
+			};
+		},
+	};
+	const tools = new ConversationHubTools(d.ports, turn, signal);
+	assert.ok(tools.tools.some((t) => t.name === "send_work_for_review"));
+	assert.ok(tools.tools.some((t) => t.name === "publish_work" && t.description.includes("draft")));
+	await tools.execute(
+		"send_work_for_review",
+		JSON.stringify({ jobId: d.job.id, reviewerLogins: ["alice"] })
+	);
+	assert.equal(sent, 1);
+	assert.equal(d.operations.length, 0);
+});
