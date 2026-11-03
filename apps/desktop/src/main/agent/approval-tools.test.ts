@@ -1,8 +1,17 @@
 import assert from "node:assert/strict";
 import { it } from "node:test";
-import type { ConversationTurnInput } from "../../shared/contracts";
+import type { ConversationTurnInput, PRFixDetail } from "../../shared/contracts";
 import { ApprovalConfirmation } from "../work/pr-approvals/confirmation";
-import { deferred, harness, policy, terms } from "../work/pr-approvals/test-support";
+import {
+	at,
+	deferred,
+	harness,
+	head,
+	later,
+	policy,
+	pr,
+	terms,
+} from "../work/pr-approvals/test-support";
 import { ApprovalTools } from "./approval-tools";
 import { ConversationService } from "./conversation";
 import { eventually } from "./test-support";
@@ -550,3 +559,195 @@ for (const changed of [
 		}
 	});
 }
+
+function candidate(): PRFixDetail {
+	const time = new Date(at).toISOString();
+	const feedback = {
+		id: "feedback",
+		prId: pr.id,
+		author: "reviewer",
+		body: "Fix this",
+		url: pr.url,
+		createdAt: time,
+		updatedAt: time,
+		kind: "inline" as const,
+		state: null,
+		path: "a.ts",
+		line: 1,
+		commitSha: head,
+		suggestion: null,
+	};
+	const fix = {
+		id: "fix",
+		jobId: "job",
+		pr,
+		feedback,
+		phase: "ready" as const,
+		summary: "",
+		question: null,
+		baseSha: head,
+		headSha: later,
+		checks: [],
+		changedFiles: ["a.ts"],
+		createdAt: time,
+		updatedAt: time,
+		reviewedAt: time,
+		error: null,
+		publication: "not-published" as const,
+	};
+	return {
+		fix,
+		review: {
+			job: {
+				id: "job",
+				ticket: null,
+				feedback: structuredClone(feedback),
+				repositoryId: "repo",
+				repository: pr.repository,
+				state: "ready",
+				branch: "private/fix",
+				worktreePath: null,
+				baseSha: head,
+				headSha: later,
+				brief: "Fix",
+				summary: "",
+				createdAt: time,
+				updatedAt: time,
+				decisions: [],
+				checks: [],
+				changedFiles: ["a.ts"],
+				pullRequest: null,
+				error: null,
+			},
+			files: [
+				{
+					path: "a.ts",
+					status: "modified",
+					patch: null,
+					base: { path: "a.ts", commitSha: head, status: "available", content: "before\n" },
+					head: { path: "a.ts", commitSha: later, status: "available", content: "\uFEFFafter\r\n" },
+				},
+			],
+		},
+	};
+}
+
+it("reviewed-fix tool reads fresh main bytes, retains presentation/consent gates and rejects model source", async () => {
+	const h = harness([]);
+	const confirmation = new ApprovalConfirmation({ voice: () => false, narrate: async () => {} });
+	let reads = 0;
+	const tools = new ApprovalTools(
+		{
+			service: () => h.service,
+			confirmation,
+			reviewedFix: {
+				detail: async () => {
+					reads++;
+					return candidate();
+				},
+				reviewed: async () => pr,
+			},
+		},
+		turn,
+		new AbortController().signal
+	);
+	const args = {
+		candidateId: "fix",
+		action: terms.action,
+		expiresAt: terms.expiresAt,
+		checks: terms.conditions,
+	};
+	await assert.rejects(
+		tools.execute(
+			"draft_pr_delegation_from_fix",
+			JSON.stringify({ ...args, expectedContent: "invented" })
+		)
+	);
+	assert.equal(reads, 0);
+	const pending = tools.execute("draft_pr_delegation_from_fix", JSON.stringify(args));
+	await eventually(() => !!confirmation.pending("s"));
+	assert.equal(reads, 2);
+	assert.equal(h.p.status, "draft");
+	assert.equal(h.p.confirmedAt, null);
+	assert.equal(h.p.terms.conditions[0]?.kind, "source");
+	const presentation = confirmation.pending("s");
+	assert.ok(presentation);
+	confirmation.presented(presentation);
+	await pending;
+	assert.equal(h.submitted.length, 0);
+	await h.service.dispose();
+});
+it("reviewed-fix tool is unavailable without root port and blocks wrong displayed PR before drafting", async () => {
+	const h = harness([]);
+	const confirmation = new ApprovalConfirmation({ voice: () => false, narrate: async () => {} });
+	const plain = new ApprovalTools(
+		{ service: () => h.service, confirmation },
+		turn,
+		new AbortController().signal
+	);
+	assert.equal(plain.has("draft_pr_delegation_from_fix"), false);
+	assert.equal(
+		plain.tools.some((t) => t.name === "draft_pr_delegation_from_fix"),
+		false
+	);
+	const tools = new ApprovalTools(
+		{
+			service: () => h.service,
+			confirmation,
+			reviewedFix: {
+				detail: async () => candidate(),
+				reviewed: async () => ({ ...pr, headSha: later }),
+			},
+		},
+		turn,
+		new AbortController().signal
+	);
+	await assert.rejects(
+		tools.execute(
+			"draft_pr_delegation_from_fix",
+			JSON.stringify({
+				candidateId: "fix",
+				action: terms.action,
+				expiresAt: terms.expiresAt,
+				checks: [],
+			})
+		),
+		/complete reviewed candidate/
+	);
+	assert.equal((await h.service.list()).length, 0);
+});
+it("candidate refresh failure prevents proposal presentation", async () => {
+	const h = harness([]);
+	const confirmation = new ApprovalConfirmation({ voice: () => false, narrate: async () => {} });
+	let reads = 0;
+	const tools = new ApprovalTools(
+		{
+			service: () => h.service,
+			confirmation,
+			reviewedFix: {
+				detail: async () => {
+					if (++reads > 1) throw new Error("feedback changed");
+					return candidate();
+				},
+				reviewed: async () => pr,
+			},
+		},
+		turn,
+		new AbortController().signal
+	);
+	await assert.rejects(
+		tools.execute(
+			"draft_pr_delegation_from_fix",
+			JSON.stringify({
+				candidateId: "fix",
+				action: terms.action,
+				expiresAt: terms.expiresAt,
+				checks: [],
+			})
+		),
+		/feedback changed/
+	);
+	assert.equal(confirmation.pending("s"), null);
+	assert.equal(h.p.confirmedAt, null);
+	assert.equal(h.submitted.length, 0);
+});
