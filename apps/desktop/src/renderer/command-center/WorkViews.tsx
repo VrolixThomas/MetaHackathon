@@ -598,7 +598,12 @@ export function JobView({
 	const active = ["queued", "running", "validating", "needs-input"].includes(job.state);
 	const resumable = ["paused", "failed"].includes(job.state);
 	return (
-		<article className="hub-detail">
+		<article
+			className="hub-detail"
+			data-job-id={job.id}
+			data-job-head={job.headSha ?? "pending"}
+			data-job-repository={job.repository}
+		>
 			<div className="hub-detail-meta">
 				<span>{jobReference(job)}</span>
 				<span>{job.repository}</span>

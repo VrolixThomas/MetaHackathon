@@ -77,6 +77,59 @@ async function full(d) {
 		"Show me the completed MET-77 work and explain the important behavior, not a list of files. Do not publish it.",
 		{ id: "job-review" }
 	);
+	const displayedWork = await rpc("query", "workspace.observe", {
+		sessionId: report.turns.at(-1).identity.sessionId,
+	});
+	const displayedCanvas = displayedWork.workspace.canvases.find(
+		(c) => c.id === displayedWork.workspace.primaryId
+	);
+	const sourceShown =
+		displayedCanvas?.kind === "source" &&
+		displayedCanvas.source.location.repository === ready.repository &&
+		displayedCanvas.source.location.commitSha === ready.headSha &&
+		displayedCanvas.source.location.revision === "head";
+	const jobShown =
+		displayedCanvas?.kind === "center" &&
+		["completed", "activity"].includes(displayedCanvas.section) &&
+		displayedCanvas.selectedId === ready.id;
+	assert(
+		sourceShown || jobShown,
+		"Completed work must be the acknowledged primary job or its pinned head source"
+	);
+	await wait(
+		"two visible frames of the actual job/head",
+		() =>
+			js(`(async () => {
+		const paneId = ${JSON.stringify(displayedCanvas.id)};
+		const expected = ${JSON.stringify({ jobId: ready.id, headSha: ready.headSha, repository: ready.repository, path: sourceShown ? displayedCanvas.source.location.path : null })};
+		const matches = () => {
+			if (document.querySelector('dialog[open]')) return false;
+			const pane = document.getElementById('canvas-panel-' + paneId);
+			const el = expected.path === null ? pane?.querySelector('[data-job-id]') : pane?.querySelector('[data-source-sha]');
+			if (!el) return false;
+			const rect = el.getBoundingClientRect();
+			if (!rect.width || !rect.height || rect.bottom <= 0 || rect.top >= innerHeight) return false;
+			return expected.path === null
+				? el.dataset.jobId === expected.jobId && el.dataset.jobHead === expected.headSha && el.dataset.jobRepository === expected.repository
+				: el.dataset.sourceSha === expected.headSha && el.dataset.sourcePath === expected.path;
+		};
+		if (!matches()) return false;
+		await new Promise(requestAnimationFrame);
+		if (!matches()) return false;
+		await new Promise(requestAnimationFrame);
+		return matches();
+	})()`),
+		30000
+	);
+	report.completedJobDisplay = {
+		canvasId: displayedCanvas.id,
+		kind: displayedCanvas.kind,
+		jobId: ready.id,
+		headSha: ready.headSha,
+		repository: ready.repository,
+		workspaceSequence: displayedWork.workspace.sequence,
+		twoVisibleFrames: true,
+	};
 	assert.equal(ready.state, "ready");
 	assert(!ready.reviewedAt);
 	assert(
