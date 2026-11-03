@@ -5549,3 +5549,42 @@ test("direct UI navigation cannot acknowledge a cancelled display operation", as
 		await service.dispose();
 	}
 });
+
+test("flow creation omits a model ID and rejects invented update targets before execution", async () => {
+	const d = data();
+	const w = workspace(d);
+	const tools = new ConversationWorkspaceTools(
+		w.ports,
+		input,
+		new AbortController().signal,
+		() => {}
+	);
+	await tools.observe();
+	tools.allowPinnedSource(d.source);
+	const schema = tools.tools.find((tool) => tool.name === "create_source_flow")?.parameters as {
+		properties: Record<string, unknown>;
+	};
+	assert(!Object.hasOwn(schema.properties, "id"));
+	const args = {
+		id: "invented-flow-name",
+		title: "Request flow",
+		summary: "Inferred",
+		steps: [{ title: "Entry", explanation: "Inspected source", location: d.source.location }],
+	};
+	await assert.rejects(tools.execute("create_source_flow", JSON.stringify(args)), /omit id/);
+	assert.equal(w.commands.length, 0);
+	w.observation.savedCanvases = [
+		{ id: "observed-flow", kind: "flow", title: "Flow", revision: 1 },
+		{ id: "other-kind", kind: "document", title: "Notes", revision: 1 },
+	];
+	await tools.observe();
+	const updated = tools.tools.find((tool) => tool.name === "create_source_flow")?.parameters as {
+		properties: { id: { enum: string[] } };
+	};
+	assert.deepEqual(updated.properties.id.enum, ["observed-flow"]);
+	await assert.rejects(
+		tools.execute("create_source_flow", JSON.stringify({ ...args, id: "other-kind" })),
+		/same kind/
+	);
+	assert.equal(w.commands.length, 0);
+});

@@ -196,14 +196,26 @@ export class ConversationWorkspaceTools {
 				),
 			...commands
 				.filter((entry) => supports(entry.kind))
-				.map(
-					(entry): FunctionTool => ({
-						type: "function",
-						name: entry.name,
-						description: entry.description,
-						parameters: z.toJSONSchema(entry.schema),
-					})
-				),
+				.map((entry): FunctionTool => {
+					const parameters = z.toJSONSchema(entry.schema);
+					if (entry.kind === "create-flow" && parameters.properties) {
+						const ids = [
+							...new Set(
+								[...(this.latest?.workspace.canvases ?? []), ...(this.latest?.savedCanvases ?? [])]
+									.filter((canvas) => canvas.kind === "flow")
+									.map((canvas) => canvas.id)
+							),
+						];
+						if (!ids.length) delete parameters.properties["id"];
+						else
+							parameters.properties["id"] = {
+								...parameters.properties["id"],
+								enum: ids,
+								description: "Optional existing flow canvas ID to update. Omit for a new flow.",
+							};
+					}
+					return { type: "function", name: entry.name, description: entry.description, parameters };
+				}),
 		];
 	}
 	has(name: string) {
@@ -298,9 +310,19 @@ export class ConversationWorkspaceTools {
 					"Use an actual observed raster asset ID. To reopen a saved image use its Recent canvas ID with focus_canvas."
 				);
 		}
-		if ((entry.kind === "write-document" || entry.kind === "create-visual") && args["id"]) {
+		if (
+			(entry.kind === "write-document" ||
+				entry.kind === "create-visual" ||
+				entry.kind === "create-flow") &&
+			args["id"]
+		) {
 			const current = this.latest ?? (await this.observe());
-			const kind = entry.kind === "write-document" ? "document" : "visual";
+			const kind =
+				entry.kind === "write-document"
+					? "document"
+					: entry.kind === "create-flow"
+						? "flow"
+						: "visual";
 			const existing = [...current.workspace.canvases, ...(current.savedCanvases ?? [])].find(
 				(canvas) => canvas.id === args["id"] && canvas.kind === kind
 			);
