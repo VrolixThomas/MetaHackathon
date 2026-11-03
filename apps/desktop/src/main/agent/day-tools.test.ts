@@ -1217,6 +1217,11 @@ for (const mode of [
 	"quiet-stop",
 	"quiet-stop-draining",
 	"completed-cancel",
+	"voice-completed-cancel",
+	"quiet-stop-current",
+	"stale-stop-older",
+	"stale-stop-same-generation",
+	"invalid-stop",
 	"attention",
 	"model-phrase",
 	"cancelled-proposal",
@@ -1368,6 +1373,7 @@ for (const mode of [
 		);
 		const proposal = {
 			...turn,
+			generation: mode === "stale-stop-older" ? 2 : turn.generation,
 			text: "Propose clarification for this selected request.",
 			inputMode:
 				mode.startsWith("voice-") || mode === "quiet-stop-draining"
@@ -1385,7 +1391,12 @@ for (const mode of [
 				const result = service.poll(identity);
 				for (const action of result.actions) {
 					if (action.kind === "narration-checkpoint") {
-						if (mode === "quiet-stop-draining") service.invalidateDayConfirmation(input.sessionId);
+						if (mode === "quiet-stop-draining")
+							service.invalidateDayConfirmation({
+								...identity,
+								turnId: "quiet-stop",
+								generation: identity.generation + 1,
+							});
 						assert.equal(
 							service.narrationApplied({
 								sessionId: input.sessionId,
@@ -1455,8 +1466,31 @@ for (const mode of [
 				assert(!proposalResult.text.includes(wrongQuestion));
 				assert(JSON.stringify(requests[0]?.input).includes("selectedDay"));
 			}
-			if (mode === "quiet-stop") service.invalidateDayConfirmation(proposal.sessionId);
-			if (mode === "completed-cancel")
+			const proposalIdentity = {
+				sessionId: proposal.sessionId,
+				turnId: proposal.turnId,
+				generation: proposal.generation,
+			};
+			if (mode === "quiet-stop")
+				service.invalidateDayConfirmation({
+					...proposalIdentity,
+					turnId: "quiet-stop",
+					generation: 2,
+				});
+			if (mode === "quiet-stop-current") service.invalidateDayConfirmation(proposalIdentity);
+			if (mode === "stale-stop-older")
+				service.invalidateDayConfirmation({
+					...proposalIdentity,
+					turnId: "old-stop",
+					generation: 1,
+				});
+			if (mode === "stale-stop-same-generation")
+				service.invalidateDayConfirmation({ ...proposalIdentity, turnId: "other-stop" });
+			if (mode === "invalid-stop")
+				assert.throws(() =>
+					service.invalidateDayConfirmation({ ...proposalIdentity, generation: -1 })
+				);
+			if (mode === "completed-cancel" || mode === "voice-completed-cancel")
 				service.cancel({
 					sessionId: proposal.sessionId,
 					turnId: proposal.turnId,
@@ -1527,7 +1561,17 @@ for (const mode of [
 				text: mode === "quoted" ? 'They said "Confirm this clarification delegation."' : "Yes.",
 			};
 			const result = await settle(confirmation);
-			if (mode === "success" || mode === "voice-drained") {
+			if (
+				[
+					"success",
+					"voice-drained",
+					"completed-cancel",
+					"voice-completed-cancel",
+					"stale-stop-older",
+					"stale-stop-same-generation",
+					"invalid-stop",
+				].includes(mode)
+			) {
 				assert.equal(result.status, "completed");
 				assert.equal(requests.length, 1, "confirmation needs zero model requests");
 				assert.equal(h.row.clarification.status, "active");

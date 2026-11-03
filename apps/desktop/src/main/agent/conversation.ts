@@ -182,9 +182,16 @@ export class ConversationService {
 	}
 
 	/** Main composition hook for quiet Stop ingress that does not create a conversation turn. */
-	invalidateDayConfirmation(rawSessionId: string): void {
-		const session = this.sessions.get(IdSchema.parse(rawSessionId));
-		if (!session) return;
+	invalidateDayConfirmation(rawIdentity: TurnIdentity): void {
+		const identity = TurnIdentitySchema.parse(rawIdentity);
+		const session = this.sessions.get(identity.sessionId);
+		const current = session?.current;
+		if (!session || !current) return;
+		if (
+			identity.generation < current.input.generation ||
+			(identity.generation === current.input.generation && identity.turnId !== current.input.turnId)
+		)
+			return;
 		session.dayProposal = undefined;
 		if (session.current?.kind === "user") {
 			session.current.priorDayProposal = undefined;
@@ -442,14 +449,6 @@ export class ConversationService {
 		const input = CancelTurnInputSchema.parse(raw);
 		const session = this.sessions.get(input.sessionId);
 		const turn = session?.current;
-		// Stop also retires a completed proposal's short confirmation reference.
-		// Preserve the proposal and all background work; stale other-turn cancels do nothing.
-		if (
-			session &&
-			turn?.input.turnId === input.turnId &&
-			turn.input.generation === input.generation
-		)
-			session.dayProposal = undefined;
 		let status: "cancelled" | "not-found" | "stale" = "not-found";
 		if (turn) {
 			if (
@@ -459,6 +458,9 @@ export class ConversationService {
 			)
 				status = "stale";
 			else {
+				// Renderer completion cleanup also calls cancel; only a live cancellation
+				// can revoke consent here. Explicit Stop uses the trusted ingress hook.
+				if (session) session.dayProposal = undefined;
 				this.cancelTurn(turn);
 				status = "cancelled";
 			}
