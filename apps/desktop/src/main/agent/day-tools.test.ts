@@ -947,15 +947,16 @@ async function proposedConfirmation(input = confirmationTurn) {
 	return { ...h, tools };
 }
 
-test("registered confirmation retains a fresh proposal from a distinct turn and binds omitted command in main", async () => {
+test("registered confirmation retains a fresh proposal and binds omitted command and sentinel in main", async () => {
 	const h = await proposedConfirmation();
 	const originalPolicy = structuredClone(h.row.clarification?.policy);
 	const tool = h.tools.tools.find((t) => t.name === "day_confirm_clarification");
 	assert(tool);
 	assert(!JSON.stringify(tool.parameters).includes("userCommand"));
+	assert(!JSON.stringify(tool.parameters).includes("confirmed"));
 	assert(!h.tools.tools.some((t) => t.name === "day_propose_clarification"));
 	assert(JSON.stringify(h.tools.context).includes("Retain its scope"));
-	await h.tools.execute(tool.name, JSON.stringify(confirmationArgs));
+	await h.tools.execute(tool.name, JSON.stringify({ ...confirmationArgs, confirmed: undefined }));
 	assert.equal(h.operations.length, 1);
 	assert.equal(h.operations[0]?.operation.kind, "confirm_clarification");
 	assert.equal(h.row.clarification?.status, "active");
@@ -1000,10 +1001,16 @@ test("confirmation cannot re-propose or infer consent from booleans, source quot
 	]) {
 		const h = await proposedConfirmation({ ...confirmationTurn, text });
 		assert(h.tools.tools.some((t) => t.name === "day_propose_clarification"));
-		await assert.rejects(
-			h.tools.execute("day_confirm_clarification", JSON.stringify(confirmationArgs)),
-			/real user confirmation/
-		);
+		for (const confirmed of [true, undefined]) {
+			await assert.rejects(
+				h.tools.execute(
+					"day_confirm_clarification",
+					JSON.stringify({ ...confirmationArgs, confirmed })
+				),
+				/real user confirmation/
+			);
+		}
+		assert.equal(h.row.clarification?.status, "proposed");
 		assert.equal(h.operations.length, 0);
 	}
 	const h = await proposedConfirmation();
@@ -1014,13 +1021,22 @@ test("confirmation cannot re-propose or infer consent from booleans, source quot
 		),
 		/replacement proposal/
 	);
-	await assert.rejects(
-		h.tools.execute(
-			"day_confirm_clarification",
-			JSON.stringify({ ...confirmationArgs, confirmed: undefined })
-		)
-	);
 	assert.equal(h.operations.length, 0);
+});
+
+test("provided invalid clarification confirmation sentinels reject without mutation", async () => {
+	for (const confirmed of ["true", "false", "confirmed", false, null, 1, {}, []]) {
+		const h = await proposedConfirmation();
+		const before = structuredClone(h.row);
+		await assert.rejects(
+			h.tools.execute(
+				"day_confirm_clarification",
+				JSON.stringify({ ...confirmationArgs, confirmed })
+			)
+		);
+		assert.equal(h.operations.length, 0);
+		assert.deepEqual(h.row, before);
+	}
 });
 
 test("confirmation rejects changed policy, revision, account, thread, audience and unavailable fresh source before mutation", async () => {
@@ -1079,6 +1095,7 @@ test("confirmation rejects changed policy, revision, account, thread, audience a
 				"day_confirm_clarification",
 				JSON.stringify({
 					...confirmationArgs,
+					confirmed: undefined,
 					...(drift === "wrong-policy-arg" ? { policyId: "wrong" } : {}),
 					...(drift === "wrong-revision-arg" ? { policyRevision: 9 } : {}),
 				})
@@ -1099,7 +1116,10 @@ test("current confirmation still requires inspection in that turn", async () => 
 	});
 	await tools.observe();
 	await assert.rejects(
-		tools.execute("day_confirm_clarification", JSON.stringify(confirmationArgs)),
+		tools.execute(
+			"day_confirm_clarification",
+			JSON.stringify({ ...confirmationArgs, confirmed: undefined })
+		),
 		/Inspect the actual proposal/
 	);
 	assert.equal(h.operations.length, 0);

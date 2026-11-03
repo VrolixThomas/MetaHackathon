@@ -52,7 +52,7 @@ const operationTools = DayOperationSchema.options.map((schema) => {
 		"send_reply",
 		"confirm_local_answer",
 	].includes(kind)
-		? { confirmed: z.literal(true) }
+		? { confirmed: kind === "confirm_clarification" ? z.literal(true).optional() : z.literal(true) }
 		: {};
 	return {
 		kind,
@@ -80,7 +80,7 @@ const descriptions: Record<DayOperation["kind"], string> = {
 	propose_clarification:
 		"Propose thread-only clarification delegation at the real user's request. Specify their scope and bounded messages/time. Returns the actual original request, account, permitted thread, send authority and policy for inspection. Does not authorize sends. Explain the proposal and ask for a distinct confirmation turn.",
 	confirm_clarification:
-		"Activate an inspected proposed clarification policy only after the real user explicitly confirms its scope, original thread, send authority and bounds in a distinct turn. Confirmed:true required. May ask bounded questions without exact-body confirmation. Never accepts ownership, authorizes execution, publishes or closes work.",
+		"Activate an inspected proposed clarification policy only after the real user explicitly confirms its scope, original thread, send authority and bounds in a distinct turn. Main binds confirmation from the current real user utterance. May ask bounded questions without exact-body confirmation. Never accepts ownership, authorizes execution, publishes or closes work.",
 	pause_clarification:
 		"Pause clarification sends at the user's request. Further delegation requires a new proposal and confirmation.",
 	revoke_clarification:
@@ -258,7 +258,11 @@ export class ConversationDayTools {
 					type: "function" as const,
 					name,
 					description: `${descriptions[kind]} Returns data only; use acknowledged workspace commands separately to show anything.`,
-					parameters: z.toJSONSchema(schema.omit({ userCommand: true })),
+					parameters: z.toJSONSchema(
+						kind === "confirm_clarification"
+							? schema.omit({ userCommand: true, confirmed: true })
+							: schema.omit({ userCommand: true })
+					),
 				})),
 		];
 	}
@@ -452,10 +456,14 @@ export class ConversationDayTools {
 				"Only the current real user's command can authorize a Day operation."
 			);
 		args["userCommand"] = this.turn.text;
-		if (tool.kind === "confirm_clarification" && !confirmsClarification(this.turn.text))
-			throw new GuidedReviewError(
-				"A current explicit real user confirmation of clarification delegation is required."
-			);
+		if (tool.kind === "confirm_clarification") {
+			if (!confirmsClarification(this.turn.text))
+				throw new GuidedReviewError(
+					"A current explicit real user confirmation of clarification delegation is required."
+				);
+			// Parsing already rejects supplied non-true values; only trusted ingress fills omission.
+			args["confirmed"] = true;
+		}
 		if (tool.kind === "propose_clarification" && confirmsClarification(this.turn.text))
 			throw new GuidedReviewError(
 				"Inspect and confirm the existing clarification proposal; confirmation does not authorize a replacement proposal."
