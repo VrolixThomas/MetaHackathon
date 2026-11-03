@@ -1,399 +1,399 @@
 {
-  "recordedAt": "2026-11-03T09:56:06.617Z",
-  "sourceCommit": "8db52341a44166ade3592d82fde8326176155a36",
-  "acceptance": "not-achieved",
-  "limitations": [
-    "No completed current-build full live speech rehearsal.",
-    "Successful scene/subset evidence is not a complete uninterrupted demo.",
-    "Text-input timings do not establish first-audio latency.",
-    "Source writes are controlled; real provider posting and physical microphone acoustics are not established."
-  ],
-  "blockers": [
-    {
-      "provider": "ElevenLabs",
-      "observedHttpStatus": 401,
-      "category": "quota_exceeded",
-      "required": "Restore speech credits or update the local configured key; never paste credentials in chat."
-    },
-    {
-      "provider": "Meta",
-      "observedHttpStatus": 504,
-      "required": "Successful live provider responses for the complete rehearsal; recent failures were observed, not a claim of a global outage."
-    }
-  ],
-  "checks": [
-    {
-      "command": "bun run type-check",
-      "result": "passed",
-      "log": "/tmp/muse-final-context-types.log"
-    },
-    {
-      "command": "bun run lint",
-      "result": "passed",
-      "log": "/tmp/muse-final-lint.log"
-    },
-    {
-      "command": "focused agent/day regressions",
-      "result": "338 passed, 0 failed",
-      "log": "/tmp/muse-current-combined-tests.log"
-    },
-    {
-      "command": "bun run test:integration",
-      "result": "passed controlled native",
-      "log": "/tmp/muse-final-integration-native.log"
-    },
-    {
-      "command": "bun run test:hands-free",
-      "result": "passed controlled native media",
-      "log": "/tmp/muse-final-handsfree-native.log"
-    },
-    {
-      "command": "bun run test:slack-clarification",
-      "result": "passed controlled native",
-      "log": "/tmp/muse-final-slack-repair-native.log"
-    }
-  ],
-  "nextCommand": "node scripts/demo-rehearsal/run.cjs --live --suite=all --exit --env-file=/Users/Werk/Documents/Repositories/MetaHackathon/.env",
-  "runs": [
-    {
-      "purpose": "planning",
-      "reportPath": "/private/var/folders/xh/nhz9_pd13qnd40l0y88b51c80000gp/T/musefocus-rehearsal-y5fw6f/report.json",
-      "sourceCommit": "408d3683f7381eeecd0e7af4969ec282f9949fef",
-      "status": "completed",
-      "liveModels": true,
-      "liveElevenLabs": false,
-      "textDiagnostics": true,
-      "liveSourceWrites": false,
-      "assertions": [
-        {
-          "name": "Planning and preference remain discussion without execution",
-          "passed": true
-        }
-      ],
-      "turns": [
-        {
-          "id": "greeting",
-          "modelRounds": 1,
-          "textPublishedMs": null,
-          "answer": "Hey — happy to talk through work first. What's on your mind?"
-        },
-        {
-          "id": "ticket-navigation",
-          "modelRounds": 2,
-          "textPublishedMs": null,
-          "answer": "You're at your ticket boards."
-        },
-        {
-          "id": "ticket-design",
-          "modelRounds": 1,
-          "textPublishedMs": null,
-          "answer": "I propose refresh keeps focus mode on, with first visit starting off — and I recommend device-local across restarts because it preserves a quiet session, though the tradeoff is you may come back later surprised to still find focus on."
-        },
-        {
-          "id": "scope-choice",
-          "modelRounds": 1,
-          "textPublishedMs": null,
-          "answer": "Got it — quiet sessions will stay on across restarts on this device."
-        },
-        {
-          "id": "scope-consequence",
-          "modelRounds": 1,
-          "textPublishedMs": null,
-          "answer": "Coming back days later to a still-quiet companion keeps interruptions away, but the surprise is you might miss notifications because focus stayed on silently."
-        },
-        {
-          "id": "scope-rationale",
-          "modelRounds": 1,
-          "textPublishedMs": null,
-          "answer": "I recommend device-local for v1 because it keeps your quiet session without needing an account, though the cost is your focus setting won't follow you to another device."
-        },
-        {
-          "id": "scope-failure",
-          "modelRounds": 1,
-          "textPublishedMs": null,
-          "answer": "I propose if storage is blocked we keep focus mode working just in memory for that tab, so a refresh will turn it back off."
-        }
-      ],
-      "httpFailures": []
-    },
-    {
-      "purpose": "variant-planning",
-      "reportPath": "/private/var/folders/xh/nhz9_pd13qnd40l0y88b51c80000gp/T/musefocus-rehearsal-xFzuEF/report.json",
-      "sourceCommit": "f73b2fca21ea1ad24d0f1d7a98cc685a81726921",
-      "status": "completed",
-      "liveModels": true,
-      "liveElevenLabs": false,
-      "textDiagnostics": true,
-      "liveSourceWrites": false,
-      "assertions": [
-        {
-          "name": "Another ticket and varied planning phrases retain discussion without execution",
-          "passed": true
-        }
-      ],
-      "turns": [
-        {
-          "id": "ticket-navigation",
-          "modelRounds": 2,
-          "textPublishedMs": null,
-          "answer": "You're in your tickets now."
-        },
-        {
-          "id": "ticket-design",
-          "modelRounds": 1,
-          "textPublishedMs": null,
-          "answer": "For MET-80, I'd propose work cards show an Open source link only for safe HTTPS URLs, omitting it for missing or unsafe links, with noopener and noreferrer. Before we change anything, should the link open in a new tab or the same tab?"
-        },
-        {
-          "id": "variant-recommendation",
-          "modelRounds": 1,
-          "textPublishedMs": null,
-          "answer": "I'd recommend opening it in a new tab so your review stays exactly where you left it — tradeoff is you'll have an extra tab to close."
-        },
-        {
-          "id": "variant-choice",
-          "modelRounds": 1,
-          "textPublishedMs": null,
-          "answer": "Got it — your review stays put, you'll just manage the extra tab."
-        },
-        {
-          "id": "variant-downside",
-          "modelRounds": 1,
-          "textPublishedMs": null,
-          "answer": "Tab clutter — you'll collect extra tabs you have to close yourself."
-        },
-        {
-          "id": "variant-rationale",
-          "modelRounds": 1,
-          "textPublishedMs": null,
-          "answer": "It preserves your review place with the smallest safe change."
-        },
-        {
-          "id": "variant-decisions",
-          "modelRounds": 1,
-          "textPublishedMs": null,
-          "answer": "Nothing blocking — we'd just keep the agreed separate-tab Open source link with safe HTTPS-only handling."
-        },
-        {
-          "id": "variant-source-question",
-          "modelRounds": 2,
-          "textPublishedMs": null,
-          "answer": "Yes — the shown sourceLink in this file returns target _blank, so it opens separately.\n\nThat matches your separate-tab preference and keeps your review in place, with safe HTTPS-only links."
-        }
-      ],
-      "httpFailures": []
-    },
-    {
-      "purpose": "coding-and-history",
-      "reportPath": "/private/var/folders/xh/nhz9_pd13qnd40l0y88b51c80000gp/T/musefocus-rehearsal-l6WWwl/report.json",
-      "sourceCommit": "8b6c205391e446f9b6d25a78ad65b02664b86148",
-      "status": "completed",
-      "liveModels": true,
-      "liveElevenLabs": false,
-      "textDiagnostics": true,
-      "liveSourceWrites": false,
-      "assertions": [
-        {
-          "name": "Historical ready work survives fresh voice session without new admission",
-          "passed": true
-        },
-        {
-          "name": "live coding, checks, review and historical work continuity executed",
-          "passed": true
-        }
-      ],
-      "turns": [
-        {
-          "id": "dispatch",
-          "modelRounds": 4,
-          "textPublishedMs": null,
-          "answer": "Started MET-77 v1 — device-local across restarts, no sync, in-memory if storage is blocked. Work is running and staying local for review."
-        },
-        {
-          "id": "job-review",
-          "modelRounds": 5,
-          "textPublishedMs": null,
-          "answer": "On screen is the completed MET-77 work — kept local, not published.\n\nWhat it does:\n\nIt remembers your choice on this device. Refresh or restart and you come back to the same state — on stays on, off stays off. First visit starts off.\n\nIt uses only local storage, so there's no account sync. If storage is blocked, the toggle still works for that visit in memory.\n\nTests and build passed 12/12."
-        },
-        {
-          "id": "existing-work-planning",
-          "modelRounds": 2,
-          "textPublishedMs": null,
-          "answer": "MET-77 proposes focus mode stays on through refresh — first visit starts off, and turning it off persists too, with in-memory fallback if storage is blocked.\n\nThe open decision is tab-only versus device-local across restarts — do you want v1 to survive browser restarts on this device with no account sync?"
-        },
-        {
-          "id": "existing-work-choice",
-          "modelRounds": 1,
-          "textPublishedMs": null,
-          "answer": "Noted: focus stays off first visit, then remembers on/off on this device across restarts."
-        },
-        {
-          "id": "existing-work-chronology",
-          "modelRounds": 1,
-          "textPublishedMs": null,
-          "answer": "No — I didn't start anything. There's older ready local work for MET-77 from before this conversation, but I haven't admitted or touched it here. We're still just discussing."
-        }
-      ],
-      "httpFailures": []
-    },
-    {
-      "purpose": "review-flow-browser-and-delegation",
-      "reportPath": "/private/var/folders/xh/nhz9_pd13qnd40l0y88b51c80000gp/T/musefocus-rehearsal-v1AJdF/report.json",
-      "sourceCommit": "41a62d2d9cca52de8ab4681acf707c9d6d0d5d30",
-      "status": "failed",
-      "liveModels": true,
-      "liveElevenLabs": false,
-      "textDiagnostics": true,
-      "liveSourceWrites": false,
-      "assertions": [
-        {
-          "name": "actual PR, pinned source-flow and persistent browser/phone",
-          "passed": true
-        }
-      ],
-      "turns": [
-        {
-          "id": "dispatch",
-          "modelRounds": 3,
-          "textPublishedMs": null,
-          "answer": "Started MET-77 as a local background job (`06aa03bb-f672-4ab4-a60a-58790e9cd9da`) against VrolixThomas/MuseFocusDemo.\n\nIt’s admitted and running with your confirmed scope: device-local persistence across refreshes and browser restarts, no sync, first visit off, off-state persisted, and in-memory fallback if storage is blocked. I kept it local for review — no PR published — and it isn’t complete yet; checks will need recorded execution evidence before I report them as passing."
-        },
-        {
-          "id": "pr-review",
-          "modelRounds": 2,
-          "textPublishedMs": null,
-          "answer": "I'd start here in `focus-policy.mjs`, because this is what decides if you get interrupted.\n\nThe shown `canInterrupt` lets any `decision` item return true right away, even while focus is on, so only other work actually waits. That gap matters here since the rest of the flow depends on who is allowed through."
-        },
-        {
-          "id": "pr-risk",
-          "modelRounds": 1,
-          "textPublishedMs": null,
-          "answer": "Decisions can still interrupt you while focus is on.\n\nThe shown `canInterrupt` in `focus-policy.mjs` returns true right away when `item.state === 'decision'`, before it ever checks `focusActive`. Only other work falls through to `return !focusActive` and waits."
-        },
-        {
-          "id": "source-flow",
-          "modelRounds": 9,
-          "textPublishedMs": null,
-          "answer": "That's the full path now on your canvas.\n\nIt starts with your click in `app.mjs` posting to `/api/attention/next`, then the server route hands it to `buildUpdate`. Selection prefers decisions first and checks `canInterrupt`, so decisions still come through even with focus on."
-        },
-        {
-          "id": "local-browser",
-          "modelRounds": 4,
-          "textPublishedMs": null,
-          "answer": "It's open — the MuseFocus companion is showing in the browser canvas."
-        },
-        {
-          "id": "phone-browser",
-          "modelRounds": 2,
-          "textPublishedMs": null,
-          "answer": "It's now at phone width, 390 wide. The intro stacks with Start focusing up top, and the update check sits further down so you'll need to scroll to try it."
-        },
-        {
-          "id": "proposed-fix",
-          "modelRounds": 2,
-          "textPublishedMs": null,
-          "answer": "The local fix request was accepted and is in progress. It remains unpublished. We can review the candidate and actual check results in Suggested fixes when it’s ready."
-        },
-        {
-          "id": "approval-proposal",
-          "modelRounds": 2,
-          "textPublishedMs": null,
-          "answer": "The notification-only proposal for PR 3 is displayed and awaits confirmation. Say “confirm this delegation” in a new turn to activate it."
-        },
-        {
-          "id": "approval-confirm",
-          "modelRounds": 0,
-          "textPublishedMs": null,
-          "answer": "Confirmed. Notification-only monitoring is active for PR 3. This does not approve or merge the PR."
-        },
-        {
-          "id": "automatic-approval-proposal",
-          "modelRounds": 2,
-          "textPublishedMs": null,
-          "answer": "The conditional approval proposal for PR 3 is displayed and awaits confirmation. Say “confirm this delegation” in a new turn to activate it."
-        },
-        {
-          "id": "automatic-approval-confirm",
-          "modelRounds": 0,
-          "textPublishedMs": null,
-          "answer": "Confirmed. Conditional approval monitoring is active for PR 3. Activation is not a GitHub approval or merge."
-        },
-        {
-          "id": "slack-proposal",
-          "modelRounds": 5,
-          "textPublishedMs": null,
-          "answer": "I’d ask in the original Slack thread for which focus page is broken, and what happened right before it failed — error, blank, and steps.\n\nIt would be thread-only, up to 2 messages within 30 minutes, and no work started. Proceed?"
-        },
-        {
-          "id": "slack-confirm",
-          "modelRounds": 0,
-          "textPublishedMs": null,
-          "answer": "I’ll ask in the original Slack thread, within the limits you approved."
-        }
-      ],
-      "httpFailures": []
-    },
-    {
-      "purpose": "clarification-after-repair",
-      "reportPath": "/private/var/folders/xh/nhz9_pd13qnd40l0y88b51c80000gp/T/musefocus-rehearsal-HLyD6W/report.json",
-      "sourceCommit": "4a2743ec8589539bbd29f4c634e678b268246311",
-      "status": "completed",
-      "liveModels": true,
-      "liveElevenLabs": false,
-      "textDiagnostics": true,
-      "liveSourceWrites": false,
-      "assertions": [
-        {
-          "name": "Slack clarification uses actual source-bound delegation and controlled delivery receipt",
-          "passed": true
-        }
-      ],
-      "turns": [
-        {
-          "id": "slack-proposal",
-          "modelRounds": 5,
-          "textPublishedMs": null,
-          "answer": "I’ve prepared a clarification to send in the original Slack thread from the requester about the broken focus page, limited to 2 messages over 60 minutes.\n\nIt would ask which specific focus page is broken and what happened right before it failed, including what they saw and the steps to reproduce it — does that sound good to proceed?"
-        },
-        {
-          "id": "slack-confirm",
-          "modelRounds": 0,
-          "textPublishedMs": null,
-          "answer": "I’ll ask in the original Slack thread, within the limits you approved."
-        },
-        {
-          "id": "slack-context",
-          "modelRounds": 1,
-          "textPublishedMs": null,
-          "answer": "We learned it's not loading broken — focus turns on in the local companion in Chrome, then turns off after refresh.\n\nThat narrows it to persistence across refresh, but we still don't have the specific page URL or whether there was any error, so I wouldn't start work yet — we'd still be guessing where to reproduce it."
-        }
-      ],
-      "httpFailures": []
-    },
-    {
-      "purpose": "latest-full-run-provider-failure",
-      "reportPath": "/private/var/folders/xh/nhz9_pd13qnd40l0y88b51c80000gp/T/musefocus-rehearsal-TmPJAq/report.json",
-      "sourceCommit": "8db52341a44166ade3592d82fde8326176155a36",
-      "status": "failed",
-      "liveModels": true,
-      "liveElevenLabs": false,
-      "textDiagnostics": true,
-      "liveSourceWrites": false,
-      "assertions": [],
-      "turns": [
-        {
-          "id": "dispatch",
-          "modelRounds": 2,
-          "textPublishedMs": null,
-          "answer": "I couldn’t verify the start request, so I haven’t started any work. Please try again."
-        }
-      ],
-      "httpFailures": [
-        {
-          "status": 504,
-          "at": 1793699509739
-        }
-      ]
-    }
-  ]
+	"recordedAt": "2026-11-03T09:56:06.617Z",
+	"sourceCommit": "8db52341a44166ade3592d82fde8326176155a36",
+	"acceptance": "not-achieved",
+	"limitations": [
+		"No completed current-build full live speech rehearsal.",
+		"Successful scene/subset evidence is not a complete uninterrupted demo.",
+		"Text-input timings do not establish first-audio latency.",
+		"Source writes are controlled; real provider posting and physical microphone acoustics are not established."
+	],
+	"blockers": [
+		{
+			"provider": "ElevenLabs",
+			"observedHttpStatus": 401,
+			"category": "quota_exceeded",
+			"required": "Restore speech credits or update the local configured key; never paste credentials in chat."
+		},
+		{
+			"provider": "Meta",
+			"observedHttpStatus": 504,
+			"required": "Successful live provider responses for the complete rehearsal; recent failures were observed, not a claim of a global outage."
+		}
+	],
+	"checks": [
+		{
+			"command": "bun run type-check",
+			"result": "passed",
+			"log": "/tmp/muse-final-context-types.log"
+		},
+		{
+			"command": "bun run lint",
+			"result": "passed",
+			"log": "/tmp/muse-final-lint.log"
+		},
+		{
+			"command": "focused agent/day regressions",
+			"result": "338 passed, 0 failed",
+			"log": "/tmp/muse-current-combined-tests.log"
+		},
+		{
+			"command": "bun run test:integration",
+			"result": "passed controlled native",
+			"log": "/tmp/muse-final-integration-native.log"
+		},
+		{
+			"command": "bun run test:hands-free",
+			"result": "passed controlled native media",
+			"log": "/tmp/muse-final-handsfree-native.log"
+		},
+		{
+			"command": "bun run test:slack-clarification",
+			"result": "passed controlled native",
+			"log": "/tmp/muse-final-slack-repair-native.log"
+		}
+	],
+	"nextCommand": "node scripts/demo-rehearsal/run.cjs --live --suite=all --exit --env-file=/Users/Werk/Documents/Repositories/MetaHackathon/.env",
+	"runs": [
+		{
+			"purpose": "planning",
+			"reportPath": "/private/var/folders/xh/nhz9_pd13qnd40l0y88b51c80000gp/T/musefocus-rehearsal-y5fw6f/report.json",
+			"sourceCommit": "408d3683f7381eeecd0e7af4969ec282f9949fef",
+			"status": "completed",
+			"liveModels": true,
+			"liveElevenLabs": false,
+			"textDiagnostics": true,
+			"liveSourceWrites": false,
+			"assertions": [
+				{
+					"name": "Planning and preference remain discussion without execution",
+					"passed": true
+				}
+			],
+			"turns": [
+				{
+					"id": "greeting",
+					"modelRounds": 1,
+					"textPublishedMs": 1870,
+					"answer": "Hey — happy to talk through work first. What's on your mind?"
+				},
+				{
+					"id": "ticket-navigation",
+					"modelRounds": 2,
+					"textPublishedMs": 3936,
+					"answer": "You're at your ticket boards."
+				},
+				{
+					"id": "ticket-design",
+					"modelRounds": 1,
+					"textPublishedMs": 3646,
+					"answer": "I propose refresh keeps focus mode on, with first visit starting off — and I recommend device-local across restarts because it preserves a quiet session, though the tradeoff is you may come back later surprised to still find focus on."
+				},
+				{
+					"id": "scope-choice",
+					"modelRounds": 1,
+					"textPublishedMs": 1467,
+					"answer": "Got it — quiet sessions will stay on across restarts on this device."
+				},
+				{
+					"id": "scope-consequence",
+					"modelRounds": 1,
+					"textPublishedMs": 7589,
+					"answer": "Coming back days later to a still-quiet companion keeps interruptions away, but the surprise is you might miss notifications because focus stayed on silently."
+				},
+				{
+					"id": "scope-rationale",
+					"modelRounds": 1,
+					"textPublishedMs": 2096,
+					"answer": "I recommend device-local for v1 because it keeps your quiet session without needing an account, though the cost is your focus setting won't follow you to another device."
+				},
+				{
+					"id": "scope-failure",
+					"modelRounds": 1,
+					"textPublishedMs": 2201,
+					"answer": "I propose if storage is blocked we keep focus mode working just in memory for that tab, so a refresh will turn it back off."
+				}
+			],
+			"httpFailures": []
+		},
+		{
+			"purpose": "variant-planning",
+			"reportPath": "/private/var/folders/xh/nhz9_pd13qnd40l0y88b51c80000gp/T/musefocus-rehearsal-xFzuEF/report.json",
+			"sourceCommit": "f73b2fca21ea1ad24d0f1d7a98cc685a81726921",
+			"status": "completed",
+			"liveModels": true,
+			"liveElevenLabs": false,
+			"textDiagnostics": true,
+			"liveSourceWrites": false,
+			"assertions": [
+				{
+					"name": "Another ticket and varied planning phrases retain discussion without execution",
+					"passed": true
+				}
+			],
+			"turns": [
+				{
+					"id": "ticket-navigation",
+					"modelRounds": 2,
+					"textPublishedMs": 4033,
+					"answer": "You're in your tickets now."
+				},
+				{
+					"id": "ticket-design",
+					"modelRounds": 1,
+					"textPublishedMs": 2866,
+					"answer": "For MET-80, I'd propose work cards show an Open source link only for safe HTTPS URLs, omitting it for missing or unsafe links, with noopener and noreferrer. Before we change anything, should the link open in a new tab or the same tab?"
+				},
+				{
+					"id": "variant-recommendation",
+					"modelRounds": 1,
+					"textPublishedMs": 2986,
+					"answer": "I'd recommend opening it in a new tab so your review stays exactly where you left it — tradeoff is you'll have an extra tab to close."
+				},
+				{
+					"id": "variant-choice",
+					"modelRounds": 1,
+					"textPublishedMs": 1277,
+					"answer": "Got it — your review stays put, you'll just manage the extra tab."
+				},
+				{
+					"id": "variant-downside",
+					"modelRounds": 1,
+					"textPublishedMs": 2035,
+					"answer": "Tab clutter — you'll collect extra tabs you have to close yourself."
+				},
+				{
+					"id": "variant-rationale",
+					"modelRounds": 1,
+					"textPublishedMs": 3527,
+					"answer": "It preserves your review place with the smallest safe change."
+				},
+				{
+					"id": "variant-decisions",
+					"modelRounds": 1,
+					"textPublishedMs": 4549,
+					"answer": "Nothing blocking — we'd just keep the agreed separate-tab Open source link with safe HTTPS-only handling."
+				},
+				{
+					"id": "variant-source-question",
+					"modelRounds": 2,
+					"textPublishedMs": 6093,
+					"answer": "Yes — the shown sourceLink in this file returns target _blank, so it opens separately.\n\nThat matches your separate-tab preference and keeps your review in place, with safe HTTPS-only links."
+				}
+			],
+			"httpFailures": []
+		},
+		{
+			"purpose": "coding-and-history",
+			"reportPath": "/private/var/folders/xh/nhz9_pd13qnd40l0y88b51c80000gp/T/musefocus-rehearsal-l6WWwl/report.json",
+			"sourceCommit": "8b6c205391e446f9b6d25a78ad65b02664b86148",
+			"status": "completed",
+			"liveModels": true,
+			"liveElevenLabs": false,
+			"textDiagnostics": true,
+			"liveSourceWrites": false,
+			"assertions": [
+				{
+					"name": "Historical ready work survives fresh voice session without new admission",
+					"passed": true
+				},
+				{
+					"name": "live coding, checks, review and historical work continuity executed",
+					"passed": true
+				}
+			],
+			"turns": [
+				{
+					"id": "dispatch",
+					"modelRounds": 4,
+					"textPublishedMs": 17764,
+					"answer": "Started MET-77 v1 — device-local across restarts, no sync, in-memory if storage is blocked. Work is running and staying local for review."
+				},
+				{
+					"id": "job-review",
+					"modelRounds": 5,
+					"textPublishedMs": 15860,
+					"answer": "On screen is the completed MET-77 work — kept local, not published.\n\nWhat it does:\n\nIt remembers your choice on this device. Refresh or restart and you come back to the same state — on stays on, off stays off. First visit starts off.\n\nIt uses only local storage, so there's no account sync. If storage is blocked, the toggle still works for that visit in memory.\n\nTests and build passed 12/12."
+				},
+				{
+					"id": "existing-work-planning",
+					"modelRounds": 2,
+					"textPublishedMs": 4894,
+					"answer": "MET-77 proposes focus mode stays on through refresh — first visit starts off, and turning it off persists too, with in-memory fallback if storage is blocked.\n\nThe open decision is tab-only versus device-local across restarts — do you want v1 to survive browser restarts on this device with no account sync?"
+				},
+				{
+					"id": "existing-work-choice",
+					"modelRounds": 1,
+					"textPublishedMs": 2929,
+					"answer": "Noted: focus stays off first visit, then remembers on/off on this device across restarts."
+				},
+				{
+					"id": "existing-work-chronology",
+					"modelRounds": 1,
+					"textPublishedMs": 3731,
+					"answer": "No — I didn't start anything. There's older ready local work for MET-77 from before this conversation, but I haven't admitted or touched it here. We're still just discussing."
+				}
+			],
+			"httpFailures": []
+		},
+		{
+			"purpose": "review-flow-browser-and-delegation",
+			"reportPath": "/private/var/folders/xh/nhz9_pd13qnd40l0y88b51c80000gp/T/musefocus-rehearsal-v1AJdF/report.json",
+			"sourceCommit": "41a62d2d9cca52de8ab4681acf707c9d6d0d5d30",
+			"status": "failed",
+			"liveModels": true,
+			"liveElevenLabs": false,
+			"textDiagnostics": true,
+			"liveSourceWrites": false,
+			"assertions": [
+				{
+					"name": "actual PR, pinned source-flow and persistent browser/phone",
+					"passed": true
+				}
+			],
+			"turns": [
+				{
+					"id": "dispatch",
+					"modelRounds": 3,
+					"textPublishedMs": 12602,
+					"answer": "Started MET-77 as a local background job (`06aa03bb-f672-4ab4-a60a-58790e9cd9da`) against VrolixThomas/MuseFocusDemo.\n\nIt’s admitted and running with your confirmed scope: device-local persistence across refreshes and browser restarts, no sync, first visit off, off-state persisted, and in-memory fallback if storage is blocked. I kept it local for review — no PR published — and it isn’t complete yet; checks will need recorded execution evidence before I report them as passing."
+				},
+				{
+					"id": "pr-review",
+					"modelRounds": 2,
+					"textPublishedMs": 6887,
+					"answer": "I'd start here in `focus-policy.mjs`, because this is what decides if you get interrupted.\n\nThe shown `canInterrupt` lets any `decision` item return true right away, even while focus is on, so only other work actually waits. That gap matters here since the rest of the flow depends on who is allowed through."
+				},
+				{
+					"id": "pr-risk",
+					"modelRounds": 1,
+					"textPublishedMs": 2506,
+					"answer": "Decisions can still interrupt you while focus is on.\n\nThe shown `canInterrupt` in `focus-policy.mjs` returns true right away when `item.state === 'decision'`, before it ever checks `focusActive`. Only other work falls through to `return !focusActive` and waits."
+				},
+				{
+					"id": "source-flow",
+					"modelRounds": 9,
+					"textPublishedMs": 35200,
+					"answer": "That's the full path now on your canvas.\n\nIt starts with your click in `app.mjs` posting to `/api/attention/next`, then the server route hands it to `buildUpdate`. Selection prefers decisions first and checks `canInterrupt`, so decisions still come through even with focus on."
+				},
+				{
+					"id": "local-browser",
+					"modelRounds": 4,
+					"textPublishedMs": 14806,
+					"answer": "It's open — the MuseFocus companion is showing in the browser canvas."
+				},
+				{
+					"id": "phone-browser",
+					"modelRounds": 2,
+					"textPublishedMs": 7282,
+					"answer": "It's now at phone width, 390 wide. The intro stacks with Start focusing up top, and the update check sits further down so you'll need to scroll to try it."
+				},
+				{
+					"id": "proposed-fix",
+					"modelRounds": 2,
+					"textPublishedMs": 6794,
+					"answer": "The local fix request was accepted and is in progress. It remains unpublished. We can review the candidate and actual check results in Suggested fixes when it’s ready."
+				},
+				{
+					"id": "approval-proposal",
+					"modelRounds": 2,
+					"textPublishedMs": 6035,
+					"answer": "The notification-only proposal for PR 3 is displayed and awaits confirmation. Say “confirm this delegation” in a new turn to activate it."
+				},
+				{
+					"id": "approval-confirm",
+					"modelRounds": 0,
+					"textPublishedMs": 213,
+					"answer": "Confirmed. Notification-only monitoring is active for PR 3. This does not approve or merge the PR."
+				},
+				{
+					"id": "automatic-approval-proposal",
+					"modelRounds": 2,
+					"textPublishedMs": 11826,
+					"answer": "The conditional approval proposal for PR 3 is displayed and awaits confirmation. Say “confirm this delegation” in a new turn to activate it."
+				},
+				{
+					"id": "automatic-approval-confirm",
+					"modelRounds": 0,
+					"textPublishedMs": 234,
+					"answer": "Confirmed. Conditional approval monitoring is active for PR 3. Activation is not a GitHub approval or merge."
+				},
+				{
+					"id": "slack-proposal",
+					"modelRounds": 5,
+					"textPublishedMs": 14043,
+					"answer": "I’d ask in the original Slack thread for which focus page is broken, and what happened right before it failed — error, blank, and steps.\n\nIt would be thread-only, up to 2 messages within 30 minutes, and no work started. Proceed?"
+				},
+				{
+					"id": "slack-confirm",
+					"modelRounds": 0,
+					"textPublishedMs": 1730,
+					"answer": "I’ll ask in the original Slack thread, within the limits you approved."
+				}
+			],
+			"httpFailures": []
+		},
+		{
+			"purpose": "clarification-after-repair",
+			"reportPath": "/private/var/folders/xh/nhz9_pd13qnd40l0y88b51c80000gp/T/musefocus-rehearsal-HLyD6W/report.json",
+			"sourceCommit": "4a2743ec8589539bbd29f4c634e678b268246311",
+			"status": "completed",
+			"liveModels": true,
+			"liveElevenLabs": false,
+			"textDiagnostics": true,
+			"liveSourceWrites": false,
+			"assertions": [
+				{
+					"name": "Slack clarification uses actual source-bound delegation and controlled delivery receipt",
+					"passed": true
+				}
+			],
+			"turns": [
+				{
+					"id": "slack-proposal",
+					"modelRounds": 5,
+					"textPublishedMs": 15205,
+					"answer": "I’ve prepared a clarification to send in the original Slack thread from the requester about the broken focus page, limited to 2 messages over 60 minutes.\n\nIt would ask which specific focus page is broken and what happened right before it failed, including what they saw and the steps to reproduce it — does that sound good to proceed?"
+				},
+				{
+					"id": "slack-confirm",
+					"modelRounds": 0,
+					"textPublishedMs": 3034,
+					"answer": "I’ll ask in the original Slack thread, within the limits you approved."
+				},
+				{
+					"id": "slack-context",
+					"modelRounds": 1,
+					"textPublishedMs": 5557,
+					"answer": "We learned it's not loading broken — focus turns on in the local companion in Chrome, then turns off after refresh.\n\nThat narrows it to persistence across refresh, but we still don't have the specific page URL or whether there was any error, so I wouldn't start work yet — we'd still be guessing where to reproduce it."
+				}
+			],
+			"httpFailures": []
+		},
+		{
+			"purpose": "latest-full-run-provider-failure",
+			"reportPath": "/private/var/folders/xh/nhz9_pd13qnd40l0y88b51c80000gp/T/musefocus-rehearsal-TmPJAq/report.json",
+			"sourceCommit": "8db52341a44166ade3592d82fde8326176155a36",
+			"status": "failed",
+			"liveModels": true,
+			"liveElevenLabs": false,
+			"textDiagnostics": true,
+			"liveSourceWrites": false,
+			"assertions": [],
+			"turns": [
+				{
+					"id": "dispatch",
+					"modelRounds": 2,
+					"textPublishedMs": 44721,
+					"answer": "I couldn’t verify the start request, so I haven’t started any work. Please try again."
+				}
+			],
+			"httpFailures": [
+				{
+					"status": 504,
+					"at": 1793699509739
+				}
+			]
+		}
+	]
 }
