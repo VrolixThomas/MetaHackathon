@@ -833,7 +833,26 @@ test("background inference failures emit only fixed categories and retain unavai
 			const confirmation = (await h.item()).clarification?.confirmedAt;
 			await h.tick();
 			await h.tick();
-			assert.deepEqual(diagnostics, [["[day-clarification]", { stage: "analysis", category }]]);
+			assert.deepEqual(diagnostics, [
+				[
+					"[day-clarification]",
+					{
+						stage: "analysis",
+						category,
+						...(category === "analysis_schema"
+							? {
+									schemaIssues: [
+										{ path: "summary", category: "invalid_type" },
+										{ path: "missing", category: "invalid_type" },
+										{ path: "questions", category: "invalid_type" },
+										{ path: "escalation", category: "invalid_value" },
+										{ path: "$", category: "unrecognized_keys" },
+									],
+								}
+							: {}),
+					},
+				],
+			]);
 			assert.ok(!JSON.stringify(diagnostics).includes(secret));
 			const c = (await h.item()).clarification;
 			assert.equal(c?.status, "needs_user");
@@ -847,4 +866,103 @@ test("background inference failures emit only fixed categories and retain unavai
 		}
 	}
 	assert.equal(clarificationFailureCategory({ category: secret, message: secret }), "unknown");
+});
+
+test("analysis schema diagnostics expose only fixed paths/categories and never admit malformed questions", async () => {
+	const secret = "PRIVATE_MODEL_VALUE_OR_KEY";
+	const valid = {
+		summary: "Needs URL",
+		missing: ["URL"],
+		questions: ["Which URL?"],
+		escalation: null,
+	};
+	const cases = [
+		{ value: null, issues: [{ path: "$", category: "invalid_type" }] },
+		{
+			value: { ...valid, summary: secret.repeat(300) },
+			issues: [{ path: "summary", category: "too_big" }],
+		},
+		{
+			value: { ...valid, missing: [null, null] },
+			issues: [{ path: "missing[]", category: "invalid_type" }],
+		},
+		{
+			value: { ...valid, questions: [{ [secret]: secret }] },
+			issues: [{ path: "questions[]", category: "invalid_type" }],
+		},
+		{
+			value: { ...valid, questions: Array(4).fill(secret) },
+			issues: [{ path: "questions", category: "too_big" }],
+		},
+		{
+			value: { ...valid, missing: Array(6).fill(secret) },
+			issues: [{ path: "missing", category: "too_big" }],
+		},
+		{
+			value: { ...valid, questions: [""] },
+			issues: [{ path: "questions[]", category: "too_small" }],
+		},
+		{
+			value: { ...valid, escalation: secret, [secret]: secret },
+			issues: [
+				{ path: "escalation", category: "invalid_value" },
+				{ path: "$", category: "unrecognized_keys" },
+			],
+		},
+	];
+	for (const { value, issues } of cases) {
+		const diagnostics: unknown[][] = [];
+		const warn = console.warn;
+		console.warn = (...args) => {
+			diagnostics.push(args);
+		};
+		let requests = 0;
+		const h = await harness({
+			analyzeClarification: (c, read, signal) =>
+				analyzeClarification(
+					{
+						async *stream() {
+							requests++;
+							yield {
+								type: "completed",
+								response: {
+									id: "controlled",
+									model: "muse-spark-1.3",
+									output: [
+										{
+											type: "message",
+											role: "assistant",
+											content: [{ type: "output_text", text: JSON.stringify(value) }],
+										},
+									],
+								},
+							};
+						},
+					},
+					c,
+					read,
+					signal
+				),
+		});
+		try {
+			await h.propose();
+			await h.confirm();
+			await h.tick();
+			await h.tick();
+			assert.deepEqual(diagnostics, [
+				[
+					"[day-clarification]",
+					{ stage: "analysis", category: "analysis_schema", schemaIssues: issues },
+				],
+			]);
+			assert.ok(!JSON.stringify(diagnostics).includes(secret));
+			assert.equal(requests, 1);
+			assert.equal(h.counts().sends, 0);
+			assert.deepEqual((await h.item()).clarification?.attempts, []);
+			assert.equal((await h.item()).clarification?.reason, "unavailable");
+		} finally {
+			console.warn = warn;
+			await h.close();
+		}
+	}
 });

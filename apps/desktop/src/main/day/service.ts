@@ -36,6 +36,7 @@ import {
 	ClarificationReadSchema,
 	clarificationDigest,
 	clarificationFailureCategory,
+	clarificationFailureIssues,
 } from "./clarification";
 import {
 	type DayCapture,
@@ -1318,7 +1319,12 @@ export class DayService {
 		} catch (error) {
 			if (signal.aborted) throw error;
 			if (await this.deferClarification(id, error)) return;
-			console.warn("[day-clarification]", { stage, category: clarificationFailureCategory(error) });
+			const schemaIssues = clarificationFailureIssues(error);
+			console.warn("[day-clarification]", {
+				stage,
+				category: clarificationFailureCategory(error),
+				...(schemaIssues.length ? { schemaIssues } : {}),
+			});
 			await change("unavailable");
 		}
 	}

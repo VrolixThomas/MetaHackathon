@@ -17,7 +17,47 @@ export const ClarificationAnalysisSchema = z.strictObject({
 	escalation: z.enum(["contradiction", "sensitive", "expanded_scope"]).nullable(),
 });
 export type ClarificationAnalysis = z.infer<typeof ClarificationAnalysisSchema>;
-// Closed vocabulary only: never attach provider errors, source/model text or schema paths.
+// Closed vocabulary only: never attach provider errors or source/model text.
+const AnalysisIssueSchema = z.strictObject({
+	path: z.enum(["$", "summary", "missing", "missing[]", "questions", "questions[]", "escalation"]),
+	category: z.enum([
+		"invalid_type",
+		"too_small",
+		"too_big",
+		"invalid_value",
+		"unrecognized_keys",
+		"other",
+	]),
+});
+type AnalysisIssue = z.infer<typeof AnalysisIssueSchema>;
+
+function analysisIssues(error: z.ZodError): AnalysisIssue[] {
+	const issues: AnalysisIssue[] = [];
+	for (const issue of error.issues) {
+		// Never stringify a raw path, unknown key, message, input or enum value.
+		const [field, index] = issue.path;
+		let path: AnalysisIssue["path"] = "$";
+		if (
+			issue.path.length === 1 &&
+			(field === "summary" ||
+				field === "missing" ||
+				field === "questions" ||
+				field === "escalation")
+		)
+			path = field;
+		if (issue.path.length === 2 && typeof index === "number") {
+			if (field === "missing") path = "missing[]";
+			if (field === "questions") path = "questions[]";
+		}
+		const category = AnalysisIssueSchema.shape.category.safeParse(issue.code);
+		const entry = { path, category: category.success ? category.data : ("other" as const) };
+		if (!issues.some((row) => row.path === entry.path && row.category === entry.category))
+			issues.push(entry);
+		if (issues.length === 12) break;
+	}
+	return issues;
+}
+
 export const ClarificationFailureSchema = z.enum([
 	"context_limit",
 	"transport",
@@ -31,10 +71,21 @@ export const ClarificationFailureSchema = z.enum([
 ]);
 export class ClarificationInferenceError extends Error {
 	readonly category: z.infer<typeof ClarificationFailureSchema>;
-	constructor(category: z.infer<typeof ClarificationFailureSchema>) {
+	readonly schemaIssues: AnalysisIssue[];
+	constructor(
+		category: z.infer<typeof ClarificationFailureSchema>,
+		schemaIssues: AnalysisIssue[] = []
+	) {
 		super("Clarification inference failed");
 		this.category = ClarificationFailureSchema.parse(category);
+		this.schemaIssues = z.array(AnalysisIssueSchema).max(12).parse(schemaIssues);
 	}
+}
+export function clarificationFailureIssues(error: unknown): AnalysisIssue[] {
+	if (!(error instanceof ClarificationInferenceError) || error.category !== "analysis_schema")
+		return [];
+	const parsed = z.array(AnalysisIssueSchema).max(12).safeParse(error.schemaIssues);
+	return parsed.success ? parsed.data : [];
 }
 export function clarificationFailureCategory(error: unknown): string {
 	if (error instanceof ClarificationInferenceError) {
@@ -113,7 +164,10 @@ export async function analyzeClarification(
 				stage = "json_invalid";
 				const value: unknown = JSON.parse(text);
 				stage = "analysis_schema";
-				return ClarificationAnalysisSchema.parse(value);
+				const analysis = ClarificationAnalysisSchema.safeParse(value);
+				if (!analysis.success)
+					throw new ClarificationInferenceError("analysis_schema", analysisIssues(analysis.error));
+				return analysis.data;
 			}
 		}
 		throw new ClarificationInferenceError("incomplete");
