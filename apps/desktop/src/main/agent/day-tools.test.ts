@@ -730,3 +730,178 @@ test("cancelled fresh Day navigation cannot return late validation", async () =>
 	await assert.rejects(h.tools.validateObservedTarget(h.row.id), { name: "AbortError" });
 	assert.equal(h.operations.length, 0);
 });
+
+const clarificationScope = {
+	scope: "Clarify the requested page behavior only",
+	maxMessages: 2,
+	durationMinutes: 30,
+};
+function recordProposal(row: DayWorkItem) {
+	assert(row.source);
+	row.clarification = {
+		policy: {
+			id: "proposal",
+			revision: 1,
+			connectionId: "slack-connection",
+			actor: { workspaceId: row.workspaceId, userId: row.ownerUserId },
+			source: structuredClone(row.source.source),
+			originalRequest: row.summary,
+			...clarificationScope,
+			sendAuthority: "clarification-only-original-thread",
+		},
+		status: "proposed",
+		confirmedAt: null,
+		expiresAt: null,
+		summary: "",
+		missing: [],
+		reason: null,
+		evidence: [],
+		attempts: [],
+	};
+}
+
+test("proposal preflight conflict requires explicit item inspection and the exact fresh revision before any operation", async () => {
+	for (const retry of ["fresh", "old", "queue-only"] as const) {
+		const h = harness();
+		await h.tools.observe();
+		h.row.revision = 15;
+		h.state.sequence++;
+		await assert.rejects(
+			h.invoke("propose_clarification", { ...clarificationScope, expectedRevision: 1 }),
+			(error) => {
+				assert(error instanceof WorkspaceArgumentError);
+				assert.match(error.message, /day_inspect_item.*exactly the fresh revision/);
+				assert(error.message.length < 600);
+				return true;
+			}
+		);
+		assert.equal(h.operations.length, 0);
+		if (retry === "queue-only") {
+			await h.tools.execute("day_inspect_queue", "{}");
+			await assert.rejects(
+				h.invoke("propose_clarification", clarificationScope),
+				/day_inspect_item/
+			);
+		} else {
+			const inspected = (await h.tools.execute(
+				"day_inspect_item",
+				JSON.stringify({ itemId: h.row.id })
+			)) as { item: { revision: number } };
+			assert.equal(inspected.item.revision, 15);
+			assert.equal(h.operations.length, 0);
+			if (retry === "old") {
+				await assert.rejects(
+					h.invoke("propose_clarification", { ...clarificationScope, expectedRevision: 1 }),
+					/exact revision/
+				);
+			} else {
+				const operate = h.ports.operate;
+				h.ports.operate = async (...args) => {
+					recordProposal(h.row);
+					return operate(...args);
+				};
+				await h.invoke("propose_clarification", {
+					...clarificationScope,
+					expectedRevision: inspected.item.revision,
+				});
+				assert.equal(h.operations.length, 1);
+				assert.equal(
+					(h.operations[0]?.operation as { expectedRevision: number }).expectedRevision,
+					15
+				);
+				assert.equal(h.row.clarification?.confirmedAt, null);
+				await assert.rejects(
+					h.invoke("confirm_clarification", {
+						confirmed: true,
+						policyId: "proposal",
+						policyRevision: 1,
+					}),
+					/distinct real user confirmation/
+				);
+				assert.equal(h.operations.length, 1);
+			}
+		}
+		if (retry !== "fresh") assert.equal(h.operations.length, 0);
+	}
+});
+
+for (const drift of [
+	"source",
+	"actor",
+	"owner",
+	"removed",
+	"closed",
+	"cancelled",
+	"policy",
+	"scope",
+	"rollback",
+] as const) {
+	test(`proposal conflict remains non-repairable for ${drift} drift`, async () => {
+		const h = harness();
+		await h.tools.observe();
+		h.row.revision = 15;
+		h.state.sequence++;
+		assert(h.row.source);
+		if (drift === "source") h.row.source.source.revisionId = "changed";
+		if (drift === "scope") h.row.source.audience.membershipRevision = "changed";
+		if (drift === "actor") h.state.actor.userId = "other";
+		if (drift === "owner") h.row.ownerUserId = "other";
+		if (drift === "removed") {
+			h.state.items = [];
+			h.state.currentItemId = null;
+		}
+		if (drift === "closed" || drift === "cancelled") h.row.phase = drift;
+		if (drift === "policy") recordProposal(h.row);
+		if (drift === "rollback") {
+			await h.tools.observe();
+			h.row.revision = 1;
+		}
+		await assert.rejects(
+			h.invoke("propose_clarification", {
+				...clarificationScope,
+				expectedRevision: drift === "rollback" ? 15 : 1,
+			}),
+			(error) => {
+				assert(error instanceof Error);
+				assert(!(error instanceof WorkspaceArgumentError));
+				return true;
+			}
+		);
+		assert.equal(h.operations.length, 0);
+	});
+}
+
+test("revision recovery never applies to confirmation, sending, acceptance, execution or unknown dispatched outcomes", async () => {
+	for (const kind of ["confirm_clarification", "send_reply", "accept", "start_work"] as const) {
+		const h = harness();
+		await h.tools.observe();
+		h.row.revision = 15;
+		h.state.sequence++;
+		const fields =
+			kind === "confirm_clarification"
+				? { confirmed: true, policyId: "proposal", policyRevision: 1 }
+				: kind === "send_reply"
+					? { body: "Exact body", draftRevision: 1 }
+					: kind === "start_work"
+						? { repositoryId: "repo" }
+						: {};
+		await assert.rejects(h.invoke(kind, { ...fields, expectedRevision: 1 }), (error) => {
+			assert(error instanceof Error);
+			assert(!(error instanceof WorkspaceArgumentError));
+			return true;
+		});
+		assert.equal(h.operations.length, 0);
+	}
+	const h = harness();
+	await h.tools.observe();
+	let dispatched = 0;
+	h.ports.operate = async () => {
+		dispatched++;
+		throw new Error("Uncertain post-dispatch outcome");
+	};
+	await assert.rejects(h.invoke("propose_clarification", clarificationScope), (error) => {
+		assert(error instanceof Error && !(error instanceof WorkspaceArgumentError));
+		return true;
+	});
+	assert.equal(dispatched, 1);
+});

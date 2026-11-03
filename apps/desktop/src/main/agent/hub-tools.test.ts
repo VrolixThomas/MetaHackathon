@@ -4499,3 +4499,172 @@ for (const selected of [false, true]) {
 		});
 	}
 }
+
+for (const selected of [false, true]) {
+	for (const outcome of [
+		"fresh",
+		"second-conflict",
+		"skip-inspect",
+		"old-revision",
+		"post-dispatch",
+	] as const) {
+		test(`${selected ? "review" : "workspace"}: Day proposal preflight recovery is bounded for ${outcome}`, async () => {
+			const d = data();
+			const day = attachReadPorts(d);
+			const w = workspace(d);
+			const pr = required(d.hub.reviews[0]).pr;
+			const turn: ConversationTurnInput = {
+				...input,
+				inputMode: "typed",
+				text: "Ask the Slack requester which page and preceding steps. Clarification only, no start.",
+				...(selected ? { prId: pr.id } : {}),
+			};
+			const scope = {
+				scope: "Which page and preceding steps",
+				maxMessages: 2,
+				durationMinutes: 30,
+			};
+			const propose = (revision: number) =>
+				call(
+					"day_propose_clarification",
+					{
+						itemId: day.item.id,
+						expectedRevision: revision,
+						userCommand: turn.text,
+						...scope,
+					},
+					`propose-${revision}`
+				);
+			const outputs = [
+				[propose(1)],
+				...(outcome === "skip-inspect"
+					? []
+					: [[call("day_inspect_item", { itemId: day.item.id }, "fresh-inspection")]]),
+				[propose(outcome === "old-revision" ? 1 : 15)],
+				answer("Controlled proposal only; separate confirmation is still required."),
+			];
+			const requests: MetaRequest[] = [];
+			const controlled = client(outputs, requests);
+			const ports = required(d.ports.day);
+			const operate = ports.operate;
+			ports.operate = async (...args) => {
+				const operation = args[0];
+				assert.equal(operation.kind, "propose_clarification");
+				assert(operation.kind === "propose_clarification");
+				assert.equal(operation.expectedRevision, outcome === "post-dispatch" ? 1 : 15);
+				assert(day.item.source);
+				day.item.clarification = {
+					policy: {
+						id: "clarify",
+						revision: 1,
+						connectionId: "connection",
+						actor: day.snapshot.actor,
+						source: day.item.source.source,
+						originalRequest: day.item.summary,
+						...scope,
+						sendAuthority: "clarification-only-original-thread",
+					},
+					status: "proposed",
+					confirmedAt: null,
+					expiresAt: null,
+					summary: "",
+					missing: [],
+					reason: null,
+					evidence: [],
+					attempts: [],
+				};
+				const result = await operate(...args);
+				if (outcome === "post-dispatch") throw new Error("Unknown result after dispatch");
+				return result;
+			};
+			const prepared: PreparedReview = {
+				id: "review",
+				version: 1,
+				pr,
+				createdAt: time,
+				summary: "Inferred",
+				orderRationale: "Inferred",
+				coverage: "complete",
+				evidence: "inferred-from-github",
+				files: [
+					{ path: "changed.ts", reason: "Inferred", summary: "Inferred", suggestedComments: [] },
+				],
+			};
+			const service = new ConversationService(
+				{
+					async *stream(request, signal) {
+						const index = requests.length;
+						if (index === 0 && outcome !== "post-dispatch") {
+							day.item.revision = 15;
+							day.snapshot.sequence++;
+						}
+						if (index === 1) {
+							assert.equal(day.operations.length, 0);
+							const receipt = request.input.find((item) => item["type"] === "function_call_output");
+							const rejected = JSON.parse(String(receipt?.["output"]));
+							assert.equal(rejected.status, "rejected-before-execution");
+							assert.match(rejected.message, /day_inspect_item/);
+						}
+						if (index === 2 && outcome !== "skip-inspect") {
+							assert.equal(day.operations.length, 0);
+							const receipt = request.input.find(
+								(item) =>
+									item["call_id"] === "fresh-inspection" && item["type"] === "function_call_output"
+							);
+							assert.equal(JSON.parse(String(receipt?.["output"])).item.revision, 15);
+							if (outcome === "second-conflict") {
+								day.item.revision++;
+								day.snapshot.sequence++;
+							}
+						}
+						yield* controlled.stream(request, signal);
+					},
+				},
+				{
+					hub: d.ports,
+					workspace: w.ports,
+					...(selected
+						? {
+								review: {
+									getReady: async () => prepared,
+									getProgress: async () => null,
+									getScreen: async (): Promise<ReviewScreen> => ({
+										sequence: 0,
+										mode: "conversation",
+										prId: pr.id,
+									}),
+									navigate: async () => {
+										throw new Error("No navigation requested");
+									},
+								},
+							}
+						: {}),
+				}
+			);
+			try {
+				service.start(turn);
+				await eventually(() => service.poll(identity(turn)).status !== "running");
+				assert.equal(
+					service.poll(identity(turn)).status,
+					outcome === "fresh" ? "completed" : "error"
+				);
+				assert.equal(
+					requests.length,
+					outcome === "fresh"
+						? 4
+						: outcome === "post-dispatch"
+							? 1
+							: outcome === "skip-inspect"
+								? 2
+								: 3
+				);
+				assert.equal(day.operations.length, ["fresh", "post-dispatch"].includes(outcome) ? 1 : 0);
+				assert.equal(day.item.clarification?.confirmedAt ?? null, null);
+				assert.equal(w.commands.length, 0);
+				assert.equal(d.operations.length, 0);
+			} finally {
+				await service.dispose();
+			}
+		});
+	}
+}

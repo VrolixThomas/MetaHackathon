@@ -154,6 +154,14 @@ function navigationBinding(item: DayWorkItem) {
 		)
 		.digest("hex");
 }
+/** Drift fence only: never substitutes for fresh source authorization in operate. */
+function proposalBinding(item: DayWorkItem) {
+	return JSON.stringify([
+		navigationBinding(item),
+		item.clarification ?? null,
+		item.clarificationMetadata ?? null,
+	]);
+}
 function summary(item: DayWorkItem) {
 	return {
 		id: item.id,
@@ -213,6 +221,8 @@ export class ConversationDayTools {
 	private readonly observed = new Map<string, number>();
 	private readonly navigation = new Map<string, string>();
 	private readonly details = new Map<string, DayWorkItem>();
+	private readonly proposalBindings = new Map<string, string>();
+	private readonly proposalNeedsInspection = new Set<string>();
 	private readonly results = new Map<string, Promise<unknown>>();
 	constructor(
 		private readonly ports: ConversationDayPorts,
@@ -263,6 +273,8 @@ export class ConversationDayTools {
 			this.observed.clear();
 			this.navigation.clear();
 			this.details.clear();
+			this.proposalBindings.clear();
+			this.proposalNeedsInspection.clear();
 			this.results.clear();
 			throw new GuidedReviewError(
 				"The Day actor or snapshot changed. Inspect the current queue again."
@@ -303,7 +315,10 @@ export class ConversationDayTools {
 		for (const item of packet.items) {
 			this.observed.set(item.id, item.revision);
 			const original = this.latest?.items.find((row) => row.id === item.id);
-			if (original) this.navigation.set(item.id, navigationBinding(original));
+			if (original) {
+				this.navigation.set(item.id, navigationBinding(original));
+				this.proposalBindings.set(item.id, proposalBinding(original));
+			}
 		}
 		return packet;
 	}
@@ -351,6 +366,7 @@ export class ConversationDayTools {
 			throw new GuidedReviewError("The Day item exceeds its inspection budget.");
 		this.observed.set(item.id, item.revision);
 		this.navigation.set(item.id, navigationBinding(item));
+		this.proposalBindings.set(item.id, proposalBinding(item));
 		this.details.set(item.id, {
 			...item,
 			questions: item.questions.filter((q) => questions.some((observed) => observed.id === q.id)),
@@ -398,9 +414,13 @@ export class ConversationDayTools {
 					inspected.clarification.policy.revision !== item.clarificationMetadata.policyRevision
 				)
 					throw new GuidedReviewError("This clarification changed.");
-				return this.detail(inspected);
+				const result = this.detail(inspected);
+				this.proposalNeedsInspection.delete(item.id);
+				return result;
 			}
-			return this.detail(item);
+			const result = this.detail(item);
+			this.proposalNeedsInspection.delete(item.id);
+			return result;
 		}
 		if (!tool) throw new GuidedReviewError("That Day operation is unavailable.");
 		if (args["userCommand"] !== this.turn.text)
@@ -446,12 +466,38 @@ export class ConversationDayTools {
 				? undefined
 				: day.items.find((row) => row.id === operation.itemId);
 		if (operation.kind !== "capture_manual") {
-			if (!item || item.revision !== operation.expectedRevision)
+			if (
+				item &&
+				(item.workspaceId !== day.actor.workspaceId || item.ownerUserId !== day.actor.userId)
+			)
+				throw new GuidedReviewError("The Day item does not belong to the current actor.");
+			if (item && operation.kind !== "cover" && ["closed", "cancelled"].includes(item.phase))
+				throw new GuidedReviewError("That Day item is already closed or cancelled.");
+			if (
+				operation.kind === "propose_clarification" &&
+				this.proposalNeedsInspection.has(operation.itemId)
+			)
+				throw new GuidedReviewError(
+					"Call day_inspect_item before proposing again with its exact fresh revision."
+				);
+			if (!item || item.revision !== operation.expectedRevision) {
+				// Only this known pre-dispatch proposal refusal can use the conversation's
+				// single correction budget. Never rewrite args or replay ports.operate.
+				if (
+					operation.kind === "propose_clarification" &&
+					item &&
+					item.revision > operation.expectedRevision &&
+					this.proposalBindings.get(item.id) === proposalBinding(item)
+				) {
+					this.proposalNeedsInspection.add(item.id);
+					throw new WorkspaceArgumentError(
+						"The Day item revision changed before execution. No operation was performed. Call day_inspect_item for this item, then submit a new day_propose_clarification using exactly the fresh revision and requested scope/bounds. Do not reuse old confirmation; explain the new proposal for a later distinct confirmation."
+					);
+				}
 				throw new GuidedReviewError(
 					"The Day item changed. Inspect its current revision before acting."
 				);
-			if (operation.kind !== "cover" && ["closed", "cancelled"].includes(item.phase))
-				throw new GuidedReviewError("That Day item is already closed or cancelled.");
+			}
 		}
 		if (operation.kind === "confirm_clarification") {
 			const inspected = item && this.details.get(item.id);
