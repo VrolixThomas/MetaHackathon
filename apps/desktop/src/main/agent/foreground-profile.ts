@@ -76,11 +76,12 @@ export class ForegroundProfile {
 	private section?: string;
 	private focusKey?: string;
 	private sourceWorkflow = false;
-	private fullTools = false;
+	private legacyUnscoped = false;
 	select(observation?: WorkspaceObservation, selectedReview = false, userText?: string) {
 		this.active.clear();
 		this.sourceWorkflow = false;
-		this.fullTools = false;
+		// Sparse V1 callers have no workspace pane. The present app always supplies an observation.
+		this.legacyUnscoped = !observation;
 		this.selectedReview = selectedReview;
 		if (selectedReview) this.active.add("reviews");
 		const canvas = observation?.workspace.canvases.find(
@@ -132,24 +133,11 @@ export class ForegroundProfile {
 				this.active.add("day");
 				this.active.add("slack");
 			}
-			// Unknown or compound requests keep the full tool loop, rather than
-			// guessing a family from incidental words (e.g. browser retention).
-			// Simple pane discussion/navigation can keep its existing lean profile.
-			const simplePaneRequest =
-				!!canvas &&
-				(/^(?:hi|hello|hey|thanks|thank you)[.!\s]*$/i.test(userText.trim()) ||
-					/^(?:please\s+)?open (?:my |the )?(?:tickets|reviews|home|my day)[.!\s]*$/i.test(
-						userText.trim()
-					) ||
-					/^(?:let['’]s discuss [^.!?;,]+|explain this (?:ticket|file)|continue)[?.!\s]*$/i.test(
-						userText.trim()
-					)) &&
-				!/\b(?:and|then|also|but)\b/i.test(userText);
+			// Other wording keeps pane/core tools and can request a focused expansion.
 			const explicitTicketWork = /^(?:start|inspect|read)\s+(?:ticket\s+)?[a-z]+[- ]\d+\b/i.test(
 				userText
 			);
 			if (explicitTicketWork) this.active.add("work");
-			this.fullTools = !this.sourceWorkflow && !simplePaneRequest && !explicitTicketWork;
 		}
 	}
 	has(value: Family) {
@@ -160,7 +148,7 @@ export class ForegroundProfile {
 			...available.filter(
 				(tool) =>
 					!(this.sourceWorkflow && tool.name === "day_capture_manual") &&
-					(this.fullTools ||
+					(this.legacyUnscoped ||
 						core.has(tool.name) ||
 						this.has(family(tool.name)) ||
 						(this.has("work") && sourceTools.has(tool.name)))
@@ -189,7 +177,7 @@ export class ForegroundProfile {
 	}
 	expand(raw: string) {
 		const value = parseToolArguments(expansion, raw);
-		const newlyEnabled = this.fullTools
+		const newlyEnabled = this.legacyUnscoped
 			? []
 			: value.families.filter((selected) => !this.has(selected));
 		for (const selected of value.families) this.expanded.add(selected);

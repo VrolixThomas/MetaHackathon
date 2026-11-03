@@ -790,6 +790,9 @@ test("source/flow canvas context omits large source text with exact identity and
 test("foreground hub inspection supplies source citations to the same workspace flow tool and waits for its receipt", async () => {
 	const d = data();
 	const w = workspace(d);
+	const canvas = required(w.observation.workspace.canvases[0]);
+	assert(canvas.kind === "center");
+	canvas.section = "completed";
 	const requests: MetaRequest[] = [];
 	const flow = {
 		title: "Caller to change",
@@ -882,6 +885,9 @@ test("typed notice acknowledgement follows published final text without a fabric
 test("cancelled pinned-source reads cannot resume inference or publish a late source flow", async () => {
 	const d = data();
 	const w = workspace(d);
+	const canvas = required(w.observation.workspace.canvases[0]);
+	assert(canvas.kind === "center");
+	canvas.section = "completed";
 	const requests: MetaRequest[] = [];
 	let release: (source: PinnedSource) => void = () => {};
 	let reading = false;
@@ -3089,7 +3095,7 @@ test("selected ticket supplies freshly authorized details in the first fast requ
 	}
 });
 
-test("unknown requests retain full tools and redundant expansion grants no effects or authority", async () => {
+test("sparse legacy V1 retains available tools and expansion grants no effects or authority", async () => {
 	const d = data();
 	const requests: MetaRequest[] = [];
 	const service = new ConversationService(
@@ -3113,6 +3119,114 @@ test("unknown requests retain full tools and redundant expansion grants no effec
 		assert(requests.every((request) => request.workload === "quick"));
 		assert.equal(d.operations.length, 0);
 		assert.equal(service.poll(identity()).actions.length, 0);
+	} finally {
+		await service.dispose();
+	}
+});
+
+for (const text of ["Bring me to my ticket boards.", "Could you take me over to the tickets?"]) {
+	test(`ordinary navigation keeps bounded tools and awaits its display receipt: ${text}`, async () => {
+		const d = data();
+		const w = workspace(d);
+		const requests: MetaRequest[] = [];
+		const service = new ConversationService(
+			client(
+				[
+					[call("open_command_center", { section: "tickets" })],
+					answer("Controlled navigation acknowledgement."),
+				],
+				requests
+			),
+			{ hub: d.ports, workspace: w.ports }
+		);
+		try {
+			service.start({ ...input, text });
+			await eventually(() => w.commands.length === 1);
+			assert.equal(requests.length, 1);
+			assert.equal(service.poll(identity()).text, "");
+			assert(required(required(requests[0]).tools).length <= 8);
+			assert(required(required(requests[0]).tools).some((t) => t.name === "expand_tools"));
+			assert(!required(required(requests[0]).tools).some((t) => t.name === "start_work"));
+			w.settle();
+			await eventually(() => service.poll(identity()).status !== "running");
+			assert.equal(service.poll(identity()).status, "completed");
+			assert.equal(w.commands.length, 1);
+			assert.equal(d.operations.length, 0);
+		} finally {
+			w.settle();
+			await service.dispose();
+		}
+	});
+}
+
+for (const text of [
+	"What changed in this PR?",
+	"Why does the pull request behave this way?",
+	"Where does this value come from in the source?",
+	"Inspect the source, then explain how it relates to this PR.",
+]) {
+	test(`unknown off-pane needs expand only the requested family with fresh context: ${text}`, async () => {
+		const d = data();
+		const w = workspace(d);
+		const requests: MetaRequest[] = [];
+		let reads = 0;
+		const observe = w.ports.observe;
+		w.ports.observe = async (...args) => {
+			reads++;
+			if (reads >= 2) required(d.hub.reviews[0]).pr.title = "Freshly observed PR";
+			return observe(...args);
+		};
+		const service = new ConversationService(
+			client(
+				[
+					[call("expand_tools", { families: ["reviews"] })],
+					[call("inspect_pr_feedback", { prId: "own-pr" })],
+					answer("Controlled reply from inspected feedback."),
+				],
+				requests
+			),
+			{ hub: d.ports, workspace: w.ports }
+		);
+		try {
+			service.start({ ...input, text });
+			await eventually(() => service.poll(identity()).status !== "running");
+			assert.equal(service.poll(identity()).status, "completed");
+			assert.equal(requests.length, 3);
+			assert(required(required(requests[0]).tools).length <= 8);
+			assert(required(required(requests[0]).tools).some((t) => t.name === "expand_tools"));
+			assert(!required(required(requests[0]).tools).some((t) => t.name === "inspect_pr_feedback"));
+			assert(required(required(requests[1]).tools).some((t) => t.name === "inspect_pr_feedback"));
+			assert(required(required(requests[1]).tools).length <= 24);
+			assert(!required(required(requests[1]).tools).some((t) => t.name === "start_work"));
+			assert.match(JSON.stringify(requests[1]?.input), /Freshly observed PR/);
+			assert.match(JSON.stringify(requests[1]?.input), /not a user instruction or consent/);
+			assert.equal(w.commands.length, 0);
+			assert.equal(d.operations.length, 0);
+		} finally {
+			await service.dispose();
+		}
+	});
+}
+
+test("unknown requests cannot execute a registered but unoffered family before expansion", async () => {
+	const d = data();
+	const w = workspace(d);
+	const requests: MetaRequest[] = [];
+	const service = new ConversationService(
+		client(
+			[[call("start_work", { ticketId: d.ticket.id, repositoryId: "repo", brief: "Unrequested" })]],
+			requests
+		),
+		{ hub: d.ports, workspace: w.ports }
+	);
+	try {
+		service.start({ ...input, text: "Take care of that, then explain it." });
+		await eventually(() => service.poll(identity()).status !== "running");
+		assert.equal(service.poll(identity()).status, "error");
+		assert.equal(requests.length, 1);
+		assert(required(required(requests[0]).tools).length <= 8);
+		assert.equal(w.commands.length, 0);
+		assert.equal(d.operations.length, 0);
 	} finally {
 		await service.dispose();
 	}

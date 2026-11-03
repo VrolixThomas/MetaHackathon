@@ -70,7 +70,19 @@ function harness(
 	let observation: WorkspaceObservation = {
 		workspace: {
 			sequence: 0,
-			canvases: [{ id: "review", title: "Review", kind: "review", revision: 1 }],
+			canvases: [
+				selected
+					? { id: "review", title: "Review", kind: "review", revision: 1 }
+					: {
+							id: "review",
+							title: "Notes",
+							kind: "document",
+							revision: 1,
+							markdown: "Existing draft",
+							references: [],
+							provenance: "agent-draft",
+						},
+			],
 			primaryId: "review",
 			secondaryId: null,
 			review: { sequence: 0, mode: "conversation", prId: null },
@@ -200,6 +212,11 @@ function harness(
 								plan.files[command.direction === "next" ? index + 1 : 0]?.path ??
 								"service.ts");
 					workspace.review = screen(path);
+					workspace.canvases = workspace.canvases.map((canvas) =>
+						canvas.id === "review"
+							? { id: "review", title: "Review", kind: "review", revision: 1 }
+							: canvas
+					);
 					if (command.kind === "navigate-review" && command.direction === "pause")
 						workspace.review.paused = true;
 					workspace.primaryId = "review";
@@ -536,6 +553,7 @@ test("explanation citations must remain within actual supplied pinned source ran
 	for (const endLine of [1, 10000]) {
 		const h = harness(
 			[
+				[call("expand_tools", { families: ["canvases"] }, "expand-canvases")],
 				[
 					call("write_markdown_explanation", {
 						title: "Source notes",
@@ -564,10 +582,10 @@ test("explanation citations must remain within actual supplied pinned source ran
 				await effect(h, 0);
 				await finish(h);
 				assert.equal(h.commands.length, 1);
-				assert.equal(packet(h.requests[1]).currentFilePresentation, "cached-hidden");
+				assert.equal(packet(h.requests[2]).currentFilePresentation, "cached-hidden");
 			} else {
 				await finish(h);
-				assert(JSON.stringify(h.requests[1]?.input).includes("rejected-before-execution"));
+				assert(JSON.stringify(h.requests[2]?.input).includes("rejected-before-execution"));
 				assert.equal(h.commands.length, 0);
 			}
 		} finally {
@@ -923,7 +941,7 @@ test("the single recovery budget survives a no-PR to ready-review transition", a
 });
 
 test("workspace context bounds untrusted content honestly without attaching PR execution to pages or mock images", () => {
-	const h = harness([]);
+	const h = harness([], true);
 	const observation = structuredClone(h.observation);
 	for (let index = 0; index < 11; index++)
 		observation.workspace.canvases.push({
@@ -1002,15 +1020,19 @@ test("nested model argument errors report schema paths and expected types withou
 		],
 	};
 	const h = harness(
-		[[call("write_markdown_explanation", bad, "bad")], answer("That range needs correction.")],
+		[
+			[call("expand_tools", { families: ["canvases"] }, "expand-canvases")],
+			[call("write_markdown_explanation", bad, "bad")],
+			answer("That range needs correction."),
+		],
 		true
 	);
 	try {
 		h.service.start(h.input);
 		await finish(h);
-		const output = h.requests[1]?.input.find((item) => item["type"] === "function_call_output")?.[
-			"output"
-		];
+		const output = h.requests[2]?.input.find(
+			(item) => item["type"] === "function_call_output" && item["call_id"] === "bad"
+		)?.["output"];
 		assert.equal(typeof output, "string");
 		assert.match(String(output), /references.0.startLine: invalid_type; expected number/);
 		assert(!String(output).includes("PRIVATE-REJECTED-VALUE"));

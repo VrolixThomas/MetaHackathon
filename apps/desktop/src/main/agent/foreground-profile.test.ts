@@ -68,7 +68,7 @@ test("unknown off-pane needs retain explicit expansion with unchanged authority"
 
 test("selected reviews expose source-flow tools without expanding unrelated canvases", () => {
 	const profile = new ForegroundProfile();
-	profile.select(undefined, true);
+	profile.select(observation("home"), true);
 	const selected = profile.tools(tools);
 	for (const name of [
 		"read_pinned_source",
@@ -112,7 +112,14 @@ test("real conditional PR requests offer approvals immediately, including after 
 		const profile = new ForegroundProfile();
 		for (const selected of [false, true]) {
 			profile.select(observation(selected ? "completed" : "home"), selected, text);
-			// The last variant needs an actual review; unknown off-pane intent keeps full tools.
+			// The last variant needs an actual review; off-pane it can expand approvals.
+			if (!selected && !/\bPR\s*\d*\b/i.test(text)) {
+				assert(!profile.tools(workflowTools).some((t) => t.name === "draft_pr_delegation"));
+				assert.equal(
+					profile.expand(JSON.stringify({ families: ["approvals"] })).status,
+					"tools-expanded"
+				);
+			}
 			const offered = profile.tools(workflowTools);
 			for (const name of ["draft_pr_delegation", "confirm_pr_delegation"])
 				assert.equal(
@@ -157,15 +164,63 @@ test("Slack clarification offers Day and Slack without treating context as conse
 	assert(!profile.tools(workflowTools).some((t) => t.name === "day_propose_clarification"));
 });
 
-test("ambiguous and compound requests retain full available tools without inventing absent services", () => {
-	const profile = new ForegroundProfile();
+test("ordinary navigation, PR questions and unknown compounds start scoped and can expand", () => {
 	for (const text of [
+		"Bring me to my ticket boards.",
+		"Could you take me over to the tickets?",
+		"What changed in this PR?",
+		"Why does the pull request behave this way?",
+		"Where does this value come from in the source?",
 		"Take care of that",
 		"Across browser restarts",
 		"What do you recommend? Also send the decision.",
 	]) {
+		const profile = new ForegroundProfile();
 		profile.select(observation("home"), false, text);
-		assert(workflowTools.every((t) => profile.tools(workflowTools).includes(t)));
-		assert(!profile.tools(tools).some((t) => t.name === "draft_pr_delegation"));
+		assert.deepEqual(
+			profile.tools(workflowTools).map((t) => t.name),
+			["open_command_center", "day_inspect_queue", "expand_tools"],
+			text
+		);
+		const result = profile.expand(JSON.stringify({ families: ["reviews"] }));
+		assert.equal(result.status, "tools-expanded");
+		assert.match(result.authority, /not a user instruction or consent/);
+		profile.select(observation("home"), false, text);
+		assert(profile.tools(workflowTools).some((t) => t.name === "read_pinned_source"));
+		assert(!profile.tools(workflowTools).some((t) => t.name === "confirm_pr_comment"));
+		assert(profile.tools(workflowTools).length <= 8);
+		assert.equal(
+			profile.expand(JSON.stringify({ families: ["reviews"] })).status,
+			"tools-already-available"
+		);
 	}
+});
+
+test("ordinary selected PR questions retain review scope without unrelated families", () => {
+	for (const text of ["What changed in this PR?", "How does this affect the caller?"]) {
+		const profile = new ForegroundProfile();
+		profile.select(observation("home"), true, text);
+		const offered = profile.tools(workflowTools);
+		assert(offered.length <= 8);
+		assert(offered.some((tool) => tool.name === "read_pinned_source"));
+		assert(!offered.some((tool) => tool.name === "confirm_pr_comment"));
+		assert(!offered.some((tool) => tool.name === "confirm_pr_delegation"));
+		assert.equal(
+			profile.expand(JSON.stringify({ families: ["comments"] })).status,
+			"tools-expanded"
+		);
+		assert(profile.tools(workflowTools).some((tool) => tool.name === "confirm_pr_comment"));
+	}
+});
+
+test("sparse legacy V1 availability does not widen an observed empty workspace", () => {
+	const profile = new ForegroundProfile();
+	profile.select(undefined, false, "Take care of that");
+	assert(workflowTools.every((tool) => profile.tools(workflowTools).includes(tool)));
+	assert(!profile.tools(tools).some((tool) => tool.name === "draft_pr_delegation"));
+	const empty = observation("home");
+	empty.workspace.canvases = [];
+	empty.workspace.primaryId = "missing";
+	profile.select(empty, false, "Take care of that");
+	assert.equal(profile.tools(workflowTools).length, 3);
 });
