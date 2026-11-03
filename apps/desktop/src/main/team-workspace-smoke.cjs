@@ -395,7 +395,7 @@ async function native() {
 						`!!document.querySelector('[data-center-section="completed"][data-selected-id="${result.jobId}"]')`
 					)
 				);
-				await button('[data-center-section="completed"]', "Inspect local diff");
+				await button('[data-center-section="completed"]', "Reload changes");
 				await wait("actual applied source diff rendered", () =>
 					js(
 						`document.querySelector('.hub-work-review')?.textContent.includes('Math.max(0, quote.discount)')`

@@ -196,6 +196,7 @@ export function WorkDiff({
 	labels = { base: "Base", head: "Head" },
 	navigation = false,
 	showLineCounts = false,
+	fileSidebar = false,
 }: {
 	review: WorkReview;
 	command: Command;
@@ -206,6 +207,7 @@ export function WorkDiff({
 	labels?: { base: string; head: string };
 	navigation?: boolean;
 	showLineCounts?: boolean;
+	fileSidebar?: boolean;
 }) {
 	const [selected, setSelected] = useState("");
 	const [localView, setView] = useState<"diff" | "base" | "head">("diff");
@@ -251,135 +253,222 @@ export function WorkDiff({
 			: null;
 	let patchOffset = 0;
 	return (
-		<section className="hub-work-review" aria-label="Local work review">
-			<div className="hub-actions">
-				<label className="hub-file-select">
-					Changed file
-					<select value={file.path} onChange={(event) => selectFile(event.currentTarget.value)}>
-						{review.files.map((entry) => (
-							<option value={entry.path} key={entry.path}>
-								{entry.path} · {entry.status}
-								{showLineCounts && entry.patch !== null
-									? ` · +${patchLines(entry.patch).filter((line) => line.kind === "add").length} −${patchLines(entry.patch).filter((line) => line.kind === "remove").length}`
-									: ""}
-							</option>
-						))}
-					</select>
-				</label>
-				<div className="hub-view-controls">
-					{(["diff", "base", "head"] as const).map((mode) => (
-						<button
-							type="button"
-							key={mode}
-							className="quiet"
-							aria-pressed={view === mode}
-							onClick={() => (onViewChange ? onViewChange(mode) : setView(mode))}
-						>
-							{mode === "diff" ? "Diff" : labels[mode]}
-						</button>
-					))}
-				</div>
-				{navigation && (
-					<div className="hub-actions" aria-label="Changed file navigation">
-						<button
-							type="button"
-							className="quiet"
-							disabled={review.files.indexOf(file) <= 0}
-							onClick={() => {
-								const previous = review.files[review.files.indexOf(file) - 1];
-								if (previous) selectFile(previous.path);
-							}}
-						>
-							Previous file
-						</button>
-						<span>
-							File {review.files.indexOf(file) + 1} of {review.files.length}
-						</span>
-						<button
-							type="button"
-							className="quiet"
-							disabled={review.files.indexOf(file) >= review.files.length - 1}
-							onClick={() => {
-								const next = review.files[review.files.indexOf(file) + 1];
-								if (next) selectFile(next.path);
-							}}
-						>
-							Next file
-						</button>
+		<section
+			className={`hub-work-review ${fileSidebar ? "job-review-grid" : ""}`}
+			aria-label="Local work review"
+		>
+			{fileSidebar && (
+				<aside className="job-change-sidebar" aria-label="Implementation changes">
+					<div className="job-change-heading">
+						<strong>Branch changes</strong>
+						<span>{review.files.length} files</span>
 					</div>
+					<div className="job-change-totals">
+						<span className="job-added">
+							+
+							{review.files.reduce(
+								(sum, f) =>
+									sum +
+									(f.patch === null
+										? 0
+										: patchLines(f.patch).filter((l) => l.kind === "add").length),
+								0
+							)}
+						</span>
+						<span className="job-removed">
+							−
+							{review.files.reduce(
+								(sum, f) =>
+									sum +
+									(f.patch === null
+										? 0
+										: patchLines(f.patch).filter((l) => l.kind === "remove").length),
+								0
+							)}
+						</span>
+					</div>
+					<nav aria-label="Changed files">
+						{review.files.map((entry) => (
+							<button
+								type="button"
+								key={entry.path}
+								className="job-file-row quiet"
+								aria-current={file.path === entry.path ? "true" : undefined}
+								onClick={() => selectFile(entry.path)}
+								title={entry.path}
+							>
+								<span className={`job-file-status status-${entry.status}`}>
+									{entry.status === "added"
+										? "A"
+										: entry.status === "removed"
+											? "D"
+											: entry.status === "renamed"
+												? "R"
+												: "M"}
+								</span>
+								<span className="job-file-path">{entry.path}</span>
+								{entry.patch !== null && (
+									<small>
+										<span className="job-added">
+											+{patchLines(entry.patch).filter((l) => l.kind === "add").length}
+										</span>{" "}
+										<span className="job-removed">
+											−{patchLines(entry.patch).filter((l) => l.kind === "remove").length}
+										</span>
+									</small>
+								)}
+							</button>
+						))}
+					</nav>
+					<div className="job-commit">
+						<span className="eyebrow">Implementation revision</span>
+						<code title={review.job.headSha ?? undefined}>{review.job.headSha?.slice(0, 10)}</code>
+						<span>{review.job.branch}</span>
+						<time dateTime={review.job.updatedAt}>
+							{new Date(review.job.updatedAt).toLocaleString()}
+						</time>
+						<small>Compared with {review.job.baseSha?.slice(0, 10)}</small>
+					</div>
+				</aside>
+			)}
+			<div className="job-diff-pane">
+				{fileSidebar && (
+					<header className="job-diff-heading">
+						<strong>{file.path}</strong>
+						<span>{file.status}</span>
+					</header>
+				)}
+				<div className="hub-actions">
+					{!fileSidebar && (
+						<label className="hub-file-select">
+							Changed file
+							<select value={file.path} onChange={(event) => selectFile(event.currentTarget.value)}>
+								{review.files.map((entry) => (
+									<option value={entry.path} key={entry.path}>
+										{entry.path} · {entry.status}
+										{showLineCounts && entry.patch !== null
+											? ` · +${patchLines(entry.patch).filter((line) => line.kind === "add").length} −${patchLines(entry.patch).filter((line) => line.kind === "remove").length}`
+											: ""}
+									</option>
+								))}
+							</select>
+						</label>
+					)}
+					<div className="hub-view-controls">
+						{(["diff", "base", "head"] as const).map((mode) => (
+							<button
+								type="button"
+								key={mode}
+								className="quiet"
+								aria-pressed={view === mode}
+								onClick={() => (onViewChange ? onViewChange(mode) : setView(mode))}
+							>
+								{mode === "diff" ? "Diff" : labels[mode]}
+							</button>
+						))}
+					</div>
+					{navigation && (
+						<div className="hub-actions" aria-label="Changed file navigation">
+							<button
+								type="button"
+								className="quiet"
+								disabled={review.files.indexOf(file) <= 0}
+								onClick={() => {
+									const previous = review.files[review.files.indexOf(file) - 1];
+									if (previous) selectFile(previous.path);
+								}}
+							>
+								Previous file
+							</button>
+							<span>
+								File {review.files.indexOf(file) + 1} of {review.files.length}
+							</span>
+							<button
+								type="button"
+								className="quiet"
+								disabled={review.files.indexOf(file) >= review.files.length - 1}
+								onClick={() => {
+									const next = review.files[review.files.indexOf(file) + 1];
+									if (next) selectFile(next.path);
+								}}
+							>
+								Next file
+							</button>
+						</div>
+					)}
+				</div>
+				<div className="hub-revision-pair">
+					<span title={file.base.commitSha}>
+						{labels.base} {file.base.commitSha.slice(0, 10)}
+					</span>
+					<span title={file.head.commitSha}>
+						{labels.head} {file.head.commitSha.slice(0, 10)}
+					</span>
+				</div>
+				{view !== "diff" ? (
+					pinned ? (
+						<SourceBlock source={pinned} onReference={open} />
+					) : (
+						<p className="hub-muted">Source {source?.status ?? "unavailable"} at this revision.</p>
+					)
+				) : file.patch !== null ? (
+					<pre className="hub-work-diff" aria-label={`Diff: ${file.path}`}>
+						<code>
+							{patchLines(file.patch).map((line) => {
+								const offset = patchOffset;
+								patchOffset += line.text.length + 1;
+								const side = line.kind === "remove" ? "base" : "head";
+								const number = line[side];
+								const tokens =
+									syntax?.file === file && number !== undefined
+										? syntax[side].lines[number - 1]
+										: undefined;
+								return (
+									<span className={`hub-diff-row diff-${line.kind}`} key={offset}>
+										<button
+											type="button"
+											className="hub-line-number"
+											disabled={number === undefined}
+											aria-label={
+												number === undefined
+													? "Diff metadata"
+													: `Open ${side} ${file.path} line ${number}`
+											}
+											onClick={() => {
+												if (number !== undefined)
+													open({
+														repository: review.job.repository,
+														path: file[side].path,
+														commitSha: file[side].commitSha,
+														revision: side,
+														startLine: number,
+														endLine: number,
+													});
+											}}
+										>
+											{line.base ?? ""}
+										</button>
+										<span className="hub-line-number" aria-hidden="true">
+											{line.head ?? ""}
+										</span>
+										<span className="hub-diff-sign" aria-hidden="true">
+											{line.kind === "add" ? "+" : line.kind === "remove" ? "−" : " "}
+										</span>
+										<span>
+											<SyntaxText text={line.text} tokens={tokens} />
+											{"\n"}
+										</span>
+									</span>
+								);
+							})}
+						</code>
+					</pre>
+				) : (
+					<p className="hub-muted">
+						No text diff is available. Select Base or Head to inspect available pinned source.
+					</p>
 				)}
 			</div>
-			<div className="hub-revision-pair">
-				<span title={file.base.commitSha}>
-					{labels.base} {file.base.commitSha.slice(0, 10)}
-				</span>
-				<span title={file.head.commitSha}>
-					{labels.head} {file.head.commitSha.slice(0, 10)}
-				</span>
-			</div>
-			{view !== "diff" ? (
-				pinned ? (
-					<SourceBlock source={pinned} onReference={open} />
-				) : (
-					<p className="hub-muted">Source {source?.status ?? "unavailable"} at this revision.</p>
-				)
-			) : file.patch !== null ? (
-				<pre className="hub-work-diff" aria-label={`Diff: ${file.path}`}>
-					<code>
-						{patchLines(file.patch).map((line) => {
-							const offset = patchOffset;
-							patchOffset += line.text.length + 1;
-							const side = line.kind === "remove" ? "base" : "head";
-							const number = line[side];
-							const tokens =
-								syntax?.file === file && number !== undefined
-									? syntax[side].lines[number - 1]
-									: undefined;
-							return (
-								<span className={`hub-diff-row diff-${line.kind}`} key={offset}>
-									<button
-										type="button"
-										className="hub-line-number"
-										disabled={number === undefined}
-										aria-label={
-											number === undefined
-												? "Diff metadata"
-												: `Open ${side} ${file.path} line ${number}`
-										}
-										onClick={() => {
-											if (number !== undefined)
-												open({
-													repository: review.job.repository,
-													path: file[side].path,
-													commitSha: file[side].commitSha,
-													revision: side,
-													startLine: number,
-													endLine: number,
-												});
-										}}
-									>
-										{line.base ?? ""}
-									</button>
-									<span className="hub-line-number" aria-hidden="true">
-										{line.head ?? ""}
-									</span>
-									<span className="hub-diff-sign" aria-hidden="true">
-										{line.kind === "add" ? "+" : line.kind === "remove" ? "−" : " "}
-									</span>
-									<span>
-										<SyntaxText text={line.text} tokens={tokens} />
-										{"\n"}
-									</span>
-								</span>
-							);
-						})}
-					</code>
-				</pre>
-			) : (
-				<p className="hub-muted">
-					No text diff is available. Select Base or Head to inspect available pinned source.
-				</p>
-			)}
 		</section>
 	);
 }
@@ -573,6 +662,38 @@ export function JobView({
 	const [review, setReview] = useState<WorkReview | null>(null);
 	const [reviewBusy, setReviewBusy] = useState(false);
 	const [reviewError, setReviewError] = useState("");
+	const [reviewReload, setReviewReload] = useState(0);
+	// biome-ignore lint/correctness/useExhaustiveDependencies: Reload only for immutable source identity changes or explicit retry, not every hub poll.
+	useEffect(() => {
+		let current = true;
+		setReview(null);
+		setReviewError("");
+		if (!job || job.id !== id || !job.baseSha || !job.headSha) {
+			setReviewBusy(false);
+			return;
+		}
+		const expected = job;
+		setReviewBusy(true);
+		void hub
+			.reviewWork(id)
+			.then((result) => {
+				if (current && loadedReviewMatchesJob(expected, result)) setReview(result);
+				else if (current)
+					setReviewError("The implementation changed. Reload to inspect its current revision.");
+			})
+			.catch(() => {
+				if (current)
+					setReviewError(
+						"This saved checkout could not be verified. Reload the changes or select another run; acceptance stays disabled until its diff is available."
+					);
+			})
+			.finally(() => {
+				if (current) setReviewBusy(false);
+			});
+		return () => {
+			current = false;
+		};
+	}, [hub, id, job?.id, job?.baseSha, job?.headSha, job?.repository, reviewReload]);
 	// biome-ignore lint/correctness/useExhaustiveDependencies: A newer hub sequence invalidates saved detail and log data.
 	useEffect(() => {
 		let current = true;
@@ -599,7 +720,7 @@ export function JobView({
 	const resumable = ["paused", "failed"].includes(job.state);
 	return (
 		<article
-			className="hub-detail"
+			className="hub-detail job-detail"
 			data-job-id={job.id}
 			data-job-head={job.headSha ?? "pending"}
 			data-job-repository={job.repository}
@@ -670,13 +791,53 @@ export function JobView({
 					</button>
 				)}
 			</div>
+			<section>
+				<div className="hub-section-heading">
+					<h2>
+						Implementation <span className="hub-count">{job.changedFiles.length}</span>
+					</h2>
+					<button
+						type="button"
+						className="quiet"
+						disabled={reviewBusy || !job.baseSha || !job.headSha}
+						onClick={() => setReviewReload((value) => value + 1)}
+					>
+						{reviewBusy ? "Loading diff…" : "Reload changes"}
+					</button>
+				</div>
+				{reviewError && (
+					<p className="hub-error" role="alert">
+						{reviewError}
+					</p>
+				)}
+				{review && loadedReviewMatchesJob(job, review) ? (
+					<WorkDiff
+						key={`${review.job.id}:${review.job.headSha}`}
+						review={review}
+						command={command}
+						fileSidebar
+						navigation
+						showLineCounts
+						labels={{ base: "Before", head: "After" }}
+					/>
+				) : job.changedFiles.length ? (
+					<ul className="hub-changed-files">
+						{job.changedFiles.map((path) => (
+							<li key={path}>{path}</li>
+						))}
+					</ul>
+				) : (
+					<p className="hub-muted">No changed files recorded yet.</p>
+				)}
+			</section>
 			{job.summary && (
-				<div className="canvas-markdown hub-job-summary">
+				<details className="canvas-markdown hub-job-summary hub-disclosure">
+					<summary>What the agent changed</summary>
 					<MarkdownContent
 						markdown={job.summary}
 						onOpenUrl={(url) => command({ kind: "open-browser", url })}
 					/>
-				</div>
+				</details>
 			)}
 			{job.decisions
 				.filter((decision) => decision.answer === null)
@@ -761,53 +922,6 @@ export function JobView({
 					))
 				) : (
 					<p className="hub-muted">No executed checks recorded.</p>
-				)}
-			</section>
-			<section>
-				<div className="hub-section-heading">
-					<h2>
-						Local changes <span className="hub-count">{job.changedFiles.length}</span>
-					</h2>
-					<button
-						type="button"
-						className="quiet"
-						disabled={reviewBusy || !job.baseSha || !job.headSha}
-						onClick={() => {
-							setReviewBusy(true);
-							setReviewError("");
-							void hub
-								.reviewWork(id)
-								.then((result) => {
-									if (result.job.id === id) setReview(result);
-								})
-								.catch(() =>
-									setReviewError("The local diff could not be loaded. Refresh this job and retry.")
-								)
-								.finally(() => setReviewBusy(false));
-						}}
-					>
-						{reviewBusy ? "Loading diff…" : "Inspect local diff"}
-					</button>
-				</div>
-				{reviewError && (
-					<p className="hub-error" role="alert">
-						{reviewError}
-					</p>
-				)}
-				{review && loadedReviewMatchesJob(job, review) ? (
-					<WorkDiff
-						key={`${review.job.id}:${review.job.headSha}`}
-						review={review}
-						command={command}
-					/>
-				) : job.changedFiles.length ? (
-					<ul className="hub-changed-files">
-						{job.changedFiles.map((path) => (
-							<li key={path}>{path}</li>
-						))}
-					</ul>
-				) : (
-					<p className="hub-muted">No changed files recorded yet.</p>
 				)}
 			</section>
 			<WorkAcceptance

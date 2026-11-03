@@ -1819,3 +1819,71 @@ summary:focus-visible {
 		display: none;
 	}
 }
+
+.command-rail {
+	flex-basis: 66px;
+	gap: 7px;
+}
+.command-rail > button.quiet:not(.hub-brand) {
+	width: 54px;
+	height: 54px;
+	gap: 3px;
+	padding: 7px 3px;
+}
+.command-rail-label {
+	font-size: 9px;
+	font-weight: 500;
+	line-height: 12px;
+}
+.command-rail-count {
+	top: 1px;
+	right: 0;
+	bottom: auto;
+}
+.command-subsections {
+	display: flex;
+	flex-wrap: wrap;
+	gap: 4px;
+	margin: 0 10px 12px;
+	padding: 4px;
+	background: #191b20;
+	border: 1px solid #2a2d34;
+	border-radius: 9px;
+}
+.command-subsections button.quiet {
+	flex: 1;
+	font-size: 11px;
+	padding: 8px 6px;
+	border-radius: 6px;
+	white-space: nowrap;
+}
+.command-subsections button[aria-current="page"] {
+	background: #30353f;
+	color: #f0f3f8;
+}
+.review-toolbar {
+	display: flex;
+	align-items: center;
+	gap: 12px;
+}
+.review-toolbar[hidden] {
+	display: none;
+}
+.slack-connect-inline {
+	display: flex;
+	flex-direction: column;
+	gap: 8px;
+	margin: 14px 0;
+}
+.slack-connect-inline > button:first-child {
+	background: #6055d8;
+	color: white;
+	border: 1px solid #8074ef;
+	padding: 11px 15px;
+	border-radius: 8px;
+	font-weight: 550;
+}
+.slack-connect-inline > p {
+	font-size: 12px;
+	color: #d9b37d;
+}

@@ -310,9 +310,7 @@ async function native() {
 			});
 		};
 		const selectTicket = async () => {
-			await js(
-				"document.querySelector('.command-rail button[aria-label^=\"My tickets\"]').click()"
-			);
+			await js("document.querySelector('.command-rail button[aria-label^=\"Tickets\"]').click()");
 			await wait("controlled ticket in sidebar", () =>
 				js(
 					`[...document.querySelectorAll('.command-sidebar-scroll button')].some(e=>e.textContent.includes(${JSON.stringify(fixtures.TICKET)}))`

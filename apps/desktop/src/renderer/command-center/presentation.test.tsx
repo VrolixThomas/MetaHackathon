@@ -264,16 +264,26 @@ it("uses one counted rail and browses categories independently of the selected m
 		sidebar.html,
 		/Owned change|command-sections|aria-label="Your work"|aria-current="true"/
 	);
-	assert.equal((sidebar.html.match(/aria-current="page"/g) ?? []).length, 1);
+	assert.equal((sidebar.html.match(/aria-current="page"/g) ?? []).length, 2);
 	assert.equal(
 		(sidebar.html.match(/class="command-rail-count"/g) ?? []).length,
-		centerSections.filter((section) => !["day", "slack"].includes(section.id)).length
+		centerSections.filter(
+			(section) => !["day", "slack", "feedback", "activity"].includes(section.id)
+		).length
 	);
 	// This legacy harness supplies only the hub; Day has its own controller/native coverage.
 	for (const section of centerSections.filter(
-		(section) => !["day", "slack"].includes(section.id)
+		(section) => !["day", "slack", "feedback", "activity"].includes(section.id)
 	)) {
-		const label = `${section.label} (${sectionCount(snapshot, section.id)})`;
+		const name =
+			section.id === "reviews"
+				? "Reviews"
+				: section.id === "completed"
+					? "Work"
+					: section.id === "tickets"
+						? "Tickets"
+						: section.label;
+		const label = `${name} (${sectionCount(snapshot, section.id)})`;
 		assert.ok(sidebar.html.includes(`title="${label}" aria-label="${label}"`));
 		sidebar.click(label);
 		assert.deepEqual(commands.pop(), {
@@ -793,4 +803,26 @@ it("Home's sidebar lists canvases without repeating the executive brief's work i
 	assert.doesNotMatch(html, /Requested change|Owned change|Assigned change|Up next/);
 	hub.dispose();
 	workspace.dispose();
+});
+
+it("implementation review presents actual files, diff counts and pinned revision in a sidebar", () => {
+	const html = renderToStaticMarkup(
+		<WorkDiff
+			review={localReview()}
+			command={() => {}}
+			fileSidebar
+			navigation
+			showLineCounts
+			labels={{ base: "Before", head: "After" }}
+		/>
+	);
+	assert.match(html, /aria-label="Implementation changes"/);
+	assert.match(html, /aria-label="Changed files"/);
+	assert.match(html, /Branch changes/);
+	assert.match(html, /Implementation revision/);
+	assert.match(html, /Diff: src\/first.ts/);
+	assert.match(html, /aria-current="true"/);
+	assert.match(html, /Before/);
+	assert.match(html, /After/);
+	assert.doesNotMatch(html, /Commit changes|Stage All/);
 });

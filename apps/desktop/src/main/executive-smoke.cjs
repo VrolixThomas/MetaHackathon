@@ -689,9 +689,19 @@ async function native() {
 			);
 		};
 		const section = async (name) => {
+			const rail =
+				{
+					"Incoming reviews": "Reviews",
+					"Own PR feedback": "Reviews",
+					"My tickets": "Tickets",
+					"Completed work": "Work",
+					"Activity queue": "Work",
+				}[name] ?? name;
 			await js(
-				`document.querySelector(${JSON.stringify(`.command-rail button[aria-label^="${name}"]`)}).click()`
+				`document.querySelector(${JSON.stringify(`.command-rail button[aria-label^="${rail}"]`)}).click()`
 			);
+			if (name === "Own PR feedback") await clickText(".command-subsections button", "My PRs");
+			if (name === "Activity queue") await clickText(".command-subsections button", "In progress");
 		};
 		const snapshot = () => rpc("query", "hub.snapshot");
 		const readStored = () => {
@@ -866,12 +876,7 @@ async function native() {
 				"WorkReview must contain the exact pinned Git diff"
 			);
 			await wait("ready UI", () => js(`!!document.querySelector('.hub-detail .status-ready')`));
-			await wait("approval gated on loaded diff", () =>
-				js(
-					`Array.from(document.querySelectorAll('[aria-label="Work review actions"] button')).some(e=>e.textContent.trim()==='Accept work and complete ticket'&&e.disabled)`
-				)
-			);
-			await clickText(".hub-detail button", "Inspect local diff");
+
 			assertRenderedDiff(await wait("actual local work diff", displayedDiff), result, patch);
 			const resumed = checkpointUnder(userData, jobId);
 			assert.equal(resumed.path, checkpoint.path);
@@ -1005,7 +1010,7 @@ async function native() {
 						`Array.from(document.querySelectorAll('[aria-label="Work review actions"] button')).some(e=>e.textContent.trim()==='Accept work and complete ticket'&&e.disabled)`
 					)
 				);
-				await clickText(".hub-detail button", "Inspect local diff");
+				await clickText(".hub-detail button", "Reload changes");
 				await wait("fresh revised diff", async () => {
 					const visible = await displayedDiff();
 					return visible?.head === revised.headSha ? visible : null;
@@ -1086,7 +1091,7 @@ async function native() {
 						`document.querySelector('[aria-label="Work review actions"] time')?.dateTime===${JSON.stringify(accepted.reviewedAt)}`
 					)
 				);
-				await clickText(".hub-detail button", "Inspect local diff");
+				await clickText(".hub-detail button", "Reload changes");
 				const reopened = await wait("reopened exact source diff", displayedDiff);
 				assertRenderedDiff(reopened, accepted, revisedPatch);
 				await section("Home");

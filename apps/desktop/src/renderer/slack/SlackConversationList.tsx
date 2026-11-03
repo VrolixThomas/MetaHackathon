@@ -1,6 +1,9 @@
 import { useEffect, useId, useState } from "react";
 import { useStore } from "zustand";
 import { decodeSlackViewTarget, encodeSlackViewTarget } from "../../shared/contracts/chat";
+import { OAUTH_MESSAGES } from "../../shared/contracts/oauth";
+import { useOAuth } from "../oauth";
+import { type OAuthController, hasPendingLogin } from "../oauth/controller";
 import type { SlackBrowseController } from "./controller";
 import { conversationSymbol, isDirectMessage, visibilityLabel } from "./presentation";
 
@@ -17,6 +20,7 @@ export function SlackConversationList({
 	onSelect,
 }: SlackConversationListProps) {
 	const state = useStore(controller.store);
+	const oauth = useOAuth();
 	const [search, setSearch] = useState("");
 	const searchId = useId();
 	useEffect(() => {
@@ -58,9 +62,12 @@ export function SlackConversationList({
 					onChange={(event) => setSearch(event.target.value)}
 				/>
 			</label>
+			{!connected && oauth && <SlackConnect controller={oauth} browse={controller} />}
 			{state.listError && (
 				<p className="slack-feedback" role="alert">
-					{state.listError}
+					{!connected && oauth
+						? "Connect your workspace to see your conversations here."
+						: state.listError}
 				</p>
 			)}
 			{!state.listLoaded && !state.listError && (
@@ -138,6 +145,36 @@ export function SlackConversationList({
 					)}
 				</div>
 			)}
+		</div>
+	);
+}
+
+function SlackConnect({
+	controller,
+	browse,
+}: { controller: OAuthController; browse: SlackBrowseController }) {
+	const state = useStore(controller.store);
+	const row = state.rows.find((item) => item.provider === "slack");
+	const connecting = state.pending.slack === "connect" || row?.phase === "connecting";
+	const error = state.errors.slack ?? row?.error;
+	useEffect(() => {
+		if (row?.phase === "connected") void browse.refreshConversations();
+	}, [row?.phase, browse]);
+	return (
+		<div className="slack-connect-inline">
+			<button
+				type="button"
+				disabled={connecting || hasPendingLogin(state)}
+				onClick={() => void controller.connect("slack")}
+			>
+				{connecting ? "Continue in your browser…" : "Connect Slack"}
+			</button>
+			{connecting && (
+				<button type="button" className="quiet" onClick={() => void controller.cancel("slack")}>
+					Cancel sign-in
+				</button>
+			)}
+			{error && <p role="alert">{OAUTH_MESSAGES[error]}</p>}
 		</div>
 	);
 }

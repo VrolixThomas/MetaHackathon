@@ -6,6 +6,8 @@ import { type WorkspaceCommand, WorkspaceSnapshotSchema } from "../../shared/con
 import { CommandSidebar } from "../command-center/Sidebar";
 import { createHubController } from "../command-center/controller";
 import { centerSections } from "../command-center/model";
+import { OAuthProvider } from "../oauth/context";
+import { createOAuthController } from "../oauth/controller";
 import { createPreparedApi } from "../prepared/api";
 import { createPreparedController } from "../prepared/controller";
 import { createWorkspaceController } from "../workspace/controller";
@@ -324,4 +326,20 @@ it("Sidebar reads independent Slack state without Hub data and routes the exact 
 		hub.dispose();
 		workspace.dispose();
 	}
+});
+
+it("disconnected Slack offers inline sign-in without opening Settings", () => {
+	const h = harness();
+	const oauth = createOAuthController(async () => {
+		throw new Error("Rendering must not start login");
+	});
+	const html = renderToStaticMarkup(
+		<OAuthProvider controller={oauth}>
+			<SlackConversationList controller={ssr(h.controller)} onSelect={() => {}} />
+		</OAuthProvider>
+	);
+	assert.match(html, />Connect Slack<\/button>/);
+	assert.doesNotMatch(html, /Connect Slack in Settings/);
+	oauth.dispose();
+	h.controller.dispose();
 });

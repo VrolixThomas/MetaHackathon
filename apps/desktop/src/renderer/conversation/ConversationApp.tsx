@@ -1,4 +1,12 @@
-import { type RefObject, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import {
+	type RefObject,
+	useCallback,
+	useEffect,
+	useMemo,
+	useRef,
+	useState,
+	useSyncExternalStore,
+} from "react";
 import { useStore } from "zustand";
 import { BrandLockup } from "../brand/Brand";
 import { CodingProviderCard } from "../coding";
@@ -224,6 +232,15 @@ export function ConversationApp({
 	useEffect(() => () => team?.dispose(), [team]);
 	const local = useStore(browser.store);
 	const reviewOpen = prepared.screen.mode === "review";
+	const visibleWorkspace = useSyncExternalStore(
+		(listener) => workspace?.store.subscribe(listener) ?? (() => {}),
+		() => workspace?.store.getState().workspace ?? null,
+		() => null
+	);
+	const primaryCanvas = visibleWorkspace?.canvases.find(
+		(canvas) => canvas.id === visibleWorkspace.primaryId
+	);
+	const reviewVisible = !workspace || primaryCanvas?.kind === "review";
 	const [overlay, setOverlay] = useState<
 		"repository" | "more" | "preview" | "configuration" | null
 	>(null);
@@ -306,12 +323,8 @@ export function ConversationApp({
 	const hideNativePage = useCallback(async () => {
 		if (browser.store.getState().page) await browser.present(null);
 	}, [browser]);
-	const identity = prepared.detail?.pr;
+	const identity = reviewVisible ? prepared.detail?.pr : undefined;
 	const repository = identity?.repository ?? prepared.inbox?.repository;
-	const currentWorkspace = workspace?.store.getState().workspace;
-	const primaryCanvas = currentWorkspace?.canvases.find(
-		(canvas) => canvas.id === currentWorkspace.primaryId
-	);
 	const localCandidate = fixes?.store.getState().detail?.fix;
 	const displayedCandidate =
 		primaryCanvas?.kind === "center" &&
@@ -364,28 +377,30 @@ export function ConversationApp({
 					)}
 					<span aria-hidden="true">⌄</span>
 				</button>
-				{apiCall && (
-					<ApprovalControl
-						key={`approvals-${prCommentEpoch}`}
-						call={apiCall}
-						sessionId={controller.sessionId}
-						beforeOpen={hideNativePage}
-						onOpenChange={setApprovalOpen}
-						canOpen={overlay === null && !commentOpen}
-						canCreate={reviewOpen && prepared.detail?.status === "ready" && !!prepared.file}
-					/>
-				)}
-				{apiCall && (
-					<PRCommentControl
-						onController={bindCommentController}
-						key={prCommentEpoch}
-						call={apiCall}
-						reviews={reviews}
-						beforeOpen={hideNativePage}
-						onOpenError={overlayFailed}
-						onOpenChange={setCommentOpen}
-					/>
-				)}
+				<div className="review-toolbar" hidden={!reviewVisible}>
+					{apiCall && (
+						<ApprovalControl
+							key={`approvals-${prCommentEpoch}`}
+							call={apiCall}
+							sessionId={controller.sessionId}
+							beforeOpen={hideNativePage}
+							onOpenChange={setApprovalOpen}
+							canOpen={overlay === null && !commentOpen}
+							canCreate={reviewOpen && prepared.detail?.status === "ready" && !!prepared.file}
+						/>
+					)}
+					{apiCall && (
+						<PRCommentControl
+							onController={bindCommentController}
+							key={prCommentEpoch}
+							call={apiCall}
+							reviews={reviews}
+							beforeOpen={hideNativePage}
+							onOpenError={overlayFailed}
+							onOpenChange={setCommentOpen}
+						/>
+					)}
+				</div>
 				<button
 					type="button"
 					className="quiet more-toggle"

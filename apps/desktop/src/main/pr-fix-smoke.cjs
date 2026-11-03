@@ -408,9 +408,8 @@ async function native() {
 				(row) => row.pr.id === S.PR_ID && row.kind === "own"
 			)
 		);
-		await js(
-			`document.querySelector('.command-rail button[aria-label^="Own PR feedback"]').click()`
-		);
+		await js(`document.querySelector('.command-rail button[aria-label^="Reviews"]').click()`);
+		await click(".command-subsections button", "My PRs");
 		await click(".command-sidebar-scroll button.command-item", S.TITLE, true);
 		await wait("actual original feedback", () =>
 			js(
@@ -447,9 +446,8 @@ async function native() {
 		assert.ok(ready.checks.length);
 		assert.ok(ready.checks.every((c) => c.exitCode === 0 && c.commitSha === ready.headSha));
 		const readyStart = trace.length;
-		await js(
-			`document.querySelector('.command-rail button[aria-label^="Suggested fixes"]').click()`
-		);
+		await js(`document.querySelector('.command-rail button[aria-label^="Reviews"]').click()`);
+		await click(".command-subsections button", "Fixes");
 		await click(".pr-fix-list button.command-item", S.TITLE, true);
 		await receipt(
 			{ id: ready.id, baseSha: fixture.headSha, headSha: ready.headSha, path: S.FILES[0] },

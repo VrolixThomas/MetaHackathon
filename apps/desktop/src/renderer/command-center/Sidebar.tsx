@@ -87,20 +87,9 @@ export function CommandSidebar({
 					<BrandMark size={32} />
 				</button>
 				{centerSections
-					.flatMap((item) =>
-						item.id === "feedback" && fixes ? [item, fixesCenterSection] : [item]
-					)
+					.filter((item) => !["feedback", "activity"].includes(item.id))
 					.filter((item) => (item.id !== "day" || day) && (item.id !== "slack" || slack))
 					.map((item) => {
-						if (item.id === "fixes" && fixes)
-							return (
-								<FixRailButton
-									key="fixes"
-									controller={fixes}
-									selected={section === "fixes"}
-									onBrowse={() => command({ kind: "browse-center", section: "fixes" })}
-								/>
-							);
 						if (item.id === "slack" && slack)
 							return (
 								<SlackRailButton
@@ -120,7 +109,15 @@ export function CommandSidebar({
 								/>
 							);
 						const count = snapshot ? sectionCount(snapshot, item.id) : null;
-						const label = `${item.label}${count === null ? "" : ` (${count})`}`;
+						const railLabel =
+							item.id === "reviews"
+								? "Reviews"
+								: item.id === "completed"
+									? "Work"
+									: item.id === "tickets"
+										? "Tickets"
+										: item.label;
+						const label = `${railLabel}${count === null ? "" : ` (${count})`}`;
 						return (
 							<button
 								type="button"
@@ -128,7 +125,13 @@ export function CommandSidebar({
 								key={item.id}
 								title={label}
 								aria-label={label}
-								aria-current={section === item.id ? "page" : undefined}
+								aria-current={
+									section === item.id ||
+									(item.id === "reviews" && ["feedback", "fixes"].includes(section)) ||
+									(item.id === "completed" && section === "activity")
+										? "page"
+										: undefined
+								}
 								onClick={() =>
 									item.id === "home"
 										? select("home")
@@ -136,7 +139,8 @@ export function CommandSidebar({
 								}
 							>
 								<HubIcon name={item.id} />
-								{count !== null && (
+								<span className="command-rail-label">{railLabel}</span>
+								{count !== null && count > 0 && (
 									<span className="command-rail-count" aria-hidden="true">
 										{count}
 									</span>
@@ -190,6 +194,47 @@ export function CommandSidebar({
 						</button>
 					)}
 				</header>
+				{["reviews", "feedback", "fixes"].includes(section) && (
+					<nav className="command-subsections" aria-label="Review queues">
+						{(
+							[
+								["reviews", "Requested"],
+								["feedback", "My PRs"],
+								...(fixes ? [["fixes", "Fixes"]] : []),
+							] as [CenterSection, string][]
+						).map(([id, label]) => (
+							<button
+								type="button"
+								className="quiet"
+								key={id}
+								aria-current={section === id ? "page" : undefined}
+								onClick={() => command({ kind: "browse-center", section: id })}
+							>
+								{label}
+							</button>
+						))}
+					</nav>
+				)}
+				{showJobs && (
+					<nav className="command-subsections" aria-label="Work queues">
+						{(
+							[
+								["activity", "In progress"],
+								["completed", "Completed"],
+							] as [CenterSection, string][]
+						).map(([id, label]) => (
+							<button
+								type="button"
+								className="quiet"
+								key={id}
+								aria-current={section === id ? "page" : undefined}
+								onClick={() => command({ kind: "browse-center", section: id })}
+							>
+								{label}
+							</button>
+						))}
+					</nav>
+				)}
 				<section className="command-sidebar-scroll" key={section} aria-label={`${title} items`}>
 					{section === "fixes" && fixes ? (
 						<PRFixList
@@ -398,6 +443,7 @@ export function CommandSidebar({
 												</span>
 												<span className="command-item-meta">
 													{jobReference(job)} · {jobOutcomeLabel(job)}
+													{job.headSha ? ` · ${job.headSha.slice(0, 7)}` : ""}
 													{job.pendingDecisions
 														? ` · ${job.pendingDecisions} decision${job.pendingDecisions === 1 ? "" : "s"}`
 														: ""}
@@ -479,37 +525,6 @@ export function CommandSidebar({
 	);
 }
 
-function FixRailButton({
-	controller,
-	selected,
-	onBrowse,
-}: {
-	controller: PRFixController;
-	selected: boolean;
-	onBrowse(): void;
-}) {
-	const state = useStore(controller.store);
-	const count = state.listLoaded ? state.items.length : undefined;
-	const label = `Suggested fixes${count === undefined ? "" : ` (${count})`}`;
-	return (
-		<button
-			type="button"
-			className="quiet"
-			title={label}
-			aria-label={label}
-			aria-current={selected ? "page" : undefined}
-			onClick={onBrowse}
-		>
-			<HubIcon name="fixes" />
-			{count !== undefined && (
-				<span className="command-rail-count" aria-hidden="true">
-					{count}
-				</span>
-			)}
-		</button>
-	);
-}
-
 function SlackRailButton({
 	controller,
 	selected,
@@ -528,7 +543,8 @@ function SlackRailButton({
 			onClick={onBrowse}
 		>
 			<HubIcon name="slack" />
-			{count !== undefined && (
+			<span className="command-rail-label">Slack</span>
+			{count !== undefined && count > 0 && (
 				<span className="command-rail-count" aria-hidden="true">
 					{count}
 					{listHasMore ? "+" : ""}
@@ -558,7 +574,8 @@ function DayRailButton({
 			onClick={onBrowse}
 		>
 			<HubIcon name="day" />
-			{count !== undefined && (
+			<span className="command-rail-label">My day</span>
+			{count !== undefined && count > 0 && (
 				<span className="command-rail-count" aria-hidden="true">
 					{count}
 				</span>
