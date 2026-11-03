@@ -103,6 +103,7 @@ type AttentionTurn = TurnState & {
 };
 type Turn = UserTurn | AttentionTurn;
 type Session = {
+	dayProposal?: import("./day-tools").DayClarificationReference;
 	current?: Turn;
 	history: ConversationHistoryEntry[];
 	requests: Set<string>;
@@ -815,17 +816,32 @@ export class ConversationService {
 					const observed = await trace.measure("workspace-observe", signal, async () =>
 						workspace?.observe()
 					);
-					const primary = observed?.workspace.canvases.find(
-						(canvas) => canvas.id === observed.workspace.primaryId
-					);
-					const executiveContext = primary && ["center", "source", "flow"].includes(primary.kind);
-					const effectivePrId = observed
-						? !executiveContext && observed.workspace.review.mode === "review"
-							? observed.workspace.review.prId
-							: undefined
-						: turn.input.prId;
-					if (effectivePrId && reviewPorts) await runReview(effectivePrId, history);
-					else if (workspace || hub) await runWorkspace(history, observed);
+					const dayConfirmation = await hub?.dayConfirmationContext(observed, session.dayProposal);
+					if (dayConfirmation && hub) {
+						const fresh = await workspace?.observe();
+						if (JSON.stringify(fresh?.workspace) !== JSON.stringify(observed?.workspace))
+							throw new ReplyError(
+								"The selected workspace changed before clarification confirmation"
+							);
+						await hub.execute("day_confirm_clarification", JSON.stringify(dayConfirmation));
+						session.dayProposal = undefined;
+						throwIfAborted(signal);
+						onText(
+							"Clarification delegation is active for the confirmed scope, original thread and bounds. This does not authorize execution or accept ownership."
+						);
+					} else {
+						const primary = observed?.workspace.canvases.find(
+							(canvas) => canvas.id === observed.workspace.primaryId
+						);
+						const executiveContext = primary && ["center", "source", "flow"].includes(primary.kind);
+						const effectivePrId = observed
+							? !executiveContext && observed.workspace.review.mode === "review"
+								? observed.workspace.review.prId
+								: undefined
+							: turn.input.prId;
+						if (effectivePrId && reviewPorts) await runReview(effectivePrId, history);
+						else if (workspace || hub) await runWorkspace(history, observed);
+					}
 				}
 				if (!this.active(session, turn)) return;
 				if ((hub?.hasAnnouncements || turn.input.inputMode === "voice") && turn.text.trim()) {
@@ -841,6 +857,14 @@ export class ConversationService {
 					} catch {
 						throwIfAborted(signal);
 					}
+				}
+				if (
+					this.active(session, turn) &&
+					turn.text.trim() &&
+					(turn.input.inputMode !== "voice" ||
+						(onNarration && (turn.spokenThrough ?? 0) >= turn.text.length))
+				) {
+					session.dayProposal = hub?.completedDayProposal;
 				}
 			} else {
 				if (turn.input.prId !== undefined) {

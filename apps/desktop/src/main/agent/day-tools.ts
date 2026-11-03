@@ -224,8 +224,20 @@ export function dayModelContext(raw: DaySnapshot, cursor = 0, limit = 12) {
 	return packet;
 }
 
+/** Main-only reference retained only after a completed proposal conversation. */
+export type DayClarificationReference = {
+	itemId: string;
+	requestId: string;
+	turnId: string;
+	binding: string;
+};
+function confirmationBinding(item: DayWorkItem) {
+	return JSON.stringify([navigationBinding(item), item.clarification?.policy]);
+}
+
 export class ConversationDayTools {
 	private latest?: DaySnapshot;
+	private proposalReference?: DayClarificationReference;
 	private readonly proposed = new Set<string>();
 	private readonly observed = new Map<string, number>();
 	private readonly navigation = new Map<string, string>();
@@ -271,6 +283,49 @@ export class ConversationDayTools {
 	}
 	get context() {
 		return this.latest ? this.queue() : undefined;
+	}
+	get completedProposal() {
+		return this.proposed.size === 1 ? this.proposalReference : undefined;
+	}
+	/** Selection comes only from the main-owned acknowledged workspace, never currentItemId. */
+	async selectedContext(itemId: string) {
+		const day = await this.refresh();
+		const item = day.items.find((row) => row.id === itemId);
+		if (
+			!item ||
+			item.workspaceId !== day.actor.workspaceId ||
+			item.ownerUserId !== day.actor.userId
+		)
+			throw new GuidedReviewError("The selected Day item is unavailable for this actor.");
+		this.observed.set(item.id, item.revision);
+		return this.execute("day_inspect_item", JSON.stringify({ itemId }));
+	}
+	async selectedConfirmation(itemId: string, prior?: DayClarificationReference) {
+		if (!confirmsClarification(this.turn.text) || !prior) return undefined;
+		if (
+			prior.itemId !== itemId ||
+			prior.requestId === this.turn.requestId ||
+			prior.turnId === this.turn.turnId
+		)
+			throw new GuidedReviewError(
+				"Select the previously proposed item and confirm in a distinct turn."
+			);
+		await this.selectedContext(itemId);
+		const item = this.details.get(itemId);
+		if (
+			!item ||
+			item.clarification?.status !== "proposed" ||
+			confirmationBinding(item) !== prior.binding
+		)
+			throw new GuidedReviewError(
+				"The clarification proposal changed. Inspect and explain it before a new confirmation."
+			);
+		return {
+			itemId,
+			expectedRevision: item.revision,
+			policyId: item.clarification.policy.id,
+			policyRevision: item.clarification.policy.revision,
+		};
 	}
 	private accept(raw: DaySnapshot) {
 		throwIfAborted(this.signal);
@@ -739,7 +794,15 @@ export class ConversationDayTools {
 					"Reply delivery is unverified. Inspect the original thread before retrying; do not claim closure."
 				);
 		}
-		if (operation.kind === "propose_clarification") this.proposed.add(result.itemId);
+		if (operation.kind === "propose_clarification") {
+			this.proposed.add(result.itemId);
+			this.proposalReference = {
+				itemId: returned.id,
+				requestId: this.turn.requestId,
+				turnId: this.turn.turnId,
+				binding: confirmationBinding(returned),
+			};
+		}
 		this.accept(result.snapshot);
 		return {
 			status: "recorded",

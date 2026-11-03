@@ -9,8 +9,13 @@ import type {
 	DayWorkItem,
 } from "../../shared/contracts";
 import { DayOperationResultSchema } from "../../shared/contracts";
+import type { WorkspaceObservation } from "../../shared/contracts";
 import { publicDaySnapshot } from "../composition/day-clarification";
+import { ConversationService } from "./conversation";
 import { type ConversationDayPorts, ConversationDayTools, dayModelContext } from "./day-tools";
+import type { ConversationHubPorts } from "./hub-tools";
+import type { MetaItem, MetaRequest } from "./meta-client";
+import { call, eventually } from "./test-support";
 import { WorkspaceArgumentError } from "./workspace-tools";
 
 const time = "2026-10-31T00:00:00Z";
@@ -944,7 +949,7 @@ async function proposedConfirmation(input = confirmationTurn) {
 	});
 	await tools.observe();
 	await tools.execute("day_inspect_item", JSON.stringify({ itemId: h.row.id }));
-	return { ...h, tools };
+	return { ...h, tools, prior: h.tools.completedProposal };
 }
 
 test("registered confirmation retains a fresh proposal and binds omitted command and sentinel in main", async () => {
@@ -1123,4 +1128,303 @@ test("current confirmation still requires inspection in that turn", async () => 
 		/Inspect the actual proposal/
 	);
 	assert.equal(h.operations.length, 0);
+});
+
+test("selected Day detail uses actual selection beyond first queue page, never currentItemId", async () => {
+	const h = harness();
+	h.state.items.unshift(...Array.from({ length: 20 }, (_, i) => ({ ...item(), id: `other-${i}` })));
+	h.state.currentItemId = "other-0";
+	const result = (await h.tools.selectedContext("item")) as { item: DayWorkItem };
+	assert.equal(result.item.id, "item");
+	assert.equal(result.item.questions[0]?.question, "Which scope?");
+	assert.equal(h.operations.length, 0);
+	await assert.rejects(h.tools.selectedContext("unknown"));
+	h.row.ownerUserId = "another-user";
+	await assert.rejects(h.tools.selectedContext("item"));
+});
+
+test("selected confirmation derives exact arguments from a distinct recorded proposal", async () => {
+	const h = await proposedConfirmation();
+	const args = await h.tools.selectedConfirmation("item", h.prior);
+	assert(args);
+	assert.deepEqual(args, {
+		itemId: "item",
+		expectedRevision: 2,
+		policyId: "proposal",
+		policyRevision: 1,
+	});
+	await h.tools.execute("day_confirm_clarification", JSON.stringify(args));
+	assert.equal(h.operations.length, 1);
+	assert.equal(h.row.clarification?.status, "active");
+});
+
+for (const change of [
+	"policy",
+	"source",
+	"actor",
+	"audience",
+	"same-turn",
+	"same-request",
+	"wrong-selection",
+] as const) {
+	test(`selected confirmation rejects ${change} without operating`, async () => {
+		const h = await proposedConfirmation();
+		assert(h.prior);
+		assert(h.row.clarification);
+		assert(h.row.source);
+		if (change === "policy") h.row.clarification.policy.scope = "A replacement scope";
+		if (change === "source") h.row.source.source.revisionId = "changed";
+		if (change === "actor") h.row.ownerUserId = "other";
+		if (change === "audience") h.row.source.audience.membershipRevision = "changed";
+		if (change === "same-turn") h.prior.turnId = confirmationTurn.turnId;
+		if (change === "same-request") h.prior.requestId = confirmationTurn.requestId;
+		await assert.rejects(
+			h.tools.selectedConfirmation(change === "wrong-selection" ? "other" : "item", h.prior)
+		);
+		assert.equal(h.operations.length, 0);
+	});
+}
+for (const text of [
+	'"Confirm this clarification delegation."',
+	"They said confirm this clarification delegation.",
+	"yes",
+	"Confirm this clarification delegation and change scope.",
+]) {
+	test(`selected shortcut ignores noncanonical ingress: ${text}`, async () => {
+		const h = await proposedConfirmation({ ...confirmationTurn, text });
+		assert.equal(await h.tools.selectedConfirmation("item", h.prior), undefined);
+		assert.equal(h.operations.length, 0);
+	});
+}
+test("selected shortcut requires a main-owned previous proposal reference", async () => {
+	const h = await proposedConfirmation();
+	assert.equal(await h.tools.selectedConfirmation("item"), undefined);
+	assert.equal(h.operations.length, 0);
+});
+
+for (const mode of [
+	"success",
+	"changed-policy",
+	"quoted",
+	"no-selection",
+	"selection-drift",
+	"voice-undrained",
+	"voice-drained",
+] as const) {
+	test(`actual ConversationService selected-Day routing: ${mode}`, async () => {
+		const h = harness();
+		const operate = h.ports.operate;
+		h.ports.operate = async (...args) => {
+			if (args[0].kind === "propose_clarification") recordProposal(h.row);
+			if (args[0].kind === "confirm_clarification") {
+				assert(h.row.clarification);
+				h.row.clarification.status = "active";
+				h.row.clarification.confirmedAt = time;
+				h.row.clarification.expiresAt = "2026-10-31T00:30:00Z";
+			}
+			return operate(...args);
+		};
+		h.ports.snapshot = async () => publicDaySnapshot(structuredClone(h.state));
+		h.ports.inspectClarification = async () => structuredClone(h.row);
+		const unavailable = async (): Promise<never> => {
+			throw new Error("Unrelated operation");
+		};
+		const hub: ConversationHubPorts = {
+			day: h.ports,
+			operate: unavailable,
+			ticket: unavailable,
+			job: unavailable,
+			feedback: unavailable,
+			reviewWork: unavailable,
+			source: unavailable,
+			search: unavailable,
+			snapshot: async () => ({
+				sequence: 1,
+				refreshedAt: time,
+				refreshing: false,
+				viewer: { githubLogin: null, linearName: null },
+				connections: { github: false, linear: false, model: true },
+				repositories: [],
+				reviews: [],
+				tickets: [],
+				jobs: [],
+				notices: [],
+				errors: [],
+				preferences: {
+					linearTeamIds: [],
+					linearProjectIds: [],
+					maxWorkers: 2,
+					autoApplySuggestions: false,
+				},
+			}),
+		};
+		const observation: WorkspaceObservation = {
+			workspace: {
+				sequence: 1,
+				canvases: [
+					{
+						id: "day",
+						kind: "center",
+						section: "day",
+						title: "My day",
+						revision: 1,
+						selectedId: "item",
+					},
+				],
+				primaryId: "day",
+				secondaryId: null,
+				review: { sequence: 1, mode: "conversation", prId: null },
+				codeView: "diff",
+				browser: null,
+			},
+			browser: null,
+			capabilities: [],
+			reviews: [],
+		};
+		const outputs: MetaItem[][] = [
+			[
+				call(
+					"day_propose_clarification",
+					{ itemId: "item", expectedRevision: 1, ...clarificationScope },
+					"propose"
+				),
+			],
+			[
+				{
+					type: "message",
+					role: "assistant",
+					content: [
+						{
+							type: "output_text",
+							text: "I propose clarification of page behavior only, in the original thread, up to two messages for thirty minutes. Confirm this clarification delegation?",
+						},
+					],
+				},
+			],
+		];
+		const requests: MetaRequest[] = [];
+		let drift = false;
+		let observed = 0;
+		const service = new ConversationService(
+			{
+				async *stream(request) {
+					requests.push(request);
+					yield {
+						type: "completed",
+						response: {
+							id: "controlled",
+							model: "muse-spark-1.3",
+							output: outputs.shift() ?? [
+								{
+									type: "message",
+									role: "assistant",
+									content: [{ type: "output_text", text: "Which scope?" }],
+								},
+							],
+						},
+					};
+				},
+			},
+			{
+				hub,
+				narrationCheckpoints: mode === "voice-drained",
+				workspace: {
+					observe: async () => {
+						if (drift && ++observed === 2) observation.workspace.sequence++;
+						return structuredClone(observation);
+					},
+					execute: unavailable,
+				},
+			}
+		);
+		const proposal = {
+			...turn,
+			text: "Propose clarification for this selected request.",
+			inputMode: mode.startsWith("voice-") ? ("voice" as const) : ("typed" as const),
+		};
+		const settle = async (input: ConversationTurnInput) => {
+			service.start(input);
+			const identity = {
+				sessionId: input.sessionId,
+				turnId: input.turnId,
+				generation: input.generation,
+			};
+			await eventually(() => {
+				const result = service.poll(identity);
+				for (const action of result.actions) {
+					if (action.kind === "narration-checkpoint")
+						service.narrationApplied({
+							sessionId: input.sessionId,
+							turnId: input.turnId,
+							generation: input.generation,
+							requestId: action.requestId,
+							status: "spoken",
+						});
+				}
+				return result.status !== "running";
+			});
+			return service.poll(identity);
+		};
+		try {
+			const proposalResult = await settle(proposal);
+			assert.equal(proposalResult.status, "completed", JSON.stringify(proposalResult));
+			assert.equal(requests.length, 2);
+			assert(JSON.stringify(requests[0]?.input).includes("selectedDay"));
+			assert(h.row.clarification);
+			if (mode === "changed-policy") h.row.clarification.policy.scope = "Changed scope";
+			if (mode === "no-selection") {
+				const canvas = observation.workspace.canvases[0];
+				assert(canvas?.kind === "center");
+				canvas.selectedId = undefined;
+			}
+			if (mode === "selection-drift") drift = true;
+			const confirmation = {
+				...confirmationTurn,
+				generation: 2,
+				text:
+					mode === "quoted"
+						? 'They said "Confirm this clarification delegation."'
+						: confirmationTurn.text,
+			};
+			const result = await settle(confirmation);
+			if (mode === "success" || mode === "voice-drained") {
+				assert.equal(result.status, "completed");
+				assert.equal(requests.length, 2, "confirmation needs zero model requests");
+				assert.equal(h.row.clarification.status, "active");
+				const context = {
+					...confirmation,
+					generation: 3,
+					turnId: "context",
+					requestId: "context-request",
+					text: "What context is missing for this item?",
+				};
+				assert.equal((await settle(context)).status, "completed");
+				assert.equal(requests.length, 3, "context answer needs one model request");
+				assert(JSON.stringify(requests[2]?.input).includes("Which scope?"));
+			} else {
+				assert.equal(
+					h.operations.filter((o) => o.operation.kind === "confirm_clarification").length,
+					0
+				);
+				assert.equal(requests.length, ["changed-policy", "selection-drift"].includes(mode) ? 2 : 3);
+			}
+		} finally {
+			await service.dispose();
+		}
+	});
+}
+
+test("selected confirmation still fences drift after argument derivation and cancellation", async () => {
+	const h = await proposedConfirmation();
+	const args = await h.tools.selectedConfirmation("item", h.prior);
+	assert(args);
+	h.row.revision++;
+	await assert.rejects(h.tools.execute("day_confirm_clarification", JSON.stringify(args)));
+	assert.equal(h.operations.length, 0);
+	const cancelled = await proposedConfirmation();
+	cancelled.controller.abort();
+	await assert.rejects(cancelled.tools.selectedConfirmation("item", cancelled.prior), {
+		name: "AbortError",
+	});
+	assert.equal(cancelled.operations.length, 0);
 });
