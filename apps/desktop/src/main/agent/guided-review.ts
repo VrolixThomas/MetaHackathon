@@ -397,7 +397,7 @@ export async function runGuidedReview(
 			workload:
 				proposalReasoning || profile.workWorkflow
 					? ("deep" as const)
-					: profile.sourceFlowWorkflow || profile.feedbackWorkflow
+					: profile.sourceFlowWorkflow || profile.feedbackWorkflow || profile.candidateWorkflow
 						? ("conversation" as const)
 						: ("quick" as const),
 			instructions: `${profile.sourceWorkflow ? profile.workflowInstructions : `${workspace || hub ? `${INSTRUCTIONS}\n${WORKSPACE_INSTRUCTIONS}` : INSTRUCTIONS}\n${COPARTNER_INSTRUCTIONS}\n${PROFILE_INSTRUCTIONS}`}${terminalAnswer ? "\nTool budget is exhausted. Answer from actual results only, briefly naming any unfinished part. Do not claim rejected or unacknowledged effects succeeded." : `\nAt most ${toolRoundLimit - round} tool calls remain, plus one final answer.${profile.sourceWorkflow ? "" : " Inspect missing links before creating the requested source flow. Reserve a tool call for create_source_flow and wait for its applied display receipt; a verbal description is not completion of an explicit show-flow request."}`}`,
@@ -416,7 +416,7 @@ export async function runGuidedReview(
 					),
 			maxOutputTokens: proposalReasoning
 				? 8192
-				: profile.sourceFlowWorkflow || profile.feedbackWorkflow
+				: profile.sourceFlowWorkflow || profile.feedbackWorkflow || profile.candidateWorkflow
 					? 4096
 					: MAX_OUTPUT_TOKENS,
 		};
