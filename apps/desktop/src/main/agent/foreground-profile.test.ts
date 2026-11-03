@@ -568,3 +568,15 @@ test("explicit reviewer-feedback fixes expose preparation tools from a browser o
 		assert(!profile.feedbackWorkflow);
 	}
 });
+
+test("posted incoming PR comments select actual fix preparation rather than explanation", () => {
+	const profile = new ForegroundProfile();
+	profile.select(
+		observation("home"),
+		false,
+		"Inspect my newly posted focus-mode comment on PR #1 and prepare a proposed fix for me to review. Keep it private for now; do not share or publish it yet."
+	);
+	assert(profile.feedbackWorkflow);
+	assert.match(profile.workflowInstructions, /requested-review or own-PR/);
+	assert.match(profile.workflowInstructions, /start it now/);
+});
