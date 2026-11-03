@@ -1734,3 +1734,36 @@ test("retired narration completes the answer without advancing an old walkthroug
 		await h.service.dispose();
 	}
 });
+
+test("a grounded review discussion streams once without offering redundant tools", async () => {
+	const gate = barrier();
+	const h = harness([], 1000, undefined, async function* (request) {
+		assert.deepEqual(request.tools, []);
+		assert.equal(request.workload, "conversation");
+		assert(request.instructions.length < 1000);
+		yield { type: "text", delta: "Grounded tradeoff." };
+		await gate.promise;
+		yield terminal([
+			{
+				type: "message",
+				role: "assistant",
+				content: [{ type: "output_text", text: "Grounded tradeoff." }],
+			},
+		]);
+	});
+	displayed(h);
+	h.ports.getFile = async () => fileSource(h.prepared, "service.ts");
+	try {
+		h.service.start({ ...h.input, text: "Explain the tradeoffs in more detail." });
+		await eventually(() => h.poll().text === "Grounded tradeoff.");
+		assert.equal(h.poll().status, "running");
+		displayed(h, "test.ts");
+		gate.release();
+		await finish(h);
+		assert.equal(h.requests.length, 1);
+		assert.equal(h.navigations.length, 0);
+	} finally {
+		gate.release();
+		await h.service.dispose();
+	}
+});
