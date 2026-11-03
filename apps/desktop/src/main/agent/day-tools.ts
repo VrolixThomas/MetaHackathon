@@ -78,7 +78,7 @@ const inspections = {
 };
 const descriptions: Record<DayOperation["kind"], string> = {
 	propose_clarification:
-		"Propose thread-only clarification delegation at the real user's request. Specify their scope and bounded messages/time. Returns the actual original request, account, permitted thread, send authority and policy for inspection. Does not authorize sends. Explain the proposal and ask for a distinct confirmation turn.",
+		"Propose thread-only clarification delegation at the real user's request. Specify their scope and bounded messages/time. Returns the actual original request, account, permitted thread, send authority and policy for inspection. Does not authorize sends. Explain the proposed question scope, original Slack thread and message/time limits in two natural sentences, then ask whether to proceed. Do not read opaque policy/item/user/channel IDs or revisions aloud, or describe the internal distinct-turn protocol. A short next-turn confirmation can activate the unchanged presented proposal.",
 	confirm_clarification:
 		"Activate an inspected proposed clarification policy only after the real user explicitly confirms its scope, original thread, send authority and bounds in a distinct turn. Main binds confirmation from the current real user utterance. May ask bounded questions without exact-body confirmation. Never accepts ownership, authorizes execution, publishes or closes work.",
 	pause_clarification:
