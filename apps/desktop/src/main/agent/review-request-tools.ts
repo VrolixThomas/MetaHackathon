@@ -10,7 +10,10 @@ import {
 import type { FunctionTool } from "./meta-client";
 export interface ConversationReviewRequestPorts {
 	/** Exact actual ingress, selected job/head and account epoch captured by main. */
-	intent(turn: ConversationTurnInput): ReviewRequestIntent | null;
+	intent(
+		turn: ConversationTurnInput,
+		signal?: AbortSignal
+	): ReviewRequestIntent | null | Promise<ReviewRequestIntent | null>;
 	send(
 		intent: ReviewRequestIntent,
 		reviewerLogins: string[],
@@ -46,7 +49,8 @@ export class ConversationReviewRequestTools {
 			this.signal.throwIfAborted();
 			if (!this.has(name)) throw new ReviewRequestError("denied");
 			const input = args.parse(JSON.parse(raw));
-			const intent = this.ports.intent(this.turn);
+			const intent = await this.ports.intent(this.turn, this.signal);
+			this.signal.throwIfAborted();
 			const names = requestedReviewers(this.turn.text);
 			if (
 				!intent ||

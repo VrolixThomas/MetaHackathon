@@ -75,3 +75,41 @@ test("tool requires actual ingress selection, exact recipients and request ident
 	);
 	assert.equal(calls, 1);
 });
+
+test("async ingress lookup is awaited and cancellation prevents send after lookup", async () => {
+	const turn = {
+		requestId: "r",
+		sessionId: "s",
+		turnId: "t",
+		generation: 1,
+		text: "Request review from alice",
+	};
+	let resolve!: (value: null) => void;
+	const pending = new Promise<null>((done) => {
+		resolve = done;
+	});
+	let sends = 0;
+	const controller = new AbortController();
+	const tool = new ConversationReviewRequestTools(
+		{
+			intent: async (_turn, signal) => {
+				assert.equal(signal, controller.signal);
+				return pending;
+			},
+			send: async () => {
+				sends++;
+				throw new Error("must not send");
+			},
+		},
+		turn,
+		controller.signal
+	);
+	const result = tool.execute(
+		"send_work_for_review",
+		JSON.stringify({ jobId: "job", reviewerLogins: ["alice"] })
+	);
+	controller.abort();
+	resolve(null);
+	await assert.rejects(result, /unavailable/);
+	assert.equal(sends, 0);
+});
