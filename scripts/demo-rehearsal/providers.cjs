@@ -167,6 +167,7 @@ function createSources(fixture, state, report) {
 						},
 					],
 				});
+			if (url.pathname.endsWith("/statuses")) return Response.json([]);
 			if (url.pathname.endsWith("/status"))
 				return Response.json({
 					state: state.checkStatus === "success" ? "success" : "pending",
