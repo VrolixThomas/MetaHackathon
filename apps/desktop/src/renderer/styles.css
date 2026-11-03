@@ -1876,12 +1876,18 @@ summary:focus-visible {
 	margin: 14px 0;
 }
 .slack-connect-inline > button:first-child {
-	background: #6055d8;
-	color: white;
-	border: 1px solid #8074ef;
-	padding: 11px 15px;
+	align-self: flex-start;
+	background: #202226;
+	color: #d7d9df;
+	border: 1px solid #363940;
+	padding: 9px 14px;
 	border-radius: 8px;
-	font-weight: 550;
+	font-size: 12px;
+	font-weight: 500;
+}
+.slack-connect-inline > button:first-child:hover:not(:disabled) {
+	background: #2a2d33;
+	border-color: #50555f;
 }
 .slack-connect-inline > p {
 	font-size: 12px;
