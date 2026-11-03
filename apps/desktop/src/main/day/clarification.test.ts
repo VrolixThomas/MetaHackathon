@@ -4,6 +4,7 @@ import { WorkJobSchema } from "../../shared/contracts";
 import type { ChatMessage, ChatReplyReceipt } from "../../shared/contracts/chat";
 import type { DayOperation } from "../../shared/contracts/day";
 import { ConversationDayTools } from "../agent/day-tools";
+import { readDayClarification } from "../composition/day-clarification";
 import { SlackError } from "../slack/types";
 import {
 	type ClarificationAnalysis,
@@ -522,6 +523,25 @@ for (const inputMode of ["voice", "typed"] as const)
 					{
 						snapshot: () => h.service().snapshot(),
 						operate: (operation, requestId) => h.service().operate({ operation, requestId }),
+						inspectClarification: (input, signal) =>
+							readDayClarification(
+								{
+									getDay: h.service,
+									readSource: async (_input, readSignal) => {
+										const item = await h.item();
+										assert(item.clarification);
+										assert(h.ports.replies?.readClarification);
+										return (
+											await h.ports.replies.readClarification(
+												item.clarification.policy.source,
+												readSignal
+											)
+										).messages;
+									},
+								},
+								input,
+								signal
+							),
 					},
 					{
 						sessionId: "session",
