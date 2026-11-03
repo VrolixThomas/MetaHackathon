@@ -3826,7 +3826,13 @@ test("feedback handoff is absent after foreign or cancelled production-port admi
 	}
 });
 
-for (const outcome of ["applied", "cancelled", "revoked"] as const) {
+for (const outcome of [
+	"applied",
+	"cancelled",
+	"revoked",
+	"preparation-applied",
+	"preparation-cancelled",
+] as const) {
 	test(`off-pane Day request uses observed target and actual receipt: ${outcome}`, async () => {
 		const d = data();
 		const day = attachDay(d);
@@ -3850,6 +3856,11 @@ for (const outcome of ["applied", "cancelled", "revoked"] as const) {
 					if (requests.length === 2) {
 						assert(JSON.stringify(request.input).includes("rejected-before-execution"));
 						if (outcome === "revoked") day.snapshot.actor.userId = "another-account";
+						if (outcome.startsWith("preparation-")) {
+							day.item.revision = 15;
+							day.snapshot.sequence = 15;
+							day.item.jobId = "background-preparation";
+						}
 					}
 					yield* controlled.stream(request, signal);
 				},
@@ -3874,15 +3885,12 @@ for (const outcome of ["applied", "cancelled", "revoked"] as const) {
 				});
 				assert.equal(service.poll(identity()).text, "");
 				assert.equal(requests.length, 3);
-				if (outcome === "cancelled")
-					service.cancel({ ...identity(), requestId: "cancel-day", reason: "user" });
+				const applied = outcome === "applied" || outcome === "preparation-applied";
+				if (!applied) service.cancel({ ...identity(), requestId: "cancel-day", reason: "user" });
 				w.settle();
 				await eventually(() => service.poll(identity()).status !== "running");
-				assert.equal(
-					service.poll(identity()).status,
-					outcome === "applied" ? "completed" : "cancelled"
-				);
-				if (outcome === "applied") {
+				assert.equal(service.poll(identity()).status, applied ? "completed" : "cancelled");
+				if (applied) {
 					assert(requests.at(-1)?.tools?.some((tool) => tool.name === "day_propose_clarification"));
 					assert(
 						requests

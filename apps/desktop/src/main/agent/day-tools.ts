@@ -128,6 +128,32 @@ function source(item: DayWorkItem) {
 			}
 		: null;
 }
+/** Stable request identity, not worker progress or authority to read/send to the source. */
+function navigationBinding(item: DayWorkItem) {
+	return createHash("sha256")
+		.update(
+			JSON.stringify({
+				id: item.id,
+				workspaceId: item.workspaceId,
+				ownerUserId: item.ownerUserId,
+				requestedById: item.requestedById,
+				createdAt: item.createdAt,
+				kind: item.kind,
+				title: item.title,
+				summary: item.summary,
+				source: item.source?.source ?? null,
+				// Fence changed stored scope; this snapshot is never a fresh provider ACL.
+				audience: item.source
+					? {
+							...item.source.audience,
+							observedAt: undefined,
+							readerIds: [...item.source.audience.readerIds].sort(),
+						}
+					: null,
+			})
+		)
+		.digest("hex");
+}
 function summary(item: DayWorkItem) {
 	return {
 		id: item.id,
@@ -185,6 +211,7 @@ export class ConversationDayTools {
 	private latest?: DaySnapshot;
 	private readonly proposed = new Set<string>();
 	private readonly observed = new Map<string, number>();
+	private readonly navigation = new Map<string, string>();
 	private readonly details = new Map<string, DayWorkItem>();
 	private readonly results = new Map<string, Promise<unknown>>();
 	constructor(
@@ -234,6 +261,7 @@ export class ConversationDayTools {
 			)
 		) {
 			this.observed.clear();
+			this.navigation.clear();
 			this.details.clear();
 			this.results.clear();
 			throw new GuidedReviewError(
@@ -251,25 +279,32 @@ export class ConversationDayTools {
 		await this.refresh();
 		return this.queue();
 	}
-	/** A workspace target is data, never authority. Recheck this actor's current item. */
+	/** ID-only display tolerates worker progress; mutations keep exact observed revisions. */
 	async validateObservedTarget(itemId: string) {
 		const revision = this.observed.get(itemId);
-		if (revision === undefined)
+		const binding = this.navigation.get(itemId);
+		if (revision === undefined || binding === undefined)
 			throw new WorkspaceArgumentError(
 				"Inspect the Day queue and select an actual observed Day item ID. No operation was performed."
 			);
 		const current = await this.refresh();
 		const item = current.items.find((item) => item.id === itemId);
-		if (!item || item.revision !== revision)
+		if (!item || item.revision < revision || navigationBinding(item) !== binding)
 			throw new WorkspaceArgumentError(
 				"That Day item changed or is unavailable. Inspect the Day queue again before opening it. No operation was performed."
 			);
 		if (item.workspaceId !== current.actor.workspaceId || item.ownerUserId !== current.actor.userId)
 			throw new GuidedReviewError("The Day item does not belong to the current actor.");
+		// Do not promote the refreshed revision/details into operation or send authority.
+		// The caller must still await the actual accepted workspace view before narrating display.
 	}
 	private queue(cursor = 0, limit = 12) {
 		const packet = dayModelContext(this.latest as DaySnapshot, cursor, limit);
-		for (const item of packet.items) this.observed.set(item.id, item.revision);
+		for (const item of packet.items) {
+			this.observed.set(item.id, item.revision);
+			const original = this.latest?.items.find((row) => row.id === item.id);
+			if (original) this.navigation.set(item.id, navigationBinding(original));
+		}
 		return packet;
 	}
 	private detail(item: DayWorkItem) {
@@ -315,6 +350,7 @@ export class ConversationDayTools {
 		if (bytes(packet) > 20_000)
 			throw new GuidedReviewError("The Day item exceeds its inspection budget.");
 		this.observed.set(item.id, item.revision);
+		this.navigation.set(item.id, navigationBinding(item));
 		this.details.set(item.id, {
 			...item,
 			questions: item.questions.filter((q) => questions.some((observed) => observed.id === q.id)),

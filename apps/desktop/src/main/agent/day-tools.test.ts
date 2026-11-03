@@ -610,7 +610,7 @@ test("cancellation before or during snapshot/operation fences late data without 
 	}
 });
 
-test("Day navigation only accepts exposed current actor/item revisions, including paginated targets", async () => {
+test("Day navigation only accepts exposed actor/request identities, including paginated targets", async () => {
 	const h = harness();
 	h.state.items = Array.from({ length: 20 }, (_, i) => ({ ...h.row, id: `item-${i}` }));
 	await h.tools.observe();
@@ -622,9 +622,111 @@ test("Day navigation only accepts exposed current actor/item revisions, includin
 	const row = h.state.items[19];
 	assert(row);
 	row.revision++;
-	await assert.rejects(h.tools.validateObservedTarget(row.id), /changed or is unavailable/);
+	await h.tools.validateObservedTarget(row.id);
 	await h.tools.execute("day_inspect_queue", JSON.stringify({ cursor: 19, limit: 1 }));
 	row.ownerUserId = "different-user";
 	await assert.rejects(h.tools.validateObservedTarget(row.id), /private work/);
+	assert.equal(h.operations.length, 0);
+});
+
+test("background preparation revisions permit navigation without advancing mutation or send authority", async () => {
+	for (const inspection of ["queue", "item"] as const) {
+		const h = await replyHarness();
+		h.row.replyDraft = { revision: 1, body: "Exact answer" };
+		if (inspection === "item")
+			await h.tools.execute("day_inspect_item", JSON.stringify({ itemId: h.row.id }));
+		h.row.revision = 15;
+		h.state.sequence = 15;
+		h.row.jobId = "background-preparation";
+		h.row.nextCheckAt = "2026-10-31T00:01:00Z";
+		h.row.updatedAt = "2026-10-31T00:00:25Z";
+		await h.tools.validateObservedTarget(h.row.id);
+		for (const expectedRevision of [1, 15]) {
+			for (const operation of ["cover", "accept", "start_work", "send_reply"] as const) {
+				await assert.rejects(
+					h.invoke(operation, {
+						expectedRevision,
+						...(operation === "start_work" ? { repositoryId: "repo" } : {}),
+						...(operation === "send_reply" ? { body: "Exact answer", draftRevision: 1 } : {}),
+					}),
+					/changed|exact revision/
+				);
+			}
+		}
+		assert.equal(h.operations.length, 0);
+	}
+});
+
+for (const drift of [
+	"source-revision",
+	"source-message",
+	"source-thread",
+	"source-conversation",
+	"source-removed",
+	"actor",
+	"removed",
+	"membership",
+	"readers",
+	"visibility",
+	"title",
+	"summary",
+	"revision-rollback",
+] as const) {
+	test(`Day navigation rejects changed request or scope before display: ${drift}`, async () => {
+		const h = harness();
+		await h.tools.observe();
+		assert(h.row.source);
+		if (drift === "source-revision") h.row.source.source.revisionId = "source-v2";
+		if (drift === "source-message") h.row.source.source.messageId = "another-message";
+		if (drift === "source-thread") h.row.source.source.threadId = "another-thread";
+		if (drift === "source-conversation") {
+			h.row.source.source.conversationId = "another-dm";
+			h.row.source.audience.conversationId = "another-dm";
+		}
+		if (drift === "membership") h.row.source.audience.membershipRevision = "members-v2";
+		if (drift === "readers") h.row.source.audience.readerIds = ["peer"];
+		if (drift === "visibility") h.row.source.audience.visibility = "private_channel";
+		if (drift === "source-removed") h.row.source = null;
+		if (drift === "actor") {
+			h.state.actor.userId = "other";
+			h.row.ownerUserId = "other";
+		}
+		if (drift === "removed") h.state.items = [];
+		if (drift === "title") h.row.title = "Slack source removed";
+		if (drift === "summary") h.row.summary = "Changed request";
+		if (drift === "revision-rollback") {
+			h.row.revision = 2;
+			await h.tools.execute("day_inspect_item", JSON.stringify({ itemId: h.row.id }));
+			h.row.revision = 1;
+		}
+		h.state.sequence++;
+		await assert.rejects(h.tools.validateObservedTarget(h.row.id), /changed|unavailable/);
+		assert.equal(h.operations.length, 0);
+	});
+}
+
+test("changed source needs fresh inspection; audience observation time alone is not scope or ACL authority", async () => {
+	const h = harness();
+	await h.tools.observe();
+	assert(h.row.source);
+	h.row.source.source.revisionId = "source-v2";
+	h.row.revision++;
+	h.state.sequence++;
+	await assert.rejects(h.tools.validateObservedTarget(h.row.id), /changed/);
+	await h.tools.execute("day_inspect_item", JSON.stringify({ itemId: h.row.id }));
+	h.row.source.audience.observedAt = "2026-10-31T00:00:25Z";
+	h.row.source.audience.readerIds.reverse();
+	await h.tools.validateObservedTarget(h.row.id);
+	assert.equal(h.operations.length, 0);
+});
+
+test("cancelled fresh Day navigation cannot return late validation", async () => {
+	const h = harness();
+	await h.tools.observe();
+	h.ports.snapshot = async () => {
+		h.controller.abort();
+		return structuredClone(h.state);
+	};
+	await assert.rejects(h.tools.validateObservedTarget(h.row.id), { name: "AbortError" });
 	assert.equal(h.operations.length, 0);
 });
