@@ -27,6 +27,7 @@ assert(
 			"slack",
 			"variants",
 			"actions",
+			"work",
 			"planning",
 			"fix",
 		].some((suite) => process.argv.includes(`--suite=${suite}`)),
@@ -687,10 +688,11 @@ async function main() {
 				owned,
 				skipFix: process.argv.includes("--suite=delegation"),
 			});
-		else if (!process.argv.includes("--suite=actions"))
+		else if (!process.argv.includes("--suite=actions") && !process.argv.includes("--suite=work"))
 			await common({ say, rpc, ui, state, fixture, report, assert, js, wait, button, owned });
-		if (process.argv.includes("--suite=all") || process.argv.includes("--suite=actions"))
+		if (process.argv.includes("--suite=all") || process.argv.includes("--suite=actions") || process.argv.includes("--suite=work"))
 			await full({
+				workOnly: process.argv.includes("--suite=work"),
 				say,
 				rpc,
 				ui,

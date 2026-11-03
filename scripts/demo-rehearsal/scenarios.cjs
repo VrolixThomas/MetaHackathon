@@ -59,8 +59,10 @@ async function full(d) {
 		},
 		30000
 	);
-	await review(d);
-	await collaboration(d);
+	if (!d.workOnly) {
+		await review(d);
+		await collaboration(d);
+	}
 	const ready = await wait(
 		"actual coding child and independent checks finish",
 		async () => {
@@ -106,7 +108,7 @@ async function full(d) {
 	});
 
 	report.assertions.push({
-		name: "live coding/model/tool flow and review/flow/fix/conditional-followup/Slack clarification executed",
+		name: d.workOnly ? "live coding, checks, review and historical work continuity executed" : "live coding/model/tool flow and review/flow/fix/conditional-followup/Slack clarification executed",
 		passed: true,
 	});
 }
