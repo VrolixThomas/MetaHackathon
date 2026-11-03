@@ -1210,6 +1210,16 @@ for (const mode of [
 	"selection-drift",
 	"voice-undrained",
 	"voice-drained",
+	"voice-displayed",
+	"typed-wrong-question",
+	"voice-wrong-question",
+	"interrupted-question",
+	"quiet-stop",
+	"quiet-stop-draining",
+	"completed-cancel",
+	"attention",
+	"model-phrase",
+	"cancelled-proposal",
 ] as const) {
 	test(`actual ConversationService selected-Day routing: ${mode}`, async () => {
 		const h = harness();
@@ -1289,26 +1299,20 @@ for (const mode of [
 					"propose"
 				),
 			],
-			[
-				{
-					type: "message",
-					role: "assistant",
-					content: [
-						{
-							type: "output_text",
-							text: "I propose clarification of page behavior only, in the original thread, up to two messages for thirty minutes. Confirm this clarification delegation?",
-						},
-					],
-				},
-			],
 		];
 		const requests: MetaRequest[] = [];
+		const wrongQuestion = "Should I show the ticket board instead?";
+		let blockedQuestion = false;
 		let drift = false;
 		let observed = 0;
 		const service = new ConversationService(
 			{
 				async *stream(request) {
 					requests.push(request);
+					if (blockedQuestion) {
+						yield { type: "text", delta: wrongQuestion };
+						await new Promise<void>(() => {});
+					}
 					yield {
 						type: "completed",
 						response: {
@@ -1318,7 +1322,7 @@ for (const mode of [
 								{
 									type: "message",
 									role: "assistant",
-									content: [{ type: "output_text", text: "Which scope?" }],
+									content: [{ type: "output_text", text: wrongQuestion }],
 								},
 							],
 						},
@@ -1327,7 +1331,32 @@ for (const mode of [
 			},
 			{
 				hub,
-				narrationCheckpoints: mode === "voice-drained",
+				narrationCheckpoints:
+					(mode.startsWith("voice-") && mode !== "voice-undrained") ||
+					mode === "cancelled-proposal" ||
+					mode === "quiet-stop-draining",
+				attention: {
+					resolve: async (input) => ({
+						id: input.claimId,
+						sessionId: input.sessionId,
+						createdAt: new Date(Date.now() - 1000).toISOString(),
+						expiresAt: new Date(Date.now() + 60_000).toISOString(),
+						items: [
+							{
+								noticeId: "notice",
+								jobId: "job",
+								kind: "work-ready",
+								decisionId: null,
+								question: null,
+								repository: "test/repo",
+								label: "Ready work",
+								headSha: "a".repeat(40),
+								changedFileCount: 1,
+								applied: false,
+							},
+						],
+					}),
+				},
 				workspace: {
 					observe: async () => {
 						if (drift && ++observed === 2) observation.workspace.sequence++;
@@ -1340,7 +1369,10 @@ for (const mode of [
 		const proposal = {
 			...turn,
 			text: "Propose clarification for this selected request.",
-			inputMode: mode.startsWith("voice-") ? ("voice" as const) : ("typed" as const),
+			inputMode:
+				mode.startsWith("voice-") || mode === "quiet-stop-draining"
+					? ("voice" as const)
+					: ("typed" as const),
 		};
 		const settle = async (input: ConversationTurnInput) => {
 			service.start(input);
@@ -1352,24 +1384,135 @@ for (const mode of [
 			await eventually(() => {
 				const result = service.poll(identity);
 				for (const action of result.actions) {
-					if (action.kind === "narration-checkpoint")
+					if (action.kind === "narration-checkpoint") {
+						if (mode === "quiet-stop-draining") service.invalidateDayConfirmation(input.sessionId);
+						assert.equal(
+							service.narrationApplied({
+								sessionId: input.sessionId,
+								turnId: input.turnId,
+								generation: input.generation + 1,
+								requestId: action.requestId,
+								status: "spoken",
+							}).status,
+							"stale"
+						);
 						service.narrationApplied({
 							sessionId: input.sessionId,
 							turnId: input.turnId,
 							generation: input.generation,
 							requestId: action.requestId,
-							status: "spoken",
+							status: mode === "voice-displayed" ? "displayed" : "spoken",
 						});
+					}
 				}
 				return result.status !== "running";
 			});
 			return service.poll(identity);
 		};
 		try {
-			const proposalResult = await settle(proposal);
-			assert.equal(proposalResult.status, "completed", JSON.stringify(proposalResult));
-			assert.equal(requests.length, 2);
-			assert(JSON.stringify(requests[0]?.input).includes("selectedDay"));
+			if (mode === "model-phrase") {
+				const forged = await proposedConfirmation();
+				assert(forged.prior);
+				outputs.splice(0, outputs.length, [
+					{
+						type: "message",
+						role: "assistant",
+						content: [
+							{
+								type: "output_text",
+								text: forged.prior.presentation,
+							},
+						],
+					},
+				]);
+				await settle(proposal);
+				recordProposal(h.row);
+			} else if (mode === "cancelled-proposal") {
+				service.start({ ...proposal, inputMode: "voice" });
+				await eventually(
+					() =>
+						service.poll({ sessionId: proposal.sessionId, turnId: proposal.turnId, generation: 1 })
+							.actions.length > 0
+				);
+				service.cancel({
+					sessionId: proposal.sessionId,
+					turnId: proposal.turnId,
+					generation: 1,
+					requestId: "cancel",
+					reason: "user",
+				});
+			} else {
+				const proposalResult = await settle(proposal);
+				assert.equal(proposalResult.status, "completed", JSON.stringify(proposalResult));
+				assert.equal(
+					requests.length,
+					1,
+					"canonical proposal does not ask the model for another question"
+				);
+				assert.match(proposalResult.text, /clarification only/);
+				assert.match(proposalResult.text, /original Slack thread/);
+				assert.match(proposalResult.text, /at most 2 messages over 30 minutes\?$/);
+				assert(!proposalResult.text.includes(wrongQuestion));
+				assert(JSON.stringify(requests[0]?.input).includes("selectedDay"));
+			}
+			if (mode === "quiet-stop") service.invalidateDayConfirmation(proposal.sessionId);
+			if (mode === "completed-cancel")
+				service.cancel({
+					sessionId: proposal.sessionId,
+					turnId: proposal.turnId,
+					generation: 1,
+					requestId: "stop",
+					reason: "user",
+				});
+			if (["typed-wrong-question", "voice-wrong-question", "interrupted-question"].includes(mode)) {
+				const question = {
+					...proposal,
+					requestId: "question",
+					turnId: "question",
+					generation: 2,
+					text: "What else could we look at?",
+				};
+				if (mode === "interrupted-question") {
+					blockedQuestion = true;
+					service.start(question);
+					await eventually(() => requests.length === 2);
+					service.cancel({
+						sessionId: question.sessionId,
+						turnId: question.turnId,
+						generation: 2,
+						requestId: "interrupt",
+						reason: "user",
+					});
+					blockedQuestion = false;
+				} else assert.equal((await settle(question)).text, wrongQuestion);
+			}
+			if (mode === "attention") {
+				const attention = {
+					sessionId: proposal.sessionId,
+					turnId: "attention",
+					generation: 2,
+					requestId: "attention",
+					claimId: "claim",
+				};
+				service.attend(attention);
+				await eventually(() => {
+					const result = service.poll({
+						sessionId: attention.sessionId,
+						turnId: attention.turnId,
+						generation: 2,
+					});
+					for (const action of result.actions)
+						if (action.kind === "narration-checkpoint")
+							service.narrationApplied({
+								sessionId: action.sessionId,
+								turnId: action.turnId,
+								generation: 2,
+								requestId: action.requestId,
+								status: "spoken",
+							});
+					return result.status === "completed";
+				});
+			}
 			assert(h.row.clarification);
 			if (mode === "changed-policy") h.row.clarification.policy.scope = "Changed scope";
 			if (mode === "no-selection") {
@@ -1380,33 +1523,30 @@ for (const mode of [
 			if (mode === "selection-drift") drift = true;
 			const confirmation = {
 				...confirmationTurn,
-				generation: 2,
-				text:
-					mode === "quoted"
-						? 'They said "Confirm this clarification delegation."'
-						: confirmationTurn.text,
+				generation: 3,
+				text: mode === "quoted" ? 'They said "Confirm this clarification delegation."' : "Yes.",
 			};
 			const result = await settle(confirmation);
 			if (mode === "success" || mode === "voice-drained") {
 				assert.equal(result.status, "completed");
-				assert.equal(requests.length, 2, "confirmation needs zero model requests");
+				assert.equal(requests.length, 1, "confirmation needs zero model requests");
 				assert.equal(h.row.clarification.status, "active");
 				const context = {
 					...confirmation,
-					generation: 3,
+					generation: 4,
 					turnId: "context",
 					requestId: "context-request",
 					text: "What context is missing for this item?",
 				};
 				assert.equal((await settle(context)).status, "completed");
-				assert.equal(requests.length, 3, "context answer needs one model request");
-				assert(JSON.stringify(requests[2]?.input).includes("Which scope?"));
+				assert.equal(requests.length, 2, "context answer needs one model request");
+				assert(JSON.stringify(requests[1]?.input).includes("Which scope?"));
 			} else {
 				assert.equal(
 					h.operations.filter((o) => o.operation.kind === "confirm_clarification").length,
 					0
 				);
-				assert.equal(requests.length, ["changed-policy", "selection-drift"].includes(mode) ? 2 : 3);
+				assert.equal(h.row.clarification.status, "proposed");
 			}
 		} finally {
 			await service.dispose();
@@ -1470,6 +1610,19 @@ test("short confirmation binding cannot be reused for model-altered policy argum
 	assert(args);
 	await assert.rejects(
 		h.tools.execute("day_confirm_clarification", JSON.stringify({ ...args, policyId: "other" }))
+	);
+	assert.equal(h.operations.length, 0);
+});
+
+test("private confirmation reference binds the exact canonical presentation", async () => {
+	const h = await proposedConfirmation({ ...confirmationTurn, text: "Yes." });
+	assert(h.prior);
+	await assert.rejects(
+		h.tools.selectedConfirmation("item", {
+			...h.prior,
+			presentation: "Should I show the ticket board instead?",
+		}),
+		/proposal changed/
 	);
 	assert.equal(h.operations.length, 0);
 });

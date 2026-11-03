@@ -96,7 +96,13 @@ type TurnState = {
 	spokenThrough?: number;
 	actions: AgentAction[];
 };
-type UserTurn = TurnState & { kind: "user"; input: ConversationTurnInput };
+type UserTurn = TurnState & {
+	kind: "user";
+	input: ConversationTurnInput;
+	priorDayProposal?: import("./day-tools").DayClarificationReference;
+	presentedDayProposal?: import("./day-tools").DayClarificationReference;
+	dayConfirmationInvalidated?: boolean;
+};
 type AttentionTurn = TurnState & {
 	kind: "attention";
 	input: ConversationAttentionInput;
@@ -173,6 +179,17 @@ export class ConversationService {
 			this.completeAttention(session, turn, receipt.status);
 		}
 		return result;
+	}
+
+	/** Main composition hook for quiet Stop ingress that does not create a conversation turn. */
+	invalidateDayConfirmation(rawSessionId: string): void {
+		const session = this.sessions.get(IdSchema.parse(rawSessionId));
+		if (!session) return;
+		session.dayProposal = undefined;
+		if (session.current?.kind === "user") {
+			session.current.priorDayProposal = undefined;
+			session.current.dayConfirmationInvalidated = true;
+		}
 	}
 
 	isBusy(rawSessionId: string): boolean {
@@ -312,6 +329,7 @@ export class ConversationService {
 		};
 		const turn: UserTurn = {
 			kind: "user",
+			priorDayProposal: session.dayProposal,
 			input,
 			record,
 			controller: new AbortController(),
@@ -320,6 +338,8 @@ export class ConversationService {
 			text: "",
 			actions: [],
 		};
+		// A proposal can answer only the next actual user turn, even if it is cancelled.
+		session.dayProposal = undefined;
 		session.current = turn;
 		this.options.onUserTurn?.(input);
 		this.rememberRequest(session, input.requestId, record);
@@ -356,7 +376,7 @@ export class ConversationService {
 		}
 		if (!session && this.sessions.size >= 100)
 			throw new Error("Release an inactive conversation before starting another");
-		const current = session ?? {
+		const current: Session = session ?? {
 			history: [],
 			requests: new Set<string>(),
 			walkthrough: {},
@@ -381,6 +401,7 @@ export class ConversationService {
 			text: "",
 			actions: [],
 		};
+		current.dayProposal = undefined;
 		current.current = turn;
 		this.sessions.set(input.sessionId, current);
 		this.rememberRequest(current, input.requestId, record);
@@ -419,7 +440,16 @@ export class ConversationService {
 
 	cancel(raw: unknown) {
 		const input = CancelTurnInputSchema.parse(raw);
-		const turn = this.sessions.get(input.sessionId)?.current;
+		const session = this.sessions.get(input.sessionId);
+		const turn = session?.current;
+		// Stop also retires a completed proposal's short confirmation reference.
+		// Preserve the proposal and all background work; stale other-turn cancels do nothing.
+		if (
+			session &&
+			turn?.input.turnId === input.turnId &&
+			turn.input.generation === input.generation
+		)
+			session.dayProposal = undefined;
 		let status: "cancelled" | "not-found" | "stale" = "not-found";
 		if (turn) {
 			if (
@@ -818,7 +848,10 @@ export class ConversationService {
 					const observed = await trace.measure("workspace-observe", signal, async () =>
 						workspace?.observe()
 					);
-					const dayConfirmation = await hub?.dayConfirmationContext(observed, session.dayProposal);
+					const dayConfirmation = await hub?.dayConfirmationContext(
+						observed,
+						turn.priorDayProposal
+					);
 					if (dayConfirmation && hub) {
 						const fresh = await workspace?.observe();
 						if (JSON.stringify(fresh?.workspace) !== JSON.stringify(observed?.workspace))
@@ -869,11 +902,12 @@ export class ConversationService {
 				}
 				if (
 					this.active(session, turn) &&
-					turn.text.trim() &&
+					hub?.completedDayProposal &&
+					turn.text.endsWith(hub.completedDayProposal.presentation) &&
 					(turn.input.inputMode !== "voice" ||
 						(onNarration && (turn.spokenThrough ?? 0) >= turn.text.length))
 				) {
-					session.dayProposal = hub?.completedDayProposal;
+					turn.presentedDayProposal = hub.completedDayProposal;
 				}
 			} else {
 				if (turn.input.prId !== undefined) {
@@ -938,6 +972,7 @@ export class ConversationService {
 			if (!this.active(session, turn)) return;
 			this.rememberExchange(session, turn);
 			turn.record.status = "completed";
+			if (!turn.dayConfirmationInvalidated) session.dayProposal = turn.presentedDayProposal;
 			this.emit(turn, { kind: "completed" });
 		} catch (error) {
 			if (this.active(session, turn)) {

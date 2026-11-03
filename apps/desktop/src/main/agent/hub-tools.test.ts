@@ -4709,7 +4709,7 @@ for (const selected of [false, true]) {
 				assert.equal(
 					requests.length,
 					outcome === "fresh"
-						? 4
+						? 3
 						: outcome === "post-dispatch"
 							? 1
 							: outcome === "skip-inspect"

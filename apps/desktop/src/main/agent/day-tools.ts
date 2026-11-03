@@ -78,7 +78,7 @@ const inspections = {
 };
 const descriptions: Record<DayOperation["kind"], string> = {
 	propose_clarification:
-		"Propose thread-only clarification delegation at the real user's request. Specify their scope and bounded messages/time. Returns the actual original request, account, permitted thread, send authority and policy for inspection. Does not authorize sends. Explain the proposed question scope, original Slack thread and message/time limits in two natural sentences, then ask whether to proceed. Do not read opaque policy/item/user/channel IDs or revisions aloud, or describe the internal distinct-turn protocol. A short next-turn confirmation can activate the unchanged presented proposal.",
+		"Propose thread-only clarification delegation at the real user's request. Specify their scope and bounded messages/time. Returns the actual original request, account, permitted thread, send authority and policy for inspection. Does not authorize sends. Main returns the canonical proposal question and ends the turn with it; do not append or substitute another question. Do not read opaque policy/item/user/channel IDs or revisions aloud, or describe the internal distinct-turn protocol. A short next-turn confirmation can activate the unchanged presented proposal.",
 	confirm_clarification:
 		"Activate an inspected proposed clarification policy only after the real user explicitly confirms its scope, original thread, send authority and bounds in a distinct turn. Main binds confirmation from the current real user utterance. May ask bounded questions without exact-body confirmation. Never accepts ownership, authorizes execution, publishes or closes work.",
 	pause_clarification:
@@ -230,9 +230,16 @@ export type DayClarificationReference = {
 	requestId: string;
 	turnId: string;
 	binding: string;
+	presentation: string;
 };
 function confirmationBinding(item: DayWorkItem) {
 	return JSON.stringify([navigationBinding(item), item.clarification?.policy]);
+}
+
+function canonicalClarificationQuestion(item: DayWorkItem): string {
+	const policy = item.clarification?.policy;
+	if (!policy) throw new GuidedReviewError("The clarification proposal is unavailable.");
+	return `This would authorize clarification only, not accepting, executing, publishing or closing work. May I ask clarification questions about ${JSON.stringify(policy.scope)} in the original Slack thread for ${JSON.stringify(item.title)}, with at most ${policy.maxMessages} messages over ${policy.durationMinutes} minutes?`;
 }
 
 export class ConversationDayTools {
@@ -290,6 +297,10 @@ export class ConversationDayTools {
 	get context() {
 		return this.latest ? this.queue() : undefined;
 	}
+	get foregroundHandoff() {
+		const proposal = this.completedProposal;
+		return proposal ? { acknowledgement: proposal.presentation } : undefined;
+	}
 	get completedProposal() {
 		return this.proposed.size === 1 ? this.proposalReference : undefined;
 	}
@@ -326,7 +337,8 @@ export class ConversationDayTools {
 		if (
 			!item ||
 			item.clarification?.status !== "proposed" ||
-			confirmationBinding(item) !== prior.binding
+			confirmationBinding(item) !== prior.binding ||
+			canonicalClarificationQuestion(item) !== prior.presentation
 		)
 			throw new GuidedReviewError(
 				"The clarification proposal changed. Inspect and explain it before a new confirmation."
@@ -821,6 +833,7 @@ export class ConversationDayTools {
 				requestId: this.turn.requestId,
 				turnId: this.turn.turnId,
 				binding: confirmationBinding(returned),
+				presentation: canonicalClarificationQuestion(returned),
 			};
 		}
 		this.accept(result.snapshot);
@@ -842,6 +855,9 @@ export class ConversationDayTools {
 							? "verified-original-thread-receipt"
 							: "queued-unverified",
 					}
+				: {}),
+			...(operation.kind === "propose_clarification"
+				? { proposalQuestion: this.proposalReference?.presentation }
 				: {}),
 			data: this.detail(returned),
 			display,
