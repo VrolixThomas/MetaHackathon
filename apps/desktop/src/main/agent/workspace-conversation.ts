@@ -164,19 +164,27 @@ export async function runWorkspaceConversation(
 			);
 			continue;
 		}
+		const dialogueMode = profile.sourceWorkflow
+			? undefined
+			: ticketDialogueMode(input.text, history, currentContext);
+		const answerOnly = !!directNavigation || dialogueMode === "answer";
 		const retained = boundedToolHistory(history);
 		const pendingDelegation = profile.has("approvals") ? await hub?.approvalContext() : undefined;
 		const context = {
-			...(pendingDelegation ? { pendingDelegation } : {}),
-			...(observation
-				? {
-						actualWorkspace: {
-							...workspaceModelContext(observation),
-							...(actualHub ? { hub: undefined } : {}),
-						},
-					}
-				: {}),
-			...(actualHub ? { actualHub: profile.context(actualHub) } : {}),
+			...(answerOnly
+				? ticketPlanningContext(observation, actualHub)
+				: {
+						...(pendingDelegation ? { pendingDelegation } : {}),
+						...(observation
+							? {
+									actualWorkspace: {
+										...workspaceModelContext(observation),
+										...(actualHub ? { hub: undefined } : {}),
+									},
+								}
+							: {}),
+						...(actualHub ? { actualHub: profile.context(actualHub) } : {}),
+					}),
 			...(currentContext ? { currentContext } : {}),
 			historyTruncated: retained.length < history.length,
 		};
@@ -206,10 +214,6 @@ export async function runWorkspaceConversation(
 			throw new GuidedReviewError(
 				"The workspace conversation is too large. Ask a narrower question."
 			);
-		const dialogueMode = profile.sourceWorkflow
-			? undefined
-			: ticketDialogueMode(input.text, history, currentContext);
-		const answerOnly = !!directNavigation || dialogueMode === "answer";
 		const selectedTools = workspaceRequestTools(
 			profile.tools(
 				answerOnly ? [] : [...(workspace?.tools ?? []), ...(hub?.tools ?? [])],
@@ -438,4 +442,40 @@ export function workspaceRequestTools(tools: FunctionTool[]): FunctionTool[] {
 		const { $schema: _dialect, ...parameters } = tool.parameters;
 		return { ...tool, parameters };
 	});
+}
+
+/** Private tools-free projection. Canonical fresh ticket/jobs/effects and real
+ * history stay intact; omitted inventories do not assert empty queues or pages. */
+function ticketPlanningContext(
+	observation: WorkspaceObservation | undefined,
+	hub: Awaited<ReturnType<ConversationHubTools["observe"]>> | undefined
+) {
+	const workspace = observation?.workspace;
+	return {
+		planningFrame: { subject: "selected-ticket-product-design", operation: "discussion-only" },
+		...(workspace
+			? {
+					actualWorkspace: {
+						workspace: {
+							sequence: workspace.sequence,
+							contentSequence: workspace.contentSequence,
+							primaryId: workspace.primaryId,
+							secondaryId: workspace.secondaryId,
+							primary: workspace.canvases.find((canvas) => canvas.id === workspace.primaryId),
+						},
+						omitted: ["reviews", "browser", "hub", "otherCanvases", "capabilities", "reviewState"],
+					},
+				}
+			: {}),
+		...(hub
+			? {
+					actualHub: {
+						repositories: hub.repositories,
+						clock: hub.clock,
+						conversationFocus: hub.conversationFocus,
+						omitted: ["tickets", "jobs", "incomingReviews", "ownPRFeedback", "notices", "day"],
+					},
+				}
+			: {}),
+	};
 }

@@ -128,3 +128,84 @@ test("consequence variants stream only within an established bounded planning di
 		"answer"
 	);
 });
+
+test("fresh selected-ticket preferences and design questions precede bare artifact nouns", () => {
+	for (const text of [
+		"What would you recommend so I can get back to my review easily?",
+		"I prefer opening the original source separately. No coding yet.",
+		"I choose a separate review window.",
+		"Keep it alongside the original source.",
+		"Is there anything important I still need to decide before we start?",
+		"What should the export review experience be?",
+		"I prefer a source link on each exported report.",
+	]) {
+		assert.equal(
+			ticketDialogueMode(text, [{ role: "user", content: text }], context()),
+			"answer",
+			text
+		);
+		assert.equal(
+			ticketDialogueMode(text, [{ role: "user", content: text }], undefined),
+			"tools",
+			text
+		);
+	}
+	assert.equal(mode("What happens if the original source disappears?"), "answer");
+	assert.equal(mode("I prefer opening the original source separately.", false), "tools");
+});
+
+test("planning shortcuts retain actual evidence, new targets and compound action capabilities", () => {
+	for (const text of [
+		"Could you actually check whether source link opens in new tab?",
+		"I prefer to inspect the source code first.",
+		"What would you recommend based on the current implementation?",
+		"I choose the source; publish it now.",
+		"I prefer to start implementation now.",
+		"I prefer that you send the original source.",
+		"Keep it separate and then merge the PR.",
+		"I choose to run the tests first.",
+		"What would you recommend for MET-81?",
+		"I prefer https://example.test as the source.",
+		"Open the original source separately.",
+		"I prefer you open the original source separately.",
+		"Why should we open the original review?",
+		"Don't open the source; explain the design.",
+		"If ready, open the review.",
+		"Open the ticket and another review.",
+	])
+		assert.equal(mode(text), "tools", text);
+});
+
+test("unprompted preferences do not need a question but fragments and pending starts still do", () => {
+	const thread: MetaItem[] = [
+		{ role: "user", content: "What would you recommend for the source link design?" },
+		{ role: "assistant", content: "A controlled proposal without a question." },
+	];
+	for (const text of ["I prefer opening the original source separately.", "Keep it separate."])
+		assert.equal(
+			ticketDialogueMode(text, [...thread, { role: "user", content: text }], context()),
+			"answer"
+		);
+	for (const text of ["Yes", "Only separately", "Source"])
+		assert.equal(
+			ticketDialogueMode(text, [...thread, { role: "user", content: text }], context()),
+			"tools"
+		);
+	for (const text of [
+		"I prefer opening the original source separately.",
+		"Yes",
+		"Keep it separate.",
+	])
+		assert.equal(
+			ticketDialogueMode(
+				text,
+				[
+					{ role: "user", content: "Please start work on this ticket." },
+					{ role: "assistant", content: "Discuss the source link scope: same tab or separate?" },
+					{ role: "user", content: text },
+				],
+				context()
+			),
+			"tools"
+		);
+});

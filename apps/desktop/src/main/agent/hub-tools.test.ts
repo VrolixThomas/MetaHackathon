@@ -5222,3 +5222,266 @@ for (const inputMode of ["typed", "voice"] as const) {
 		});
 	}
 }
+
+for (const scenario of [
+	{
+		identifier: "MET-80",
+		description: "Design source links so returning to the review is easy.",
+		question: "What would you recommend so I can get back to my review easily?",
+		choice: "I prefer opening the original source separately. No coding yet.",
+	},
+	{
+		identifier: "DOC-204",
+		description: "Design attribution links in exported reports.",
+		question: "What would you recommend for reviewing an exported report?",
+		choice: "I choose a source link alongside each report.",
+	},
+	{
+		identifier: "OPS-39",
+		description: "Design how archived records retain their original reference.",
+		question: "How should someone get back to the original source?",
+		choice: "Keep it separate from the archive review.",
+	},
+]) {
+	test(`${scenario.identifier}: planning omits inbox/page metadata, preserves actual continuity, and later evidence reads remain pinned`, async () => {
+		const d = data();
+		d.ticket.identifier = scenario.identifier;
+		d.ticket.description = scenario.description;
+		required(d.hub.tickets[0]).identifier = scenario.identifier;
+		// A ready PR for the SAME ticket is tempting context, but not the planning subject.
+		required(d.hub.reviews[0]).pr.title = `${scenario.identifier} READY PR INBOX ONLY`;
+		const workspace = selectedTicketWorkspace(d);
+		const observe = workspace.observe;
+		workspace.observe = async (...args) => {
+			const value = await observe(...args);
+			value.reviews = [{ pr: required(d.hub.reviews[0]).pr, status: "ready", reviewId: "ready" }];
+			return value;
+		};
+		const requests: MetaRequest[] = [];
+		const replies = [
+			"Controlled recommendation without a question.",
+			"Controlled preference closure.",
+			"Controlled remaining-decision answer.",
+		];
+		const sourceRequest = {
+			repository: d.source.location.repository,
+			commitSha: d.source.location.commitSha,
+			path: d.source.location.path,
+			startLine: 10,
+			endLine: 12,
+		};
+		const service = new ConversationService(
+			client(
+				[
+					...replies.map(answer),
+					[call("inspect_work_job", { id: d.job.id })],
+					[call("read_pinned_source", sourceRequest)],
+					answer("Controlled answer from inspected bytes."),
+				],
+				requests
+			),
+			{ hub: d.ports, workspace }
+		);
+		try {
+			const utterances = [
+				scenario.question,
+				scenario.choice,
+				"Is there anything important I still need to decide before we start?",
+			];
+			for (const [index, text] of utterances.entries()) {
+				const turn = {
+					...input,
+					text,
+					generation: index + 1,
+					turnId: `planning-${index}`,
+					requestId: `planning-${index}`,
+				};
+				service.start(turn);
+				await eventually(() => service.poll(identity(turn)).status !== "running");
+				assert.equal(service.poll(identity(turn)).status, "completed");
+				assert.equal(service.poll(identity(turn)).actions.length, 0);
+				assert.equal(requests.length, index + 1);
+				const request = required(requests[index]);
+				assert.deepEqual(request.tools, []);
+				const payload = request.input.at(-1)?.["content"] as { text: string }[];
+				const packet = JSON.parse(required(payload[0]).text);
+				assert.equal(packet.currentContext.ticket.description, scenario.description);
+				assert.equal(packet.currentContext.target.id, d.ticket.id);
+				assert.equal(packet.currentContext.target.displayed, true);
+				assert.equal(packet.currentContext.priorJobs[0].id, d.job.id);
+				assert.equal(
+					packet.currentContext.priorJobs[0].admission.origin,
+					"existing-work-not-admitted-in-this-session"
+				);
+				assert.deepEqual(packet.currentContext.sessionAdmissions, []);
+				assert.deepEqual(packet.actualHub.conversationFocus.effects, []);
+				assert.equal(packet.actualWorkspace.workspace.contentSequence, 1);
+				assert.equal(packet.actualWorkspace.workspace.primary.selectedId, d.ticket.id);
+				assert.equal(packet.actualWorkspace.reviews, undefined);
+				assert.equal(packet.actualWorkspace.browser, undefined);
+				assert(packet.actualWorkspace.omitted.includes("reviews"));
+				assert(packet.actualWorkspace.omitted.includes("browser"));
+				assert(packet.actualHub.omitted.includes("ownPRFeedback"));
+				assert(!JSON.stringify(packet).includes("READY PR INBOX ONLY"));
+				assert.deepEqual(
+					request.input
+						.filter((item) => item["role"] === "user" && typeof item["content"] === "string")
+						.map((item) => item["content"]),
+					utterances.slice(0, index + 1)
+				);
+				if (index) assert(JSON.stringify(request.input).includes(required(replies[index - 1])));
+			}
+			assert.equal(d.sourceRequests.length, 0);
+			assert.equal(d.operations.length, 0);
+			const evidence = {
+				...input,
+				generation: 4,
+				turnId: "evidence",
+				requestId: "evidence",
+				text: "Could you actually check whether source link opens in new tab?",
+			};
+			service.start(evidence);
+			await eventually(() => service.poll(identity(evidence)).status !== "running");
+			assert.equal(service.poll(identity(evidence)).status, "completed");
+			assert.equal(requests.length, 6);
+			assert(required(requests[3]?.tools).some((tool) => tool.name === "read_pinned_source"));
+			assert(required(requests[3]?.tools).some((tool) => tool.name === "expand_tools"));
+			assert(required(requests[3]?.tools).length < 35);
+			assert.deepEqual(d.sourceRequests, [{ ...sourceRequest, revision: "head" }]);
+			const sourceOutputs = required(requests[5]).input.filter(
+				(item) =>
+					item["type"] === "function_call_output" && item["call_id"] === "read_pinned_source"
+			);
+			assert.equal(sourceOutputs.length, 1);
+			const sourceOutput = required(sourceOutputs[0])["output"];
+			assert.equal(typeof sourceOutput, "string");
+			// Tool output is already JSON: decode it before comparing exact bytes and pins.
+			assert.deepEqual(JSON.parse(String(sourceOutput)).source, d.source);
+			assert(JSON.stringify(requests[3]?.input).includes("READY PR INBOX ONLY"));
+			assert.equal(service.poll(identity(evidence)).actions.length, 0);
+			assert.equal(d.operations.length, 0);
+		} finally {
+			await service.dispose();
+		}
+	});
+}
+
+for (const choice of ["I prefer opening the original source separately.", "Yes"]) {
+	test(`selected-ticket preference after actual start still reaches WorkAdmission: ${choice}`, async () => {
+		const d = data();
+		const start = "Start work on this ticket.";
+		const question = "Should the original source replace the review or open separately?";
+		const requests: MetaRequest[] = [];
+		const settled = choice !== "Yes";
+		const service = new ConversationService(
+			client(
+				[
+					answer(question),
+					[
+						call("start_work", {
+							ticketId: d.ticket.id,
+							repositoryId: "repo",
+							brief: "Open source separately",
+						}),
+					],
+					answer(
+						JSON.stringify({
+							intent: "start",
+							request: { generation: 1, text: start },
+							scope: settled ? "settled" : "unresolved",
+							answer: { generation: 2, text: choice },
+							clarification: { generation: 1, text: question },
+						})
+					),
+					answer("Controlled admitted-job answer."),
+				],
+				requests
+			),
+			{ hub: d.ports, workspace: selectedTicketWorkspace(d) }
+		);
+		try {
+			service.start({ ...input, text: start });
+			await eventually(() => service.poll(identity()).status !== "running");
+			const follow = { ...input, text: choice, generation: 2, turnId: "scope", requestId: "scope" };
+			service.start(follow);
+			await eventually(() => service.poll(identity(follow)).status !== "running");
+			assert.equal(service.poll(identity(follow)).status, "completed");
+			assert(requests.some((request) => request.requestId.endsWith(":work-admission")));
+			assert.equal(d.operations.length, settled ? 1 : 0);
+			if (settled) {
+				const payload = requests.at(-1)?.input.at(-1)?.["content"] as { text: string }[];
+				const packet = JSON.parse(required(payload[0]).text);
+				assert.equal(packet.currentContext.sessionAdmissions[0].generation, 2);
+				assert.equal(
+					packet.currentContext.sessionAdmissions[0].creation,
+					"pre-existing-job-returned"
+				);
+			}
+		} finally {
+			await service.dispose();
+		}
+	});
+}
+
+for (const change of ["sidebar", "content", "cancelled"] as const) {
+	test(`planning preference first-text fence: ${change}`, async () => {
+		const d = data();
+		const workspace = selectedTicketWorkspace(d);
+		const observe = workspace.observe;
+		let entered = false;
+		let release: (() => void) | undefined;
+		workspace.observe = async (...args) => {
+			const value = await observe(...args);
+			if (entered) {
+				value.workspace.sequence++;
+				if (change === "content") value.workspace.contentSequence = 2;
+			}
+			return value;
+		};
+		const service = new ConversationService(
+			{
+				async *stream(request) {
+					assert.deepEqual(request.tools, []);
+					entered = true;
+					await new Promise<void>((resolve) => {
+						release = resolve;
+					});
+					yield { type: "text", delta: "Controlled preference." };
+					yield {
+						type: "completed",
+						response: {
+							id: "controlled",
+							model: "muse-spark-1.3",
+							output: answer("Controlled preference."),
+						},
+					};
+				},
+			},
+			{ hub: d.ports, workspace }
+		);
+		try {
+			service.start({
+				...input,
+				text: "I prefer opening the original source separately. No coding yet.",
+			});
+			await eventually(() => entered);
+			if (change === "cancelled")
+				service.cancel({ ...identity(), requestId: "cancel", reason: "user" });
+			release?.();
+			await eventually(() => service.poll(identity()).status !== "running");
+			assert.equal(
+				service.poll(identity()).status,
+				change === "sidebar" ? "completed" : change === "content" ? "error" : "cancelled"
+			);
+			assert.equal(
+				service.poll(identity()).text,
+				change === "sidebar" ? "Controlled preference." : ""
+			);
+			assert.equal(service.poll(identity()).actions.length, 0);
+			assert.equal(d.operations.length, 0);
+		} finally {
+			release?.();
+			await service.dispose();
+		}
+	});
+}
