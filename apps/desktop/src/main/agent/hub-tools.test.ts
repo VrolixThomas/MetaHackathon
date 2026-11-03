@@ -28,6 +28,7 @@ import {
 	pr as approvalPR,
 } from "../work/pr-approvals/test-support";
 import { ConversationService } from "./conversation";
+import { SOURCE_WORKFLOW_INSTRUCTIONS } from "./foreground-profile";
 import { type ConversationHubPorts, ConversationHubTools, hubModelContext } from "./hub-tools";
 import type { AgentModelClient, MetaItem, MetaRequest } from "./meta-client";
 import { eventually } from "./test-support";
@@ -3962,6 +3963,7 @@ for (const outcome of [
 			{
 				async *stream(request, signal) {
 					if (requests.length === 0) {
+						assert.equal(request.instructions, SOURCE_WORKFLOW_INSTRUCTIONS);
 						assert(request.tools?.some((tool) => tool.name === "day_inspect_queue"));
 						assert(request.tools?.some((tool) => tool.name === "day_propose_clarification"));
 						assert(!request.tools?.some((tool) => tool.name === "day_capture_manual"));
@@ -4386,6 +4388,13 @@ for (const selected of [false, true]) {
 					{ path: "changed.ts", reason: "Inferred", summary: "Inferred", suggestedComments: [] },
 				],
 			};
+			if (selected) {
+				w.observation.workspace.canvases = [
+					{ id: "review", kind: "review", title: "Review", revision: 1 },
+				];
+				w.observation.workspace.primaryId = "review";
+				w.observation.workspace.review = { sequence: 0, mode: "review", prId: approvalPR.id };
+			}
 			const service = new ConversationService(
 				client(
 					[
@@ -4450,7 +4459,9 @@ for (const selected of [false, true]) {
 				assert(first.tools?.some((t) => t.name === "draft_pr_delegation"));
 				assert(!first.tools?.some((t) => t.name === "day_capture_manual"));
 				assert(!first.tools?.some((t) => t.name === "write_markdown_explanation"));
-				assert.match(first.instructions, /generic day_capture_manual.*cannot monitor PR checks/);
+				assert(first.requestId.includes(selected ? ":review:" : ":workspace:"));
+				assert(first.instructions.startsWith(SOURCE_WORKFLOW_INSTRUCTIONS));
+				assert(Buffer.byteLength(first.instructions) < 1900);
 				if (repairs) {
 					const correction = required(requests[1 + Number(noop)]);
 					const receipt = [...correction.input]
@@ -4472,7 +4483,6 @@ for (const selected of [false, true]) {
 					assert.equal(inspected.status, "available");
 					assert.deepEqual(inspected.policies, []);
 					assert(inspected.availableTools.includes("draft_pr_delegation"));
-					assert.match(first.instructions, /canvas kinds, not provider operations/);
 					for (const request of requests) {
 						const expansion = request.tools?.find((tool) => tool.name === "expand_tools");
 						assert(!JSON.stringify(expansion?.parameters).includes('"approvals"'));
@@ -4625,9 +4635,18 @@ for (const selected of [false, true]) {
 					{ path: "changed.ts", reason: "Inferred", summary: "Inferred", suggestedComments: [] },
 				],
 			};
+			if (selected) {
+				w.observation.workspace.canvases = [
+					{ id: "review", kind: "review", title: "Review", revision: 1 },
+				];
+				w.observation.workspace.primaryId = "review";
+				w.observation.workspace.review = { sequence: 0, mode: "review", prId: pr.id };
+			}
 			const service = new ConversationService(
 				{
 					async *stream(request, signal) {
+						assert(request.requestId.includes(selected ? ":review:" : ":workspace:"));
+						assert(request.instructions.startsWith(SOURCE_WORKFLOW_INSTRUCTIONS));
 						const index = requests.length;
 						if (index === 0 && outcome !== "post-dispatch") {
 							day.item.revision = 15;
@@ -4702,4 +4721,121 @@ for (const selected of [false, true]) {
 			}
 		});
 	}
+}
+
+for (const cancelled of [false, true]) {
+	test(`review workflow waits for navigation then drafts without activating: ${cancelled ? "cancelled" : "applied"}`, async () => {
+		const d = data();
+		const approval = approvalHarness([]);
+		const confirmation = new ApprovalConfirmation({ voice: () => false, narrate: async () => {} });
+		d.ports.approvals = { service: () => approval.service, confirmation };
+		const prepared: PreparedReview = {
+			id: "review",
+			version: 1,
+			pr: approvalPR,
+			createdAt: time,
+			summary: "Inferred",
+			orderRationale: "Inferred",
+			coverage: "complete",
+			evidence: "inferred-from-github",
+			files: [
+				{ path: "changed.ts", reason: "Inferred", summary: "Inferred", suggestedComments: [] },
+			],
+		};
+		let screen: ReviewScreen = { sequence: 0, mode: "conversation", prId: approvalPR.id };
+		let reads = 0;
+		let navigations = 0;
+		const terms = {
+			action: "notify" as const,
+			expiresAt: new Date(approvalAt + 3600000).toISOString(),
+			conditions: [{ kind: "check" as const, name: "demo-checks", appId: null }],
+		};
+		const requests: MetaRequest[] = [];
+		const service = new ConversationService(
+			client(
+				[
+					[call("resume_review", {}, "navigation")],
+					[call("draft_pr_delegation", { terms }, "draft")],
+					answer("Controlled draft awaits separate confirmation."),
+				],
+				requests
+			),
+			{
+				hub: d.ports,
+				review: {
+					getReady: async () => prepared,
+					getProgress: async () => null,
+					getScreen: async () => screen,
+					getFile: async () => {
+						reads++;
+						throw new Error("No code requested");
+					},
+					navigate: async () => {
+						navigations++;
+						return {
+							prId: approvalPR.id,
+							reviewId: prepared.id,
+							baseSha: approvalPR.baseSha,
+							headSha: approvalPR.headSha,
+							path: "changed.ts",
+							paused: false,
+						};
+					},
+				},
+				actionReceipts: {
+					timeoutMs: 1000,
+					updateScreen: (receipt) => {
+						screen = receipt.screen;
+					},
+				},
+			}
+		);
+		const turn = {
+			...input,
+			inputMode: "typed" as const,
+			prId: approvalPR.id,
+			text: "Open PR 1 and set notify only when demo-checks succeeds, expiring in one hour. Do not approve.",
+		};
+		try {
+			service.start(turn);
+			await eventually(() => service.poll(identity()).actions.length === 1);
+			assert.equal(requests.length, 1);
+			assert.equal(approval.control.writes, 0);
+			assert.equal(service.poll(identity()).text, "");
+			const action = required(service.poll(identity()).actions[0]);
+			assert(action.kind === "review-navigation");
+			if (cancelled)
+				service.cancel({ ...identity(), requestId: "cancel-workflow", reason: "user" });
+			else {
+				await service.actionApplied({
+					...identity(),
+					requestId: action.requestId,
+					status: "applied",
+					screen: { sequence: 1, mode: "review", ...action.navigation },
+				});
+				await eventually(() => !!confirmation.pending(input.sessionId));
+				assert.equal(requests.length, 2);
+				assert.equal(approval.p.status, "draft");
+				assert.equal(approval.p.confirmedAt, null);
+				assert.deepEqual(approval.p.terms, terms);
+				assert.equal(service.poll(identity()).text, "");
+				confirmation.presented(required(confirmation.pending(input.sessionId)));
+			}
+			await eventually(() => service.poll(identity()).status !== "running");
+			assert.equal(service.poll(identity()).status, cancelled ? "cancelled" : "completed");
+			assert.equal(requests.length, cancelled ? 1 : 3);
+			assert(
+				requests.every((request) => request.instructions.startsWith(SOURCE_WORKFLOW_INSTRUCTIONS))
+			);
+			assert.equal(navigations, 1);
+			assert.equal(reads, 0);
+			assert.equal(approval.submitted.length, 0);
+			assert.equal(d.operations.length, 0);
+			if (cancelled) assert.equal(approval.control.writes, 0);
+			else assert.equal(approval.p.status, "draft");
+		} finally {
+			await service.dispose();
+			await approval.service.dispose();
+		}
+	});
 }

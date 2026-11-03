@@ -21,7 +21,11 @@ import {
 } from "../../shared/contracts";
 import { abortable, throwIfAborted } from "./cancellation";
 import { COPARTNER_INSTRUCTIONS } from "./foreground-dialogue";
-import { ForegroundProfile, PROFILE_INSTRUCTIONS } from "./foreground-profile";
+import {
+	ForegroundProfile,
+	PROFILE_INSTRUCTIONS,
+	SOURCE_WORKFLOW_INSTRUCTIONS,
+} from "./foreground-profile";
 import type { ConversationHubTools } from "./hub-tools";
 import {
 	type AgentModelClient,
@@ -302,6 +306,7 @@ export async function runGuidedReview(
 	let emitted = false;
 	let repairedArguments = false;
 	const profile = workflow?.profile ?? new ForegroundProfile();
+	profile.beginTurn(input.requestId);
 	// Six tool rounds, one input correction, then a tools-free terminal answer.
 	// A successful last operation must not be discarded by a missing answer slot.
 	const toolRoundLimit = 6;
@@ -309,18 +314,20 @@ export async function runGuidedReview(
 	for (let round = 0; round <= toolRoundLimit; round++) {
 		const terminalAnswer = round === toolRoundLimit;
 		throwIfAborted(signal);
-		const snapshot = await getSnapshot(ports, input, signal, true);
+		const workspace = workflow?.workspace;
+		const observation = await workspace?.observe();
+		profile.select(observation, true, input.text);
+		const snapshot = await getSnapshot(ports, input, signal, !profile.sourceWorkflow);
 		if (acknowledgedScreen) assertSameScreen(acknowledgedScreen, snapshot.screen);
 		if (pinned && snapshot.review && !samePlan(pinned, snapshot.review)) throw changed();
 		if (snapshot.review) pinned = snapshot.review;
-		const source = await currentSource(ports, snapshot, signal);
+		const source: CurrentReviewSource = profile.sourceWorkflow
+			? { file: null, unavailableReason: "workflow-source-not-requested" }
+			: await currentSource(ports, snapshot, signal);
 		assertSameScreen(snapshot.screen, await screen(ports, input, signal));
-		const workspace = workflow?.workspace;
-		const observation = await workspace?.observe();
 		const hub = workflow?.hub;
 		if (snapshot.review) hub?.allowReview(snapshot.review.pr);
 		await hub?.observe(input.prId, observation?.hub);
-		profile.select(observation, true, input.text);
 		const modelInput = reviewModelInput(
 			history,
 			questionIndex,
@@ -347,29 +354,29 @@ export async function runGuidedReview(
 			emitted = true;
 			await abortable(Promise.resolve(onText(delta)), signal);
 		};
+		const answerOnly = terminalAnswer || (navigated && !profile.sourceWorkflow);
 		const request = {
 			requestId: `${input.requestId}:review:${modelAttempt++}`,
 			workload: "quick" as const,
-			instructions: `${workspace || hub ? `${INSTRUCTIONS}\n${WORKSPACE_INSTRUCTIONS}` : INSTRUCTIONS}\n${COPARTNER_INSTRUCTIONS}\n${PROFILE_INSTRUCTIONS}${terminalAnswer ? "\nTool budget is exhausted. Answer from actual results only, briefly naming any unfinished part. Do not claim rejected or unacknowledged effects succeeded." : `\nAt most ${toolRoundLimit - round} tool calls remain, plus one final answer. Inspect missing links before proposing a source flow.`}`,
+			instructions: `${profile.sourceWorkflow ? SOURCE_WORKFLOW_INSTRUCTIONS : `${workspace || hub ? `${INSTRUCTIONS}\n${WORKSPACE_INSTRUCTIONS}` : INSTRUCTIONS}\n${COPARTNER_INSTRUCTIONS}\n${PROFILE_INSTRUCTIONS}`}${terminalAnswer ? "\nTool budget is exhausted. Answer from actual results only, briefly naming any unfinished part. Do not claim rejected or unacknowledged effects succeeded." : `\nAt most ${toolRoundLimit - round} tool calls remain, plus one final answer.${profile.sourceWorkflow ? "" : " Inspect missing links before proposing a source flow."}`}`,
 			input: modelInput,
-			tools:
-				navigated || terminalAnswer
-					? []
-					: profile.tools(
-							[
-								...tools.filter(
-									(tool) => workflow?.onNarration || !tool.name.endsWith("walkthrough")
-								),
-								...(workspace?.tools ?? []),
-								...(hub?.tools ?? []),
-							],
-							!!source.file
-						),
+			tools: answerOnly
+				? profile.tools([])
+				: profile.tools(
+						[
+							...tools.filter(
+								(tool) => workflow?.onNarration || !tool.name.endsWith("walkthrough")
+							),
+							...(workspace?.tools ?? []),
+							...(hub?.tools ?? []),
+						],
+						!!source.file
+					),
 			maxOutputTokens: MAX_OUTPUT_TOKENS,
 		};
 		// Only the phase with tools disabled may stream. Navigation and its durable receipt
 		// have already completed; every delta is still fenced against a changed screen.
-		const streamText = (navigated || terminalAnswer) && onText ? emitText : undefined;
+		const streamText = answerOnly && onText ? emitText : undefined;
 		let response: Awaited<ReturnType<typeof modelRound>>;
 		try {
 			response = await modelRound(client, request, signal, streamText);
@@ -412,7 +419,7 @@ export async function runGuidedReview(
 			if (!streamText) await emitText(response.text);
 			return response.text;
 		}
-		if (navigated || terminalAnswer)
+		if (answerOnly)
 			throw new GuidedReviewError("Continue to the next review step with a new request.");
 		if (calls.length !== 1)
 			throw new GuidedReviewError(
@@ -520,6 +527,7 @@ export async function runGuidedReview(
 			if (call.name === "open_ready_review" && result.workspace.review.prId) {
 				input = { ...input, prId: result.workspace.review.prId, screen: result.workspace.review };
 				pinned = undefined;
+				acknowledgedScreen = result.workspace.review;
 			}
 			continue;
 		}

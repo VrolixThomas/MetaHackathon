@@ -12,6 +12,7 @@ import type {
 } from "../../shared/contracts";
 import { type ConversationOptions, ConversationService } from "./conversation";
 import { createConversationRouter } from "./conversation-router";
+import { SOURCE_WORKFLOW_INSTRUCTIONS } from "./foreground-profile";
 import type { ConversationReviewPorts, ReviewNavigationRequest } from "./guided-review";
 import {
 	type AgentModelClient,
@@ -1647,6 +1648,37 @@ test("displayed PR explanation is one fast request with pinned source; deeper an
 				assert.equal(h.requests[1]?.workload, "deep");
 				assert.deepEqual(h.requests[1]?.tools, []);
 			}
+		} finally {
+			await h.service.dispose();
+		}
+	}
+});
+
+test("workflow snapshot omits automatic source reads while ordinary source questions keep them", async () => {
+	for (const text of [
+		"Notify me only when this PR check passes, expiring in one hour.",
+		"How does the PR approval flow work when checks pass?",
+	]) {
+		const h = harness([[]]);
+		displayed(h);
+		const snapshots = snapshotPort(h);
+		h.input.text = text;
+		try {
+			h.service.start(h.input);
+			await finish(h);
+			const workflow = text.startsWith("Notify");
+			assert.equal(snapshots[0]?.includeSource, !workflow);
+			assert.equal(h.requests[0]?.instructions.startsWith(SOURCE_WORKFLOW_INSTRUCTIONS), workflow);
+			if (workflow)
+				assert.equal(
+					contextPacket(h.requests[0]).currentFileSource.reason,
+					"workflow-source-not-requested"
+				);
+			else
+				assert.equal(
+					contextPacket(h.requests[0]).currentFileSource.head.excerpt.text,
+					"const sourceOnly_service.ts = 2;\n"
+				);
 		} finally {
 			await h.service.dispose();
 		}

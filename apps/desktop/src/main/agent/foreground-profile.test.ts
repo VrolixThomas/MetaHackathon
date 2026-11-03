@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import type { WorkspaceObservation } from "../../shared/contracts";
-import { ForegroundProfile } from "./foreground-profile";
+import { ForegroundProfile, SOURCE_WORKFLOW_INSTRUCTIONS } from "./foreground-profile";
 import type { FunctionTool } from "./meta-client";
 import { WorkspaceArgumentError } from "./workspace-tools";
 
@@ -295,4 +295,55 @@ test("expansion retains strict argument shapes and never treats an operation nam
 	])
 		assert.throws(() => profile.expand(JSON.stringify(args)), WorkspaceArgumentError);
 	assert.equal(profile.expand(JSON.stringify({ families: ["approvals"] })).status, "available");
+});
+
+test("workflow packet selection uses actual ingress and pane, leaving source-only questions on legacy paths", () => {
+	assert(Buffer.byteLength(SOURCE_WORKFLOW_INSTRUCTIONS, "utf8") <= 1800);
+	const profile = new ForegroundProfile();
+	for (const text of [
+		"How does the PR approval flow work when checks pass?",
+		"Explain the code that asks a Slack requester for clarification.",
+		"Show me the entire flow from the request to delivering an update.",
+	]) {
+		profile.select(observation("home"), true, text);
+		assert.equal(profile.sourceWorkflow, false, text);
+		assert(profile.tools(workflowTools).some((tool) => tool.name === "read_pinned_source"));
+	}
+	for (const text of [
+		"Notify me when checks pass within one hour.",
+		"Explain the condition and draft a PR approval when checks pass.",
+	]) {
+		profile.select(observation("home"), true, text);
+		assert.equal(profile.sourceWorkflow, true, text);
+	}
+	const pane = observation("home");
+	const canvas = pane.workspace.canvases[0];
+	assert(canvas?.kind === "center");
+	canvas.section = "day";
+	profile.select(pane, false, "Ask the requester which page they mean.");
+	assert.equal(profile.sourceWorkflow, true);
+	profile.select(pane, false, "How does the clarification code work?");
+	assert.equal(profile.sourceWorkflow, false);
+});
+
+test("no-op allowance is per ingress turn and survives workspace-to-review handoff", () => {
+	const profile = new ForegroundProfile();
+	profile.beginTurn("first");
+	profile.select(observation("home"), true, "Notify me when checks pass");
+	profile.tools(workflowTools);
+	assert.equal(profile.expand(JSON.stringify({ families: ["approvals"] })).status, "available");
+	profile.beginTurn("first");
+	profile.tools(workflowTools);
+	assert.throws(
+		() => profile.expand(JSON.stringify({ families: ["approvals"] })),
+		/Repeated no-op/
+	);
+	profile.beginTurn("next");
+	profile.tools(workflowTools);
+	assert.equal(profile.expand(JSON.stringify({ families: ["approvals"] })).status, "available");
+	profile.tools([]);
+	assert.throws(
+		() => profile.expand(JSON.stringify({ families: ["approvals"] })),
+		WorkspaceArgumentError
+	);
 });

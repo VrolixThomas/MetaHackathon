@@ -9,7 +9,11 @@ import {
 	explicitTicketNavigation,
 	ticketDialogueMode,
 } from "./foreground-dialogue";
-import { ForegroundProfile, PROFILE_INSTRUCTIONS } from "./foreground-profile";
+import {
+	ForegroundProfile,
+	PROFILE_INSTRUCTIONS,
+	SOURCE_WORKFLOW_INSTRUCTIONS,
+} from "./foreground-profile";
 import { ForegroundTrace } from "./foreground-timing";
 import { GuidedReviewError, modelRound } from "./guided-review";
 import type { ConversationHubTools } from "./hub-tools";
@@ -63,6 +67,7 @@ export async function runWorkspaceConversation(
 		generation: input.generation,
 	})
 ): Promise<string> {
+	profile.beginTurn(input.requestId);
 	workspace?.setDayTargetValidator(hub ? (id) => hub.validateDayTarget(id) : undefined);
 	const seen = new Set<string>();
 	let repairedArguments = false;
@@ -202,17 +207,24 @@ export async function runWorkspaceConversation(
 			throw new GuidedReviewError(
 				"The workspace conversation is too large. Ask a narrower question."
 			);
-		const dialogueMode = ticketDialogueMode(input.text, history, currentContext);
+		const dialogueMode = profile.sourceWorkflow
+			? undefined
+			: ticketDialogueMode(input.text, history, currentContext);
 		const answerOnly = !!directNavigation || dialogueMode === "answer";
 		const selectedTools = workspaceRequestTools(
-			profile.tools([...(workspace?.tools ?? []), ...(hub?.tools ?? [])], canAnalyze)
+			profile.tools(
+				answerOnly ? [] : [...(workspace?.tools ?? []), ...(hub?.tools ?? [])],
+				!answerOnly && canAnalyze
+			)
 		);
 		const request = {
 			requestId: `${input.requestId}:workspace:${round}`,
 			workload: "quick" as const,
 			instructions: answerOnly
 				? `${TICKET_DISCUSSION_INSTRUCTIONS}${directNavigation && !directNavigation.discussion ? "\nThe explicit navigation has its actual applied receipt. Acknowledge it in one brief sentence and stop." : ""}`
-				: `${WORKSPACE_INSTRUCTIONS}\n${COPARTNER_INSTRUCTIONS}\n${PROFILE_INSTRUCTIONS}`,
+				: profile.sourceWorkflow
+					? SOURCE_WORKFLOW_INSTRUCTIONS
+					: `${WORKSPACE_INSTRUCTIONS}\n${COPARTNER_INSTRUCTIONS}\n${PROFILE_INSTRUCTIONS}`,
 			input: modelInput(),
 			tools: answerOnly
 				? []

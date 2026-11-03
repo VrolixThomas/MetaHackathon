@@ -10,6 +10,7 @@ import type {
 } from "../../shared/contracts";
 import { type ConversationOptions, ConversationService } from "./conversation";
 import { createConversationRouter } from "./conversation-router";
+import { SOURCE_WORKFLOW_INSTRUCTIONS } from "./foreground-profile";
 import type { ConversationReviewPorts } from "./guided-review";
 import {
 	type AgentModelClient,
@@ -1042,3 +1043,44 @@ test("nested model argument errors report schema paths and expected types withou
 		await h.service.dispose();
 	}
 });
+
+for (const selected of [false, true]) {
+	test(`${selected ? "selected review" : "workspace handoff"}: source workflow continues requested tools after navigation without reading code`, async () => {
+		const h = harness(
+			[
+				[selected ? call("resume_review", {}) : call("open_ready_review", { prId: "pr" })],
+				[call("inspect_ready_review", {}, "inspect-after-navigation")],
+				answer("Controlled operation result."),
+			],
+			selected
+		);
+		h.input.text = "Open PR 1 and set notify only when checks pass, expiring in one hour.";
+		let reads = 0;
+		h.review.getFile = async () => {
+			reads++;
+			throw new Error("No code requested");
+		};
+		try {
+			h.service.start(h.input);
+			await eventually(() => h.pending.length === 1);
+			assert.equal(h.requests.length, 1);
+			assert.equal(h.poll().text, "");
+			assert.equal(reads, 0);
+			await effect(h, 0);
+			await finish(h);
+			assert.equal(h.requests.length, 3);
+			assert.equal(h.commands.length, 1);
+			assert.equal(reads, 0);
+			for (const request of h.requests) {
+				assert(request.instructions.startsWith(SOURCE_WORKFLOW_INSTRUCTIONS));
+				assert(Buffer.byteLength(request.instructions) < 1900);
+			}
+			assert(h.requests[1]?.requestId.includes(":review:"));
+			assert(h.requests[1]?.tools?.some((tool) => tool.name === "inspect_ready_review"));
+			assert.equal(packet(h.requests[1]).currentFileSource.reason, "workflow-source-not-requested");
+		} finally {
+			for (const pending of h.pending) pending.settle();
+			await h.service.dispose();
+		}
+	});
+}
