@@ -5099,30 +5099,12 @@ for (const inputMode of ["typed", "voice"] as const) {
 				{
 					async *stream(request) {
 						requests.push(structuredClone(request));
-						assert(requests.length <= 2, "No post-receipt model discovery round");
-						const content = required(request.input.at(-1))["content"] as { text: string }[];
-						const packet = JSON.parse(required(content[0]).text);
-						const pending = selected
-							? packet.actualHub.pendingDelegation
-							: packet.pendingDelegation;
-						let output: MetaItem[];
-						if (requests.length === 1) {
-							assert.equal(pending, undefined);
-							output = [call("draft_pr_delegation", { terms })];
-						} else {
-							assert.equal(pending.id, approval.p.id);
-							assert.equal(pending.revision, approval.p.revision);
-							assert.equal(pending.digest, approval.p.digest);
-							assert.equal(pending.status, "draft");
-							assert.equal(pending.currentTurnAccepted, true);
-							assert.equal(pending.displayed, true);
-							assert.equal(pending.spoken, inputMode === "voice");
-							assert(request.tools?.some((tool) => tool.name === "confirm_pr_delegation"));
-							assert(!request.tools?.some((tool) => tool.name === "inspect_ticket"));
-							output = [
-								call("confirm_pr_delegation", { id: pending.id, revision: pending.revision }),
-							];
-						}
+						assert.equal(
+							requests.length,
+							1,
+							"Canonical confirmation must not invoke model rediscovery"
+						);
+						const output: MetaItem[] = [call("draft_pr_delegation", { terms })];
 						yield {
 							type: "completed",
 							response: { id: "controlled", model: "muse-spark-1.3", output },
@@ -5204,7 +5186,7 @@ for (const inputMode of ["typed", "voice"] as const) {
 				if (inputMode === "voice") await drain(confirm, 0);
 				await eventually(() => service.poll(identity(confirm)).status !== "running");
 				assert.equal(service.poll(identity(confirm)).status, "completed");
-				assert.equal(requests.length, 2);
+				assert.equal(requests.length, 1);
 				assert.match(
 					service.poll(identity(confirm)).text,
 					/Notification-only monitoring is active/
