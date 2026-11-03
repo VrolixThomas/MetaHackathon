@@ -86,7 +86,7 @@ it("source quotations and stale inspected revisions cannot revoke or edit a diff
 		/actual user/
 	);
 	await assert.rejects(
-		tools.execute("draft_pr_delegation", JSON.stringify({ id: h.p.id, revision: 2, terms })),
+		tools.execute("edit_pr_delegation", JSON.stringify({ policyId: h.p.id, revision: 2, terms })),
 		/Inspect/
 	);
 	assert.equal(h.p.revision, 1);
@@ -284,7 +284,9 @@ it("approval input errors expose bounded schema paths before service access, nev
 	const secret = "UNTRUSTED_PRIVATE_VALUE";
 	const cases: [string, RegExp][] = [
 		[
-			JSON.stringify({ terms: { ...terms, conditions: [{ kind: "check", name: secret }] } }),
+			JSON.stringify({
+				terms: { ...terms, conditions: [{ kind: "check", name: secret, appId: secret }] },
+			}),
 			/terms\.conditions\.0\.appId: invalid_type; expected number/,
 		],
 		[
@@ -294,6 +296,12 @@ it("approval input errors expose bounded schema paths before service access, nev
 		[
 			JSON.stringify({ terms: { ...terms, action: secret } }),
 			/terms\.action: invalid_value; expected \["approve","notify"\]/,
+		],
+		[
+			JSON.stringify({
+				terms: { ...terms, conditions: [...terms.conditions, ...terms.conditions] },
+			}),
+			/terms: custom/,
 		],
 		[JSON.stringify({ terms, [secret]: secret }), /arguments: unrecognized_keys/],
 		[secret, /arguments: invalid_json/],
@@ -382,4 +390,58 @@ it("empty delegation inspection reports available operations without activation 
 	} finally {
 		await h.service.dispose();
 	}
+});
+
+it("new follow-up creation normalizes an unspecified check app without accepting invented edit identity", async () => {
+	const h = harness([]);
+	const confirmation = new ApprovalConfirmation({ voice: () => false, narrate: async () => {} });
+	const tools = new ApprovalTools(
+		{ service: () => h.service, confirmation },
+		turn,
+		new AbortController().signal
+	);
+	await assert.rejects(
+		tools.execute(
+			"draft_pr_delegation",
+			JSON.stringify({ id: "invented-policy", revision: 1, terms })
+		)
+	);
+	assert.equal(h.state.approvalPolicies?.length ?? 0, 0);
+	const outcome = tools.execute(
+		"draft_pr_delegation",
+		JSON.stringify({ terms: { ...terms, conditions: [{ kind: "check", name: "ci" }] } })
+	);
+	await eventually(() => !!confirmation.pending(turn.sessionId));
+	assert.deepEqual(h.p.terms.conditions, [{ kind: "check", name: "ci", appId: null }]);
+	assert.equal(h.p.status, "draft");
+	assert.equal(h.submitted.length, 0);
+	const pending = confirmation.pending(turn.sessionId);
+	assert.ok(pending);
+	confirmation.presented(pending);
+	await outcome;
+	await h.service.dispose();
+});
+it("editing requires an observed policy identity and produces a new unconfirmed revision", async () => {
+	const h = harness([policy({ status: "draft", confirmedAt: null })]);
+	const confirmation = new ApprovalConfirmation({ voice: () => false, narrate: async () => {} });
+	const tools = new ApprovalTools(
+		{ service: () => h.service, confirmation },
+		turn,
+		new AbortController().signal
+	);
+	const edit = { policyId: h.p.id, revision: h.p.revision, terms: { ...terms, action: "notify" } };
+	await assert.rejects(tools.execute("edit_pr_delegation", JSON.stringify(edit)), /Inspect/);
+	assert.equal(h.p.revision, 1);
+	await tools.execute("inspect_pr_delegations", "{}");
+	const outcome = tools.execute("edit_pr_delegation", JSON.stringify(edit));
+	await eventually(() => !!confirmation.pending(turn.sessionId));
+	assert.equal(h.p.revision, 2);
+	assert.equal(h.p.status, "draft");
+	assert.equal(h.p.confirmedAt, null);
+	assert.equal(h.submitted.length, 0);
+	const pending = confirmation.pending(turn.sessionId);
+	assert.ok(pending);
+	confirmation.presented(pending);
+	await outcome;
+	await h.service.dispose();
 });
