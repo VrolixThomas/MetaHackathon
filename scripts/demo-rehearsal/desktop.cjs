@@ -20,7 +20,7 @@ const textDiagnostics = process.argv.includes("--text-diagnostics");
 assert(
 	!textDiagnostics ||
 		process.argv.includes("--interactive") ||
-		["review", "collaboration", "delegation", "slack", "variants"].some((suite) =>
+		["review", "collaboration", "delegation", "slack", "variants", "actions"].some((suite) =>
 			process.argv.includes(`--suite=${suite}`)
 		),
 	"Text diagnostics are limited to named subsets; full acceptance requires live voice"
@@ -157,6 +157,16 @@ async function startListening() {
 	await wait("synthetic mic", () => js("window.__rehearsal.read().tracks.some(s=>s==='live')"));
 }
 async function restartListening() {
+	if (textDiagnostics) {
+		const prior = await js("document.querySelector('main.conversation-main')?.dataset.sessionId");
+		win.webContents.reload();
+		await wait("fresh typed session after actual renderer reload", async () => {
+			if (win.webContents.isLoadingMainFrame()) return false;
+			const next = await js("document.querySelector('main.conversation-main')?.dataset.sessionId");
+			return next && next !== prior;
+		});
+		return;
+	}
 	await js(
 		"[...document.querySelectorAll('dialog[open] button')].find(e=>e.getAttribute('aria-label')?.startsWith('Close '))?.click()"
 	);
