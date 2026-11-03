@@ -907,3 +907,46 @@ test("revisions reject external ancestors and changed push advertisements withou
 		assert.equal(await git(remote, "rev-parse", ref), second.headSha);
 	});
 });
+
+test("bootstrap binds original nested manifests/lock to owned worktree and preserves dirty user source", async () => {
+	await fixture(
+		async ({ root, source, runtime, prepare }) => {
+			await writeFile(join(source, "bun.lock"), "controlled frozen lock\n");
+			await mkdir(join(source, "packages"));
+			await writeFile(join(source, "packages/package.json"), "{}");
+			await git(source, "add", ".");
+			await git(source, "commit", "-m", "Pinned dependency inputs");
+			const job = await prepare();
+			await writeFile(join(source, "source.txt"), "user dirty source");
+			const bin = join(root, "bin");
+			await mkdir(bin);
+			await writeFile(
+				join(bin, "bun"),
+				'#!/bin/sh\nif [ "$1" = --version ]; then echo 1.3.9; exit 0; fi\nmkdir -p node_modules\necho installed > node_modules/proof\n',
+				{ mode: 0o700 }
+			);
+			const oldPath = process.env["PATH"];
+			process.env["PATH"] = `${bin}:${oldPath}`;
+			try {
+				await runtime.bootstrap(job, signal());
+				assert.equal(
+					await readFile(join(job.worktreePath as string, "node_modules/proof"), "utf8"),
+					"installed\n"
+				);
+				assert.equal(await readFile(join(source, "source.txt"), "utf8"), "user dirty source");
+				await assert.rejects(
+					runtime.bootstrap({ ...job, baseSha: "a".repeat(40) }, signal()),
+					/ownership mismatch/
+				);
+				await writeFile(
+					join(job.worktreePath as string, "packages/package.json"),
+					'{"scripts":{"postinstall":"new command"}}'
+				);
+				await assert.rejects(runtime.bootstrap(job, signal()), /baseline drift/);
+			} finally {
+				process.env["PATH"] = oldPath;
+			}
+		},
+		{ test: "bun validate.cjs" }
+	);
+});

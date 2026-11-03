@@ -232,6 +232,17 @@ export function createCodingWorkerTools(options: CodingWorkerToolsOptions): Exec
 		}
 	}
 	async function permitted(input: CodingCommandInput): Promise<boolean> {
+		if (input.command === "bun" && input.args.length === 2 && input.args[0] === "test") {
+			const path = input.args[1] ?? "";
+			if (
+				!/^(?:[A-Za-z0-9_][A-Za-z0-9_.-]*\/)*[A-Za-z0-9_][A-Za-z0-9_.-]*\.(?:test|spec)\.[cm]?[jt]sx?$/.test(
+					path
+				)
+			)
+				return false;
+			await rawRead(path); // Existing regular owned file; reject symlink/secret/escaping paths.
+			return true;
+		}
 		if (
 			options.allowedCommands?.some(
 				(allowed) =>
@@ -342,10 +353,15 @@ export function createCodingWorkerTools(options: CodingWorkerToolsOptions): Exec
 			if (!(await permitted(input)))
 				throw new CodingToolError(
 					"command-policy",
-					"Use an unchanged existing validation script (bun/npm/pnpm/yarn run test, test:unit, lint, type-check, typecheck, check:types or build), or request a main-approved exact argv command. No shell, installs, app launch or Git writes."
+					"Use an unchanged existing validation script (bun/npm/pnpm/yarn run test, test:unit, lint, type-check, typecheck, check:types or build), bun test <repo-relative .test/.spec file>, or a main-approved exact argv command. No shell, installs, app launch or Git writes."
 				);
 			throwIfAborted(signal);
-			return runValidation(input, await rootReady, signal, redact);
+			// A ./ prefix makes Bun execute this file instead of interpreting its name as a filter.
+			const execution =
+				input.command === "bun" && input.args[0] === "test" && input.args.length === 2
+					? { ...input, args: ["test", `./${input.args[1]}`] }
+					: input;
+			return runValidation(execution, await rootReady, signal, redact);
 		},
 	};
 }

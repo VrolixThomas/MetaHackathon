@@ -25,6 +25,7 @@ import {
 	type WorkReview,
 	WorkReviewSchema,
 } from "../../shared/contracts";
+import { dependencyFile, setupDependencies } from "./dependency-setup";
 import { executionEnvironment } from "./environment";
 import { runProcess } from "./process";
 
@@ -292,6 +293,43 @@ export class WorkJobRuntime {
 			await this.save(record);
 			cancelled(signal);
 			return { worktreePath: tree, branch: job.branch, baseSha: base };
+		});
+	}
+
+	/** Runs before every coding child, including resumed jobs, under the ownership lock. */
+	async bootstrap(jobInput: WorkJob, signal: AbortSignal): Promise<string> {
+		const job = WorkJobSchema.parse(jobInput);
+		return this.lock(job.id, async (root) => {
+			const record = await this.forJob(job, signal);
+			const head = await this.head(record, signal);
+			const listing = await this.git(
+				this.tree(job.id),
+				["ls-tree", "-r", "-z", record.baseSha],
+				signal,
+				false,
+				4_000_000
+			);
+			if (listing.outputTruncated) throw new Error("Dependency baseline exceeds inspection limit");
+			const baseline: Record<string, string> = {};
+			for (const entry of listing.stdout.split("\0").filter(Boolean)) {
+				const match = /^([0-7]+) blob ([a-f0-9]{40})\t([\s\S]+)$/.exec(entry);
+				if (match?.[2] && match[3] && dependencyFile(match[3])) {
+					if (match[1] !== "100644" && match[1] !== "100755")
+						throw new Error("Unsafe baseline dependency input");
+					baseline[match[3]] = match[2];
+				}
+			}
+			return setupDependencies({
+				tree: this.tree(job.id),
+				directory: root,
+				baseline,
+				signal,
+				verify: async () => {
+					await this.forJob(job, signal);
+					if ((await this.head(record, signal)) !== head)
+						throw new Error("Dependency setup head changed");
+				},
+			});
 		});
 	}
 

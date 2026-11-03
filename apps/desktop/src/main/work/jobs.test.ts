@@ -16,6 +16,7 @@ import {
 } from "../../shared/contracts";
 import { NEW_CODING_MODEL } from "../agent/coding-model";
 import type { CodingTaskInput, CodingTaskResult } from "../agent/coding-worker";
+import { DependencySetupError } from "../runtime/dependency-setup";
 import type { WorkJobRuntime } from "../runtime/work-job-runtime";
 import { readCodingModelAdmission } from "./coding-provider/pin";
 import { CommandCenterService } from "./hub";
@@ -237,6 +238,7 @@ async function harness(t: TestContext, initial = job(), persisted?: HubPersisten
 		},
 	];
 	const runtime = {
+		bootstrap: async () => "Controlled baseline dependencies prepared",
 		prepare: async (
 			repository: WatchedRepository,
 			job: Pick<WorkJob, "id" | "branch">,
@@ -1291,4 +1293,28 @@ test("failed admission metadata persistence cannot expose or dispatch a new API 
 	await assert.rejects(h.jobs.start(ticket, repository, "Must not admit", "failed-admission"));
 	assert.deepEqual(await h.hub.allJobs(), before);
 	assert.equal(h.inputs.length, 0);
+});
+
+test("bootstrap gates every child and failed setup resumes without a model retry loop", async (t) => {
+	const h = await harness(t, job("queued"));
+	let setups = 0;
+	let repaired = false;
+	h.runtime.bootstrap = async () => {
+		setups++;
+		if (!repaired)
+			throw new DependencySetupError(
+				"Dependency setup failed: frozen install exited 7; actual receipt retained. Resume after repair."
+			);
+		return "Actual controlled dependency receipt";
+	};
+	await h.start();
+	await eventually(async () => (await h.get()).state === "failed");
+	assert.equal(setups, 1);
+	assert.equal(h.inputs.length, 0);
+	assert.match((await h.get()).error ?? "", /frozen install exited 7/);
+	repaired = true;
+	await h.jobs.resume(h.initial.id);
+	await eventually(async () => (await h.get()).state === "ready");
+	assert.equal(setups, 2);
+	assert.equal(h.inputs.length, 1);
 });

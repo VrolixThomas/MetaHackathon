@@ -20,6 +20,7 @@ import {
 import { DayActorSchema } from "../../shared/contracts/day";
 import { abortable, throwIfAborted } from "../agent/cancellation";
 import { type CodingTaskInput, CodingTaskResultSchema } from "../agent/coding-worker";
+import { DependencySetupError } from "../runtime/dependency-setup";
 import type { HubGitHubClient } from "../runtime/hub-github";
 import type { HubLinearClient } from "../runtime/hub-linear";
 import type { WorkJobRuntime } from "../runtime/work-job-runtime";
@@ -610,6 +611,12 @@ export class WorkJobCoordinator implements HubJobs {
 				job = await this.options.hub.job(job.id);
 			}
 			if (!this.live(job.id, run) || !job.worktreePath) return;
+			await this.append(job.id, "Preparing baseline frozen dependencies before coding.");
+			await this.append(
+				job.id,
+				await this.call(signal, () => this.options.runtime.bootstrap(job, signal))
+			);
+			if (!this.live(job.id, run)) return;
 			const decisionContext =
 				job.decisions
 					.filter((item) => item.answer !== null)
@@ -762,9 +769,11 @@ export class WorkJobCoordinator implements HubJobs {
 		} catch (error) {
 			if (error instanceof WorkChanged || !this.live(initial.id, run)) return;
 			const diagnostic =
-				error instanceof Error && error.message === COMMIT_CONVENTION
-					? COMMIT_CONVENTION
-					: "Muse could not finish this work. Check its execution log and connection, then resume.";
+				error instanceof DependencySetupError
+					? error.message
+					: error instanceof Error && error.message === COMMIT_CONVENTION
+						? COMMIT_CONVENTION
+						: "Muse could not finish this work. Check its execution log and connection, then resume.";
 			await this.append(initial.id, diagnostic);
 			await this.runPatch(
 				initial.id,
