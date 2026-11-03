@@ -797,20 +797,36 @@ export class ConversationService {
 					);
 					return reply;
 				};
-				const observed = await trace.measure("workspace-observe", signal, async () =>
-					workspace?.observe()
-				);
-				const primary = observed?.workspace.canvases.find(
-					(canvas) => canvas.id === observed.workspace.primaryId
-				);
-				const executiveContext = primary && ["center", "source", "flow"].includes(primary.kind);
-				const effectivePrId = observed
-					? !executiveContext && observed.workspace.review.mode === "review"
-						? observed.workspace.review.prId
-						: undefined
-					: turn.input.prId;
-				if (effectivePrId && reviewPorts) await runReview(effectivePrId, history);
-				else if (workspace || hub) await runWorkspace(history, observed);
+				// Main recorded this exact ingress against a freshly owner-filtered canonical
+				// proposal. No model interpretation or model-supplied policy identity is needed.
+				// Execute the registered tool: reviewed-source, take(), account/expiry and exact
+				// receipt checks still run, and errors must never fall through to another attempt.
+				const pendingDelegation = await hub?.approvalContext();
+				if (pendingDelegation?.currentTurnAccepted && hub) {
+					await hub.execute(
+						"confirm_pr_delegation",
+						JSON.stringify({ id: pendingDelegation.id, revision: pendingDelegation.revision })
+					);
+					throwIfAborted(signal);
+					const handoff = hub.foregroundHandoff;
+					if (!handoff) throw new ReplyError("Delegation confirmation receipt unavailable");
+					onText(handoff.acknowledgement);
+				} else {
+					const observed = await trace.measure("workspace-observe", signal, async () =>
+						workspace?.observe()
+					);
+					const primary = observed?.workspace.canvases.find(
+						(canvas) => canvas.id === observed.workspace.primaryId
+					);
+					const executiveContext = primary && ["center", "source", "flow"].includes(primary.kind);
+					const effectivePrId = observed
+						? !executiveContext && observed.workspace.review.mode === "review"
+							? observed.workspace.review.prId
+							: undefined
+						: turn.input.prId;
+					if (effectivePrId && reviewPorts) await runReview(effectivePrId, history);
+					else if (workspace || hub) await runWorkspace(history, observed);
+				}
 				if (!this.active(session, turn)) return;
 				if ((hub?.hasAnnouncements || turn.input.inputMode === "voice") && turn.text.trim()) {
 					if (onNarration && narratedThrough < turn.text.length)
