@@ -4200,12 +4200,13 @@ test("explicit navigation shortcut requires one observed target across panes and
 		"answer-tool",
 		"plain-open",
 		"planning-variant",
+		"decision-variant",
 	] as const) {
 		const d = data();
 		const w = ticketBoard(d);
 		const canvas = required(w.observation.workspace.canvases[0]);
 		assert(canvas.kind === "center");
-		if (scenario === "planning-variant") {
+		if (scenario === "planning-variant" || scenario === "decision-variant") {
 			d.ticket.identifier = "MET-80";
 			required(d.hub.tickets[0]).identifier = "MET-80";
 		}
@@ -4235,13 +4236,16 @@ test("explicit navigation shortcut requires one observed target across panes and
 						? "Please open ticket MET77."
 						: scenario === "planning-variant"
 							? "Open MET-80. Before we change anything, what should I be thinking about?"
-							: "Open MET-77 and explain it",
+							: scenario === "decision-variant"
+								? "Open MET-80 and talk me through the product decision before we do anything."
+								: "Open MET-77 and explain it",
 			});
 			if (
 				scenario === "answer-tool" ||
 				scenario === "off-pane" ||
 				scenario === "plain-open" ||
-				scenario === "planning-variant"
+				scenario === "planning-variant" ||
+				scenario === "decision-variant"
 			) {
 				await eventually(() => w.commands.length === 1);
 				assert.equal(requests.length, 0);
@@ -4257,7 +4261,8 @@ test("explicit navigation shortcut requires one observed target across panes and
 				scenario === "answer-tool" ||
 					scenario === "off-pane" ||
 					scenario === "plain-open" ||
-					scenario === "planning-variant"
+					scenario === "planning-variant" ||
+					scenario === "decision-variant"
 					? 1
 					: 0
 			);

@@ -193,7 +193,7 @@ export function explicitTicketNavigation(
 		// Strip only these non-action planning clauses, never a general permission,
 		// condition or instruction. Every remaining sentence must be recognized.
 		const clauses = rest
-			.replace(/\bbefore we (?:start|change anything)(?=\s*[,.!?]|\s*$)/gi, "")
+			.replace(/\bbefore we (?:start|change anything|do anything)(?=\s*[,.!?]|\s*$)/gi, "")
 			.replace(/^(?:and\s+|[.!]\s*)/i, "")
 			.split(/[.!?]/)
 			.map((clause) => clause.trim().replace(/^,\s*|\s*,$/g, ""))
@@ -201,7 +201,7 @@ export function explicitTicketNavigation(
 		if (
 			!clauses.length ||
 			!clauses.every((clause) =>
-				/^(?:(?:discuss|explain|talk me through)\s+(?:it|(?:(?:the|its)\s+)?(?:product\s+)?(?:design(?: decisions?)?|tradeoffs?|trade-offs?|choice|ticket))|what do you recommend|what should I be thinking about)$/i.test(
+				/^(?:(?:discuss|explain|talk me through)\s+(?:it|(?:(?:the|its)\s+)?(?:product\s+)?(?:design(?: decisions?)?|decisions?|tradeoffs?|trade-offs?|choice|ticket))|what do you recommend|what should I be thinking about)$/i.test(
 					clause
 				)
 			) ||
