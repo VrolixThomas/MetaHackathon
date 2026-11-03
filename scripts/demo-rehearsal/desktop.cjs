@@ -62,6 +62,7 @@ const report = {
 	voiceErrors: [],
 	controlErrors: [],
 	startedTurns: [],
+	manualActions: [],
 	turns: [],
 	assertions: [],
 	blocked: [],
@@ -267,6 +268,15 @@ async function sayTyped(text, options = {}) {
 	currentLabel = id;
 	const submittedAt = Date.now();
 	console.log(`TEXT_DIAGNOSTIC_INPUT ${id}: ${text}`);
+	const closed = await js(
+		"(()=>{const b=[...document.querySelectorAll('dialog[open] button')].find(e=>e.getAttribute('aria-label')?.startsWith('Close '));if(!b)return false;b.click();return true;})()"
+	);
+	if (closed) {
+		report.manualActions.push({ at: Date.now(), kind: "close-displayed-dialog-before-typing" });
+		await wait("dialog closed before typed followup", () =>
+			js("!document.querySelector('dialog[open]')")
+		);
+	}
 	if (!(await js("!!document.querySelector('textarea[aria-label=\"Message\"]')")))
 		await js("document.querySelector('button[aria-label=\"Conversation and typing\"]').click()");
 	await wait("typing field", () =>
