@@ -88,6 +88,34 @@ export async function setupDependencies(options: {
 		await inspect();
 		if (!baseline["package.json"]) return "No package manifest; dependency setup not required.";
 		const pkg = JSON.parse(await readFile(join(tree, "package.json"), "utf8"));
+		const hasLock = Object.keys(baseline).some((name) =>
+			/(?:^|\/)(?:bun\.lockb?|package-lock\.json|npm-shrinkwrap\.json|pnpm-lock\.yaml|yarn\.lock)$/.test(
+				name
+			)
+		);
+		const hasDependencies = [
+			"dependencies",
+			"devDependencies",
+			"optionalDependencies",
+			"peerDependencies",
+		].some((key) => Object.keys(pkg[key] ?? {}).length > 0);
+		if (
+			!hasLock &&
+			!hasDependencies &&
+			!pkg.workspaces &&
+			Object.keys(baseline).filter((name) => /(?:^|\/)package\.json$/.test(name)).length === 1
+		) {
+			await persist({
+				startedAt,
+				finishedAt: new Date().toISOString(),
+				command: null,
+				args: [],
+				exitCode: 0,
+				baseline,
+				reason: "No declared dependencies or workspace packages; no install required.",
+			});
+			return "No declared dependencies; dependency setup not required.";
+		}
 		const declared = pkg.packageManager;
 		const match =
 			typeof declared === "string"

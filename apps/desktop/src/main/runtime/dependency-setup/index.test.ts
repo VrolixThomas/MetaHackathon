@@ -144,3 +144,27 @@ test("unsupported manager and unavailable pinned version fail before installing"
 		await assert.rejects(run(), /Unsupported packageManager/);
 	});
 });
+
+test("dependency-free standalone projects need no lockfile or package manager invocation", async () => {
+	await fixture("npm", async ({ tree, root, baseline, run }) => {
+		await rm(join(tree, "package-lock.json"));
+		Reflect.deleteProperty(baseline, "package-lock.json");
+		const text = JSON.stringify({ scripts: { test: "node --test" } });
+		await writeFile(join(tree, "package.json"), text);
+		baseline["package.json"] = createHash("sha1")
+			.update(`blob ${Buffer.byteLength(text)}\0${text}`)
+			.digest("hex");
+		assert.match(await run(), /No declared dependencies/);
+		await assert.rejects(readFile(join(tree, "calls")), /ENOENT/);
+		assert.equal(
+			JSON.parse(await readFile(join(root, "private/dependency-setup.json"), "utf8")).command,
+			null
+		);
+		const dependencyText = JSON.stringify({ dependencies: { zod: "4.0.0" } });
+		await writeFile(join(tree, "package.json"), dependencyText);
+		baseline["package.json"] = createHash("sha1")
+			.update(`blob ${Buffer.byteLength(dependencyText)}\0${dependencyText}`)
+			.digest("hex");
+		await assert.rejects(run(), /frozen lockfile/);
+	});
+});
