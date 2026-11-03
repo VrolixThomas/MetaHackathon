@@ -495,7 +495,7 @@ async function navigation(d) {
 	let observation = await rpc("query", "workspace.observe", {
 		sessionId: report.turns.at(-1).identity.sessionId,
 	});
-	let primary = observation.workspace.canvases.find(
+	const primary = observation.workspace.canvases.find(
 		(c) => c.id === observation.workspace.primaryId
 	);
 	const ticket = (await rpc("query", "hub.snapshot")).tickets.find(
@@ -504,6 +504,15 @@ async function navigation(d) {
 	assert.equal(primary?.kind, "center");
 	assert.equal(primary?.section, "tickets");
 	assert.equal(primary?.selectedId, ticket.id, "Spoken zoom must display exact ticket");
+	await say("What is PR number three about?", { id: "topic-pr-three" });
+	observation = await rpc("query", "workspace.observe", {
+		sessionId: report.turns.at(-1).identity.sessionId,
+	});
+	assert.equal(
+		observation.workspace.review.prId,
+		d.fixture.pulls[2].id,
+		"A specific PR question must bring the PR into view without an open command"
+	);
 	await say("Open PR number three.", { id: "open-pr-three" });
 	observation = await rpc("query", "workspace.observe", {
 		sessionId: report.turns.at(-1).identity.sessionId,

@@ -604,8 +604,9 @@ export class WorkspaceCoordinator {
 							}
 						: { direction: "resume" as const };
 				const reviews = this.ports.getReviews();
-				const prepared = reviews.prepareNavigation
-					? await invoke(() => reviews.prepareNavigation!(prId, direction, signal))
+				const prepareNavigation = reviews.prepareNavigation?.bind(reviews);
+				const prepared = prepareNavigation
+					? await invoke(() => prepareNavigation(prId, direction, signal))
 					: {
 							review: await invoke(() => reviews.getReady(prId, signal)),
 							navigation: await invoke(() => reviews.navigate(prId, direction, signal)),
