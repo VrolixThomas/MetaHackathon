@@ -67,7 +67,7 @@ async function full(d) {
 			const s = await rpc("query", "hub.snapshot");
 			const j = s.jobs.find((j) => j.id === job.id);
 			if (["failed", "cancelled"].includes(j?.state)) throw Error(`Coding failed: ${j.state}`);
-			return j?.state === "ready" ? j : false;
+			return j?.state === "ready" ? await rpc("query", "hub.job", { id: j.id }) : false;
 		},
 		240000
 	);
