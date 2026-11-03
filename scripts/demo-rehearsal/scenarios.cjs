@@ -237,6 +237,24 @@ async function slack(d) {
 	state.answerTs = `${Math.floor(Date.now() / 1000)}.000500`;
 	state.answerText =
 		"I turned focus on in the local companion in Chrome, refreshed the page, and focus was off again.";
+	await wait(
+		"actual clarification evidence includes the requester reply",
+		async () => {
+			const current = (await rpc("query", "day.snapshot")).items.find((i) => i.id === item.id);
+			if (!current) return false;
+			try {
+				const detail = await rpc("query", "day.clarification", {
+					itemId: current.id,
+					expectedRevision: current.revision,
+				});
+				return detail.clarification?.evidence.some((message) => message.text === state.answerText);
+			} catch (error) {
+				if (String(error).includes("clarification changed")) return false;
+				throw error;
+			}
+		},
+		90000
+	);
 	await say("What did we learn from that request, and does it change what we planned?", {
 		id: "slack-context",
 	});
