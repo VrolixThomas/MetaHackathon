@@ -13,20 +13,58 @@ function instrumentModels(forward, emit, context = () => null, limit = 120) {
 		const argumentShape = (item) => {
 			try {
 				const args = JSON.parse(item.arguments);
-				const properties = schemas.get(item.name)?.properties ?? {};
-				return {
-					validJSON: true,
-					properties: Object.keys(args).map((key) => {
-						const schema = properties[key];
-						return {
-							name: schema ? key : "unexpected-property",
-							type: Array.isArray(args[key]) ? "array" : typeof args[key],
-							...(schema?.enum
-								? { enumValue: schema.enum.includes(args[key]) ? args[key] : "invalid-enum" }
+				const rootSchema = schemas.get(item.name) ?? {};
+				const properties = [];
+				const type = (value) =>
+					value === null ? "null" : Array.isArray(value) ? "array" : typeof value;
+				const walk = (value, rawSchema, path = [], depth = 0) => {
+					if (depth > 7 || properties.length >= 80) return;
+					let schema = rawSchema ?? {};
+					if (schema.$ref?.startsWith("#/$defs/"))
+						schema = rootSchema.$defs?.[schema.$ref.slice(8)] ?? {};
+					const choices = schema.anyOf ?? schema.oneOf;
+					if (choices)
+						schema =
+							choices.find(
+								(choice) =>
+									choice.properties?.kind?.const === value?.kind && value?.kind !== undefined
+							) ??
+							choices.find((choice) => choice.type === type(value)) ??
+							choices[0];
+					if (path.length)
+						properties.push({
+							name: path.join("."),
+							type: type(value),
+							...(schema.enum ? { enumValid: schema.enum.includes(value) } : {}),
+							...(schema.format === "date-time"
+								? {
+										formatValid:
+											typeof value === "string" &&
+											/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?Z$/.test(value) &&
+											Number.isFinite(Date.parse(value)),
+									}
 								: {}),
-						};
-					}),
+						});
+					if (Array.isArray(value))
+						for (let i = 0; i < Math.min(value.length, 8); i++)
+							walk(value[i], schema.items, [...path, i], depth + 1);
+					else if (value && typeof value === "object") {
+						for (const key of schema.required ?? [])
+							if (!(key in value))
+								properties.push({ name: [...path, key].join("."), type: "missing-required" });
+						for (const key of Object.keys(value)) {
+							if (schema.properties?.[key])
+								walk(value[key], schema.properties[key], [...path, key], depth + 1);
+							else
+								properties.push({
+									name: [...path, "unexpected-property"].join("."),
+									type: type(value[key]),
+								});
+						}
+					}
 				};
+				walk(args, rootSchema);
+				return { validJSON: true, properties: properties.slice(0, 80) };
 			} catch {
 				return { validJSON: false };
 			}

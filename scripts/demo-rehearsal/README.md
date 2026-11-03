@@ -43,6 +43,8 @@ Available suites:
 - `--suite=delegation`: approval and Slack scenes alone.
 - `--suite=slack`: Slack clarification alone.
 
+While speech quota is unavailable, `--text-diagnostics` uses the real typed renderer form, models, tools and native receipts for named subsets. It does not synthesize or simulate voice. Reports explicitly set voice/ASR flags to false; these runs cannot pass spoken acceptance.
+
 Subset completion is not full-demo acceptance. Required scenes fail on missing
 actual state, source, display or check evidence; model claims alone never pass.
 

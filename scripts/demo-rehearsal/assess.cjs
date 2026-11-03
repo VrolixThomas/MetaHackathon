@@ -28,6 +28,8 @@ const navigation = report.turns.filter((t) =>
 	["ticket-navigation", "ticket-design"].includes(t.id)
 );
 const checks = {
+	actualSpeechPipeline:
+		report.liveModels === true && report.liveElevenLabs === true && !report.textDiagnostics,
 	complete: report.status === "completed",
 	enoughSamples: sorted.length >= 5,
 	commonMedian: median !== null && median <= 3000,
@@ -42,8 +44,8 @@ console.log(
 	JSON.stringify(
 		{
 			sourceCommit: report.sourceCommit,
-			scriptedASR: true,
-			actualModelAndTTS: true,
+			scriptedASR: report.scriptedASR === true,
+			actualModelAndTTS: report.liveModels === true && report.liveElevenLabs === true,
 			physicalAcousticsTested: false,
 			checks,
 			medianMs: median,
