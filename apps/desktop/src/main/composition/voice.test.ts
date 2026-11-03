@@ -958,3 +958,62 @@ describe("MET-8 voice cancellation and shutdown", () => {
 		assert.equal(sidecars[0]?.disposals, 1);
 	});
 });
+
+for (const finalFirst of [false, true])
+	it(`trusted Stop callback requires capture release and a final transcript, once: ${finalFirst}`, async (t) => {
+		const stopped: TurnIdentity[] = [];
+		const f = fixture(t, { onStopSpeech: (value) => stopped.push(value) });
+		await ready(f.manager);
+		await f.caller.offer(offer);
+		const backend = f.sidecars[0];
+		assert(backend);
+		let text = "Stop.";
+		let final = false;
+		let sequence = 1;
+		backend.handle = async (path) =>
+			path === "poll"
+				? { events: [{ ...identity, sequence, kind: "transcript", text, final }] }
+				: {};
+		await f.caller.poll({ ...identity, afterSequence: 0 });
+		assert.equal(stopped.length, 0);
+		final = true;
+		sequence = 2;
+		if (!finalFirst) await f.caller.release(identity);
+		await f.caller.poll({ ...identity, afterSequence: 1 });
+		if (finalFirst) {
+			assert.equal(stopped.length, 0);
+			await f.caller.release(identity);
+		}
+		assert.deepEqual(stopped, [identity]);
+		await f.caller.poll({ ...identity, afterSequence: 1 });
+		assert.equal(stopped.length, 1);
+		text = "Stop the coding worker";
+		await f.caller.cancel(identity);
+		assert.equal(stopped.length, 1);
+	});
+it("non-Stop finals and retired voice polls cannot revoke a newer confirmation", async (t) => {
+	const stopped: TurnIdentity[] = [];
+	const f = fixture(t, { onStopSpeech: (value) => stopped.push(value) });
+	await ready(f.manager);
+	await f.caller.offer(offer);
+	const backend = f.sidecars[0];
+	assert(backend);
+	backend.handle = async (path) =>
+		path === "poll"
+			? {
+					events: [
+						{ ...identity, sequence: 1, kind: "transcript", text: "Stop the worker", final: true },
+					],
+				}
+			: {};
+	await f.caller.release(identity);
+	await f.caller.poll({ ...identity, afterSequence: 0 });
+	assert.equal(stopped.length, 0);
+	await f.caller.cancel(identity);
+	backend.handle = async (path) =>
+		path === "poll"
+			? { events: [{ ...identity, sequence: 2, kind: "transcript", text: "Stop.", final: true }] }
+			: {};
+	await f.caller.poll({ ...identity, afterSequence: 1 }).catch(() => {});
+	assert.equal(stopped.length, 0);
+});

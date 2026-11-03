@@ -1238,11 +1238,12 @@ export function getLocalBrowser(): LocalBrowserSurface {
 	return localBrowser;
 }
 export function initializeVoice(
-	options: Omit<VoiceCompositionOptions, "getCredentials" | "getDataDirectory">
+	options: Omit<VoiceCompositionOptions, "getCredentials" | "getDataDirectory" | "onStopSpeech">
 ): void {
 	if (voice) throw new Error("Voice has already been initialized");
 	voice = createVoiceComposition({
 		...options,
+		onStopSpeech: (identity) => conversationService.invalidateDayConfirmation(identity),
 		getDataDirectory: () => {
 			if (!dataDirectory) throw new Error("Application storage is unavailable");
 			return dataDirectory;

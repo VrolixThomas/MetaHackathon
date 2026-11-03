@@ -239,7 +239,7 @@ function confirmationBinding(item: DayWorkItem) {
 function canonicalClarificationQuestion(item: DayWorkItem): string {
 	const policy = item.clarification?.policy;
 	if (!policy) throw new GuidedReviewError("The clarification proposal is unavailable.");
-	return `This would authorize clarification only, not accepting, executing, publishing or closing work. May I ask clarification questions about ${JSON.stringify(policy.scope)} in the original Slack thread for ${JSON.stringify(item.title)}, with at most ${policy.maxMessages} messages over ${policy.durationMinutes} minutes?`;
+	return `For ${JSON.stringify(item.title)}, I can ask about ${JSON.stringify(policy.scope)} in the original Slack thread, with at most ${policy.maxMessages} messages over ${policy.durationMinutes} minutes, for clarification only. Shall I send those questions?`;
 }
 
 export class ConversationDayTools {

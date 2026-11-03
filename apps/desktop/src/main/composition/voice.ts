@@ -10,6 +10,7 @@ import {
 	type VoiceSetupStatus,
 	VoiceSetupStatusSchema,
 } from "../../shared/contracts";
+import { isStopSpeech } from "../../shared/speech-control";
 import { publicProcedure, router } from "../trpc";
 import { VoiceDiagnosticError, voiceDiagnosticMessage } from "../voice/diagnostics";
 import {
@@ -44,6 +45,8 @@ export interface VoiceCompositionOptions {
 	createSidecar?: (options: SidecarOptions) => PreparedVoiceBackend;
 	/** Main-only bound from provisional admission, never from connection readiness. */
 	preparedLeaseMs?: number;
+	/** Trusted complete Stop ingress; revokes foreground confirmation only, never background work. */
+	onStopSpeech?: (identity: TurnIdentity) => void;
 	/** Monotonic main clock; injectable for lease-boundary tests. */
 	now?: () => number;
 }
@@ -92,7 +95,16 @@ export class VoiceCompositionManager {
 	private provisional?: ProvisionalVoice;
 	private readonly preparedLeaseMs: number;
 	// Keep admission tombstones across sidecar replacement, not just within a VoiceService.
-	private turns = new Map<string, { identity: TurnIdentity; cancelled: boolean }>();
+	private turns = new Map<
+		string,
+		{
+			identity: TurnIdentity;
+			cancelled: boolean;
+			released?: boolean;
+			finalStop?: boolean;
+			finalNotified?: boolean;
+		}
+	>();
 	private snapshot: VoiceSetupStatus = { phase: "unconfigured", voiceId: null, missing: [] };
 
 	constructor(private options: VoiceCompositionOptions) {
@@ -100,6 +112,27 @@ export class VoiceCompositionManager {
 		if (!Number.isInteger(lease) || lease < 1 || lease > 20_000)
 			throw new Error("Prepared voice lease must be between 1 and 20000 milliseconds");
 		this.preparedLeaseMs = lease;
+	}
+
+	private finalTranscript(
+		active: ActiveVoice,
+		identity: TurnIdentity,
+		stop?: boolean,
+		released = false
+	) {
+		if (!this.currentTurn(active, identity)) return;
+		const turn = this.turns.get(identity.sessionId);
+		if (!turn || turn.finalNotified) return;
+		if (stop !== undefined) turn.finalStop = stop;
+		if (released) turn.released = true;
+		if (!turn.released || turn.finalStop === undefined) return;
+		turn.finalNotified = true;
+		if (turn.finalStop)
+			this.options.onStopSpeech?.({
+				sessionId: identity.sessionId,
+				turnId: identity.turnId,
+				generation: identity.generation,
+			});
 	}
 
 	private now() {
@@ -363,6 +396,8 @@ export class VoiceCompositionManager {
 							sequence = event.sequence;
 						}
 						for (const event of parsed.events) {
+							if (!signal?.aborted && event.kind === "transcript" && event.final)
+								this.finalTranscript(active, identity, isStopSpeech(event.text));
 							if (event.kind === "error") {
 								event.message = event.diagnostic
 									? voiceDiagnosticMessage(event.diagnostic)
@@ -543,8 +578,9 @@ export class VoiceCompositionManager {
 	}
 	release(raw: TurnIdentity) {
 		const input = TurnIdentitySchema.parse(raw);
-		return this.run(input, (service) => {
+		return this.run(input, (service, active) => {
 			this.requireActivated(input);
+			this.finalTranscript(active, input, undefined, true);
 			return service.release(input);
 		});
 	}
