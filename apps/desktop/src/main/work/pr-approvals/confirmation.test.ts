@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { it } from "node:test";
 import type { ConversationTurnInput } from "../../../shared/contracts";
-import { ApprovalConfirmation } from "./confirmation";
+import { ApprovalConfirmation, approvalProposal } from "./confirmation";
 import { deferred, policy } from "./test-support";
 const turn: ConversationTurnInput = {
 	sessionId: "s",
@@ -62,8 +62,9 @@ it("actual voice confirmation requires exact drained narration before a new utte
 	assert.throws(() => gate.take(follow("confirm this delegation", "voice"), p));
 	speech.resolve();
 	await pending;
-	assert.ok(text.includes("automatic GitHub PR approval"));
-	assert.ok(text.includes(p.pr.headSha));
+	assert.ok(text.includes("approve automatically"));
+	assert.ok(text.includes("version you reviewed"));
+	assert.ok(!text.includes(p.pr.headSha));
 	assert.ok(text.includes("never merges"));
 	gate.acceptUserTurn(follow("confirm this delegation", "voice"));
 	assert.equal(gate.take(follow("confirm this delegation", "voice"), p).confirmed, true);
@@ -127,4 +128,38 @@ it("private peek observes exact current ingress without consuming or manufacturi
 	assert.throws(() => gate.take(follow(), p));
 	gate.clear();
 	assert.equal(gate.peek(follow(), p), undefined);
+});
+
+it("spoken proposal keeps actionable terms while exact source identity stays in the consent envelope", () => {
+	const p = policy({ status: "draft", confirmedAt: null });
+	const text = approvalProposal(p);
+	assert(text.includes(p.pr.repository));
+	assert(text.includes(p.actor.login));
+	assert(text.includes("regression succeeds from GitHub app 42"));
+	assert(text.includes("UTC"));
+	assert(text.includes("any new changes need your review"));
+	assert(!text.includes(p.pr.headSha));
+	assert(!text.includes("policy revision"));
+	assert(!text.includes(p.terms.expiresAt));
+	const changedHead = policy({ ...p, pr: { ...p.pr, headSha: "f".repeat(40) } });
+	assert.notEqual(changedHead.digest, p.digest);
+});
+it("source-bound proposal refers to the displayed exact file content rather than narrating code", () => {
+	const p = policy({
+		terms: {
+			...policy().terms,
+			conditions: [
+				{
+					kind: "source",
+					path: "app.ts",
+					reason: "Fix the behavior",
+					expectedContent: "const privateImplementationDetail = true;\n",
+				},
+			],
+		},
+	});
+	const text = approvalProposal(p);
+	assert(text.includes("app.ts exactly matches the proposed contents shown"));
+	assert(text.includes("Only the exact file changes shown"));
+	assert(!text.includes("privateImplementationDetail"));
 });

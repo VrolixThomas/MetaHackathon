@@ -7,8 +7,29 @@ import {
 } from "../../../shared/contracts";
 
 export function approvalProposal(p: ApprovalPolicy) {
-	return `Delegate ${p.terms.action === "approve" ? "automatic GitHub PR approval" : "notification only"} for ${p.pr.repository} PR ${p.pr.number}, account ${p.actor.login}, inspected head ${p.pr.headSha}, policy revision ${p.revision}. Expires ${p.terms.expiresAt}. Conditions: ${p.terms.conditions.map((c) => (c.kind === "check" ? `successful check ${c.name}, ${c.appId === null ? "one unambiguous provider" : `GitHub app ${c.appId}`}` : c.kind === "judgment" ? `human judgment required: ${c.description}` : `exact complete file ${c.path}: ${c.reason}. Expected contents: ${c.expectedContent}`)).join("; ")}. Subsequent changes are covered only in these exact source files with these exact bytes; other changes, PR title/description/target or author changes require renewed review. This never merges. Say “confirm this delegation” to authorize this exact policy.`;
+	const until = new Intl.DateTimeFormat("en-GB", {
+		timeZone: "UTC",
+		day: "numeric",
+		month: "short",
+		hour: "2-digit",
+		minute: "2-digit",
+		hourCycle: "h23",
+	}).format(new Date(p.terms.expiresAt));
+	const conditions = p.terms.conditions
+		.map((c) =>
+			c.kind === "check"
+				? `${c.name} succeeds${c.appId === null ? "" : ` from GitHub app ${c.appId}`}`
+				: c.kind === "judgment"
+					? `you resolve this judgment: ${c.description}`
+					: `${c.path} exactly matches the proposed contents shown`
+		)
+		.join(" and ");
+	const scope = p.terms.conditions.some((c) => c.kind === "source")
+		? "Only the exact file changes shown are covered; other changes need your review again."
+		: "This covers the version you reviewed; any new changes need your review again.";
+	return `For ${p.pr.repository} PR ${p.pr.number}, I’ll ${p.terms.action === "approve" ? "approve automatically" : "notify you"} once ${conditions}, using account ${p.actor.login}. This lasts until ${until} UTC. ${scope} This never merges the PR. Confirm this delegation?`;
 }
+
 type Proposal = {
 	policy: ApprovalPolicy;
 	turn: ConversationTurnInput;
