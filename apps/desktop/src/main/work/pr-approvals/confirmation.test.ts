@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
 import { it } from "node:test";
 import type { ConversationTurnInput } from "../../../shared/contracts";
 import { ApprovalConfirmation, approvalProposal } from "./confirmation";
@@ -54,7 +55,23 @@ it("actual voice confirmation requires exact drained narration before a new utte
 			await speech.promise;
 		},
 	});
-	const p = policy({ status: "draft", confirmedAt: null });
+	const sources = [
+		"main/work/attention.ts",
+		"main/work/attention.test.ts",
+		"renderer/conversation/attention.ts",
+		"renderer/conversation/attention.test.ts",
+	].map((path) => ({
+		kind: "source" as const,
+		path: `apps/desktop/src/${path}`,
+		reason: "Exact reviewed source",
+		expectedContent: readFileSync(new URL(`../../../${path}`, import.meta.url), "utf8"),
+	}));
+	const p = policy({
+		status: "draft",
+		confirmedAt: null,
+		terms: { ...policy().terms, conditions: [...sources, ...policy().terms.conditions] },
+	});
+	assert(Buffer.byteLength(JSON.stringify(p)) > 45000);
 	const pending = gate.present(p, { ...turn, inputMode: "voice" }, new AbortController().signal);
 	gate.presented({ sessionId: "s", id: p.id, revision: 1, digest: p.digest });
 	await Promise.resolve();
@@ -63,7 +80,13 @@ it("actual voice confirmation requires exact drained narration before a new utte
 	speech.resolve();
 	await pending;
 	assert.ok(text.includes("approve automatically"));
-	assert.ok(text.includes("version you reviewed"));
+	assert.ok(text.includes("4 attached source conditions"));
+	assert(!text.includes("proposed contents shown"));
+	for (const source of sources) {
+		assert(text.includes(source.path));
+		assert(!text.includes(source.expectedContent));
+	}
+	assert.deepEqual(gate.peek(turn)?.policy, p);
 	assert.ok(!text.includes(p.pr.headSha));
 	assert.ok(text.includes("never merges"));
 	gate.acceptUserTurn(follow("confirm this delegation", "voice"));
@@ -159,7 +182,7 @@ it("source-bound proposal refers to the displayed exact file content rather than
 		},
 	});
 	const text = approvalProposal(p);
-	assert(text.includes("app.ts exactly matches the proposed contents shown"));
-	assert(text.includes("Only the exact file changes shown"));
+	assert(text.includes("app.ts exactly matches its complete attached source condition"));
+	assert(text.includes("Only the exact file replacements in the 1 attached source conditions"));
 	assert(!text.includes("privateImplementationDetail"));
 });

@@ -10,6 +10,7 @@ import {
 import type { ConversationApi } from "../conversation/api";
 import { WorkspaceDialog } from "../workspace/WorkspaceDialog";
 import "./approvals.css";
+import { ExactSourceCondition } from "./ExactSourceCondition";
 import { ApprovalDialogLifecycle } from "./dialog-lifecycle";
 
 const defaults = (): ApprovalTerms => ({
@@ -455,10 +456,7 @@ export function ApprovalControl({
 												) : c.kind === "judgment" ? (
 													<>Human judgment: {c.description}</>
 												) : (
-													<>
-														{c.path}: {c.reason}
-														<pre>{c.expectedContent}</pre>
-													</>
+													<ExactSourceCondition key={key} condition={c} />
 												)}
 											</li>
 										))}

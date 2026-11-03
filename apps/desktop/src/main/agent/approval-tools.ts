@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import { isDeepStrictEqual } from "node:util";
 import { z } from "zod";
 import {
@@ -77,6 +78,33 @@ const descriptions = {
 	revoke_pr_delegation:
 		"Revoke an inspected delegation when the actual user requests it. Fences its pending approval; an already dispatched uncertain write retains its identity.",
 };
+/** Foreground result only. Canonical policies stay intact in main, UI and consent.
+ * Source hashes describe the attachment; they are never approval predicates. */
+function compactPolicy(p: ApprovalPolicy) {
+	return {
+		id: p.id,
+		revision: p.revision,
+		digest: p.digest,
+		pr: p.pr,
+		actor: p.actor,
+		status: p.status,
+		confirmedAt: p.confirmedAt,
+		action: p.terms.action,
+		expiresAt: p.terms.expiresAt,
+		conditionCount: p.terms.conditions.length,
+		conditions: p.terms.conditions.map((c) =>
+			c.kind === "source"
+				? {
+						kind: c.kind,
+						path: c.path,
+						reason: c.reason,
+						utf8Bytes: Buffer.byteLength(c.expectedContent, "utf8"),
+						sha256: createHash("sha256").update(c.expectedContent, "utf8").digest("hex"),
+					}
+				: c
+		),
+	};
+}
 export class ApprovalTools {
 	private observed = new Map<string, ApprovalPolicy>();
 	private completion?: { acknowledgement: string };
@@ -198,7 +226,11 @@ export class ApprovalTools {
 						? ""
 						: "The complete reviewed-fix proposal is displayed and awaits confirmation in a new turn.",
 			};
-			return result;
+			return {
+				...compactPolicy(result.policy),
+				displayed: result.displayed,
+				confirmationRequired: result.confirmationRequired,
+			};
 		}
 		if ((name === "draft_pr_delegation" || name === "edit_pr_delegation") && "terms" in args) {
 			const edit =
@@ -221,7 +253,11 @@ export class ApprovalTools {
 						? ""
 						: `The ${p.terms.action === "notify" ? "notification-only" : "conditional approval"} proposal for PR ${p.pr.number} is displayed and awaits confirmation. Say “confirm this delegation” in a new turn to activate it.`,
 			};
-			return result;
+			return {
+				...compactPolicy(result.policy),
+				displayed: result.displayed,
+				confirmationRequired: result.confirmationRequired,
+			};
 		}
 		if (!("id" in args) || !args.id || !("revision" in args))
 			throw new Error("Delegation identity required");
@@ -249,7 +285,7 @@ export class ApprovalTools {
 						? `Confirmed. ${result.terms.action === "notify" ? "Notification-only" : "Conditional approval"} monitoring is active for PR ${result.pr.number}. ${result.terms.action === "notify" ? "This does not approve or merge the PR." : "Activation is not a GitHub approval or merge."}`
 						: `Delegation confirmed. Its recorded status is ${result.status}. This does not establish a GitHub approval or merge.`,
 			};
-			return result;
+			return { ...compactPolicy(result), displayed: true, confirmationRequired: false };
 		}
 		if (
 			!/^(?:please )?(?:revoke|cancel|stop|remove) (?:this|the) (?:pr )?(?:approval )?delegation[.!]?$/i.test(

@@ -18,6 +18,8 @@ export const ApprovalConditionSchema = z.discriminatedUnion("kind", [
 	}),
 	z.strictObject({ kind: z.literal("judgment"), description: z.string().trim().min(1).max(1000) }),
 ]);
+/** Aggregate canonical terms JSON budget, measured in UTF-8 bytes (including escaping). */
+export const APPROVAL_TERMS_MAX_BYTES = 128 * 1024;
 export const ApprovalTermsSchema = z
 	.strictObject({
 		action: z.enum(["approve", "notify"]),
@@ -38,8 +40,8 @@ export const ApprovalTermsSchema = z
 		"Duplicate conditions"
 	)
 	.refine(
-		(t) => JSON.stringify(t).length <= 24000,
-		"Policy exceeds the bounded presentation size; narrow its conditions"
+		(t) => new TextEncoder().encode(JSON.stringify(t)).byteLength <= APPROVAL_TERMS_MAX_BYTES,
+		"Complete policy exceeds the 128 KiB UTF-8 JSON budget"
 	);
 export const ApprovalPolicySchema = z.strictObject({
 	id: IdSchema,

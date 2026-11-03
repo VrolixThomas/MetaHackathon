@@ -15,17 +15,18 @@ export function approvalProposal(p: ApprovalPolicy) {
 		minute: "2-digit",
 		hourCycle: "h23",
 	}).format(new Date(p.terms.expiresAt));
+	const sourceCount = p.terms.conditions.filter((c) => c.kind === "source").length;
 	const conditions = p.terms.conditions
 		.map((c) =>
 			c.kind === "check"
 				? `${c.name} succeeds${c.appId === null ? "" : ` from GitHub app ${c.appId}`}`
 				: c.kind === "judgment"
 					? `you resolve this judgment: ${c.description}`
-					: `${c.path} exactly matches the proposed contents shown`
+					: `${c.path} exactly matches its complete attached source condition`
 		)
 		.join(" and ");
 	const scope = p.terms.conditions.some((c) => c.kind === "source")
-		? "Only the exact file changes shown are covered; other changes need your review again."
+		? `Only the exact file replacements in the ${sourceCount} attached source conditions are covered; expand their disclosures to inspect the code. Other changes need your review again.`
 		: "This covers the version you reviewed; any new changes need your review again.";
 	return `For ${p.pr.repository} PR ${p.pr.number}, I’ll ${p.terms.action === "approve" ? "approve automatically" : "notify you"} once ${conditions}, using account ${p.actor.login}. This lasts until ${until} UTC. ${scope} This never merges the PR. Confirm this delegation?`;
 }

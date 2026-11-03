@@ -1,4 +1,6 @@
 import assert from "node:assert/strict";
+import { createHash } from "node:crypto";
+import { readFileSync } from "node:fs";
 import { it } from "node:test";
 import type { ConversationTurnInput, PRFixDetail } from "../../shared/contracts";
 import { ApprovalConfirmation } from "../work/pr-approvals/confirmation";
@@ -750,4 +752,106 @@ it("candidate refresh failure prevents proposal presentation", async () => {
 	assert.equal(confirmation.pending("s"), null);
 	assert.equal(h.p.confirmedAt, null);
 	assert.equal(h.submitted.length, 0);
+});
+
+it("large real source stays canonical in main and consent while proposal/confirmation tool results stay compact", async () => {
+	const d = candidate();
+	assert.ok(d.review);
+	const paths = [
+		"main/work/attention.ts",
+		"main/work/attention.test.ts",
+		"renderer/conversation/attention.ts",
+		"renderer/conversation/attention.test.ts",
+	].map((p) => `apps/desktop/src/${p}`);
+	d.fix.changedFiles = paths;
+	d.review.job.changedFiles = paths;
+	d.review.files = paths.map((path) => ({
+		path,
+		status: "modified",
+		patch: null,
+		base: { path, commitSha: head, status: "available", content: "before\n" },
+		head: {
+			path,
+			commitSha: later,
+			status: "available",
+			content: readFileSync(new URL(`../../../../../${path}`, import.meta.url), "utf8"),
+		},
+	}));
+	const h = harness([]);
+	const gate = new ApprovalConfirmation({ voice: () => false, narrate: async () => {} });
+	const ports = {
+		service: () => h.service,
+		confirmation: gate,
+		reviewedFix: { detail: async () => structuredClone(d), reviewed: async () => pr },
+	};
+	const tools = new ApprovalTools(ports, turn, new AbortController().signal);
+	try {
+		const drafting = tools.execute(
+			"draft_pr_delegation_from_fix",
+			JSON.stringify({
+				candidateId: "fix",
+				action: terms.action,
+				expiresAt: terms.expiresAt,
+				checks: terms.conditions,
+			})
+		);
+		await eventually(() => !!gate.pending("s"));
+		const full = gate.peek(turn)?.policy;
+		assert.ok(full);
+		assert.deepEqual(full, h.p);
+		assert(Buffer.byteLength(JSON.stringify(full)) > 45000);
+		gate.presented(gate.pending("s"));
+		const result = (await drafting) as {
+			id: string;
+			digest: string;
+			conditionCount: number;
+			conditions: { kind: string; path?: string; sha256?: string; utf8Bytes?: number }[];
+			displayed: boolean;
+			confirmationRequired: boolean;
+		};
+		assert.equal(result.id, full.id);
+		assert.equal(result.digest, full.digest);
+		assert.equal(result.displayed, true);
+		assert.equal(result.confirmationRequired, true);
+		assert.equal(result.conditionCount, 5);
+		assert(Buffer.byteLength(JSON.stringify(result)) < 6000);
+		assert(!JSON.stringify(result).includes("expectedContent"));
+		for (const f of d.review.files) {
+			assert.ok(f.head.content !== null);
+			const c = result.conditions.find((c) => c.path === f.path);
+			assert.equal(c?.sha256, createHash("sha256").update(f.head.content).digest("hex"));
+			assert.equal(c?.utf8Bytes, Buffer.byteLength(f.head.content));
+			assert.equal(
+				full.terms.conditions.find((c) => c.kind === "source" && c.path === f.path)?.kind,
+				"source"
+			);
+		}
+		// Explicit inspection still returns the complete policy; normal results never do.
+		assert.deepEqual(
+			await tools.execute("inspect_pr_delegations", JSON.stringify({ id: full.id })),
+			full
+		);
+		const user = {
+			...turn,
+			text: "confirm this delegation",
+			turnId: "next",
+			requestId: "next",
+			generation: 2,
+		};
+		gate.acceptUserTurn(user);
+		const next = new ApprovalTools(ports, user, new AbortController().signal);
+		await next.confirmationContext();
+		const confirmed = await next.execute(
+			"confirm_pr_delegation",
+			JSON.stringify({ id: full.id, revision: full.revision })
+		);
+		assert(!JSON.stringify(confirmed).includes("expectedContent"));
+		assert(Buffer.byteLength(JSON.stringify(confirmed)) < 6000);
+		assert.deepEqual(h.p.terms, full.terms);
+		assert.deepEqual(JSON.parse(JSON.stringify(h.state)).approvalPolicies[0].terms, full.terms);
+		assert.equal(h.submitted.length, 0);
+	} finally {
+		gate.clear();
+		await h.service.dispose();
+	}
 });

@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
 import { test } from "node:test";
 import { evaluatePolicy } from ".";
 import type { PRFixDetail } from "../../../shared/contracts";
@@ -160,7 +161,7 @@ const invalid: Record<string, (d: PRFixDetail) => void> = {
 		file(d).status = "renamed";
 	},
 	oversized: (d) => {
-		file(d).head.content = "a".repeat(24000);
+		file(d).head.content = "a".repeat(30001);
 	},
 	noFiles: (d) => {
 		d.fix.changedFiles = [];
@@ -207,4 +208,83 @@ test("all files including an empty added file are included in deterministic path
 			["a.ts", "\uFEFFafter\r\n"],
 		]
 	);
+});
+
+test("real MuseFocus attention files form one complete policy with exact source pins and no extra changes", () => {
+	const d = candidate();
+	const paths = [
+		"main/work/attention.ts",
+		"main/work/attention.test.ts",
+		"renderer/conversation/attention.ts",
+		"renderer/conversation/attention.test.ts",
+	].map((p) => `apps/desktop/src/${p}`);
+	const files = paths.map((path) => ({
+		path,
+		status: "modified" as const,
+		patch: null,
+		base: { path, commitSha: head, status: "available" as const, content: "before\n" },
+		head: {
+			path,
+			commitSha: later,
+			status: "available" as const,
+			content: readFileSync(new URL(`../../../../../../${path}`, import.meta.url), "utf8"),
+		},
+	}));
+	assert.ok(files.reduce((n, f) => n + Buffer.byteLength(f.head.content), 0) > 45000);
+	d.fix.changedFiles = paths;
+	review(d).job.changedFiles = paths;
+	review(d).files = files;
+	const result = reviewedFixTerms(d, pr, input);
+	const sourceConditions = result.conditions.filter((c) => c.kind === "source");
+	assert.equal(sourceConditions.length, files.length);
+	for (const f of files)
+		assert.equal(sourceConditions.find((c) => c.path === f.path)?.expectedContent, f.head.content);
+	const p = policy({ terms: result });
+	const o = observation({
+		headSha: later,
+		changes: files.map((f) => ({ path: f.path, status: f.status })),
+		sources: files.map((f) => ({ path: f.path, content: f.head.content })),
+	});
+	assert.equal(evaluatePolicy(p, o, at).outcome, "satisfied");
+	assert.equal(
+		evaluatePolicy(p, { ...o, changes: [...o.changes, { path: "extra.ts", status: "added" }] }, at)
+			.outcome,
+		"needs-review"
+	);
+	const changed = structuredClone(p);
+	const first = changed.terms.conditions.find((c) => c.kind === "source");
+	assert.ok(first && first.kind === "source");
+	first.expectedContent += "\n";
+	assert.notEqual(policy(changed).digest, p.digest);
+	const firstFile = files[0];
+	assert.ok(firstFile);
+	firstFile.head.commitSha = head;
+	assert.throws(() => reviewedFixTerms(d, pr, input));
+});
+
+test("complete candidate aggregate overflow rejects rather than dropping files or checks", () => {
+	const d = candidate();
+	const files = Array.from({ length: 5 }, (_, i) => ({
+		path: `src/large-${i}.ts`,
+		status: "modified" as const,
+		patch: null,
+		base: {
+			path: `src/large-${i}.ts`,
+			commitSha: head,
+			status: "available" as const,
+			content: "before\n",
+		},
+		head: {
+			path: `src/large-${i}.ts`,
+			commitSha: later,
+			status: "available" as const,
+			content: "x".repeat(30000),
+		},
+	}));
+	d.fix.changedFiles = files.map((f) => f.path);
+	review(d).job.changedFiles = d.fix.changedFiles;
+	review(d).files = files;
+	assert.throws(() => reviewedFixTerms(d, pr, input), /128 KiB/);
+	assert.equal(review(d).files.length, 5);
+	assert.ok(review(d).files.every((f) => f.head.content?.length === 30000));
 });
