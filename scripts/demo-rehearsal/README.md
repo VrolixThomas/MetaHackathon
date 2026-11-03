@@ -37,6 +37,7 @@ Available suites:
   real companion browser/phone, suggested fix, notify-only and conditional approval,
   Slack clarification, and actual ready-job/candidate review/checks.
 - `--suite=actions`: the latter action scenes alone.
+- `--suite=work`: actual coding admission, independent checks, behavioral review, and a fresh foreground session that must recognize historical work without admitting another job.
 - `--suite=review`: PR explanation, pinned flow and persistent browser/phone.
 - `--suite=variants`: a second ticket, different planning phrases and a source question.
 - `--suite=planning`: the initial planning/choice/followup questions without voice control cases.
