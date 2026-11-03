@@ -92,6 +92,8 @@ function createSources(fixture, state, report) {
 				return Response.json({ id: 43751036, login: "VrolixThomas", name: "Thomas" });
 			if (url.pathname === "/user/repos") return Response.json([repo]);
 			if (url.pathname === ROOT) return Response.json(repo);
+			if (url.pathname === `${ROOT}/branches/main`)
+				return Response.json({ name: "main", protected: false, commit: { sha: fixture.baseline } });
 			if (url.pathname === "/search/issues") {
 				const ns = url.searchParams.get("q")?.includes("review-requested:") ? [1, 3] : [2];
 				return Response.json({
