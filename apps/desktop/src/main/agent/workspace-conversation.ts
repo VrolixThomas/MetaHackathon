@@ -463,6 +463,9 @@ export async function runWorkspaceConversation(
 			output: JSON.stringify({
 				status: "applied",
 				workspaceSequence: result.workspace.sequence,
+				...(call.name === "run_local_preview"
+					? { previewExecution: workspace?.previewExecution }
+					: {}),
 				primaryId: result.workspace.primaryId,
 				review: result.workspace.review,
 				browser: result.browser

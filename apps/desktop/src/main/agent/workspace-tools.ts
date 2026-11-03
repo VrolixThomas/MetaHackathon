@@ -20,6 +20,10 @@ import { abortable, throwIfAborted } from "./cancellation";
 import { GuidedReviewError } from "./guided-review";
 import { type ConversationHubPorts, hubModelContext } from "./hub-tools";
 import { type ConversationImagePorts, ConversationImageTools } from "./image-tools";
+import {
+	type ConversationLocalPreviewPorts,
+	ConversationLocalPreviewTools,
+} from "./local-preview-tools";
 import type { FunctionTool } from "./meta-client";
 
 /** Only argument rejection before execution may be repaired without replaying an effect. */
@@ -57,6 +61,7 @@ export function parseToolArguments<T extends z.ZodType>(schema: T, raw: string):
 }
 
 export interface ConversationWorkspacePorts {
+	localPreview?: ConversationLocalPreviewPorts;
 	images?: ConversationImagePorts;
 	hub?: ConversationHubPorts;
 	observe(sessionId: string, signal: AbortSignal): Promise<WorkspaceObservation>;
@@ -145,6 +150,10 @@ export class ConversationWorkspaceTools {
 	private operationSequence = 0;
 	private lastEffect?: Extract<AgentAction, { kind: "workspace-canvas" }>;
 	private readonly images?: ConversationImageTools;
+	private readonly localPreview?: ConversationLocalPreviewTools;
+	get previewExecution() {
+		return this.localPreview?.execution;
+	}
 	get navigation() {
 		return structuredClone(this.lastEffect?.effect.navigation);
 	}
@@ -154,6 +163,14 @@ export class ConversationWorkspaceTools {
 		private readonly signal: AbortSignal,
 		private readonly onAction: (action: AgentAction) => void
 	) {
+		if (ports.localPreview)
+			this.localPreview = new ConversationLocalPreviewTools(
+				ports.localPreview,
+				turn,
+				signal,
+				() => this.observe(),
+				(url) => this.command({ kind: "open-browser", url })
+			);
 		if (ports.images)
 			this.images = new ConversationImageTools(ports.images, turn, signal, (assetId, target) =>
 				this.command(
@@ -180,6 +197,7 @@ export class ConversationWorkspaceTools {
 			return true;
 		};
 		return [
+			...(available.includes("browser") ? (this.localPreview?.tools ?? []) : []),
 			...(available.includes("images") ? (this.images?.tools ?? []) : []),
 			...inspectNames
 				.filter((name) => name !== "probe_browser" || available.includes("browser"))
@@ -224,6 +242,7 @@ export class ConversationWorkspaceTools {
 	}
 	has(name: string) {
 		return (
+			!!this.localPreview?.has(name) ||
 			!!this.images?.has(name) ||
 			inspectNames.includes(name) ||
 			commands.some((entry) => entry.name === name)
@@ -292,6 +311,8 @@ export class ConversationWorkspaceTools {
 	async execute(name: string, rawArguments: string): Promise<WorkspaceObservation> {
 		if (!this.tools.some((tool) => tool.name === name))
 			throw new GuidedReviewError("That workspace operation is unavailable.");
+		this.localPreview?.clearExecution();
+		if (this.localPreview?.has(name)) return this.localPreview.execute(rawArguments);
 		if (this.images?.has(name)) {
 			await this.images.execute(name, rawArguments);
 			return structuredClone(this.latest ?? (await this.observe()));

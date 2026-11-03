@@ -615,7 +615,13 @@ export async function runGuidedReview(
 			history.push({
 				type: "function_call_output",
 				call_id: call.call_id,
-				output: JSON.stringify({ status: "applied", workspaceSequence: result.workspace.sequence }),
+				output: JSON.stringify({
+					status: "applied",
+					workspaceSequence: result.workspace.sequence,
+					...(call.name === "run_local_preview"
+						? { previewExecution: workspace.previewExecution }
+						: {}),
+				}),
 			});
 			throwIfAborted(signal);
 			const primary = result.workspace.canvases.find(
