@@ -802,6 +802,7 @@ test("background inference failures emit only fixed categories and retain unavai
 		"analysis_schema",
 	] as const) {
 		const diagnostics: unknown[][] = [];
+		let calls = 0;
 		const warn = console.warn;
 		console.warn = (...args) => {
 			diagnostics.push(args);
@@ -811,6 +812,7 @@ test("background inference failures emit only fixed categories and retain unavai
 				analyzeClarification(
 					{
 						async *stream() {
+							calls++;
 							if (category === "transport") throw new Error(secret);
 							if (category === "incomplete") return;
 							if (category === "stream_limit") yield { type: "text", delta: secret.repeat(1000) };
@@ -875,6 +877,7 @@ test("background inference failures emit only fixed categories and retain unavai
 			]);
 			assert.ok(!JSON.stringify(diagnostics).includes(secret));
 			const c = (await h.item()).clarification;
+			assert.equal(calls, category === "json_invalid" || category === "analysis_schema" ? 2 : 1);
 			assert.equal(c?.status, "needs_user");
 			assert.equal(c?.reason, "unavailable");
 			assert.equal(c?.confirmedAt, confirmation);
@@ -976,12 +979,133 @@ test("analysis schema diagnostics expose only fixed paths/categories and never a
 				],
 			]);
 			assert.ok(!JSON.stringify(diagnostics).includes(secret));
-			assert.equal(requests, 1);
+			assert.equal(requests, 2);
 			assert.equal(h.counts().sends, 0);
 			assert.deepEqual((await h.item()).clarification?.attempts, []);
 			assert.equal((await h.item()).clarification?.reason, "unavailable");
 		} finally {
 			console.warn = warn;
+			await h.close();
+		}
+	}
+});
+
+for (const invalid of [
+	"PRIVATE_INVALID_OUTPUT",
+	JSON.stringify({ questions: ["PRIVATE_INVALID_OUTPUT"] }),
+]) {
+	test("one format correction reuses bounded evidence and returns only validated analysis", async () => {
+		const h = await harness();
+		try {
+			await h.propose();
+			const c = (await h.item()).clarification;
+			assert.ok(c);
+			const valid = {
+				summary: "Needs URL",
+				missing: ["URL"],
+				questions: ["Which URL?"],
+				escalation: null,
+			};
+			const requests: Parameters<import("../agent/meta-client").AgentModelClient["stream"]>[0][] =
+				[];
+			const read = { connectionId: "connection-1", complete: true, messages: [message()] };
+			const result = await analyzeClarification(
+				{
+					async *stream(request) {
+						requests.push(request);
+						const text = requests.length === 1 ? invalid : JSON.stringify(valid);
+						try {
+							yield {
+								type: "completed",
+								response: {
+									id: "controlled",
+									model: "muse-spark-1.3",
+									output: [
+										{
+											type: "message",
+											role: "assistant",
+											content: [{ type: "output_text", text }],
+										},
+									],
+								},
+							};
+						} finally {
+							// Even external mutation between calls cannot change the serialized evidence.
+							const original = read.messages[0];
+							assert.ok(original);
+							original.text = "CHANGED_EVIDENCE";
+						}
+					},
+				},
+				c,
+				read,
+				new AbortController().signal
+			);
+			assert.deepEqual(result, valid);
+			assert.equal(requests.length, 2);
+			const [first, second] = requests;
+			assert.ok(first && second);
+			assert.equal(second.requestId, `${first.requestId}-schema-correction-1`);
+			assert.deepEqual(second.input, first.input);
+			assert.ok(second.instructions.startsWith(first.instructions));
+			assert.match(second.instructions, /All four fields are required/);
+			assert.ok(!JSON.stringify(second).includes("PRIVATE_INVALID_OUTPUT"));
+			assert.ok(!JSON.stringify(second).includes("CHANGED_EVIDENCE"));
+			for (const request of requests) {
+				assert.deepEqual(request.tools, []);
+				assert.equal(request.maxOutputTokens, 2048);
+			}
+		} finally {
+			await h.close();
+		}
+	});
+}
+
+test("cancellation at either attempt boundary prevents a correction or analysis result", async () => {
+	for (const cancelAt of [0, 1, 2]) {
+		const h = await harness();
+		try {
+			await h.propose();
+			const c = (await h.item()).clarification;
+			assert.ok(c);
+			const controller = new AbortController();
+			let calls = 0;
+			if (cancelAt === 0) controller.abort();
+			await assert.rejects(
+				analyzeClarification(
+					{
+						async *stream() {
+							calls++;
+							try {
+								if (cancelAt === 2 && calls === 2) controller.abort();
+								yield {
+									type: "completed",
+									response: {
+										id: "controlled",
+										model: "muse-spark-1.3",
+										output: [
+											{
+												type: "message",
+												role: "assistant",
+												content: [{ type: "output_text", text: "invalid" }],
+											},
+										],
+									},
+								};
+							} finally {
+								if (cancelAt === 1) controller.abort();
+							}
+						},
+					},
+					c,
+					{ connectionId: "connection-1", complete: true, messages: [message()] },
+					controller.signal
+				),
+				{ name: "AbortError" }
+			);
+			assert.equal(calls, cancelAt);
+			assert.equal(h.counts().sends, 0);
+		} finally {
 			await h.close();
 		}
 	}
