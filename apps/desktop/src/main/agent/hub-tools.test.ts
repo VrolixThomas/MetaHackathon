@@ -5471,7 +5471,9 @@ for (const change of ["sidebar", "content", "cancelled"] as const) {
 test("selected Day context retains only freshly observed session work for cross-source reasoning", async () => {
 	const d = data();
 	const day = attachDay(d);
-	d.hub.jobs.push({ ...d.hub.jobs[0]!, id: "unrelated", summary: "UNRELATED PRIVATE WORK" });
+	const original = d.hub.jobs[0];
+	assert(original);
+	d.hub.jobs.push({ ...original, id: "unrelated", summary: "UNRELATED PRIVATE WORK" });
 	const tools = new ConversationHubTools(d.ports, input, new AbortController().signal, undefined, {
 		beforeStart: async () => {
 			throw new Error("No execution authorized");
