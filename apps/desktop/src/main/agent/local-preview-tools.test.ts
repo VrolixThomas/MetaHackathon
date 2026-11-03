@@ -94,6 +94,8 @@ const args = JSON.stringify({ kind: "pr", id: "pr" });
 test("only explicit actual ingress requests authorize preview", async () => {
 	for (const text of [
 		"Run this PR locally",
+		"Run this PR locally and show it in the browser.",
+		"Could you run this locally?",
 		"Please launch this in the browser",
 		"Can you preview this PR?",
 	])

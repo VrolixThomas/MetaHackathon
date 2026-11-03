@@ -25,6 +25,7 @@ const core = new Set([
 	"focus_canvas",
 	"open_ready_review",
 	"open_browser",
+	"run_local_preview",
 ]);
 const review = new Set([
 	"read_pinned_source",
@@ -57,7 +58,8 @@ function family(name: string): Family {
 	if (name.startsWith("slack_")) return "slack";
 	if (name === "memory_search") return "knowledge";
 	if (review.has(name)) return "reviews";
-	if (name === "browser_action" || name === "probe_browser") return "browser";
+	if (name === "browser_action" || name === "probe_browser" || name === "run_local_preview")
+		return "browser";
 	if (
 		name.includes("work") ||
 		name === "inspect_ticket" ||

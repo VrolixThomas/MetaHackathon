@@ -25,7 +25,7 @@ async function fixture() {
 	);
 	await writeFile(
 		join(source, "server.cjs"),
-		`const http=require('node:http');http.createServer((q,r)=>r.end(JSON.stringify({revision:'pinned',secret:process.env.MODEL_API_KEY||null,home:process.env.HOME}))).listen(Number(process.env.PORT),'127.0.0.1');`
+		`const http=require('node:http');http.createServer((q,r)=>r.end(JSON.stringify({revision:'pinned',secret:process.env["MODEL_API_KEY"]||null,home:process.env.HOME}))).listen(Number(process.env.PORT),'127.0.0.1');`
 	);
 	git("add", ".");
 	git("commit", "-qm", "fixture");
@@ -55,8 +55,8 @@ test("runs pinned committed npm start, strips secrets, preserves dirty source an
 			return { repositoryPath: f.source };
 		},
 	});
-	const old = process.env.MODEL_API_KEY;
-	process.env.MODEL_API_KEY = "must-not-reach-child";
+	const old = process.env["MODEL_API_KEY"];
+	process.env["MODEL_API_KEY"] = "must-not-reach-child";
 	try {
 		const receipt = await service.start(f.request);
 		assert.equal(auth, 1);
@@ -79,7 +79,7 @@ test("runs pinned committed npm start, strips secrets, preserves dirty source an
 		assert.ok(log.endedAt);
 	} finally {
 		if (old === undefined) Reflect.deleteProperty(process.env, "MODEL_API_KEY");
-		else process.env.MODEL_API_KEY = old;
+		else process.env["MODEL_API_KEY"] = old;
 		await service.dispose();
 		await rm(f.root, { recursive: true, force: true });
 	}

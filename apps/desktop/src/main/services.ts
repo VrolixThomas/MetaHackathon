@@ -28,6 +28,7 @@ import {
 import { readDaySource } from "./composition/day-source";
 import { ConversationDiagnostics } from "./composition/diagnostics";
 import { createKnowledgeService } from "./composition/knowledge";
+import { ForegroundLocalPreview } from "./composition/local-preview";
 import { sourceFromPRFix } from "./composition/pr-fix-source";
 import { ReviewCoordinator } from "./composition/reviews";
 import { SlackConnection } from "./composition/slack-connection";
@@ -133,6 +134,7 @@ export const commentPresentations: CommentPresentationCoordinator =
 			conversationService.narrateProposal(input, `${input.requestId}-speech`, text, signal),
 	});
 let prFixes: PRFixService | undefined;
+let foregroundPreview: ForegroundLocalPreview | undefined;
 let prApprovals: PRApprovals | undefined;
 export function getPRApprovals() {
 	if (closing || !prApprovals) throw new Error("PR delegations are unavailable");
@@ -148,6 +150,7 @@ let githubCredentialIdentity: string | undefined;
 function retirePRWork() {
 	prWorkEpoch++;
 	approvalConfirmation.clear();
+	void foregroundPreview?.invalidate().catch(() => {});
 	void prApprovals?.accountChanged().catch(() => {});
 	teamComposition?.abortApplications();
 	commentPresentations.clear();
@@ -245,7 +248,20 @@ export const conversationService: ConversationService = new ConversationService(
 			validate: (input, signal) => getAttention().validate(input, signal),
 		},
 		hub: {
-			approvals: { service: getPRApprovals, confirmation: approvalConfirmation },
+			approvals: {
+				service: getPRApprovals,
+				confirmation: approvalConfirmation,
+				reviewedFix: {
+					detail: async (id, signal) => {
+						signal.throwIfAborted();
+						const detail = await getPRFixes().detail(id);
+						signal.throwIfAborted();
+						return detail;
+					},
+					reviewed: async (sessionId, signal) =>
+						(await reviewedApprovalContext(sessionId, signal)).pr,
+				},
+			},
 			prComments: {
 				observe: async (sessionId, signal) => {
 					const screen = await getReviews().getScreen(sessionId);
@@ -309,6 +325,19 @@ export const conversationService: ConversationService = new ConversationService(
 			search: (request, signal) => getHub().search(request, signal),
 		},
 		workspace: {
+			localPreview: {
+				start: (input, turn, signal) => {
+					if (!foregroundPreview) throw new Error("Local previews are not initialized");
+					return foregroundPreview.start(input, turn, signal);
+				},
+				inspect: () => {
+					const receipt = foregroundPreview?.inspect();
+					return receipt ? { receipt, output: "" } : null;
+				},
+				stop: async (runId) => {
+					await foregroundPreview?.stop(runId);
+				},
+			},
 			images: {
 				generate: (input, signal) => getImages().generate(input, signal),
 				cancel: (id) => getImages().cancel(id),
@@ -928,6 +957,51 @@ export async function initializeHub(
 		redact,
 	});
 	hub.attachJobs(workJobs);
+	foregroundPreview = new ForegroundLocalPreview({
+		directory: userDataPath,
+		observe: (sessionId, signal) => getWorkspace().observe(sessionId, signal),
+		resolve: async (target, signal) => {
+			const account = await currentPRAccount();
+			if (!account) throw new Error("Connect GitHub before running repository code");
+			signal.throwIfAborted();
+			if (target.kind === "pr") {
+				const pr = await readCurrentPR(target.id, signal);
+				const repo = (await getHub().snapshot()).repositories.find(
+					(row) => row.repository === pr.repository
+				);
+				if (!repo) throw new Error("Connect this repository before running its preview");
+				await getHub().readyRepository(repo.id);
+				const prepared = await getRuntime().prepareGitHub(pr, repo.localPath ?? undefined, signal);
+				signal.throwIfAborted();
+				return {
+					account,
+					selection: {
+						kind: "pr",
+						sourceId: pr.id,
+						repository: pr.repository,
+						commitSha: pr.headSha,
+					},
+					repositoryPath: prepared.worktrees.repositoryPath,
+				};
+			}
+			const review = await getWorkJobs().review(target.id);
+			const job = review.job;
+			await getHub().readyRepository(job.repositoryId);
+			if (!job.headSha || !job.worktreePath || job.state !== "ready")
+				throw new Error("Choose ready completed work to preview");
+			signal.throwIfAborted();
+			return {
+				account,
+				selection: {
+					kind: "job",
+					sourceId: job.id,
+					repository: job.repository,
+					commitSha: job.headSha,
+				},
+				repositoryPath: job.worktreePath,
+			};
+		},
+	});
 	attention = new AttentionScheduler({
 		read: async () => {
 			const state = await getHub().attentionState();
@@ -993,27 +1067,38 @@ export async function initializeHub(
 		},
 		awake: () => dayAwake && !closing,
 		provider: new ApprovalGitHub(getGitHubToken, () => prWorkEpoch),
-		reviewed: async (sessionId, signal) => {
-			const screen = await getReviews().getScreen(sessionId);
-			if (screen.mode !== "review" || !screen.prId || !screen.path)
-				throw new Error("Display an actual reviewed PR file first");
-			await getReviews().getReady(screen.prId, signal);
-			const detail = await getReviews().get(screen.prId);
-			const pr = await readCurrentPR(screen.prId, signal);
-			if (
-				!detail.prepared ||
-				screen.headSha !== pr.headSha ||
-				detail.pr.headSha !== pr.headSha ||
-				detail.pr.baseSha !== pr.baseSha
-			)
-				throw new Error("Review the current PR head first");
-			return { pr, reviewId: detail.prepared.id };
-		},
+		reviewed: reviewedApprovalContext,
 	});
 	await prApprovals.restore();
 	await workJobs.restore();
 	void hub.refresh().catch(() => {});
 }
+async function reviewedApprovalContext(sessionId: string, signal: AbortSignal) {
+	const before = await getWorkspace().observe(sessionId, signal);
+	if (
+		!before.workspace.canvases.some(
+			(c) =>
+				c.kind === "review" &&
+				(c.id === before.workspace.primaryId || c.id === before.workspace.secondaryId)
+		)
+	)
+		throw new Error("Display the original PR before setting its follow-up");
+	const screen = await getReviews().getScreen(sessionId);
+	if (screen.mode !== "review" || !screen.prId || !screen.path)
+		throw new Error("Display an actual reviewed PR file first");
+	await getReviews().getReady(screen.prId, signal);
+	const detail = await getReviews().get(screen.prId);
+	const pr = await readCurrentPR(screen.prId, signal);
+	if (
+		!detail.prepared ||
+		screen.headSha !== pr.headSha ||
+		detail.pr.headSha !== pr.headSha ||
+		detail.pr.baseSha !== pr.baseSha
+	)
+		throw new Error("Review the current PR head first");
+	return { pr, reviewId: detail.prepared.id };
+}
+
 export function getHub() {
 	if (closing || !hub) throw new Error("Command center unavailable");
 	return hub;
@@ -1291,6 +1376,7 @@ function runtimeForActiveJobs(): RuntimeService {
 export async function disposeRuntime(): Promise<void> {
 	const current = runtime;
 	closing = true;
+	await foregroundPreview?.dispose();
 	teamComposition?.dispose();
 	images?.dispose();
 	await codingProvider?.dispose();

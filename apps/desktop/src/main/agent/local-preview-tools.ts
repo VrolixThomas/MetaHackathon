@@ -19,28 +19,8 @@ const inputSchema = z.strictObject({
 	id: z.string().trim().min(1).max(300),
 });
 
-/** Only actual ingress text is authority. Conservatively reject indirect or qualified requests. */
-export function requestsLocalPreview(text: string): boolean {
-	if (
-		/['"“”‘’`\n]/u.test(text) ||
-		/\b(?:no|stop|cancel|avoid|not|never|don['’]?t|do not|without|if|unless|when|would|could|maybe|perhaps|how|explain|instructions|said|says|quote|example|should|might|or)\b/i.test(
-			text
-		)
-	)
-		return false;
-	const request = text
-		.trim()
-		.replace(/^(?:please\s+|can you\s+|will you\s+|i want you to\s+)/i, "")
-		.replace(/^please\s+/i, "");
-	return (
-		/^(?:run|start|launch)\s+(?:it|(?:this|that|the selected|the current|the|my)(?:\s+(?:PR|job|app|application|change|changes|preview))?)\s+(?:locally|as a local preview|in (?:the |a )?browser)[.!?]?$/i.test(
-			request
-		) ||
-		/^preview\s+(?:this|that|the selected|the current|my)?\s*(?:PR|job|app|application|change|changes)?(?:\s+(?:locally|in (?:the |a )?browser))?[.!?]?$/i.test(
-			request
-		)
-	);
-}
+import { requestsLocalPreview } from "./preview-intent";
+export { requestsLocalPreview } from "./preview-intent";
 
 export class ConversationLocalPreviewTools {
 	private receipt?: LocalPreviewReceipt;
