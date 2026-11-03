@@ -320,7 +320,7 @@ export async function runGuidedReview(
 		const hub = workflow?.hub;
 		if (snapshot.review) hub?.allowReview(snapshot.review.pr);
 		await hub?.observe(input.prId, observation?.hub);
-		profile.select(observation, true);
+		profile.select(observation, true, input.text);
 		const modelInput = reviewModelInput(
 			history,
 			questionIndex,
@@ -419,6 +419,8 @@ export async function runGuidedReview(
 				"Review navigation must happen one step at a time. Please try again."
 			);
 		const call = callSchema.parse(calls[0]);
+		if (!request.tools.some((tool) => tool.name === call.name))
+			throw new GuidedReviewError("The requested capability was not available in this turn.");
 		if (seen.has(call.call_id))
 			throw new GuidedReviewError("The model repeated a review operation. Please try again.");
 		seen.add(call.call_id);

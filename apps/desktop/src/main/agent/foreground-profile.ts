@@ -75,8 +75,12 @@ export class ForegroundProfile {
 	private selectedId?: string;
 	private section?: string;
 	private focusKey?: string;
-	select(observation?: WorkspaceObservation, selectedReview = false) {
+	private sourceWorkflow = false;
+	private fullTools = false;
+	select(observation?: WorkspaceObservation, selectedReview = false, userText?: string) {
 		this.active.clear();
+		this.sourceWorkflow = false;
+		this.fullTools = false;
 		this.selectedReview = selectedReview;
 		if (selectedReview) this.active.add("reviews");
 		const canvas = observation?.workspace.canvases.find(
@@ -102,6 +106,51 @@ export class ForegroundProfile {
 			this.active.add("reviews");
 		else if (canvas?.kind === "browser") this.active.add("browser");
 		else if (canvas) this.active.add("canvases");
+		if (userText !== undefined) {
+			// Only actual ingress text and the actual pane select capabilities. Titles,
+			// descriptions, model output and source content never enter this selector.
+			const prContext =
+				selectedReview ||
+				canvas?.kind === "review" ||
+				/\b(?:pr\s*\d*|pull request)\b/i.test(userText);
+			const conditionalPR =
+				prContext &&
+				(/\bdelegation\b/i.test(userText) ||
+					(/\b(?:notify|notification|watch|monitor|approve|approval)\b/i.test(userText) &&
+						/\b(?:if|when|once|only|after|until|checks?|succeeds?|passes?|expir\w*|within|hour|minutes?)\b/i.test(
+							userText
+						)));
+			const slackClarification =
+				(/\bslack\b/i.test(userText) || this.section === "slack" || this.section === "day") &&
+				/\b(?:clarif\w*|ask|question|requester)\b/i.test(userText);
+			this.sourceWorkflow = conditionalPR || slackClarification;
+			if (conditionalPR) {
+				this.active.add("reviews");
+				this.active.add("approvals");
+			}
+			if (slackClarification) {
+				this.active.add("day");
+				this.active.add("slack");
+			}
+			// Unknown or compound requests keep the full tool loop, rather than
+			// guessing a family from incidental words (e.g. browser retention).
+			// Simple pane discussion/navigation can keep its existing lean profile.
+			const simplePaneRequest =
+				!!canvas &&
+				(/^(?:hi|hello|hey|thanks|thank you)[.!\s]*$/i.test(userText.trim()) ||
+					/^(?:please\s+)?open (?:my |the )?(?:tickets|reviews|home|my day)[.!\s]*$/i.test(
+						userText.trim()
+					) ||
+					/^(?:let['’]s discuss [^.!?;,]+|explain this (?:ticket|file)|continue)[?.!\s]*$/i.test(
+						userText.trim()
+					)) &&
+				!/\b(?:and|then|also|but)\b/i.test(userText);
+			const explicitTicketWork = /^(?:start|inspect|read)\s+(?:ticket\s+)?[a-z]+[- ]\d+\b/i.test(
+				userText
+			);
+			if (explicitTicketWork) this.active.add("work");
+			this.fullTools = !this.sourceWorkflow && !simplePaneRequest && !explicitTicketWork;
+		}
 	}
 	has(value: Family) {
 		return this.active.has(value) || this.expanded.has(value);
@@ -110,9 +159,11 @@ export class ForegroundProfile {
 		return [
 			...available.filter(
 				(tool) =>
-					core.has(tool.name) ||
-					this.has(family(tool.name)) ||
-					(this.has("work") && sourceTools.has(tool.name))
+					!(this.sourceWorkflow && tool.name === "day_capture_manual") &&
+					(this.fullTools ||
+						core.has(tool.name) ||
+						this.has(family(tool.name)) ||
+						(this.has("work") && sourceTools.has(tool.name)))
 			),
 			{
 				type: "function",
@@ -138,7 +189,9 @@ export class ForegroundProfile {
 	}
 	expand(raw: string) {
 		const value = parseToolArguments(expansion, raw);
-		const newlyEnabled = value.families.filter((selected) => !this.has(selected));
+		const newlyEnabled = this.fullTools
+			? []
+			: value.families.filter((selected) => !this.has(selected));
 		for (const selected of value.families) this.expanded.add(selected);
 		return {
 			status: newlyEnabled.length ? "tools-expanded" : "tools-already-available",

@@ -21,6 +21,12 @@ import type {
 	WorkspaceCommand,
 	WorkspaceObservation,
 } from "../../shared/contracts";
+import { ApprovalConfirmation } from "../work/pr-approvals/confirmation";
+import {
+	at as approvalAt,
+	harness as approvalHarness,
+	pr as approvalPR,
+} from "../work/pr-approvals/test-support";
 import { ConversationService } from "./conversation";
 import { type ConversationHubPorts, ConversationHubTools, hubModelContext } from "./hub-tools";
 import type { AgentModelClient, MetaItem, MetaRequest } from "./meta-client";
@@ -1785,7 +1791,7 @@ test("general workspace and selected-review conversations receive the same Day c
 			assert(
 				requests.every((request) => request.tools?.some((tool) => tool.name === "expand_tools"))
 			);
-			assert(!requests[0]?.tools?.some((tool) => tool.name === "day_start_work"));
+			assert(requests[0]?.tools?.some((tool) => tool.name === "day_cover"));
 			const packet = requests[0]?.input.at(-1)?.["content"] as { text: string }[];
 			const context = JSON.parse(packet[0]?.text ?? "{}");
 			assert.equal(context.actualHub.day, undefined);
@@ -3083,7 +3089,7 @@ test("selected ticket supplies freshly authorized details in the first fast requ
 	}
 });
 
-test("explicit expansion enables another context without effects, source authority or a preliminary routing classifier", async () => {
+test("unknown requests retain full tools and redundant expansion grants no effects or authority", async () => {
 	const d = data();
 	const requests: MetaRequest[] = [];
 	const service = new ConversationService(
@@ -3102,7 +3108,7 @@ test("explicit expansion enables another context without effects, source authori
 		await eventually(() => service.poll(identity()).status !== "running");
 		assert.equal(service.poll(identity()).status, "completed");
 		assert.equal(requests.length, 3);
-		assert(!requests[0]?.tools?.some((tool) => tool.name === "start_work"));
+		assert(requests[0]?.tools?.some((tool) => tool.name === "start_work"));
 		assert(requests[1]?.tools?.some((tool) => tool.name === "start_work"));
 		assert(requests.every((request) => request.workload === "quick"));
 		assert.equal(d.operations.length, 0);
@@ -3836,8 +3842,11 @@ for (const outcome of ["applied", "cancelled", "revoked"] as const) {
 		const service = new ConversationService(
 			{
 				async *stream(request, signal) {
-					if (requests.length === 0)
+					if (requests.length === 0) {
 						assert(request.tools?.some((tool) => tool.name === "day_inspect_queue"));
+						assert(request.tools?.some((tool) => tool.name === "day_propose_clarification"));
+						assert(!request.tools?.some((tool) => tool.name === "day_capture_manual"));
+					}
 					if (requests.length === 2) {
 						assert(JSON.stringify(request.input).includes("rejected-before-execution"));
 						if (outcome === "revoked") day.snapshot.actor.userId = "another-account";
@@ -4186,3 +4195,118 @@ test("explicit navigation answer stream rejects cancellation or content changes 
 		}
 	}
 });
+
+for (const selected of [false, true]) {
+	for (const attempted of ["draft", "unoffered-day", "unoffered-workspace"] as const) {
+		test(`${selected ? "review" : "workspace"}: conditional notify uses approvals; rejects ${attempted} outside offered tools`, async () => {
+			const d = data();
+			const day = attachDay(d);
+			const w = workspace(d);
+			const approval = approvalHarness([]);
+			const confirmation = new ApprovalConfirmation({
+				voice: () => false,
+				narrate: async () => {},
+			});
+			d.ports.approvals = { service: () => approval.service, confirmation };
+			const requests: MetaRequest[] = [];
+			const terms = {
+				action: "notify" as const,
+				expiresAt: new Date(approvalAt + 3600000).toISOString(),
+				conditions: [{ kind: "check", name: "demo-checks", appId: null }],
+			};
+			const output =
+				attempted === "draft"
+					? call("draft_pr_delegation", { terms })
+					: attempted === "unoffered-day"
+						? call("day_capture_manual", { invalid: "must not reach parsing or execution" })
+						: call("write_markdown_explanation", {
+								title: "Unrequested",
+								markdown: "must not execute",
+							});
+			const prepared: PreparedReview = {
+				id: "review",
+				version: 1,
+				pr: approvalPR,
+				createdAt: time,
+				summary: "Inferred",
+				orderRationale: "Inferred",
+				coverage: "complete",
+				evidence: "inferred-from-github",
+				files: [
+					{ path: "changed.ts", reason: "Inferred", summary: "Inferred", suggestedComments: [] },
+				],
+			};
+			const service = new ConversationService(
+				client(
+					[
+						[output],
+						answer("Controlled draft awaits separate confirmation; monitoring is not active."),
+					],
+					requests
+				),
+				{
+					hub: d.ports,
+					workspace: w.ports,
+					...(selected
+						? {
+								review: {
+									getReady: async () => prepared,
+									getProgress: async () => null,
+									getScreen: async (): Promise<ReviewScreen> => ({
+										sequence: 0,
+										mode: "conversation",
+										prId: approvalPR.id,
+									}),
+									navigate: async () => {
+										throw new Error("No review narration/navigation requested");
+									},
+								},
+							}
+						: {}),
+				}
+			);
+			const turn = {
+				...input,
+				inputMode: "typed" as const,
+				text: "Open the source-link PR, number 3. Set a follow-up to notify me only once demo-checks succeeds, expiring in one hour. Do not approve or merge.",
+				...(selected ? { prId: approvalPR.id } : {}),
+			};
+			try {
+				service.start(turn);
+				await eventually(
+					() =>
+						!!confirmation.pending(input.sessionId) ||
+						service.poll(identity(turn)).status !== "running"
+				);
+				const first = required(requests[0]);
+				assert(first.tools?.some((t) => t.name === "draft_pr_delegation"));
+				assert(!first.tools?.some((t) => t.name === "day_capture_manual"));
+				assert(!first.tools?.some((t) => t.name === "write_markdown_explanation"));
+				assert.match(first.instructions, /generic day_capture_manual.*cannot monitor PR checks/);
+				if (attempted === "draft") {
+					assert.equal(requests.length, 1);
+					assert.equal(service.poll(identity(turn)).text, "");
+					assert.equal(approval.p.status, "draft");
+					assert.deepEqual(approval.p.terms, terms);
+					assert.equal(approval.p.confirmedAt, null);
+					confirmation.presented(required(confirmation.pending(input.sessionId)));
+					await eventually(() => service.poll(identity(turn)).status !== "running");
+					assert.equal(service.poll(identity(turn)).status, "completed");
+					assert.equal(requests.length, 2);
+					assert.equal(approval.p.status, "draft");
+				} else {
+					assert.equal(service.poll(identity(turn)).status, "error");
+					assert.equal(requests.length, 1);
+					assert.equal(approval.state.approvalPolicies?.length ?? 0, 0);
+				}
+				assert.equal(approval.submitted.length, 0);
+				assert.equal(day.operations.length, 0);
+				assert.equal(w.commands.length, 0);
+				assert.equal(d.operations.length, 0);
+			} finally {
+				await service.dispose();
+				await approval.service.dispose();
+			}
+		});
+	}
+}
