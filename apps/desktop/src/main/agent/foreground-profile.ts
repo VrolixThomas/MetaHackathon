@@ -28,6 +28,8 @@ const core = new Set([
 	"run_local_preview",
 ]);
 const review = new Set([
+	"inspect_team_sharing",
+	"share_reviewed_fix",
 	"read_pinned_source",
 	"search_pinned_source",
 	"open_pinned_source",

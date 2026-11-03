@@ -37,6 +37,14 @@ export class RuntimeService {
 	private seed?: Awaited<ReturnType<typeof seedDemoRepositories>>;
 	private demoPromise?: Promise<PullRequest[]>;
 	private readonly prepared = new Map<string, { pr: PullRequest; worktrees: PreparedRepository }>();
+	private readonly previewSources = new Map<
+		string,
+		{ pr: PullRequest; worktrees: PreparedRepository }
+	>();
+	private readonly preparingPreviewSources = new Map<
+		string,
+		Promise<{ pr: PullRequest; worktrees: PreparedRepository }>
+	>();
 	private readonly preparing = new Map<
 		string,
 		{
@@ -148,6 +156,39 @@ export class RuntimeService {
 			this.preparing.delete(pr.id);
 		});
 		this.preparing.set(pr.id, { baseSha: pr.baseSha, headSha: pr.headSha, done });
+		return done;
+	}
+
+	/** Preview sources are isolated per exact revision, so a later author fix never replaces an older reader's source. */
+	async preparePreviewGitHub(prInput: PullRequest, signal?: AbortSignal) {
+		const pr = PullRequestSchema.parse(prInput);
+		if (this.closed) throw new Error("Runtime has shut down");
+		const key = JSON.stringify([pr.id, pr.baseSha, pr.headSha]);
+		const existing = this.previewSources.get(key);
+		if (existing) return existing;
+		const pending = this.preparingPreviewSources.get(key);
+		if (pending) return pending;
+		const done = this.operation(`preview-source:${randomUUID()}`, async (localSignal) => {
+			const active = signal ? AbortSignal.any([signal, localSignal]) : localSignal;
+			const worktrees = await this.repositories.prepare({
+				cloneUrl: `https://github.com/${pr.repository}.git`,
+				prNumber: pr.number,
+				baseRef: pr.baseSha,
+				signal: active,
+			});
+			if (
+				active.aborted ||
+				worktrees.base.sha !== pr.baseSha ||
+				worktrees.head.sha !== pr.headSha
+			) {
+				await this.repositories.cleanup(worktrees.runId);
+				throw new Error("PR revision changed while preparing its preview");
+			}
+			const prepared = { pr, worktrees };
+			this.previewSources.set(key, prepared);
+			return prepared;
+		}).finally(() => this.preparingPreviewSources.delete(key));
+		this.preparingPreviewSources.set(key, done);
 		return done;
 	}
 
@@ -372,6 +413,14 @@ export class RuntimeService {
 		await this.demoPromise?.catch(() => undefined);
 		await this.previews.dispose();
 		const failures: unknown[] = [];
+		for (const [id, prepared] of this.previewSources) {
+			try {
+				await this.repositories.cleanup(prepared.worktrees.runId);
+				this.previewSources.delete(id);
+			} catch (error) {
+				failures.push(error);
+			}
+		}
 		for (const [id, prepared] of this.prepared) {
 			try {
 				await this.repositories.cleanup(prepared.worktrees.runId);

@@ -16,6 +16,7 @@ import { prepareReview } from "./agent/prepare-review";
 import { PreparedComments } from "./agent/prepared-comments";
 import { ScreenContextStore } from "./agent/screen-context";
 import { assessSuggestedFix } from "./agent/suggestion-review";
+import type { ConversationTeamPorts } from "./agent/team-tools";
 import { createAgentComposition } from "./composition";
 import { LocalBrowserSurface } from "./composition/browser-surface";
 import { CodingProviderService } from "./composition/coding-provider-service";
@@ -35,6 +36,7 @@ import { SlackConnection } from "./composition/slack-connection";
 import { SlackReader } from "./composition/slack-reader";
 import { SlackWorkspaceCoordinator } from "./composition/slack-workspace";
 import { createTeamComposition } from "./composition/team";
+import { TeamShareIntentRegistry } from "./composition/team-share-intent";
 import { type VoiceCompositionOptions, createVoiceComposition } from "./composition/voice";
 import { WorkspaceCoordinator } from "./composition/workspace";
 import { createWorkspaceStore } from "./composition/workspace-store";
@@ -135,6 +137,36 @@ export const commentPresentations: CommentPresentationCoordinator =
 	});
 let prFixes: PRFixService | undefined;
 let foregroundPreview: ForegroundLocalPreview | undefined;
+let readPRAccount: (() => Promise<string | null>) | undefined;
+const teamSharePorts: ConversationTeamPorts = {
+	observe: async (sessionId, signal) => {
+		const account = await readPRAccount?.();
+		const accountKey = `${prWorkEpoch}:${account ?? "none"}`;
+		if (!account || getAttention().workspaceObscured(sessionId))
+			return { workspace: null, accountKey, pr: null };
+		const workspace = await getWorkspace().observe(sessionId, signal);
+		const primary = workspace.workspace.canvases.find(
+			(c) => c.id === workspace.workspace.primaryId
+		);
+		const id =
+			primary?.kind === "center" && primary.section === "fixes" ? primary.fixSource?.id : undefined;
+		if (!id) return { workspace, accountKey, pr: null };
+		const detail = await getPRFixes().detail(id);
+		const pr = await readCurrentPR(detail.fix.pr.id, signal);
+		return { workspace, accountKey, pr };
+	},
+	detail: async (id, signal) => {
+		signal.throwIfAborted();
+		const result = await getPRFixes().detail(id);
+		signal.throwIfAborted();
+		return result;
+	},
+	status: () => getTeam().status(),
+	shareIntent: (turn) => teamShareIntents.get(turn),
+	previewProposal: (input) => getTeam().previewProposal(input),
+	shareProposal: (input) => getTeam().shareProposal(input),
+};
+const teamShareIntents = new TeamShareIntentRegistry(teamSharePorts);
 let prApprovals: PRApprovals | undefined;
 export function getPRApprovals() {
 	if (closing || !prApprovals) throw new Error("PR delegations are unavailable");
@@ -150,6 +182,7 @@ let githubCredentialIdentity: string | undefined;
 function retirePRWork() {
 	prWorkEpoch++;
 	approvalConfirmation.clear();
+	teamShareIntents.clear();
 	void foregroundPreview?.invalidate().catch(() => {});
 	void prApprovals?.accountChanged().catch(() => {});
 	teamComposition?.abortApplications();
@@ -235,10 +268,12 @@ export const conversationService: ConversationService = new ConversationService(
 	{
 		onTiming: (event) => diagnostics?.record(event),
 		onUserTurn: (input) => {
+			teamShareIntents.capture(input);
 			commentPresentations.confirmation.acceptUserTurn(input, input.inputMode ?? "typed");
 			approvalConfirmation.acceptUserTurn(input);
 		},
 		onSessionRelease: (sessionId) => {
+			teamShareIntents.clear(sessionId);
 			commentPresentations.invalidate(sessionId);
 			approvalConfirmation.invalidate(sessionId);
 		},
@@ -248,6 +283,7 @@ export const conversationService: ConversationService = new ConversationService(
 			validate: (input, signal) => getAttention().validate(input, signal),
 		},
 		hub: {
+			team: teamSharePorts,
 			approvals: {
 				service: getPRApprovals,
 				confirmation: approvalConfirmation,
@@ -898,6 +934,7 @@ export async function initializeHub(
 		prAccount = { epoch, login: account.login, expires: Date.now() + 15_000 };
 		return account.login;
 	};
+	readPRAccount = currentPRAccount;
 	preparedComments = new PreparedComments({
 		getEpoch: () => prWorkEpoch,
 		getReview: async (prId, signal) => {
@@ -971,7 +1008,7 @@ export async function initializeHub(
 				);
 				if (!repo) throw new Error("Connect this repository before running its preview");
 				await getHub().readyRepository(repo.id);
-				const prepared = await getRuntime().prepareGitHub(pr, repo.localPath ?? undefined, signal);
+				const prepared = await getRuntime().preparePreviewGitHub(pr, signal);
 				signal.throwIfAborted();
 				return {
 					account,

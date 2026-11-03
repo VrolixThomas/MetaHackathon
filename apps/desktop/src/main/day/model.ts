@@ -7,7 +7,11 @@ import {
 	type ChatSource,
 	ChatSourceSchema,
 } from "../../shared/contracts/chat";
-import { DayActorSchema, DayWorkItemSchema } from "../../shared/contracts/day";
+import {
+	ClarificationPolicySchema,
+	DayActorSchema,
+	DayWorkItemSchema,
+} from "../../shared/contracts/day";
 
 const time = z.iso.datetime();
 export const sha256 = (value: string): string => createHash("sha256").update(value).digest("hex");
@@ -24,33 +28,45 @@ export const DayCaptureSchema = z.strictObject({
 	repositoryId: IdSchema.nullable().default(null),
 });
 export type DayCapture = z.input<typeof DayCaptureSchema>;
-export const DayOutboxSchema = z.strictObject({
-	clarification: z
-		.strictObject({
-			policyId: IdSchema,
-			policyRevision: z.int().positive(),
-			connectionId: IdSchema,
-			threadDigest: z.string(),
-		})
-		.optional(),
-	requestId: IdSchema,
-	source: ChatSourceSchema,
-	body: z.string().min(1).max(40000),
-	bodyDigest: z.string().regex(/^[a-f0-9]{64}$/),
-	draftRevision: z.int().positive(),
-	confirmedAt: time,
-	status: z.enum(["pending", "uncertain", "delivered"]),
-	superseded: z.boolean(),
-	attempts: z.int().nonnegative(),
-	lastAttemptAt: time.nullable(),
-	providerKey: z.string().min(1).max(500).nullable().default(null),
-	providerBindingDigest: z
-		.string()
-		.regex(/^[a-f0-9]{64}$/)
-		.nullable()
-		.default(null),
-	receipt: ChatReplyReceiptSchema.nullable(),
-});
+export const DayOutboxSchema = z
+	.strictObject({
+		clarification: z
+			.strictObject({
+				policyId: IdSchema,
+				policyRevision: z.int().positive(),
+				connectionId: IdSchema,
+				threadDigest: z.string(),
+				standingAuthority: ClarificationPolicySchema.shape.standingAuthority,
+			})
+			.optional(),
+		requestId: IdSchema,
+		source: ChatSourceSchema,
+		body: z.string().min(1).max(40000),
+		bodyDigest: z.string().regex(/^[a-f0-9]{64}$/),
+		draftRevision: z.int().positive(),
+		confirmedAt: time.nullable(),
+		status: z.enum(["pending", "uncertain", "delivered"]),
+		superseded: z.boolean(),
+		attempts: z.int().nonnegative(),
+		lastAttemptAt: time.nullable(),
+		providerKey: z.string().min(1).max(500).nullable().default(null),
+		providerBindingDigest: z
+			.string()
+			.regex(/^[a-f0-9]{64}$/)
+			.nullable()
+			.default(null),
+		receipt: ChatReplyReceiptSchema.nullable(),
+	})
+	.superRefine((outbox, ctx) => {
+		if ((outbox.confirmedAt === null) !== Boolean(outbox.clarification?.standingAuthority)) {
+			ctx.addIssue({
+				code: "custom",
+				path: ["confirmedAt"],
+				message:
+					"Standing authority requires a null per-thread confirmation; ordinary replies require confirmation.",
+			});
+		}
+	});
 export type DayOutbox = z.infer<typeof DayOutboxSchema>;
 export const DayRecordSchema = z.strictObject({
 	item: DayWorkItemSchema,

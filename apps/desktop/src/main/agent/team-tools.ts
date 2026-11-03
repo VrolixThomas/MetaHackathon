@@ -47,7 +47,9 @@ export interface ConversationTeamPorts {
 	detail(candidateId: string, signal: AbortSignal): Promise<PRFixDetail>;
 	status(): Promise<TeamStatus>;
 	/** Read a main-recorded ingress intent. Absent means no write authority. */
-	shareIntent(turn: ConversationTurnInput): ReviewedFixShareIntent | null;
+	shareIntent(
+		turn: ConversationTurnInput
+	): ReviewedFixShareIntent | null | Promise<ReviewedFixShareIntent | null>;
 	previewProposal(input: { candidateId: string; repository: string }): Promise<
 		z.infer<typeof TeamLocalPreviewSchema>
 	>;
@@ -184,7 +186,7 @@ export class ConversationTeamTools {
 		throwIfAborted(this.signal);
 		try {
 			if (name === "inspect_team_sharing") return TeamStatusSchema.parse(await this.ports.status());
-			const intent = this.ports.shareIntent(this.turn);
+			const intent = await this.ports.shareIntent(this.turn);
 			if (
 				!explicitReviewedFixShareRequested(this.turn.text) ||
 				!intent ||

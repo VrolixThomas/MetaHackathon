@@ -220,6 +220,10 @@ export class AttentionScheduler {
 			this.ports.focused?.() !== false
 		);
 	}
+	workspaceObscured(sessionId: string): boolean {
+		const presence = this.presence.get(sessionId);
+		return !presence || this.now() - presence.received > 5000 || presence.input.obscured;
+	}
 	poll(raw: unknown): Promise<{ claim: AttentionClaim | null }> {
 		const input = AttentionPresenceSchema.parse(raw);
 		const prior = this.presence.get(input.sessionId);
