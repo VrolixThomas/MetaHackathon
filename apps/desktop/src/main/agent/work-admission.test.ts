@@ -213,6 +213,95 @@ test("clear fresh start with exact ingress evidence retains admission and existi
 	assert.equal(gate.effects.length, 1);
 });
 
+// Controlled classifier responses exercise context/evidence wiring, not live model accuracy.
+test("fresh rehearsal request supplies current ingress, matching brief and explicitly absent planning", async () => {
+	const input = {
+		...turn,
+		text: "Build the MET-77 v1 now: persist on and off across refreshes and browser restarts on this device, no sync; keep the toggle usable in memory if storage is blocked. Keep the result local for review.",
+	};
+	const proposed = {
+		...operation,
+		brief:
+			"Implement MET-77 v1: persist both focus-mode on and off on this device across refreshes and browser restarts. No sync. If storage is blocked, keep the toggle usable in memory. Keep changes local for review.",
+	};
+	const target = { ticketIdentifier: "MET-77", repository: "owner/repo" };
+	const gate = new WorkAdmission();
+	const permission = await gate.authorize(
+		{
+			async *stream(request, signal) {
+				const context = JSON.parse(request.input[0]?.["content"] as string);
+				assert.deepEqual(context.currentUser, { generation: 1, text: input.text });
+				assert.deepEqual(context.users, [context.currentUser]);
+				assert.deepEqual(context.dialogue, []);
+				assert.equal(context.pendingQuestion, undefined);
+				assert.deepEqual(context.proposedOperation, proposed);
+				assert.deepEqual(context.observedTarget, target);
+				assert.match(request.instructions, /No prior planning/);
+				assert.match(request.instructions, /A mismatched brief is unresolved/);
+				yield* client(JSON.stringify({ ...accepted, request: context.currentUser })).stream(
+					request,
+					signal
+				);
+			},
+		},
+		[],
+		input,
+		proposed,
+		new AbortController().signal,
+		target
+	);
+	permission.begin("fresh-rehearsal-start");
+	assert.equal(gate.effects.length, 1);
+});
+
+for (const question of [
+	"Would you like me to open the browser?",
+	"Tab only or persist across restarts?",
+]) {
+	test(`self-contained current start can supersede remembered question evidence: ${question}`, async () => {
+		const gate = new WorkAdmission();
+		gate.observeReply(1, question);
+		const input = { ...turn, generation: 3 };
+		// The question survives history eviction. It is evidence, not a proven blocker.
+		const permission = await gate.authorize(
+			client(JSON.stringify({ ...accepted, request: { generation: 3, text: input.text } })),
+			[],
+			input,
+			operation,
+			new AbortController().signal
+		);
+		assert.deepEqual(gate.pendingQuestion, { generation: 1, text: question });
+		permission.begin("new-explicit-start");
+		assert.equal(gate.pendingQuestion, undefined);
+		assert.equal(gate.effects.length, 1);
+	});
+}
+
+test("current request evidence does not override classifier refusal for ambiguity or brief mismatch", async () => {
+	for (const text of [
+		"Start now.",
+		"Continue",
+		"As you",
+		"What default do you suggest?",
+		"Build tab-only persistence now, no storage across restarts.",
+	]) {
+		const gate = new WorkAdmission();
+		gate.observeReply(1, "Tab only or persist across restarts? I suggest across restarts.");
+		const input = { ...turn, generation: 2, text };
+		await refusal(
+			"scope-unresolved",
+			client(
+				JSON.stringify({
+					...accepted,
+					request: { generation: 2, text },
+					scope: "unresolved",
+				})
+			),
+			{ gate, input }
+		);
+	}
+});
+
 test("context limit is observable and cancellation is not mislabeled as a refusal", async () => {
 	await refusal("context-limit", client("unused"), {
 		input: { ...turn, text: "private".repeat(16000) },
