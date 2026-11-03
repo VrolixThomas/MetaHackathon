@@ -8,6 +8,7 @@ import {
 import type { PRApprovals } from "../work/pr-approvals";
 import type { ApprovalConfirmation } from "../work/pr-approvals/confirmation";
 import type { FunctionTool } from "./meta-client";
+import { parseToolArguments } from "./workspace-tools";
 
 export interface ApprovalToolPorts {
 	service(): PRApprovals;
@@ -53,7 +54,7 @@ export class ApprovalTools {
 	}
 	async execute(name: string, raw: string) {
 		this.signal.throwIfAborted();
-		const args = schemas[name as keyof typeof schemas].parse(JSON.parse(raw));
+		const args = parseToolArguments(schemas[name as keyof typeof schemas], raw);
 		const service = this.ports.service();
 		if (name === "inspect_pr_delegations") {
 			const policies = await service.list();

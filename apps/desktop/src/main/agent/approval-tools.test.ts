@@ -265,3 +265,80 @@ it("full voice ingress reaches a strict proposal checkpoint and requires drained
 		await h.service.dispose();
 	}
 });
+
+it("approval input errors expose bounded schema paths before service access, never supplied values", async () => {
+	const { WorkspaceArgumentError } = await import("./workspace-tools");
+	const h = harness([]);
+	let serviceReads = 0;
+	const tools = new ApprovalTools(
+		{
+			service: () => {
+				serviceReads++;
+				return h.service;
+			},
+			confirmation: new ApprovalConfirmation({ voice: () => false, narrate: async () => {} }),
+		},
+		turn,
+		new AbortController().signal
+	);
+	const secret = "UNTRUSTED_PRIVATE_VALUE";
+	const cases: [string, RegExp][] = [
+		[
+			JSON.stringify({ terms: { ...terms, conditions: [{ kind: "check", name: secret }] } }),
+			/terms\.conditions\.0\.appId: invalid_type; expected number/,
+		],
+		[
+			JSON.stringify({ terms: { ...terms, expiresAt: secret } }),
+			/terms\.expiresAt: invalid_format/,
+		],
+		[
+			JSON.stringify({ terms: { ...terms, action: secret } }),
+			/terms\.action: invalid_value; expected \["approve","notify"\]/,
+		],
+		[JSON.stringify({ terms, [secret]: secret }), /arguments: unrecognized_keys/],
+		[secret, /arguments: invalid_json/],
+	];
+	try {
+		for (const [raw, expected] of cases) {
+			await assert.rejects(tools.execute("draft_pr_delegation", raw), (error) => {
+				assert(error instanceof WorkspaceArgumentError);
+				assert.match(error.message, expected);
+				assert(!error.message.includes(secret));
+				return true;
+			});
+		}
+		assert.equal(serviceReads, 0);
+		assert.equal(h.control.reads, 0);
+		assert.equal(h.control.writes, 0);
+	} finally {
+		await h.service.dispose();
+	}
+});
+
+it("provider or post-validation errors never become repairable input failures", async () => {
+	const { WorkspaceArgumentError } = await import("./workspace-tools");
+	const { z } = await import("zod");
+	const h = harness([]);
+	h.provider.account = async () => z.never().parse("provider-controlled failure");
+	const tools = new ApprovalTools(
+		{
+			service: () => h.service,
+			confirmation: new ApprovalConfirmation({ voice: () => false, narrate: async () => {} }),
+		},
+		turn,
+		new AbortController().signal
+	);
+	try {
+		await assert.rejects(
+			tools.execute("draft_pr_delegation", JSON.stringify({ terms })),
+			(error) => {
+				assert(error instanceof z.ZodError);
+				assert(!(error instanceof WorkspaceArgumentError));
+				return true;
+			}
+		);
+		assert.equal(h.control.writes, 0);
+	} finally {
+		await h.service.dispose();
+	}
+});

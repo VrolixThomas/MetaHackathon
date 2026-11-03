@@ -4197,8 +4197,15 @@ test("explicit navigation answer stream rejects cancellation or content changes 
 });
 
 for (const selected of [false, true]) {
-	for (const attempted of ["draft", "unoffered-day", "unoffered-workspace"] as const) {
-		test(`${selected ? "review" : "workspace"}: conditional notify uses approvals; rejects ${attempted} outside offered tools`, async () => {
+	for (const attempted of [
+		"draft",
+		"repair",
+		"repeat-invalid",
+		"post-draft-error",
+		"unoffered-day",
+		"unoffered-workspace",
+	] as const) {
+		test(`${selected ? "review" : "workspace"}: conditional notify preserves gates for ${attempted}`, async () => {
 			const d = data();
 			const day = attachDay(d);
 			const w = workspace(d);
@@ -4207,15 +4214,32 @@ for (const selected of [false, true]) {
 				voice: () => false,
 				narrate: async () => {},
 			});
-			d.ports.approvals = { service: () => approval.service, confirmation };
+			let approvalAccesses = 0;
+			d.ports.approvals = {
+				service: () => {
+					approvalAccesses++;
+					return approval.service;
+				},
+				confirmation,
+			};
+			if (attempted === "post-draft-error") {
+				const update = approval.ports.update;
+				approval.ports.update = async (mutate) => {
+					await update(mutate);
+					throw new Error("Controlled post-write failure; do not replay");
+				};
+			}
+			const repairs = attempted === "repair" || attempted === "repeat-invalid";
 			const requests: MetaRequest[] = [];
 			const terms = {
 				action: "notify" as const,
 				expiresAt: new Date(approvalAt + 3600000).toISOString(),
 				conditions: [{ kind: "check", name: "demo-checks", appId: null }],
 			};
-			const output =
-				attempted === "draft"
+			const invalidTerms = { ...terms, conditions: [{ kind: "check", name: "demo-checks" }] };
+			const output = repairs
+				? call("draft_pr_delegation", { terms: invalidTerms }, "invalid")
+				: attempted === "draft" || attempted === "post-draft-error"
 					? call("draft_pr_delegation", { terms })
 					: attempted === "unoffered-day"
 						? call("day_capture_manual", { invalid: "must not reach parsing or execution" })
@@ -4240,6 +4264,17 @@ for (const selected of [false, true]) {
 				client(
 					[
 						[output],
+						...(repairs
+							? [
+									[
+										call(
+											"draft_pr_delegation",
+											{ terms: attempted === "repair" ? terms : invalidTerms },
+											"correction"
+										),
+									],
+								]
+							: []),
 						answer("Controlled draft awaits separate confirmation; monitoring is not active."),
 					],
 					requests
@@ -4283,8 +4318,19 @@ for (const selected of [false, true]) {
 				assert(!first.tools?.some((t) => t.name === "day_capture_manual"));
 				assert(!first.tools?.some((t) => t.name === "write_markdown_explanation"));
 				assert.match(first.instructions, /generic day_capture_manual.*cannot monitor PR checks/);
-				if (attempted === "draft") {
-					assert.equal(requests.length, 1);
+				if (repairs) {
+					const correction = required(requests[1]);
+					const receipt = correction.input.find((item) => item["type"] === "function_call_output");
+					const rejection = JSON.parse(String(receipt?.["output"]));
+					assert.equal(rejection.status, "rejected-before-execution");
+					assert.match(
+						rejection.message,
+						/terms\.conditions\.0\.appId: invalid_type; expected number/
+					);
+					assert.equal(approvalAccesses, attempted === "repair" ? 1 : 0);
+				}
+				if (attempted === "draft" || attempted === "repair") {
+					assert.equal(requests.length, repairs ? 2 : 1);
 					assert.equal(service.poll(identity(turn)).text, "");
 					assert.equal(approval.p.status, "draft");
 					assert.deepEqual(approval.p.terms, terms);
@@ -4292,12 +4338,16 @@ for (const selected of [false, true]) {
 					confirmation.presented(required(confirmation.pending(input.sessionId)));
 					await eventually(() => service.poll(identity(turn)).status !== "running");
 					assert.equal(service.poll(identity(turn)).status, "completed");
-					assert.equal(requests.length, 2);
+					assert.equal(requests.length, repairs ? 3 : 2);
 					assert.equal(approval.p.status, "draft");
 				} else {
 					assert.equal(service.poll(identity(turn)).status, "error");
-					assert.equal(requests.length, 1);
-					assert.equal(approval.state.approvalPolicies?.length ?? 0, 0);
+					assert.equal(requests.length, repairs ? 2 : 1);
+					assert.equal(approvalAccesses, attempted === "post-draft-error" ? 1 : 0);
+					assert.equal(
+						approval.state.approvalPolicies?.length ?? 0,
+						attempted === "post-draft-error" ? 1 : 0
+					);
 				}
 				assert.equal(approval.submitted.length, 0);
 				assert.equal(day.operations.length, 0);
