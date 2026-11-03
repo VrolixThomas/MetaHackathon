@@ -89,7 +89,11 @@ async function full(d) {
 		id: j.id,
 		headSha: j.headSha,
 	}));
-	await d.restartListening();
+	report.foregroundRestart = await d.restartConversation();
+	assert.notEqual(
+		report.foregroundRestart.beforeSessionId,
+		report.foregroundRestart.afterSessionId
+	);
 	await say("Open MET-77 and talk me through the product decision before we do anything.", {
 		id: "existing-work-planning",
 	});
@@ -103,7 +107,7 @@ async function full(d) {
 		"Fresh foreground conversation must not recreate or revise existing ready work"
 	);
 	report.assertions.push({
-		name: "Historical ready work survives fresh voice session without new admission",
+		name: "Historical ready work survives a new foreground conversation without new admission",
 		passed: true,
 	});
 

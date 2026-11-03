@@ -236,3 +236,31 @@ test("explicit planning continuation stays conversational without reopening exec
 		assert.equal(ticketDialogueMode(text, [{ role: "user", content: text }], context()), "tools");
 	}
 });
+
+test("a clear discussion-only preference does not need an earlier assistant question", () => {
+	const text = "Across browser restarts, on this device only. We are only discussing it.";
+	assert.equal(
+		ticketDialogueMode(
+			text,
+			[
+				{ role: "user", content: "Discuss the product choice." },
+				{ role: "assistant", content: "A recommendation and its tradeoff." },
+				{ role: "user", content: text },
+			],
+			context()
+		),
+		"answer"
+	);
+	assert.equal(
+		ticketDialogueMode(
+			text,
+			[
+				{ role: "user", content: "Start work on this ticket." },
+				{ role: "assistant", content: "Which lifetime?" },
+				{ role: "user", content: text },
+			],
+			context()
+		),
+		"tools"
+	);
+});

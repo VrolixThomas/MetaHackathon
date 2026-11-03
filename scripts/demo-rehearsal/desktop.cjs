@@ -182,24 +182,28 @@ async function startListening() {
 	});
 	await wait("synthetic mic", () => js("window.__rehearsal.read().tracks.some(s=>s==='live')"));
 }
-async function restartListening() {
-	if (textDiagnostics) {
-		const prior = await js("document.querySelector('main.conversation-main')?.dataset.sessionId");
-		win.webContents.reload();
-		await wait("fresh typed session after actual renderer reload", async () => {
-			if (win.webContents.isLoadingMainFrame()) return false;
-			const next = await js("document.querySelector('main.conversation-main')?.dataset.sessionId");
-			return next && next !== prior;
-		});
-		return;
+async function restartConversation() {
+	const prior = await js("document.querySelector('main.conversation-main')?.dataset.sessionId");
+	if (!textDiagnostics) {
+		await js(
+			"[...document.querySelectorAll('dialog[open] button')].find(e=>e.getAttribute('aria-label')?.startsWith('Close '))?.click()"
+		);
+		await js("document.querySelector('button[aria-label=\"End conversation\"]').click()");
+		await wait("hands-free ended", async () => (await ui()).voice === "false");
 	}
-	await js(
-		"[...document.querySelectorAll('dialog[open] button')].find(e=>e.getAttribute('aria-label')?.startsWith('Close '))?.click()"
-	);
-	await js("document.querySelector('button[aria-label=\"End conversation\"]').click()");
-	await wait("hands-free ended", async () => (await ui()).voice === "false");
-	await startListening();
+	win.webContents.reload();
+	const next = await wait("fresh conversation after actual renderer reload", async () => {
+		if (win.webContents.isLoadingMainFrame()) return false;
+		const id = await js("document.querySelector('main.conversation-main')?.dataset.sessionId");
+		return id && id !== prior ? id : false;
+	});
+	if (!textDiagnostics) {
+		await js(`(${installSyntheticInput.toString()})()`);
+		await startListening();
+	}
+	return { beforeSessionId: prior, afterSessionId: next, rendererReload: true };
 }
+
 async function say(text, options = {}) {
 	if (textDiagnostics) return sayTyped(text, options);
 	const id = options.id ?? `turn-${report.turns.length + 1}`;
@@ -690,7 +694,7 @@ async function main() {
 				button,
 				owned,
 				previewUrl,
-				restartListening,
+				restartConversation,
 			});
 		else if (process.argv.includes("--suite=slack"))
 			await slack({ say, rpc, ui, state, fixture, report, assert, js, wait, button, owned });
@@ -733,7 +737,7 @@ async function main() {
 				button,
 				owned,
 				previewUrl,
-				restartListening,
+				restartConversation,
 			});
 		report.status = "completed";
 		save();

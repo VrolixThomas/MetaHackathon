@@ -22,7 +22,7 @@ const ticketContext = z.object({
 	target: z.object({ id: z.string(), displayed: z.boolean() }),
 });
 const discussion =
-	/\b(?:explain|talk me through|discuss|tradeoffs?|trade-offs?|design decisions?|recommend|why|what (?:does|should|design|choice)|how (?:should|would))\b/i;
+	/\b(?:explain|talk me through|discuss(?:ion|ing)?|tradeoffs?|trade-offs?|design decisions?|recommend|why|what (?:does|should|design|choice)|how (?:should|would))\b/i;
 // Conservative capability selection, not permission/consent classification. Unknown
 // requests keep the ordinary tool loop. Explicit operations always keep their gates.
 const operation =
