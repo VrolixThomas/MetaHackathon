@@ -826,9 +826,7 @@ export class ConversationService {
 						await hub.execute("day_confirm_clarification", JSON.stringify(dayConfirmation));
 						session.dayProposal = undefined;
 						throwIfAborted(signal);
-						onText(
-							"I’ll ask in the original Slack thread, within the limits you approved."
-						);
+						onText("I’ll ask in the original Slack thread, within the limits you approved.");
 					} else {
 						const primary = observed?.workspace.canvases.find(
 							(canvas) => canvas.id === observed.workspace.primaryId
