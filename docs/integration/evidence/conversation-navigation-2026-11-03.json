@@ -1,0 +1,110 @@
+{
+	"date": "2026-11-03",
+	"sourceCommit": "58041386c409ce413f456380563794255be2018b",
+	"sourceDirty": false,
+	"scope": "Conversational topic navigation, manual browsing continuity, explicit interruption and review latency",
+	"liveRehearsal": {
+		"status": "completed",
+		"suite": "navigation",
+		"reportPath": "/private/var/folders/xh/nhz9_pd13qnd40l0y88b51c80000gp/T/musefocus-rehearsal-koz0P0/report.json",
+		"actualModel": true,
+		"actualElevenLabs": true,
+		"actualElectronIPCAndRTC": true,
+		"scriptedASR": true,
+		"physicalMicrophoneVerified": false,
+		"sourceProviders": "controlled GitHub/Linear/Slack",
+		"realExternalWrites": false,
+		"assertions": [
+			{
+				"name": "Exact spoken ticket/PR navigation; manual next-file preserves speech/listening; explicit Stop still interrupts",
+				"passed": true
+			}
+		],
+		"manualFileNavigation": {
+			"from": "public/source-link.mjs",
+			"to": "public/app.mjs",
+			"durationMs": 473
+		},
+		"interruptShortcut": {
+			"key": "Command+Period",
+			"keptListening": true
+		},
+		"timings": [
+			{
+				"turn": "ticket-navigation",
+				"textAcceptedToFirstAudioMs": 516,
+				"modelRounds": 0
+			},
+			{
+				"turn": "ticket-design",
+				"textAcceptedToFirstAudioMs": 4309,
+				"modelRounds": 1
+			},
+			{
+				"turn": "topic-pr-three",
+				"textAcceptedToFirstAudioMs": 3257,
+				"modelRounds": 1
+			},
+			{
+				"turn": "open-pr-three",
+				"textAcceptedToFirstAudioMs": 817,
+				"modelRounds": 0
+			},
+			{
+				"turn": "browse-during-reply",
+				"textAcceptedToFirstAudioMs": 3424,
+				"modelRounds": 1
+			},
+			{
+				"turn": "shortcut-target",
+				"textAcceptedToFirstAudioMs": 3511,
+				"modelRounds": 1
+			},
+			{
+				"turn": "explicit-stop-target",
+				"textAcceptedToFirstAudioMs": 2725,
+				"modelRounds": 1
+			},
+			{
+				"turn": "stop",
+				"textAcceptedToFirstAudioMs": null,
+				"modelRounds": 0
+			}
+		]
+	},
+	"before": {
+		"navigationReport": "/private/var/folders/xh/nhz9_pd13qnd40l0y88b51c80000gp/T/musefocus-rehearsal-Q0OyMH/report.json",
+		"manualNavigationInterruptedNarration": true,
+		"boardFirstAudioMs": 4199,
+		"tradeoffReply": {
+			"firstAudioMs": 14379,
+			"modelRounds": 3
+		}
+	},
+	"liveGitHubReadProbe": {
+		"repository": "VrolixThomas/MuseFocusDemo",
+		"prNumber": 3,
+		"path": "public/app.mjs",
+		"coldMs": 1811,
+		"coldRequests": 5,
+		"cachedMs": [460, 486],
+		"cachedRequests": 1,
+		"freshAuthorizationAndRevisionChecks": true,
+		"scope": "component measurement, not full UI navigation"
+	},
+	"checks": {
+		"typeCheck": "passed",
+		"lint": "passed",
+		"handsFreeNative": "passed",
+		"workspaceNative": "passed",
+		"commentConversationNative": "passed",
+		"focusedRegressionTests": "passed in isolated test-file processes",
+		"nativeCheckScope": "Hands-free/workspace ran before final agent-only explanation/routing changes; final live navigation and comment-conversation ran the final production source."
+	},
+	"limitations": [
+		"Timing samples are individual runs, not a provider-latency guarantee.",
+		"Live microphone/ASR latency remains unmeasured after these changes.",
+		"The navigation suite is not full-demo acceptance.",
+		"Changes are local on hack/integration, not merged or released."
+	]
+}
