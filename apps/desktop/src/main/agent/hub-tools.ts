@@ -507,13 +507,17 @@ export class ConversationHubTools {
 		// ticket board only when unique; it is never a fabricated provider ID.
 		const mentioned =
 			this.latest?.tickets.filter((ticket) => {
-				const words = this.turn.text.toUpperCase().match(/[A-Z]+-?\d+|\d+/g) ?? [];
+				const words =
+					this.turn.text
+						.toUpperCase()
+						.replace(/\bTICKET(?=\d)/g, "TICKET ")
+						.match(/[A-Z]+-?\d+|\d+/g) ?? [];
 				return words.some(
 					(word) =>
 						word.replace(/[- ]/g, "") === ticket.identifier.replace(/-/g, "").toUpperCase() ||
 						(canvas?.kind === "center" &&
 							canvas.section === "tickets" &&
-							/\bticket\b/i.test(this.turn.text) &&
+							/\bticket(?:\b|\d)/i.test(this.turn.text) &&
 							word === ticket.identifier.split("-").at(-1))
 				);
 			}) ?? [];

@@ -877,7 +877,7 @@ export class ConversationService {
 						if (
 							effectivePrId &&
 							reviewPorts &&
-							!explicitWorkspaceNavigation(turn.input.text, observed)
+							!explicitWorkspaceNavigation(turn.input.text, observed, history)
 						)
 							await runReview(effectivePrId, history);
 						else if (workspace || hub) await runWorkspace(history, observed);

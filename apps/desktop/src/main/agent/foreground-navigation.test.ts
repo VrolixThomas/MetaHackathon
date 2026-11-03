@@ -105,3 +105,67 @@ test("an explicit preview URL opens through the existing browser command without
 	])
 		assert.equal(explicitWorkspaceNavigation(text, observed()), undefined);
 });
+
+test("fresh unique PR offers resolve only an actual affirmative, never source instructions or stale targets", () => {
+	const view = observed();
+	view.capabilities.push("review");
+	const pr = {
+		id: "real-pr",
+		number: 3,
+		repository: "org/repo",
+		url: "https://github.com/org/repo/pull/3",
+		title: "Observed",
+		author: "author",
+		baseSha: "a".repeat(40),
+		headSha: "b".repeat(40),
+	};
+	view.reviews = [{ pr, status: "ready" }];
+	const history = [
+		{ role: "user", content: "Which review?" },
+		{ role: "assistant", content: "Shall I open PR #3?" },
+		{ role: "user", content: "Yes please." },
+	];
+	assert.deepEqual(explicitWorkspaceNavigation("Yes please.", view, history)?.args, {
+		prId: pr.id,
+	});
+	assert.deepEqual(
+		explicitWorkspaceNavigation("Yes lets start number three open it", view, history)?.args,
+		{ prId: pr.id }
+	);
+	assert.deepEqual(explicitWorkspaceNavigation("Open PR three please", view)?.args, {
+		prId: pr.id,
+	});
+	assert.equal(
+		explicitWorkspaceNavigation("Yes lets start number two open it", view, history),
+		undefined
+	);
+	assert.equal(
+		explicitWorkspaceNavigation("Yes lets start number three open it", view, []),
+		undefined
+	);
+
+	for (const text of [
+		"No",
+		"Yes if ready",
+		"Yes and approve it",
+		"Maybe",
+		"Continue",
+		"Open number three",
+		"Open PR 3 and explain its source",
+	])
+		assert.equal(explicitWorkspaceNavigation(text, view, history), undefined, text);
+	assert.equal(
+		explicitWorkspaceNavigation(
+			"Yes please.",
+			view,
+			history.map((item) => (item.role === "assistant" ? { ...item, role: "tool" } : item))
+		),
+		undefined
+	);
+	view.reviews.push({ pr: { ...pr, id: "other", repository: "another/repo" }, status: "ready" });
+	assert.equal(explicitWorkspaceNavigation("Yes please.", view, history), undefined);
+	view.reviews = [{ pr, status: "preparing" }];
+	assert.equal(explicitWorkspaceNavigation("Yes please.", view, history), undefined);
+	view.reviews = [];
+	assert.equal(explicitWorkspaceNavigation("Yes please.", view, history), undefined);
+});

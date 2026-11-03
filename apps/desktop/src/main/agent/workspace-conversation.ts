@@ -85,7 +85,9 @@ export async function runWorkspaceConversation(
 				? initialObservation
 				: await trace.measure("workspace-observe", signal, async () => workspace?.observe());
 		const direct =
-			round === 0 && workspace ? explicitWorkspaceNavigation(input.text, observation) : undefined;
+			round === 0 && workspace
+				? explicitWorkspaceNavigation(input.text, observation, history)
+				: undefined;
 		if (direct && workspace) {
 			const args = JSON.stringify(direct.args);
 			const result = await trace.measure(direct.tool, signal, () =>
@@ -98,14 +100,21 @@ export async function runWorkspaceConversation(
 					? primary?.kind === "center" &&
 						primary.section === "completed" &&
 						primary.selectedId === direct.jobId
-					: direct.kind === "tickets"
-						? primary?.kind === "center" && primary.section === "tickets"
-						: primary?.kind === "browser" &&
-							result.browser?.presented &&
-							(direct.kind === "browser" ||
-								(direct.kind === "phone"
-									? result.browser.viewport.width === 390 && result.browser.viewport.height === 844
-									: result.workspace.browser?.viewportMode === "desktop"));
+					: direct.kind === "review"
+						? result.workspace.review.prId === direct.prId && primary?.kind === "review"
+						: direct.kind === "ticket"
+							? primary?.kind === "center" &&
+								primary.section === "tickets" &&
+								primary.selectedId === direct.selectedId
+							: direct.kind === "tickets"
+								? primary?.kind === "center" && primary.section === "tickets"
+								: primary?.kind === "browser" &&
+									result.browser?.presented &&
+									(direct.kind === "browser" ||
+										(direct.kind === "phone"
+											? result.browser.viewport.width === 390 &&
+												result.browser.viewport.height === 844
+											: result.workspace.browser?.viewportMode === "desktop"));
 			if (!displayed)
 				throw new GuidedReviewError("The requested view was not confirmed as displayed.");
 			const callId = `${input.requestId}:explicit-workspace-navigation`;

@@ -4138,7 +4138,6 @@ test("strict imperative shortcut leaves questions, negation, conditionals, compo
 	for (const text of [
 		"Why should we open MET-77?",
 		"Should we open MET-77 and discuss it?",
-		"Open MET-77?",
 		"Don't open MET-77",
 		"Do not open MET-77; explain it",
 		"If it is ready, open MET-77",
@@ -4153,7 +4152,6 @@ test("strict imperative shortcut leaves questions, negation, conditionals, compo
 		"Open MET-77 and explain the source",
 		"Open MET-77 and inspect the implementation",
 		"Open MET-78",
-		"Open 77",
 		"The ticket says: Open MET-77",
 		'"Open MET-77"',
 		"Open MET-77 and discuss it without opening anything",
@@ -4179,7 +4177,9 @@ test("strict imperative shortcut leaves questions, negation, conditionals, compo
 		);
 		try {
 			service.start({ ...input, text });
-			await eventually(() => service.poll(identity()).status !== "running");
+			await eventually(() => service.poll(identity()).status !== "running").catch((error) => {
+				throw new Error(text, { cause: error });
+			});
 			assert.equal(service.poll(identity()).status, "completed", text);
 			assert.equal(requests.length, 1, text);
 			assert.equal(w.commands.length, 0, text);
@@ -4265,11 +4265,7 @@ test("explicit navigation shortcut requires one observed target across panes and
 					? 1
 					: 0
 			);
-			assert.equal(requests.length, 1);
-			if (scenario === "plain-open") {
-				assert.deepEqual(requests[0]?.tools, []);
-				assert.match(required(requests[0]).instructions, /Acknowledge it in one brief sentence/);
-			}
+			assert.equal(requests.length, scenario === "plain-open" ? 0 : 1);
 			assert.equal(d.operations.length, 0);
 		} finally {
 			w.settle();
@@ -5622,3 +5618,111 @@ test("an explicit completed-ticket request opens the actual unique saved job bef
 		await service.dispose();
 	}
 });
+
+for (const text of [
+	"Open ticket board for me?",
+	"Hello lets start on my tickets",
+	"Open 77",
+	"Could you open my tickets please?",
+	"Please open ticket77?",
+	"Okay lets zoom into ticket77 can you talk me through design tradeoff",
+]) {
+	test(`transcript navigation waits for display and avoids redundant calls: ${text}`, async () => {
+		const d = data();
+		const w = ticketBoard(d);
+		const requests: MetaRequest[] = [];
+		const discussion = text.includes("tradeoff");
+		const service = new ConversationService(
+			client(discussion ? [answer("Controlled tradeoff explanation.")] : [], requests),
+			{ hub: d.ports, workspace: w.ports }
+		);
+		try {
+			service.start({ ...input, text });
+			await eventually(() => w.commands.length === 1);
+			assert.equal(requests.length, 0);
+			assert.equal(service.poll(identity()).text, "");
+			assert.deepEqual(w.commands[0], {
+				kind: "open-center",
+				section: "tickets",
+				...(text.includes("77") ? { selectedId: d.ticket.id } : {}),
+			});
+			w.settle();
+			await eventually(() => service.poll(identity()).status !== "running");
+			assert.equal(service.poll(identity()).status, "completed");
+			assert.equal(requests.length, discussion ? 1 : 0);
+			assert.equal(d.operations.length, 0);
+		} finally {
+			w.settle();
+			await service.dispose();
+		}
+	});
+}
+
+for (const outcome of [
+	"applied",
+	"cancelled",
+	"wrong-target",
+	"offered",
+	"offered-named",
+] as const) {
+	test(`direct observed PR opens actual review with zero model calls: ${outcome}`, async () => {
+		const d = data();
+		const w = workspace(d);
+		const requests: MetaRequest[] = [];
+		const pr = { ...required(d.hub.reviews[0]).pr, number: 3 };
+		const offered = outcome.startsWith("offered");
+		w.observation.reviews = [{ pr, status: "ready" }];
+		w.observation.capabilities.push("review");
+		const execute = w.ports.execute;
+		w.ports.execute = async (...args) => {
+			const result = await execute(...args);
+			if (outcome !== "wrong-target") {
+				result.workspace.canvases = [
+					{ id: "review", kind: "review", title: "Review", revision: 1 },
+				];
+				result.workspace.primaryId = "review";
+				result.workspace.review = { sequence: 1, mode: "review", prId: pr.id };
+			}
+			return result;
+		};
+		const service = new ConversationService(
+			client(offered ? [answer(`Shall I open PR #${pr.number}?`)] : [], requests),
+			{ hub: d.ports, workspace: w.ports }
+		);
+		let turn = { ...input, text: `Could you open PR ${pr.number} for me?` };
+		if (offered) {
+			service.start({ ...input, text: "Which review can we open?" });
+			await eventually(() => service.poll(identity(turn)).status !== "running");
+			turn = {
+				...input,
+				generation: 2,
+				requestId: "accept-offer",
+				turnId: "accept-offer",
+				text: outcome === "offered-named" ? "Yes lets start number three open it" : "Yes please.",
+			};
+		}
+		try {
+			service.start(turn);
+			await eventually(() => w.commands.length === 1);
+			assert.deepEqual(w.commands[0], { kind: "show-review", prId: pr.id });
+			assert.equal(service.poll(identity(turn)).text, "");
+			if (outcome === "cancelled")
+				service.cancel({ ...identity(), requestId: "cancel-pr", reason: "user" });
+			w.settle();
+			await eventually(() => service.poll(identity(turn)).status !== "running");
+			assert.equal(
+				service.poll(identity(turn)).status,
+				outcome === "applied" || offered
+					? "completed"
+					: outcome === "cancelled"
+						? "cancelled"
+						: "error"
+			);
+			assert.equal(requests.length, offered ? 1 : 0);
+			if (outcome !== "applied" && !offered) assert.equal(service.poll(identity(turn)).text, "");
+		} finally {
+			w.settle();
+			await service.dispose();
+		}
+	});
+}

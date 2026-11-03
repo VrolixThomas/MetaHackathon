@@ -8,6 +8,7 @@ Existing ready work is context, not acceptance, publication authority or proof o
 
 import { z } from "zod";
 import type { WorkspaceObservation } from "../../shared/contracts";
+import { ticketNavigationTarget } from "./foreground-navigation";
 import type { MetaItem } from "./meta-client";
 
 /** No unavailable tool manuals in the already selected, tools-free answer phase.
@@ -22,7 +23,7 @@ const ticketContext = z.object({
 	target: z.object({ id: z.string(), displayed: z.boolean() }),
 });
 const discussion =
-	/\b(?:explain|talk me through|discuss(?:ion|ing)?|tradeoffs?|trade-offs?|design decisions?|recommend|why|what (?:does|should|design|choice)|how (?:should|would))\b/i;
+	/\b(?:explain|talk me through|discuss(?:ion|ing)?|tradeoffs?|trade-offs?|design tradeoffs?|design trade-offs?|design decisions?|recommend|why|what (?:does|should|design|choice)|how (?:should|would))\b/i;
 // Conservative capability selection, not permission/consent classification. Unknown
 // requests keep the ordinary tool loop. Explicit operations always keep their gates.
 const operation =
@@ -105,7 +106,7 @@ export function ticketDialogueMode(
 		)
 	)
 		return "tools";
-	const identifiers = text.match(/\b[a-z]+-?\d+\b/gi) ?? [];
+	const identifiers = text.replace(/\bticket(?=\d)/gi, "ticket ").match(/\b[a-z]+-?\d+\b/gi) ?? [];
 	const sameTarget = identifiers.every(
 		(id) =>
 			id.replace(/-/g, "").toUpperCase() ===
@@ -187,24 +188,24 @@ export function explicitTicketNavigation(
 	observation: WorkspaceObservation | undefined,
 	context: unknown
 ): { selectedId: string; discussion: boolean } | undefined {
-	const match = /^(?:please\s+)?open\s+(?:ticket\s+)?([a-z]+-?\d+)\b(.*)$/i.exec(text.trim());
-	if (!match || !observation?.capabilities.includes("center")) return undefined;
-	const rest = match[2]?.trim() ?? "";
+	const targetRequest = ticketNavigationTarget(text, observation);
+	if (!targetRequest) return undefined;
+	const rest = targetRequest.rest;
 	const planning = !/^[.!]?$/.test(rest);
 	if (planning) {
-		if (!/^(?:and\s+|[.!]\s*)/i.test(rest)) return undefined;
+		if (!/^(?:and\s+|can you\s+|[.!]\s*)/i.test(rest)) return undefined;
 		// Strip only these non-action planning clauses, never a general permission,
 		// condition or instruction. Every remaining sentence must be recognized.
 		const clauses = rest
 			.replace(/\bbefore we (?:start|change anything|do anything)(?=\s*[,.!?]|\s*$)/gi, "")
-			.replace(/^(?:and\s+|[.!]\s*)/i, "")
+			.replace(/^(?:and\s+|can you\s+|[.!]\s*)/i, "")
 			.split(/[.!?]/)
 			.map((clause) => clause.trim().replace(/^,\s*|\s*,$/g, ""))
 			.filter(Boolean);
 		if (
 			!clauses.length ||
 			!clauses.every((clause) =>
-				/^(?:(?:discuss|explain|talk me through)\s+(?:it|(?:(?:the|its)\s+)?(?:product\s+)?(?:design(?: decisions?)?|decisions?|tradeoffs?|trade-offs?|choice|ticket))|what do you recommend|what should I be thinking about)$/i.test(
+				/^(?:(?:discuss|explain|talk me through)\s+(?:it|(?:(?:the|its)\s+)?(?:product\s+)?(?:design(?: decisions?)?|decisions?|tradeoffs?|trade-offs?|design tradeoffs?|design trade-offs?|choice|ticket))|what do you recommend|what should I be thinking about)$/i.test(
 					clause
 				)
 			) ||
@@ -212,17 +213,7 @@ export function explicitTicketNavigation(
 		)
 			return undefined;
 	}
-	const ids = new Set(
-		(text.match(/\b[a-z]+-?\d+\b/gi) ?? []).map((id) => id.replace(/-/g, "").toUpperCase())
-	);
-	if (ids.size !== 1) return undefined;
-	const identifier = match[1]?.replace(/-/g, "").toUpperCase();
-	const targets =
-		observation.hub?.tickets.filter(
-			(ticket) => ticket.identifier.replace(/-/g, "").toUpperCase() === identifier
-		) ?? [];
-	if (targets.length !== 1) return undefined;
-	const target = targets[0];
+	const target = observation?.hub?.tickets.find((ticket) => ticket.id === targetRequest.selectedId);
 	const parsed = ticketContext.safeParse(context);
 	if (
 		!target ||
