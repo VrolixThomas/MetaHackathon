@@ -165,7 +165,9 @@ export async function runWorkspaceConversation(
 			continue;
 		}
 		const retained = boundedToolHistory(history);
+		const pendingDelegation = profile.has("approvals") ? await hub?.approvalContext() : undefined;
 		const context = {
+			...(pendingDelegation ? { pendingDelegation } : {}),
 			...(observation
 				? {
 						actualWorkspace: {
@@ -365,7 +367,7 @@ export async function runWorkspaceConversation(
 					call_id: call.call_id,
 					output: JSON.stringify(output),
 				});
-				const handoff = hub.feedbackHandoff;
+				const handoff = hub.foregroundHandoff;
 				if (handoff) {
 					throwIfAborted(signal);
 					await onText(handoff.acknowledgement);

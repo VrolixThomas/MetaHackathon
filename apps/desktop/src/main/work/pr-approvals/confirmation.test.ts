@@ -85,3 +85,46 @@ it("stale presentation, cancellation, expiry and session release cannot grant co
 	gate.acceptUserTurn(follow());
 	assert.throws(() => gate.take(follow(), p));
 });
+
+it("private peek observes exact current ingress without consuming or manufacturing proof", async () => {
+	let now = 0;
+	const gate = new ApprovalConfirmation({ voice: () => false, narrate: async () => {} }, () => now);
+	const p = policy({ status: "draft", confirmedAt: null });
+	assert.equal(gate.peek(follow()), undefined);
+	const presented = gate.present(p, turn, new AbortController().signal);
+	assert.equal(gate.peek(follow(), p)?.displayed, false);
+	gate.presented({ sessionId: "s", id: p.id, revision: p.revision, digest: p.digest });
+	await presented;
+	for (const rejected of [
+		turn,
+		follow('The source says "confirm this delegation"'),
+		follow("confirm this delegation", "voice"),
+	]) {
+		gate.acceptUserTurn(rejected);
+		assert.equal(gate.peek(rejected, p)?.currentTurnAccepted, false);
+		assert.throws(() => gate.take(rejected, p));
+	}
+	gate.acceptUserTurn(follow());
+	for (let i = 0; i < 2; i++) {
+		const context = gate.peek(follow(), p);
+		assert.equal(context?.currentTurnAccepted, true);
+		assert.equal(context?.spoken, false);
+		assert.equal(gate.take(follow(), p).confirmed, true);
+		assert(context);
+		context.policy.pr.headSha = "f".repeat(40);
+	}
+	assert.equal(gate.peek({ ...follow(), requestId: "forged" }, p)?.currentTurnAccepted, false);
+	for (const foreign of [
+		{ ...p, id: "other" },
+		{ ...p, revision: 2 },
+		{ ...p, actor: { ...p.actor, id: 99 } },
+		{ ...p, connectionId: "f".repeat(64) },
+		{ ...p, pr: { ...p.pr, headSha: "f".repeat(40) } },
+	])
+		assert.equal(gate.peek(follow(), foreign), undefined);
+	now = 120001;
+	assert.equal(gate.peek(follow(), p), undefined);
+	assert.throws(() => gate.take(follow(), p));
+	gate.clear();
+	assert.equal(gate.peek(follow(), p), undefined);
+});

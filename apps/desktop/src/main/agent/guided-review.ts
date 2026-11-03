@@ -326,6 +326,7 @@ export async function runGuidedReview(
 		const hub = workflow?.hub;
 		if (snapshot.review) hub?.allowReview(snapshot.review.pr);
 		await hub?.observe(input.prId, observation?.hub);
+		const pendingDelegation = profile.has("approvals") ? await hub?.approvalContext() : undefined;
 		const modelInput = reviewModelInput(
 			history,
 			questionIndex,
@@ -337,6 +338,7 @@ export async function runGuidedReview(
 			},
 			{
 				...profile.context(hub?.context),
+				...(pendingDelegation ? { pendingDelegation } : {}),
 				...(profile.candidateWorkflow
 					? { currentContext: await hub?.currentContext(observation) }
 					: {}),
@@ -489,7 +491,7 @@ export async function runGuidedReview(
 					call_id: call.call_id,
 					output: JSON.stringify(result),
 				});
-				const handoff = hub.feedbackHandoff;
+				const handoff = hub.foregroundHandoff;
 				if (handoff) {
 					throwIfAborted(signal);
 					await emitText(handoff.acknowledgement);

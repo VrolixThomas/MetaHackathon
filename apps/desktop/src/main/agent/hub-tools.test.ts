@@ -4524,7 +4524,7 @@ for (const selected of [false, true]) {
 					assert.equal(service.poll(identity(turn)).status, "completed");
 					assert.equal(
 						requests.length,
-						(repairs || attempted === "inspect-empty" ? 3 : 2) + Number(noop)
+						(repairs || attempted === "inspect-empty" ? 2 : 1) + Number(noop)
 					);
 					assert.equal(approval.p.status, "draft");
 				} else {
@@ -4826,7 +4826,7 @@ for (const cancelled of [false, true]) {
 			}
 			await eventually(() => service.poll(identity()).status !== "running");
 			assert.equal(service.poll(identity()).status, cancelled ? "cancelled" : "completed");
-			assert.equal(requests.length, cancelled ? 1 : 3);
+			assert.equal(requests.length, cancelled ? 1 : 2);
 			assert(
 				requests.every((request) => request.instructions.startsWith(SOURCE_WORKFLOW_INSTRUCTIONS))
 			);
@@ -5057,3 +5057,168 @@ test("candidate prefill is read-only, preserves ambiguous actual IDs and withhol
 		selectedId: fix.id,
 	});
 });
+
+for (const inputMode of ["typed", "voice"] as const) {
+	for (const selected of [false, true]) {
+		test(`${inputMode} ${selected ? "review" : "workspace"}: canonical draft and new-turn confirmation each finish from receipts`, async () => {
+			const d = data();
+			const w = workspace(d);
+			const approval = approvalHarness([]);
+			const prepared: PreparedReview = {
+				id: "review",
+				version: 1,
+				pr: approvalPR,
+				createdAt: time,
+				summary: "Inferred",
+				orderRationale: "Inferred",
+				coverage: "complete",
+				evidence: "inferred-from-github",
+				files: [
+					{ path: "changed.ts", reason: "Inferred", summary: "Inferred", suggestedComments: [] },
+				],
+			};
+			if (selected) {
+				w.observation.workspace.canvases = [
+					{ id: "review", kind: "review", title: "Review", revision: 1 },
+				];
+				w.observation.workspace.primaryId = "review";
+				w.observation.workspace.review = { sequence: 0, mode: "review", prId: approvalPR.id };
+			}
+			const requests: MetaRequest[] = [];
+			const terms = {
+				action: "notify",
+				expiresAt: new Date(approvalAt + 3600000).toISOString(),
+				conditions: [{ kind: "check", name: "demo-checks" }],
+			};
+			const confirmation = new ApprovalConfirmation({
+				voice: (turn) => turn.inputMode === "voice",
+				narrate: (turn, id, text, signal) => service.narrateProposal(turn, id, text, signal),
+			});
+			d.ports.approvals = { service: () => approval.service, confirmation };
+			const service = new ConversationService(
+				{
+					async *stream(request) {
+						requests.push(structuredClone(request));
+						assert(requests.length <= 2, "No post-receipt model discovery round");
+						const content = required(request.input.at(-1))["content"] as { text: string }[];
+						const packet = JSON.parse(required(content[0]).text);
+						const pending = selected
+							? packet.actualHub.pendingDelegation
+							: packet.pendingDelegation;
+						let output: MetaItem[];
+						if (requests.length === 1) {
+							assert.equal(pending, undefined);
+							output = [call("draft_pr_delegation", { terms })];
+						} else {
+							assert.equal(pending.id, approval.p.id);
+							assert.equal(pending.revision, approval.p.revision);
+							assert.equal(pending.digest, approval.p.digest);
+							assert.equal(pending.status, "draft");
+							assert.equal(pending.currentTurnAccepted, true);
+							assert.equal(pending.displayed, true);
+							assert.equal(pending.spoken, inputMode === "voice");
+							assert(request.tools?.some((tool) => tool.name === "confirm_pr_delegation"));
+							assert(!request.tools?.some((tool) => tool.name === "inspect_ticket"));
+							output = [
+								call("confirm_pr_delegation", { id: pending.id, revision: pending.revision }),
+							];
+						}
+						yield {
+							type: "completed",
+							response: { id: "controlled", model: "muse-spark-1.3", output },
+						};
+					},
+				},
+				{
+					hub: d.ports,
+					workspace: w.ports,
+					narrationCheckpoints: true,
+					onUserTurn: (turn) => confirmation.acceptUserTurn(turn),
+					...(selected
+						? {
+								review: {
+									getReady: async () => prepared,
+									getProgress: async () => null,
+									getScreen: async (): Promise<ReviewScreen> => ({
+										sequence: 0,
+										mode: "conversation",
+										prId: approvalPR.id,
+									}),
+									navigate: async () => {
+										throw new Error("Confirmation needs no navigation");
+									},
+								},
+							}
+						: {}),
+				}
+			);
+			const draft = {
+				...input,
+				inputMode,
+				text: "Notify me when PR 1 demo-checks succeeds within one hour.",
+				...(selected ? { prId: approvalPR.id } : {}),
+			};
+			const confirm = {
+				...draft,
+				text: "Confirm this delegation",
+				requestId: "confirm",
+				turnId: "confirm",
+				generation: 2,
+			};
+			const drain = async (turn: ConversationTurnInput, index: number) => {
+				await eventually(
+					() =>
+						service.poll(identity(turn)).actions.length > index ||
+						service.poll(identity(turn)).status !== "running"
+				);
+				const state = service.poll(identity(turn));
+				assert.equal(state.status, "running");
+				const checkpoint = required(state.actions[index]);
+				assert.equal(checkpoint.kind, "narration-checkpoint");
+				service.narrationApplied({
+					...identity(turn),
+					requestId: checkpoint.requestId,
+					status: "spoken",
+				});
+			};
+			try {
+				service.start(draft);
+				await eventually(() => !!confirmation.pending(input.sessionId));
+				assert.equal(requests.length, 1);
+				assert.equal(service.poll(identity(draft)).text, "");
+				confirmation.presented(confirmation.pending(input.sessionId));
+				if (inputMode === "voice") {
+					await drain(draft, 0); // Exact proposal narration.
+					await drain(draft, 1); // Normal final acknowledgement still waits for drain.
+				}
+				await eventually(() => service.poll(identity(draft)).status !== "running");
+				assert.equal(service.poll(identity(draft)).status, "completed");
+				assert.equal(requests.length, 1);
+				assert.equal(approval.p.status, "draft");
+				assert.equal(approval.p.confirmedAt, null);
+				const text = service.poll(identity(draft)).text;
+				if (inputMode === "voice")
+					assert.equal(text.split("Delegate notification only").length - 1, 1);
+				else assert.match(text, /notification-only proposal.*new turn/);
+				service.start(confirm);
+				if (inputMode === "voice") await drain(confirm, 0);
+				await eventually(() => service.poll(identity(confirm)).status !== "running");
+				assert.equal(service.poll(identity(confirm)).status, "completed");
+				assert.equal(requests.length, 2);
+				assert.match(
+					service.poll(identity(confirm)).text,
+					/Notification-only monitoring is active/
+				);
+				assert.match(service.poll(identity(confirm)).text, /does not approve or merge/);
+				assert.ok(approval.p.confirmedAt);
+				assert.equal(approval.submitted.length, 0);
+				assert.equal(w.commands.length, 0);
+				assert.equal(d.operations.length, 0);
+			} finally {
+				confirmation.clear();
+				await service.dispose();
+				await approval.service.dispose();
+			}
+		});
+	}
+}

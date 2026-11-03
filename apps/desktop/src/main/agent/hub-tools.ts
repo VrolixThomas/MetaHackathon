@@ -327,6 +327,12 @@ export class ConversationHubTools {
 	private readonly slack?: ConversationSlackTools;
 	private readonly prComments?: ConversationPRCommentTools;
 	private readonly approvals?: ApprovalTools;
+	async approvalContext() {
+		return this.approvals?.confirmationContext();
+	}
+	get foregroundHandoff() {
+		return this.approvals?.handoff ?? this.feedbackHandoff;
+	}
 	private sequence = 0;
 	private readonly turnReferenceAt = new Date().toISOString();
 	private admittedFix?: Pick<PRFixSummary, "id" | "phase">;

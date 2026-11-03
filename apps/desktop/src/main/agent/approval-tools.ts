@@ -2,6 +2,7 @@ import { z } from "zod";
 import {
 	ApprovalConditionSchema,
 	type ApprovalPolicy,
+	ApprovalPolicySchema,
 	ApprovalTermsSchema,
 	type ConversationTurnInput,
 	IdSchema,
@@ -68,6 +69,40 @@ const descriptions = {
 };
 export class ApprovalTools {
 	private observed = new Map<string, ApprovalPolicy>();
+	private completion?: { acknowledgement: string };
+	get handoff() {
+		return this.completion;
+	}
+	/** Private context only; listing and registry observation never grant confirmation. */
+	async confirmationContext() {
+		this.signal.throwIfAborted();
+		const pending = this.ports.confirmation.peek(this.turn);
+		if (!pending) return undefined;
+		this.observed.delete(pending.policy.id);
+		const policies = await this.ports.service().list();
+		this.signal.throwIfAborted();
+		const policy = policies.find((p) => p.id === pending.policy.id);
+		if (!policy || policy.status !== "draft") return undefined;
+		const context = this.ports.confirmation.peek(this.turn, policy);
+		if (!context) return undefined;
+		this.observed.set(policy.id, policy);
+		return {
+			id: policy.id,
+			revision: policy.revision,
+			digest: policy.digest,
+			status: policy.status,
+			prId: policy.pr.id,
+			headSha: policy.pr.headSha,
+			action: policy.terms.action,
+			expiresAt: policy.terms.expiresAt,
+			displayed: context.displayed,
+			spoken: context.spoken,
+			currentTurnAccepted: context.currentTurnAccepted,
+			nextStep: context.currentTurnAccepted
+				? "Use confirm_pr_delegation with this exact id and revision. Runtime still rechecks displayed review, actual ingress, policy, account and expiry."
+				: "A distinct explicit actual user confirmation is required; this observation grants no consent.",
+		};
+	}
 	constructor(
 		private ports: ApprovalToolPorts,
 		private turn: ConversationTurnInput,
@@ -136,7 +171,15 @@ export class ApprovalTools {
 				sessionId: this.turn.sessionId,
 			});
 			this.signal.throwIfAborted();
-			return this.ports.confirmation.present(p, this.turn, this.signal);
+			const result = await this.ports.confirmation.present(p, this.turn, this.signal);
+			this.signal.throwIfAborted();
+			this.completion = {
+				acknowledgement:
+					this.turn.inputMode === "voice"
+						? "The proposal is ready for your confirmation."
+						: `The ${p.terms.action === "notify" ? "notification-only" : "conditional approval"} proposal for PR ${p.pr.number} is displayed and awaits confirmation. Say “confirm this delegation” in a new turn to activate it.`,
+			};
+			return result;
 		}
 		if (!("id" in args) || !args.id || !("revision" in args))
 			throw new Error("Delegation identity required");
@@ -147,7 +190,24 @@ export class ApprovalTools {
 		if (name === "confirm_pr_delegation") {
 			await service.assertReviewed(this.turn.sessionId, p, this.signal);
 			this.signal.throwIfAborted();
-			return service.confirm(this.ports.confirmation.take(this.turn, p));
+			const result = ApprovalPolicySchema.parse(
+				await service.confirm(this.ports.confirmation.take(this.turn, p))
+			);
+			this.signal.throwIfAborted();
+			if (
+				result.id !== p.id ||
+				result.revision !== p.revision ||
+				result.digest !== p.digest ||
+				!result.confirmedAt
+			)
+				throw new Error("Delegation confirmation receipt changed");
+			this.completion = {
+				acknowledgement:
+					result.status === "monitoring"
+						? `Confirmed. ${result.terms.action === "notify" ? "Notification-only" : "Conditional approval"} monitoring is active for PR ${result.pr.number}. ${result.terms.action === "notify" ? "This does not approve or merge the PR." : "Activation is not a GitHub approval or merge."}`
+						: `Delegation confirmed. Its recorded status is ${result.status}. This does not establish a GitHub approval or merge.`,
+			};
+			return result;
 		}
 		if (
 			!/^(?:please )?(?:revoke|cancel|stop|remove) (?:this|the) (?:pr )?(?:approval )?delegation[.!]?$/i.test(

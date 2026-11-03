@@ -102,6 +102,22 @@ export class ApprovalConfirmation {
 		)
 			p.consent = structuredClone(turn);
 	}
+	/** Main-only observation. Never accepts, consumes, refreshes or retires consent. */
+	peek(turn: ConversationTurnInput, policy?: ApprovalPolicy) {
+		const p = this.proposals.get(turn.sessionId);
+		const now = this.now();
+		if (!p || now < p.at || now - p.at > 120000) return undefined;
+		// Match the freshly owner-authorized stored policy, including actor, connection,
+		// source pins and exact terms; matching an ID alone is not an observation.
+		if (policy && JSON.stringify(policy) !== JSON.stringify(p.policy)) return undefined;
+		return {
+			policy: structuredClone(p.policy),
+			displayed: p.shown,
+			spoken: p.spoken,
+			currentTurnAccepted: !!p.consent && JSON.stringify(p.consent) === JSON.stringify(turn),
+		};
+	}
+
 	take(turn: ConversationTurnInput, policy: ApprovalPolicy): ApprovalConfirmInput {
 		const p = this.fresh(turn.sessionId);
 		if (

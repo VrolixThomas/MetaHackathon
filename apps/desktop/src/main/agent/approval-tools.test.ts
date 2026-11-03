@@ -445,3 +445,108 @@ it("editing requires an observed policy identity and produces a new unconfirmed 
 	await outcome;
 	await h.service.dispose();
 });
+
+it("fresh canonical context enables exact confirmation without inspect and never activates by reading", async () => {
+	const h = harness([
+		policy({ status: "draft", confirmedAt: null, terms: { ...terms, action: "notify" } }),
+	]);
+	const confirmation = new ApprovalConfirmation({ voice: () => false, narrate: async () => {} });
+	const user = {
+		...turn,
+		text: "Confirm this delegation",
+		turnId: "confirm",
+		requestId: "confirm",
+		generation: 2,
+	};
+	const tools = new ApprovalTools(
+		{ service: () => h.service, confirmation },
+		user,
+		new AbortController().signal
+	);
+	try {
+		assert.equal(await tools.confirmationContext(), undefined);
+		const displayed = confirmation.present(h.p, turn, new AbortController().signal);
+		confirmation.presented(confirmation.pending("s"));
+		await displayed;
+		const before = h.control.writes;
+		assert.equal((await tools.confirmationContext())?.currentTurnAccepted, false);
+		await assert.rejects(
+			tools.execute("confirm_pr_delegation", JSON.stringify({ id: h.p.id, revision: 1 })),
+			/Explicit confirmation/
+		);
+		confirmation.acceptUserTurn(user);
+		for (let i = 0; i < 2; i++) {
+			const context = await tools.confirmationContext();
+			assert.equal(context?.id, h.p.id);
+			assert.equal(context?.digest, h.p.digest);
+			assert.equal(context?.currentTurnAccepted, true);
+			assert.equal(context?.spoken, false);
+		}
+		assert.equal(h.control.writes, before);
+		assert.equal(h.p.status, "draft");
+		assert.equal(Boolean(tools.handoff), false);
+		await tools.execute("confirm_pr_delegation", JSON.stringify({ id: h.p.id, revision: 1 }));
+		assert.ok(h.p.confirmedAt);
+		assert.match(tools.handoff?.acknowledgement ?? "", /Notification-only monitoring is active/);
+		assert.equal(h.submitted.length, 0);
+	} finally {
+		await h.service.dispose();
+	}
+});
+
+for (const changed of [
+	"foreign-owner",
+	"stored-head",
+	"revision",
+	"registry",
+	"account",
+	"displayed-head",
+	"cancel",
+] as const) {
+	it(`canonical context cannot bypass ${changed} at confirmation`, async () => {
+		const h = harness([policy({ status: "draft", confirmedAt: null })]);
+		const confirmation = new ApprovalConfirmation({ voice: () => false, narrate: async () => {} });
+		const user = {
+			...turn,
+			text: "Confirm this delegation",
+			turnId: "confirm",
+			requestId: "confirm",
+			generation: 2,
+		};
+		const controller = new AbortController();
+		const tools = new ApprovalTools(
+			{ service: () => h.service, confirmation },
+			user,
+			controller.signal
+		);
+		try {
+			const displayed = confirmation.present(h.p, turn, controller.signal);
+			confirmation.presented(confirmation.pending("s"));
+			await displayed;
+			confirmation.acceptUserTurn(user);
+			assert.equal((await tools.confirmationContext())?.currentTurnAccepted, true);
+			if (changed === "foreign-owner") h.control.connection = "f".repeat(64);
+			if (changed === "stored-head") h.p.pr.headSha = "f".repeat(40);
+			if (changed === "revision") h.p.revision++;
+			if (changed === "registry") confirmation.clear();
+			if (changed === "account") h.control.account = { id: 99, login: "other" };
+			if (changed === "displayed-head")
+				h.ports.reviewed = async () => ({
+					pr: { ...h.p.pr, headSha: "f".repeat(40) },
+					reviewId: h.p.reviewId,
+				});
+			if (changed === "cancel") controller.abort();
+			if (["foreign-owner", "stored-head", "revision", "registry"].includes(changed))
+				assert.equal(await tools.confirmationContext(), undefined);
+			await assert.rejects(
+				tools.execute("confirm_pr_delegation", JSON.stringify({ id: h.p.id, revision: 1 }))
+			);
+			assert.equal(h.p.status, "draft");
+			assert.equal(h.p.confirmedAt, null);
+			assert.equal(tools.handoff, undefined);
+			assert.equal(h.submitted.length, 0);
+		} finally {
+			await h.service.dispose();
+		}
+	});
+}
