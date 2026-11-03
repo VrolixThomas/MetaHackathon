@@ -10,6 +10,7 @@ import {
 import type { ConversationApi } from "../conversation/api";
 import { WorkspaceDialog } from "../workspace/WorkspaceDialog";
 import "./approvals.css";
+import { ApprovalDialogLifecycle } from "./dialog-lifecycle";
 
 const defaults = (): ApprovalTerms => ({
 	action: "notify",
@@ -42,6 +43,7 @@ export function ApprovalControl({
 	const [connectionError, setConnectionError] = useState("");
 	const [pending, setPending] = useState<z.infer<typeof ApprovalPresentationSchema> | null>(null);
 	const node = useRef<HTMLDivElement>(null);
+	const lifecycle = useRef(new ApprovalDialogLifecycle());
 	const p = rows.find((p) => p.id === selected);
 	const key = p ? `${p.id}:${p.revision}:${p.digest}` : "";
 	const conditionKeys = useRef(Array.from({ length: 10 }, () => crypto.randomUUID()));
@@ -64,8 +66,10 @@ export function ApprovalControl({
 				setRows(policies);
 				setConnectionError("");
 				setPending(presentation);
-				if (presentation && canOpen) {
-					setSelected(presentation.id);
+				const transition = lifecycle.current.observe(presentation, policies, canOpen);
+				if (transition?.kind === "close") setOpen(false);
+				if (transition?.kind === "open") {
+					setSelected(transition.id);
 					setEditing(false);
 					setOpen(true);
 				}
@@ -120,6 +124,7 @@ export function ApprovalControl({
 		};
 	}, [open, editing, p, pending, call]);
 	const run = async (work: () => Promise<void>) => {
+		lifecycle.current.manual();
 		if (busy) return;
 		setBusy(true);
 		setError("");
@@ -153,7 +158,10 @@ export function ApprovalControl({
 					type="button"
 					aria-haspopup="dialog"
 					aria-expanded={open}
-					onClick={() => setOpen(true)}
+					onClick={() => {
+						lifecycle.current.manual();
+						setOpen(true);
+					}}
 				>
 					PR follow-up
 				</button>
@@ -163,9 +171,17 @@ export function ApprovalControl({
 					id="pr-approvals"
 					title="Conditional PR approval"
 					beforeOpen={beforeOpen}
-					onClose={() => setOpen(false)}
+					onClose={() => {
+						lifecycle.current.close();
+						setOpen(false);
+					}}
 				>
-					<div className="pr-approvals" aria-busy={busy}>
+					<div
+						className="pr-approvals"
+						aria-busy={busy}
+						onPointerDownCapture={() => lifecycle.current.manual()}
+						onKeyDownCapture={() => lifecycle.current.manual()}
+					>
 						<p>
 							MuseFocus follows this PR while the app is running and your Mac is awake. Approving a
 							PR never merges, publishes work or completes Linear.

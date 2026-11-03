@@ -26,6 +26,7 @@ import {
 } from "../../shared/contracts";
 import { runAttentionConversation } from "./attention-conversation";
 import { abortable, throwIfAborted } from "./cancellation";
+import { conversationErrorDiagnostic } from "./conversation-error-diagnostic";
 import {
 	type ConversationHistoryEntry,
 	conversationHistoryItems,
@@ -930,6 +931,11 @@ export class ConversationService {
 			this.emit(turn, { kind: "completed" });
 		} catch (error) {
 			if (this.active(session, turn)) {
+				try {
+					console.warn(JSON.stringify(conversationErrorDiagnostic(error)));
+				} catch {
+					/* Diagnostics must not alter turn settlement. */
+				}
 				this.rememberExchange(session, turn, true);
 				turn.record.status = "error";
 				this.emit(turn, { kind: "error", message: safeError(error) });
