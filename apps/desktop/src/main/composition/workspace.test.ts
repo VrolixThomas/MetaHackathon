@@ -1030,3 +1030,31 @@ it("a current proposed fix file settles through the shared durable workspace rec
 	assert.deepEqual(canvas.fixSource, source);
 	assert.equal(actual.centerSection, "fixes");
 });
+
+it("workspace preparation uses one operation-scoped review/navigation lookup when available", async (t) => {
+	const h = harness(t);
+	const original = h.ports.getReviews();
+	let preparations = 0;
+	h.ports.getReviews = () => ({
+		...original,
+		getReady: async () => {
+			throw new Error("Redundant ready lookup");
+		},
+		navigate: async () => {
+			throw new Error("Redundant navigation lookup");
+		},
+		prepareNavigation: async (prId, direction, signal) => {
+			preparations++;
+			return {
+				review: h.state.review,
+				navigation: await original.navigate(prId, direction, signal),
+			};
+		},
+	});
+	const opened = await h.prepare({ kind: "show-review", prId: h.state.review.pr.id });
+	await h.apply(opened);
+	const next = await h.prepare({ kind: "navigate-review", direction: "next" }, "next");
+	assert.equal(next.effect.navigation?.path, "src/second.ts");
+	await h.apply(next);
+	assert.equal(preparations, 2);
+});

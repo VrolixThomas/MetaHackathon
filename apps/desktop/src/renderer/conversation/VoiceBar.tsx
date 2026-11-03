@@ -84,6 +84,8 @@ export function VoiceBar({ controller }: { controller: ConversationController })
 						className="quiet"
 						data-testid="interrupt-reply"
 						aria-label="Stop response"
+						title="Stop response (⌘. / Ctrl+.) — keeps listening"
+						aria-keyshortcuts="Meta+. Control+."
 						onClick={controller.interruptReply}
 					>
 						Stop response

@@ -63,7 +63,8 @@ export type SavedWorkspaceCanvases = z.infer<typeof SavedWorkspaceCanvasesSchema
 export type WorkspaceReviewPort = Pick<
 	ReviewCoordinator,
 	"getScreen" | "inbox" | "getReady" | "navigate"
->;
+> &
+	Partial<Pick<ReviewCoordinator, "prepareNavigation">>;
 export interface WorkspaceBrowserPort {
 	open(url: string, signal?: AbortSignal): Promise<LocalBrowserState>;
 	observe(signal?: AbortSignal): Promise<WorkspaceBrowserObservation | null>;
@@ -586,10 +587,6 @@ export class WorkspaceCoordinator {
 				if (!prId) fail("Open a ready review before navigating its source.");
 				if (command.kind === "show-review" && this.ports.activateReview)
 					await invoke(() => this.ports.activateReview?.(prId, signal));
-				const review = parse(
-					PreparedReviewSchema,
-					await invoke(() => this.ports.getReviews().getReady(prId, signal))
-				);
 				if (command.kind === "show-review" && this.ports.hubSnapshot) {
 					const hub = await this.ports.hubSnapshot();
 					snapshot.centerSection =
@@ -606,10 +603,15 @@ export class WorkspaceCoordinator {
 								side: command.side,
 							}
 						: { direction: "resume" as const };
-				navigation = parse(
-					ReviewNavigationSchema,
-					await invoke(() => this.ports.getReviews().navigate(prId, direction, signal))
-				);
+				const reviews = this.ports.getReviews();
+				const prepared = reviews.prepareNavigation
+					? await invoke(() => reviews.prepareNavigation!(prId, direction, signal))
+					: {
+							review: await invoke(() => reviews.getReady(prId, signal)),
+							navigation: await invoke(() => reviews.navigate(prId, direction, signal)),
+						};
+				const review = parse(PreparedReviewSchema, prepared.review);
+				navigation = parse(ReviewNavigationSchema, prepared.navigation);
 				if (
 					navigation.prId !== review.pr.id ||
 					navigation.reviewId !== review.id ||

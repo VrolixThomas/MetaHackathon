@@ -15,6 +15,7 @@ it("routes only explicit native voice events and unsubscribes", () => {
 			},
 		},
 		{
+			interruptReply() {},
 			press: () => {
 				calls.push("press");
 			},
@@ -40,6 +41,7 @@ it("lets dialogs consume Escape while an unhandled Escape ends the voice session
 	const disconnect = connectShortcuts(
 		undefined,
 		{
+			interruptReply() {},
 			press() {},
 			release() {},
 			toggle() {},
@@ -64,4 +66,47 @@ it("lets dialogs consume Escape while an unhandled Escape ends the voice session
 	disconnect();
 	escaped(false);
 	assert.deepEqual(calls, ["escape"]);
+});
+
+it("Command/Control period interrupts only the reply and ignores ordinary typing", () => {
+	const keyboard = new EventTarget();
+	let replies = 0;
+	let stops = 0;
+	const disconnect = connectShortcuts(
+		undefined,
+		{
+			press() {},
+			release() {},
+			toggle() {},
+			stop() {
+				stops++;
+			},
+			interruptReply() {
+				replies++;
+			},
+		},
+		keyboard as unknown as Window
+	);
+	const key = (extra: object = {}) =>
+		keyboard.dispatchEvent(
+			Object.assign(new Event("keydown", { cancelable: true }), {
+				key: ".",
+				metaKey: false,
+				ctrlKey: false,
+				isComposing: false,
+				repeat: false,
+				...extra,
+			})
+		);
+	key();
+	key({ metaKey: true, repeat: true });
+	key({ metaKey: true, isComposing: true });
+	assert.equal(replies, 0);
+	key({ metaKey: true });
+	key({ ctrlKey: true });
+	assert.equal(replies, 2);
+	assert.equal(stops, 0);
+	disconnect();
+	key({ metaKey: true });
+	assert.equal(replies, 2);
 });

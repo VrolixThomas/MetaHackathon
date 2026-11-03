@@ -5,11 +5,20 @@ import type { ConversationController } from "./controller";
  * Native guest Escape does the same. Ordinary browsing never interrupts a reply. */
 export function connectShortcuts(
 	shortcuts: ElectronAPI["voiceShortcut"] | undefined,
-	controller: Pick<ConversationController, "press" | "release" | "toggle" | "stop">,
+	controller: Pick<
+		ConversationController,
+		"press" | "release" | "toggle" | "stop" | "interruptReply"
+	>,
 	keyboard?: Pick<Window, "addEventListener" | "removeEventListener">
 ) {
 	const onEscape = (event: KeyboardEvent) => {
-		if (event.key !== "Escape" || event.defaultPrevented || event.isComposing) return;
+		if (event.defaultPrevented || event.isComposing || event.repeat) return;
+		if (event.key === "." && (event.metaKey || event.ctrlKey) && !event.altKey && !event.shiftKey) {
+			event.preventDefault();
+			controller.interruptReply();
+			return;
+		}
+		if (event.key !== "Escape") return;
 		controller.stop("escape");
 	};
 	keyboard?.addEventListener("keydown", onEscape as EventListener);

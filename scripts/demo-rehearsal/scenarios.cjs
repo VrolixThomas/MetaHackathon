@@ -472,4 +472,91 @@ async function fix(d) {
 	await reviewFix(d);
 	d.assert.equal(d.report.simulatedWrites.length, 0, "Local fix must not publish or send");
 }
-module.exports = { common, full, collaboration, slack, review, variants, planning, fix };
+module.exports = {
+	common,
+	full,
+	collaboration,
+	slack,
+	review,
+	variants,
+	planning,
+	fix,
+	navigation,
+};
+
+// Actual user phrasing, model/tool calls, displayed source, and PCM continuity.
+async function navigation(d) {
+	const { say, rpc, report, assert, js, wait, ui, button } = d;
+	await say("Open the ticket board for me?", { id: "ticket-navigation" });
+	await say(
+		"Okay, let's zoom into ticket 77. Can you talk me through the design trade-off and what you need me to decide before we can start?",
+		{ id: "ticket-design" }
+	);
+	let observation = await rpc("query", "workspace.observe", {
+		sessionId: report.turns.at(-1).identity.sessionId,
+	});
+	let primary = observation.workspace.canvases.find(
+		(c) => c.id === observation.workspace.primaryId
+	);
+	const ticket = (await rpc("query", "hub.snapshot")).tickets.find(
+		(t) => t.identifier === "MET-77"
+	);
+	assert.equal(primary?.kind, "center");
+	assert.equal(primary?.section, "tickets");
+	assert.equal(primary?.selectedId, ticket.id, "Spoken zoom must display exact ticket");
+	await say("Open PR number three.", { id: "open-pr-three" });
+	observation = await rpc("query", "workspace.observe", {
+		sessionId: report.turns.at(-1).identity.sessionId,
+	});
+	assert.equal(
+		observation.workspace.review.prId,
+		d.fixture.pulls[2].id,
+		"Specific PR request must open source, not category"
+	);
+	const narration = await say(
+		"Explain the purpose of this pull request and walk me through the important behavior in a few sentences.",
+		{ id: "browse-during-reply", firstAudioOnly: true }
+	);
+	const before = await js("document.querySelector('[data-review-path]')?.dataset.reviewPath");
+	const began = Date.now();
+	await button("Next");
+	const next = await wait("next file displayed and saved", async () => {
+		const state = await js(
+			"(()=>{const e=document.querySelector('[data-review-path]');return e?{path:e.dataset.reviewPath,busy:e.dataset.reviewLoading,progress:e.dataset.reviewProgressPath}:null})()"
+		);
+		return state?.path &&
+			state.path !== before &&
+			state.busy === "false" &&
+			state.progress === state.path
+			? state
+			: false;
+	});
+	report.manualFileNavigation = { from: before, to: next.path, durationMs: Date.now() - began };
+	const settled = await wait(
+		"narration finishes despite manual next-file",
+		async () => {
+			const state = await ui();
+			const message = state.messages.find((m) => m.id === narration.identity.turnId);
+			assert.notEqual(message?.phase, "cancelled", "Manual navigation interrupted narration");
+			assert.notEqual(message?.phase, "error", "Manual navigation failed narration");
+			assert.equal(state.voice, "true", "Manual navigation ended listening");
+			return message?.phase === "complete" ? state : false;
+		},
+		90000
+	);
+	assert.equal(settled.voice, "true");
+	assert.equal(
+		await js("document.querySelector('[data-review-path]')?.dataset.reviewPath"),
+		next.path,
+		"Old narration must not hijack manual file selection"
+	);
+	await say("Explain the tradeoffs in more detail.", {
+		id: "explicit-stop-target",
+		firstAudioOnly: true,
+	});
+	await say("Stop.", { id: "stop", stop: true });
+	report.assertions.push({
+		name: "Exact spoken ticket/PR navigation; manual next-file preserves speech/listening; explicit Stop still interrupts",
+		passed: true,
+	});
+}

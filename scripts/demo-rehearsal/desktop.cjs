@@ -673,8 +673,11 @@ async function main() {
 			variants,
 			planning,
 			fix,
+			navigation,
 		} = require("./scenarios.cjs");
-		if (process.argv.includes("--suite=fix"))
+		if (process.argv.includes("--suite=navigation"))
+			await navigation({ say, rpc, ui, state, fixture, report, assert, js, wait, button, owned });
+		else if (process.argv.includes("--suite=fix"))
 			await fix({ say, rpc, ui, state, fixture, report, assert, js, wait, button, owned });
 		else if (process.argv.includes("--suite=planning"))
 			await planning({ say, rpc, ui, state, fixture, report, assert, js, wait, button, owned });
