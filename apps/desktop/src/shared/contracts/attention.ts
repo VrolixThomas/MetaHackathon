@@ -11,6 +11,8 @@ export const AttentionPresenceSchema = z.strictObject({
 	focused: z.boolean(),
 	obscured: z.boolean(),
 	activitySequence: z.int().nonnegative(),
+	/** Absent means false for older clients. Visible acknowledged code/work review panes only. */
+	reviewingCode: z.boolean().optional(),
 });
 export const AttentionItemSchema = z
 	.strictObject({

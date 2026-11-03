@@ -131,7 +131,10 @@ export function App() {
 		void runtime.oauth.start();
 		const attentionSafety = createAttentionSafety(
 			runtime.controller,
-			window.electron?.attentionActivity
+			window.electron?.attentionActivity,
+			window,
+			document,
+			{ workspace: runtime.workspace }
 		);
 		const attention = createAttentionBinding(runtime.api, runtime.controller, attentionSafety);
 		const attentionTimer = setInterval(() => {

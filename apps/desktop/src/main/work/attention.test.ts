@@ -431,3 +431,99 @@ it("keeps Slack clarification and conditional PR approval attention valid in the
 	await assert.rejects(h.scheduler.validate(turn(secondClaim.id), new AbortController().signal));
 	await h.scheduler.dispose();
 });
+
+it("holds routine notices unread during review, then delivers the pending update once", async () => {
+	const h = harness();
+	h.presence.reviewingCode = true;
+	assert.equal(await h.claim(), null);
+	assert.deepEqual(h.state.attentionRecords ?? [], []);
+	assert.equal(first(h.state.notices).seenAt, null);
+	assert.equal(first(h.state.notices).announcedAt, null);
+	h.presence.reviewingCode = false;
+	const claim = (await h.scheduler.poll(h.presence)).claim;
+	assert.ok(claim);
+	await h.scheduler.resolve(turn(claim.id), new AbortController().signal);
+	h.completed = true;
+	await h.scheduler.settle({ ...receipt(claim.id), status: "spoken" });
+	h.advance(70_000);
+	assert.equal(await h.claim(), null);
+	assert.ok(first(h.state.notices).announcedAt);
+	assert.equal(first(h.state.notices).seenAt, null);
+	assert.equal(first(h.state.jobs).state, "ready");
+});
+
+it("allows blocked-worker decisions during review under all original quiet and busy gates", async () => {
+	for (const patch of [
+		{},
+		{ enabled: false },
+		{ focused: false },
+		{ obscured: true },
+		{ state: "interacting" },
+		{ state: "user-speaking" },
+		{ state: "responding" },
+	] as const) {
+		const h = harness();
+		await h.ports.update((s) => {
+			s.jobs = [readyJob("job", "needs-input")];
+			first(s.notices).kind = "decision";
+			first(s.notices).decisionId = "decision-job";
+		});
+		Object.assign(h.presence, { reviewingCode: true }, patch);
+		const claim = await h.claim();
+		if (Object.keys(patch).length) assert.equal(claim, null);
+		else {
+			assert.ok(claim);
+			assert.equal(first(claim.items).kind, "decision");
+			await h.scheduler.resolve(turn(claim.id), new AbortController().signal);
+			await h.scheduler.validate(turn(claim.id), new AbortController().signal);
+		}
+	}
+	const h = harness();
+	h.presence.reviewingCode = true;
+	await h.ports.update((s) => {
+		s.jobs = [readyJob("job", "needs-input")];
+		first(s.notices).kind = "decision";
+	});
+	h.busy = true;
+	assert.equal(await h.claim(), null);
+	h.busy = false;
+	h.focused = false;
+	assert.equal(await h.claim(), null);
+});
+
+it("entering review fences routine leases before resolve and before narration, preserving completed proof", async () => {
+	for (const stage of ["claimed", "resolved", "delivered"]) {
+		const h = harness();
+		const claim = await h.claim();
+		assert.ok(claim);
+		if (stage !== "claimed")
+			await h.scheduler.resolve(turn(claim.id), new AbortController().signal);
+		h.completed = stage === "delivered";
+		await h.scheduler.poll({ ...h.presence, reviewingCode: true });
+		if (stage === "delivered") {
+			assert.ok(first(h.state.attentionRecords ?? []).deliveredAt);
+			assert.ok(first(h.state.notices).announcedAt);
+			assert.equal(h.interrupted.length, 0);
+		} else {
+			await assert.rejects(h.scheduler.resolve(turn(claim.id), new AbortController().signal));
+			await assert.rejects(h.scheduler.validate(turn(claim.id), new AbortController().signal));
+			assert.equal(first(h.state.notices).announcedAt, null);
+			assert.equal(h.interrupted.length, stage === "resolved" ? 1 : 0);
+		}
+	}
+});
+
+it("review context arriving during a source read prevents stale narration", async () => {
+	const h = harness();
+	const claim = await h.claim();
+	assert.ok(claim);
+	await h.scheduler.resolve(turn(claim.id), new AbortController().signal);
+	const read = h.ports.read;
+	h.ports.read = async () => {
+		h.ports.read = read;
+		void h.scheduler.poll({ ...h.presence, reviewingCode: true });
+		return read();
+	};
+	await assert.rejects(h.scheduler.validate(turn(claim.id), new AbortController().signal));
+	assert.equal(first(h.state.notices).announcedAt, null);
+});

@@ -93,6 +93,13 @@ export class AttentionScheduler {
 		this.lease = null;
 		if (lease?.turn) this.ports.interrupt?.(lease.turn);
 	}
+	/** Block routine updates during review; blocked workers may still ask under the quiet gates. */
+	private reviewAllows(sessionId: string, candidates: Candidate[]) {
+		return (
+			!this.presence.get(sessionId)?.input.reviewingCode ||
+			candidates.every(({ item }) => item.kind === "decision")
+		);
+	}
 	private currentLease(id: string, sessionId: string) {
 		const lease = this.lease;
 		if (
@@ -101,7 +108,8 @@ export class AttentionScheduler {
 			lease.claim.id !== id ||
 			lease.claim.sessionId !== sessionId ||
 			(!this.delivered(lease) &&
-				(timestamp(lease.claim.expiresAt) <= this.now() ||
+				(!this.reviewAllows(sessionId, lease.candidates) ||
+					timestamp(lease.claim.expiresAt) <= this.now() ||
 					lease.activity !== this.activity ||
 					this.ports.focused?.() === false))
 		)
@@ -240,7 +248,8 @@ export class AttentionScheduler {
 		});
 		if (
 			this.lease?.claim.sessionId === input.sessionId &&
-			(!input.enabled ||
+			(!this.reviewAllows(input.sessionId, this.lease.candidates) ||
+				!input.enabled ||
 				!input.focused ||
 				input.obscured ||
 				input.state === "user-speaking" ||
@@ -262,6 +271,7 @@ export class AttentionScheduler {
 			);
 			if (this.now() - lastDelivery < this.cooldownMs) return { claim: null };
 			const chosen = this.candidates(state)
+				.filter((candidate) => this.reviewAllows(input.sessionId, [candidate]))
 				.filter(({ key }) => {
 					const record = records.find((r) => r.key === key);
 					return (
@@ -286,6 +296,7 @@ export class AttentionScheduler {
 				if (
 					activity !== this.activity ||
 					!this.idle(input.sessionId) ||
+					!this.reviewAllows(input.sessionId, chosen) ||
 					!this.fresh({ claim, candidates: chosen, activity }, current)
 				)
 					throw unavailable();
@@ -314,7 +325,12 @@ export class AttentionScheduler {
 				}
 				current.attentionRecords = ledger.slice(-500);
 			});
-			if (activity !== this.activity || !this.idle(input.sessionId)) return { claim: null };
+			if (
+				activity !== this.activity ||
+				!this.idle(input.sessionId) ||
+				!this.reviewAllows(input.sessionId, chosen)
+			)
+				return { claim: null };
 			this.lease = { claim, candidates: chosen, activity };
 			return { claim: structuredClone(claim) };
 		});
@@ -337,7 +353,7 @@ export class AttentionScheduler {
 		if (!lease.turn || !same(lease.turn, input) || !this.fresh(lease, await this.ports.read()))
 			throw unavailable();
 		signal.throwIfAborted();
-		if (this.lease !== lease) throw unavailable();
+		if (this.currentLease(input.claimId, input.sessionId) !== lease) throw unavailable();
 	}
 	/** Hub changes revalidate active content; no model runs just because a source refreshes. */
 	async changed() {

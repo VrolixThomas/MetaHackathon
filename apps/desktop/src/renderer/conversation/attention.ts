@@ -14,6 +14,7 @@ import type { ConversationController } from "./controller";
 /** Composition owns DOM/native focus, overlays, typing and the recent-interaction window. */
 export type AttentionSafetySnapshot = {
 	enabled: boolean;
+	reviewingCode?: boolean;
 	focused: boolean;
 	obscured: boolean;
 	typing: boolean;
@@ -39,13 +40,17 @@ export function createAttentionBinding(
 	let polling = false;
 	let epoch = 0;
 	let safetyEpoch = 0;
-	let delivery: { claimId: string } | null = null;
+	let delivery: AttentionClaim | null = null;
+	let reviewEpoch = 0;
+	let lastReview = !!safety.getSnapshot().reviewingCode;
 	let lastActivity = safety.getSnapshot().activitySequence;
 	const seen = new Set<string>();
 	const pending = new Set<AbortController>();
 	const safe = (state: AttentionSafetySnapshot) =>
 		state.enabled && state.focused && !state.obscured && !state.typing && !state.recentInteraction;
 	const eligible = () => !disposed && safe(safety.getSnapshot()) && ui.canStartAttention();
+	const reviewAllows = (claim: AttentionClaim) =>
+		!safety.getSnapshot().reviewingCode || claim.items.every((item) => item.kind === "decision");
 	function remember(id: string) {
 		seen.add(id);
 		if (seen.size > 256) {
@@ -80,6 +85,7 @@ export function createAttentionBinding(
 			focused: state.focused,
 			obscured: state.obscured,
 			activitySequence: state.activitySequence,
+			reviewingCode: state.reviewingCode ?? false,
 			state: !enabled
 				? "disabled"
 				: !safe(state)
@@ -100,12 +106,14 @@ export function createAttentionBinding(
 	const unsubscribeSafety = safety.subscribe(() => {
 		const state = safety.getSnapshot();
 		const changed = state.activitySequence !== lastActivity;
+		if (!!state.reviewingCode !== lastReview) reviewEpoch++;
+		lastReview = !!state.reviewingCode;
 		lastActivity = state.activitySequence;
 		if (changed || !safe(state)) {
 			epoch++;
 			safetyEpoch++;
 		}
-		if (delivery && (changed || !safe(state))) ui.interruptAttention();
+		if (delivery && (changed || !safe(state) || !reviewAllows(delivery))) ui.interruptAttention();
 	});
 	return {
 		async poll() {
@@ -113,6 +121,7 @@ export function createAttentionBinding(
 			polling = true;
 			const before = presence();
 			const version = epoch;
+			const reviewVersion = reviewEpoch;
 			const abort = new AbortController();
 			pending.add(abort);
 			const request = Promise.resolve().then(() => api.call("mutation", "attention.poll", before));
@@ -132,6 +141,8 @@ export function createAttentionBinding(
 				if (
 					before.state !== "idle" ||
 					!eligible() ||
+					!reviewAllows(claim) ||
+					(reviewVersion !== reviewEpoch && claim.items.some((item) => item.kind !== "decision")) ||
 					version !== epoch ||
 					before.activitySequence !== safety.getSnapshot().activitySequence ||
 					claim.sessionId !== ui.sessionId ||
@@ -141,7 +152,7 @@ export function createAttentionBinding(
 					return;
 				}
 				// Reserve synchronously before voice hooks publish state or can reenter polling.
-				delivery = { claimId: claim.id };
+				delivery = claim;
 				const safetyVersion = safetyEpoch;
 				const result = ui.startAttention(claim.id);
 				if (result.status !== "started") {
@@ -149,7 +160,13 @@ export function createAttentionBinding(
 					await release(claim);
 					return;
 				}
-				if (!safe(safety.getSnapshot()) || safetyEpoch !== safetyVersion) ui.interruptAttention();
+				if (
+					!safe(safety.getSnapshot()) ||
+					safetyEpoch !== safetyVersion ||
+					!reviewAllows(claim) ||
+					(reviewVersion !== reviewEpoch && claim.items.some((item) => item.kind !== "decision"))
+				)
+					ui.interruptAttention();
 				remember(claim.id);
 				void result.completion.then(async (status) => {
 					await receipt(
@@ -160,7 +177,7 @@ export function createAttentionBinding(
 							status,
 						})
 					);
-					if (delivery?.claimId === claim.id) delivery = null;
+					if (delivery?.id === claim.id) delivery = null;
 				});
 			} catch {
 				abort.abort();

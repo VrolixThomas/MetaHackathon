@@ -378,3 +378,56 @@ test("disposing the binding during playback sends interrupted and keeps the expl
 	assert.equal(h.ui.store.getState().handsFree, true);
 	assert.equal(h.ui.store.getState().active, null);
 });
+
+test("review presence holds routine claims but lets blocked-worker questions use the quiet path", async () => {
+	for (const decision of [false, true]) {
+		const h = await harness();
+		h.change({ reviewingCode: true });
+		const claim = h.claim();
+		if (decision) Object.assign(claim.items[0] ?? {}, { kind: "decision", decisionId: "decision" });
+		h.setPoll(async () => ({ claim }));
+		await h.binding.poll();
+		assert.equal(h.calls.find((c) => c.path === "attention.poll")?.input["reviewingCode"], true);
+		assert.equal(h.turns.length, decision ? 1 : 0);
+		assert.equal(h.releases().length, decision ? 0 : 1);
+	}
+});
+
+test("entering review fences a routine claim in flight, even if review closes before it returns", async () => {
+	const h = await harness();
+	const pending = deferred<{ claim: AttentionClaim }>();
+	h.setPoll(() => pending.promise);
+	const work = h.binding.poll();
+	await until(() => h.calls.some((call) => call.path === "attention.poll"));
+	h.change({ reviewingCode: true });
+	h.change({ reviewingCode: false });
+	pending.resolve({ claim: h.claim() });
+	await work;
+	assert.equal(h.turns.length, 0);
+	assert.equal(h.releases().length, 1);
+});
+
+test("entering review interrupts routine attention, keeps listening, and preserves completed speech", async () => {
+	for (const completed of [false, true]) {
+		const h = await harness();
+		h.setPoll(async () => ({ claim: h.claim() }));
+		await h.binding.poll();
+		if (completed) h.ui.finishVoice(h.turn(), "complete");
+		h.change({ reviewingCode: true });
+		await until(() => h.settles().length === 1);
+		assert.equal(h.settles()[0]?.status, completed ? "spoken" : "interrupted");
+		assert.equal(h.ui.store.getState().handsFree, true);
+	}
+});
+
+test("review appearing during synchronous media allocation interrupts a routine update", async () => {
+	const h = await harness();
+	h.setPoll(async () => ({ claim: h.claim() }));
+	h.setBeforeBegin(() => {
+		h.change({ reviewingCode: true });
+		h.change({ reviewingCode: false });
+	});
+	await h.binding.poll();
+	await until(() => h.settles().length === 1);
+	assert.equal(h.settles()[0]?.status, "interrupted");
+});

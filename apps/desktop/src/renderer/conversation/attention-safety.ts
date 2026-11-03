@@ -1,6 +1,30 @@
+import type { WorkspaceSnapshot } from "../../shared/contracts";
 import type { ElectronAPI } from "../../shared/types";
+import type { WorkspaceController } from "../workspace/controller";
 import type { AttentionSafetyPort, AttentionSafetySnapshot } from "./attention";
 import type { ConversationController } from "./controller";
+
+/** Compare pane content with the durable observation, not the independently browsed sidebar. */
+export function hasVisibleCodeReview(
+	displayed: WorkspaceSnapshot | null,
+	acknowledged: WorkspaceSnapshot | null
+): boolean {
+	if (!displayed || !acknowledged) return false;
+	return [displayed.primaryId, displayed.secondaryId].some((id) => {
+		if (!id || (id !== acknowledged.primaryId && id !== acknowledged.secondaryId)) return false;
+		const canvas = displayed.canvases.find((item) => item.id === id);
+		const accepted = acknowledged.canvases.find((item) => item.id === id);
+		if (!canvas || JSON.stringify(canvas) !== JSON.stringify(accepted)) return false;
+		return (
+			canvas.kind === "source" ||
+			canvas.kind === "flow" ||
+			(canvas.kind === "review" && acknowledged.review.mode !== "conversation") ||
+			(canvas.kind === "center" &&
+				!!canvas.selectedId &&
+				(canvas.section === "fixes" || canvas.section === "completed"))
+		);
+	});
+}
 
 /** Read-only UI eligibility. Native guest input is reported without exposing its text or keys. */
 export function createAttentionSafety(
@@ -8,7 +32,7 @@ export function createAttentionSafety(
 	activity: ElectronAPI["attentionActivity"],
 	root: Window = window,
 	doc: Document = document,
-	options: { now?: () => number; recentMs?: number } = {}
+	options: { now?: () => number; recentMs?: number; workspace?: WorkspaceController } = {}
 ): AttentionSafetyPort & { dispose(): void } {
 	const now = options.now ?? Date.now;
 	const recentMs = options.recentMs ?? 2500;
@@ -53,6 +77,7 @@ export function createAttentionSafety(
 		changed();
 	});
 	const unsubscribeController = ui.store.subscribe(notify);
+	const unsubscribeWorkspace = options.workspace?.store.subscribe(notify);
 	const mutations = new MutationObserver((records) => {
 		if (
 			records.some(
@@ -75,12 +100,17 @@ export function createAttentionSafety(
 	});
 	return {
 		getSnapshot(): AttentionSafetySnapshot {
+			const workspace = options.workspace?.store.getState();
 			return {
 				enabled: !disposed && ui.store.getState().handsFree,
 				focused: !doc.hidden && (nativeFocused ?? doc.hasFocus()),
 				obscured: !!doc.querySelector("dialog,[role=dialog]"),
 				typing: composing || now() - lastInput < recentMs,
-				recentInteraction: now() - lastActivity < recentMs,
+				recentInteraction: !!workspace?.busy || now() - lastActivity < recentMs,
+				reviewingCode: hasVisibleCodeReview(
+					workspace?.workspace ?? null,
+					workspace?.observation?.workspace ?? null
+				),
 				activitySequence: sequence,
 			};
 		},
@@ -96,6 +126,7 @@ export function createAttentionSafety(
 			mutations.disconnect();
 			unsubscribeNative?.();
 			unsubscribeController();
+			unsubscribeWorkspace?.();
 			for (const event of events) doc.removeEventListener(event, changed, true);
 			doc.removeEventListener("input", input, true);
 			doc.removeEventListener("compositionstart", compositionStart, true);

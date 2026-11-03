@@ -61,3 +61,24 @@ test("delivery claims have bounded unique job identity and old hub snapshots rem
 		true
 	);
 });
+
+test("review context is additive and omitted presence retains the original policy", async () => {
+	const { AttentionPresenceSchema } = await import("./contracts");
+	const presence = {
+		sessionId: "session",
+		enabled: true,
+		focused: true,
+		obscured: false,
+		state: "idle",
+		activitySequence: 0,
+	};
+	assert.equal(AttentionPresenceSchema.parse(presence).reviewingCode ?? false, false);
+	assert.equal(
+		AttentionPresenceSchema.parse({ ...presence, reviewingCode: true }).reviewingCode,
+		true
+	);
+	assert.equal(
+		AttentionPresenceSchema.safeParse({ ...presence, reviewingCode: "yes" }).success,
+		false
+	);
+});
