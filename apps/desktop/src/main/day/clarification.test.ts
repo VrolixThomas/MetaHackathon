@@ -5,7 +5,11 @@ import type { ChatMessage, ChatReplyReceipt } from "../../shared/contracts/chat"
 import type { DayOperation } from "../../shared/contracts/day";
 import { ConversationDayTools } from "../agent/day-tools";
 import { SlackError } from "../slack/types";
-import { type ClarificationAnalysis, analyzeClarification } from "./clarification";
+import {
+	type ClarificationAnalysis,
+	analyzeClarification,
+	clarificationFailureCategory,
+} from "./clarification";
 import { type DayState, parseDayState, sha256 } from "./model";
 import { type DayPorts, DayService } from "./service";
 
@@ -758,3 +762,89 @@ for (const gate of ["account", "membership", "expiry", "revoke"] as const)
 			await h.close();
 		}
 	});
+
+test("background inference failures emit only fixed categories and retain unavailable without sends", async () => {
+	const secret = "PRIVATE_MODEL_SOURCE_OR_KEY";
+	const valid = JSON.stringify({
+		summary: "Needs URL",
+		missing: ["URL"],
+		questions: ["Which URL?"],
+		escalation: null,
+	});
+	for (const category of [
+		"transport",
+		"incomplete",
+		"output_shape",
+		"output_limit",
+		"stream_limit",
+		"stream_mismatch",
+		"json_invalid",
+		"analysis_schema",
+	] as const) {
+		const diagnostics: unknown[][] = [];
+		const warn = console.warn;
+		console.warn = (...args) => {
+			diagnostics.push(args);
+		};
+		const h = await harness({
+			analyzeClarification: (c, read, signal) =>
+				analyzeClarification(
+					{
+						async *stream() {
+							if (category === "transport") throw new Error(secret);
+							if (category === "incomplete") return;
+							if (category === "stream_limit") yield { type: "text", delta: secret.repeat(1000) };
+							if (category === "stream_mismatch") yield { type: "text", delta: secret };
+							const text =
+								category === "json_invalid"
+									? secret
+									: category === "analysis_schema"
+										? JSON.stringify({ [secret]: secret })
+										: category === "output_limit"
+											? secret.repeat(1000)
+											: valid;
+							yield {
+								type: "completed",
+								response: {
+									id: "controlled",
+									model: "muse-spark-1.3",
+									output:
+										category === "output_shape"
+											? [{ type: secret }]
+											: [
+													{
+														type: "message",
+														role: "assistant",
+														content: [{ type: "output_text", text }],
+													},
+												],
+								},
+							};
+						},
+					},
+					c,
+					read,
+					signal
+				),
+		});
+		try {
+			await h.propose();
+			await h.confirm();
+			const confirmation = (await h.item()).clarification?.confirmedAt;
+			await h.tick();
+			await h.tick();
+			assert.deepEqual(diagnostics, [["[day-clarification]", { stage: "analysis", category }]]);
+			assert.ok(!JSON.stringify(diagnostics).includes(secret));
+			const c = (await h.item()).clarification;
+			assert.equal(c?.status, "needs_user");
+			assert.equal(c?.reason, "unavailable");
+			assert.equal(c?.confirmedAt, confirmation);
+			assert.deepEqual(c?.attempts, []);
+			assert.equal(h.counts().sends, 0);
+		} finally {
+			console.warn = warn;
+			await h.close();
+		}
+	}
+	assert.equal(clarificationFailureCategory({ category: secret, message: secret }), "unknown");
+});

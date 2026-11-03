@@ -35,6 +35,7 @@ import {
 	type ClarificationRead,
 	ClarificationReadSchema,
 	clarificationDigest,
+	clarificationFailureCategory,
 } from "./clarification";
 import {
 	type DayCapture,
@@ -1219,6 +1220,7 @@ export class DayService {
 			return;
 		}
 		if (c.attempts.some((a) => a.status === "pending")) return;
+		let stage = "source_read";
 		try {
 			const read = await this.readClarification(record, signal);
 			// Only a new/edited requester answer may trigger a follow-up. Our own posts and other bots cannot loop.
@@ -1237,10 +1239,13 @@ export class DayService {
 				)
 			)
 				return;
+			stage = "analyzer_unavailable";
 			if (!this.ports.analyzeClarification) throw unavailable();
+			stage = "analysis";
 			const analysis = ClarificationAnalysisSchema.parse(
 				await abortable(this.ports.analyzeClarification(c, read, signal), signal)
 			);
+			stage = "state_update";
 			const fresh = read; // A separate fresh provider read gates the actual send, possibly on a later paced tick.
 			await this.update((state) => {
 				this.ensureAvailable(signal);
@@ -1313,6 +1318,7 @@ export class DayService {
 		} catch (error) {
 			if (signal.aborted) throw error;
 			if (await this.deferClarification(id, error)) return;
+			console.warn("[day-clarification]", { stage, category: clarificationFailureCategory(error) });
 			await change("unavailable");
 		}
 	}
