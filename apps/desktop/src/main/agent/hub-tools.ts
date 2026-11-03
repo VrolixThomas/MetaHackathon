@@ -49,10 +49,12 @@ import {
 import type { FunctionTool } from "./meta-client";
 import { type ConversationPRCommentPorts, ConversationPRCommentTools } from "./pr-comment-tools";
 import { type ConversationSlackPorts, ConversationSlackTools } from "./slack-tools";
+import { type ConversationTeamPorts, ConversationTeamTools } from "./team-tools";
 import { type WorkAdmission, WorkAdmissionError } from "./work-admission";
 import { WorkspaceArgumentError } from "./workspace-tools";
 
 export interface ConversationHubPorts {
+	team?: ConversationTeamPorts;
 	approvals?: ApprovalToolPorts;
 	prComments?: ConversationPRCommentPorts;
 	fixes?: {
@@ -331,6 +333,7 @@ export class ConversationHubTools {
 	private readonly slack?: ConversationSlackTools;
 	private readonly prComments?: ConversationPRCommentTools;
 	private readonly approvals?: ApprovalTools;
+	private readonly team?: ConversationTeamTools;
 	get completedDayProposal() {
 		return this.day?.completedProposal;
 	}
@@ -391,6 +394,7 @@ export class ConversationHubTools {
 			generation: turn.generation,
 		})
 	) {
+		if (ports.team) this.team = new ConversationTeamTools(ports.team, turn, signal);
 		if (ports.approvals) this.approvals = new ApprovalTools(ports.approvals, turn, signal);
 		if (ports.prComments)
 			this.prComments = new ConversationPRCommentTools(ports.prComments, turn, signal);
@@ -608,11 +612,13 @@ export class ConversationHubTools {
 			...(this.slack?.tools ?? []),
 			...(this.prComments?.tools ?? []),
 			...(this.approvals?.tools ?? []),
+			...(this.team?.tools ?? []),
 		];
 	}
 	has(name: string) {
 		if (name.startsWith("inspect_suggested_") && !this.ports.fixes) return false;
 		return (
+			!!this.team?.has(name) ||
 			!!this.approvals?.has(name) ||
 			!!this.prComments?.has(name) ||
 			!!this.slack?.has(name) ||
@@ -817,6 +823,7 @@ export class ConversationHubTools {
 	}
 	async execute(name: string, rawArguments: string): Promise<unknown> {
 		if (!this.has(name)) throw new GuidedReviewError("That hub operation is unavailable.");
+		if (this.team?.has(name)) return this.team.execute(name, rawArguments);
 		if (this.approvals?.has(name)) return this.approvals.execute(name, rawArguments);
 		if (this.prComments?.has(name)) return this.prComments.execute(name, rawArguments);
 		if (this.slack?.has(name)) return this.slack.execute(name, rawArguments);

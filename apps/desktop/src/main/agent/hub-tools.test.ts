@@ -5947,3 +5947,54 @@ test("incoming feedback creates only a private candidate and rejects unknown PRs
 	assert.equal(starts, 1);
 	assert.equal(h.operations.length, 0);
 });
+
+test("Team tools compose only with injected ports and cannot grant themselves ingress permission", async () => {
+	const d = data();
+	const absent = new ConversationHubTools(d.ports, input, new AbortController().signal);
+	assert.equal(absent.has("share_reviewed_fix"), false);
+	assert.equal(
+		absent.tools.some((tool) => tool.name === "inspect_team_sharing"),
+		false
+	);
+	let writes = 0;
+	const status = {
+		configured: false,
+		connection: "unconfigured" as const,
+		userId: null,
+		scopes: [],
+		canShare: false,
+		canApply: false,
+		error: null,
+	};
+	d.ports.team = {
+		observe: async () => ({ workspace: null, accountKey: "account", pr: null }),
+		detail: async () => {
+			throw new Error("Not selected");
+		},
+		status: async () => status,
+		shareIntent: () => null,
+		previewProposal: async () => {
+			throw new Error("No permission");
+		},
+		shareProposal: async () => {
+			writes++;
+			throw new Error("No permission");
+		},
+	};
+	const hub = new ConversationHubTools(
+		d.ports,
+		{ ...input, text: "Share this reviewed fix with the author." },
+		new AbortController().signal
+	);
+	assert.equal(hub.has("share_reviewed_fix"), true);
+	assert.equal(
+		hub.tools.some((tool) => tool.name === "inspect_team_sharing"),
+		true
+	);
+	assert.deepEqual(await hub.execute("inspect_team_sharing", "{}"), status);
+	await assert.rejects(
+		hub.execute("share_reviewed_fix", '{"candidateId":"fix"}'),
+		/team-sharing-permission/
+	);
+	assert.equal(writes, 0);
+});
