@@ -27,6 +27,9 @@ export const DayQuestionSchema = z.strictObject({
 });
 /** Explicit, private, thread-only send authority. Never execution or ownership authority. */
 export const ClarificationPolicySchema = z.strictObject({
+	standingAuthority: z
+		.strictObject({ ruleId: IdSchema, ruleRevision: z.int().positive(), admissionId: IdSchema })
+		.optional(),
 	id: IdSchema,
 	revision: z.int().positive(),
 	connectionId: IdSchema,
@@ -145,12 +148,17 @@ export const DayWorkItemSchema = z
 				invalid("Current clarification policy requires the current source revision");
 			if (
 				c.status === "active" &&
-				(!c.confirmedAt ||
-					!c.expiresAt ||
-					Date.parse(c.expiresAt) - Date.parse(c.confirmedAt) !== policy.durationMinutes * 60000)
+				(policy.standingAuthority
+					? c.confirmedAt !== null || !c.expiresAt
+					: !c.confirmedAt ||
+						!c.expiresAt ||
+						Date.parse(c.expiresAt) - Date.parse(c.confirmedAt) !== policy.durationMinutes * 60000)
 			)
 				invalid("Active clarification requires explicit bounded confirmation");
-			if (c.status === "proposed" && (c.confirmedAt || c.expiresAt || c.attempts.length))
+			if (
+				c.status === "proposed" &&
+				(c.confirmedAt || c.expiresAt || c.attempts.length || policy.standingAuthority)
+			)
 				invalid("A proposal cannot hold send authority or attempts");
 			if (
 				c.evidence.some(
