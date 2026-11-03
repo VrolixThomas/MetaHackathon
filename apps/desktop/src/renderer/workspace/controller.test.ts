@@ -291,6 +291,11 @@ it("ignores stale/cancelled/obscured effects and retires render waits promptly",
 		h.controller.presented(1, null);
 		assert.equal(h.receipts.at(-1)?.status, "ignored");
 		h.controller.setObscured(true);
+		assert.equal(
+			h.interruptions(),
+			0,
+			"An agent-opened overlay must not retire its own presentation turn"
+		);
 		await h.controller.applyAction(action({ ...document, sequence: 2 }, "overlay"), () => true);
 		assert.equal(h.receipts.at(-1)?.status, "ignored");
 		assert.equal(h.controller.getContext()?.sequence, 0);

@@ -441,7 +441,8 @@ export function createWorkspaceController(
 			if (obscured === value) return;
 			obscured = value;
 			if (value) {
-				manualInteraction?.();
+				// Obscuring may be an agent-opened composer, not manual navigation.
+				// Reject underlying canvas effects without retiring the presenting turn.
 				invalidate();
 				store.setState({ busy: false });
 				void browser.present(null).catch(() => {});
