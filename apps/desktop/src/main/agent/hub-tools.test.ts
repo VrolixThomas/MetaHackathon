@@ -312,7 +312,7 @@ test("hub-only foreground tools inspect actual ticket/job/feedback/local review 
 	assert(JSON.stringify(feedback).includes("Actual requested fix"));
 	await assert.rejects(
 		tools.execute("inspect_pr_feedback", JSON.stringify({ prId: "incoming-pr" })),
-		/observed own/
+		/observed eligible/
 	);
 	d.ports.job = async () => ({ ...d.job, id: "foreign" });
 	await assert.rejects(
@@ -5860,4 +5860,83 @@ test("natural zoom-and-design question displays its ticket before a single answe
 		w.settle();
 		await service.dispose();
 	}
+});
+
+test("incoming feedback creates only a private candidate and rejects unknown PRs and feedback", async () => {
+	const h = data();
+	const incoming = required(h.hub.reviews[0]);
+	incoming.kind = "incoming";
+	const pr = incoming.pr;
+	const feedback = required((await h.ports.feedback(pr.id))[0]);
+	let starts = 0;
+	const fix = {
+		id: "fix",
+		jobId: "candidate",
+		pr,
+		feedback,
+		phase: "preparing" as const,
+		summary: "",
+		question: null,
+		baseSha: pr.headSha,
+		headSha: null,
+		checks: [],
+		changedFiles: [],
+		createdAt: time,
+		updatedAt: time,
+		reviewedAt: null,
+		error: null,
+		publication: "not-published" as const,
+	};
+	h.ports.fixes = {
+		list: async () => [fix],
+		detail: async () => ({ fix, review: null }),
+		start: async () => {
+			starts++;
+			return fix;
+		},
+	};
+	const tools = new ConversationHubTools(h.ports, input, new AbortController().signal);
+	await assert.rejects(
+		tools.execute("inspect_pr_feedback", JSON.stringify({ prId: "unknown" })),
+		/observed/
+	);
+	await assert.rejects(
+		tools.execute(
+			"start_feedback_work",
+			JSON.stringify({ prId: "unknown", feedbackId: feedback.id })
+		),
+		/Inspect actual feedback/
+	);
+	const legacy = new ConversationHubTools(
+		{ ...h.ports, fixes: undefined },
+		input,
+		new AbortController().signal
+	);
+	await assert.rejects(
+		legacy.execute("inspect_pr_feedback", JSON.stringify({ prId: pr.id })),
+		/observed/
+	);
+	const args = JSON.stringify({ prId: pr.id, feedbackId: feedback.id });
+	await assert.rejects(tools.execute("start_feedback_work", args), /Inspect actual feedback/);
+	assert.equal(starts, 0);
+	assert.equal(tools.feedbackHandoff, undefined);
+	await tools.execute("inspect_pr_feedback", JSON.stringify({ prId: pr.id }));
+	await assert.rejects(
+		tools.execute(
+			"start_feedback_work",
+			JSON.stringify({ prId: pr.id, feedbackId: "uninspected" })
+		),
+		/Inspect actual feedback/
+	);
+	const result = (await tools.execute("start_feedback_work", args)) as {
+		fix: { id: string };
+		display: string;
+		background: { status: string; nextStep: string };
+	};
+	assert.equal(result.background.status, "background-admitted");
+	assert.equal(result.background.nextStep, "acknowledge-and-yield");
+	assert.equal(result.fix.id, fix.id);
+	assert.equal(result.display, "not-established");
+	assert.equal(starts, 1);
+	assert.equal(h.operations.length, 0);
 });
