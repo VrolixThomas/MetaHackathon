@@ -1,4 +1,5 @@
 import { randomUUID } from "node:crypto";
+import { isDeepStrictEqual } from "node:util";
 import { z } from "zod";
 import {
 	IdSchema,
@@ -1513,6 +1514,9 @@ export class DayService {
 			const item = record.item;
 			if (record.preparation?.requestId !== requestId || item.jobId !== job.id)
 				throw new DayChanged();
+			// Compare the complete validated job against the current serialized record,
+			// not the pre-observation snapshot. Polling alone is not an item revision.
+			if (isDeepStrictEqual(record.preparation.job, job)) return;
 			if (record.preparation.job?.headSha !== job.headSha || job.state !== "ready") {
 				item.reviewedAt = null;
 				item.reviewedHeadSha = null;
