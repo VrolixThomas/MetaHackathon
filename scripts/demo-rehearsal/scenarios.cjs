@@ -191,28 +191,7 @@ async function collaboration(d) {
 		70000
 	);
 	await slack(d);
-	if (!d.skipFix) {
-		const candidate = await wait(
-			"actual suggested fix becomes ready",
-			async () => {
-				const candidates = await rpc("query", "prFixes.list");
-				const fix = candidates.find((f) => f.pr.id === d.fixture.pulls[1].id);
-				if (["failed", "interrupted", "needs-input"].includes(fix?.phase))
-					throw Error(`Fix not ready: ${fix.phase}: ${fix.error ?? fix.question}`);
-				return fix?.phase === "ready" ? fix : false;
-			},
-			240000
-		);
-		assert(
-			candidate.checks.length > 0 &&
-				candidate.checks.every((c) => c.exitCode === 0 && c.commitSha === candidate.headSha)
-		);
-		await say(
-			"Open the prepared Slack-capture suggested fix and explain the behavioral correction. Keep it unpublished.",
-			{ id: "fix-review" }
-		);
-		report.completedFix = await rpc("query", "prFixes.detail", { id: candidate.id });
-	}
+	if (!d.skipFix) await reviewFix(d);
 
 	assert.equal(
 		report.simulatedWrites.filter((w) => w.provider === "github").length,
@@ -355,4 +334,50 @@ async function variants(d) {
 		passed: true,
 	});
 }
-module.exports = { common, full, collaboration, slack, review, variants, planning };
+async function reviewFix(d) {
+	const { say, rpc, wait, assert, report } = d;
+	const candidate = await wait(
+		"actual suggested fix becomes ready",
+		async () => {
+			const candidates = await rpc("query", "prFixes.list");
+			const fix = candidates.find((f) => f.pr.id === d.fixture.pulls[1].id);
+			if (["failed", "interrupted", "needs-input"].includes(fix?.phase))
+				throw Error(`Fix not ready: ${fix.phase}: ${fix.error ?? fix.question}`);
+			return fix?.phase === "ready" ? fix : false;
+		},
+		240000
+	);
+	assert(
+		candidate.checks.length > 0 &&
+			candidate.checks.every((c) => c.exitCode === 0 && c.commitSha === candidate.headSha)
+	);
+	await say(
+		"Open the prepared Slack-capture suggested fix and explain the behavioral correction. Keep it unpublished.",
+		{ id: "fix-review" }
+	);
+	report.completedFix = await rpc("query", "prFixes.detail", { id: candidate.id });
+	const shown = await rpc("query", "workspace.observe", {
+		sessionId: report.turns.at(-1).identity.sessionId,
+	});
+	const primary = shown.workspace.canvases.find((c) => c.id === shown.workspace.primaryId);
+	assert(
+		primary?.kind === "center" &&
+			primary.section === "fixes" &&
+			primary.fixSource?.headSha === candidate.headSha,
+		"Actual candidate Before/After must be acknowledged before review claims"
+	);
+	assert.equal(candidate.publication, "not-published");
+	report.assertions.push({
+		name: "Actual suggested fix child, checks and pinned candidate display",
+		passed: true,
+	});
+}
+async function fix(d) {
+	await d.say(
+		"Prepare a suggested fix for the reviewer feedback on my Slack-capture PR. Keep it local and run its real checks.",
+		{ id: "proposed-fix" }
+	);
+	await reviewFix(d);
+	d.assert.equal(d.report.simulatedWrites.length, 0, "Local fix must not publish or send");
+}
+module.exports = { common, full, collaboration, slack, review, variants, planning, fix };

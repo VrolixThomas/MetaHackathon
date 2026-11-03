@@ -20,9 +20,16 @@ const textDiagnostics = process.argv.includes("--text-diagnostics");
 assert(
 	!textDiagnostics ||
 		process.argv.includes("--interactive") ||
-		["review", "collaboration", "delegation", "slack", "variants", "actions", "planning"].some(
-			(suite) => process.argv.includes(`--suite=${suite}`)
-		),
+		[
+			"review",
+			"collaboration",
+			"delegation",
+			"slack",
+			"variants",
+			"actions",
+			"planning",
+			"fix",
+		].some((suite) => process.argv.includes(`--suite=${suite}`)),
 	"Text diagnostics are limited to named subsets; full acceptance requires live voice"
 );
 assert(
@@ -636,8 +643,11 @@ async function main() {
 			review,
 			variants,
 			planning,
+			fix,
 		} = require("./scenarios.cjs");
-		if (process.argv.includes("--suite=planning"))
+		if (process.argv.includes("--suite=fix"))
+			await fix({ say, rpc, ui, state, fixture, report, assert, js, wait, button, owned });
+		else if (process.argv.includes("--suite=planning"))
 			await planning({ say, rpc, ui, state, fixture, report, assert, js, wait, button, owned });
 		else if (process.argv.includes("--suite=variants"))
 			await variants({ say, rpc, ui, state, fixture, report, assert, js, wait, button, owned });

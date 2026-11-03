@@ -40,6 +40,7 @@ Available suites:
 - `--suite=review`: PR explanation, pinned flow and persistent browser/phone.
 - `--suite=variants`: a second ticket, different planning phrases and a source question.
 - `--suite=planning`: the initial planning/choice/followup questions without voice control cases.
+- `--suite=fix`: real fix admission, coding/check completion and pinned candidate Before/After review.
 - `--suite=collaboration`: suggested fix, approval and Slack scenes alone.
 - `--suite=delegation`: approval and Slack scenes alone.
 - `--suite=slack`: Slack clarification alone.
