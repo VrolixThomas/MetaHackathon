@@ -306,9 +306,13 @@ export async function runGuidedReview(
 	let repairedArguments = false;
 	const profile = workflow?.profile ?? new ForegroundProfile();
 	profile.beginTurn(input.requestId);
-	// Six tool rounds, one input correction, then a tools-free terminal answer.
-	// A successful last operation must not be discarded by a missing answer slot.
-	const toolRoundLimit = 6;
+	// End-to-end flow discovery may need unchanged callers plus a final canvas write.
+	// Keep ordinary turns bounded at six; allow ten for an explicit flow request,
+	// plus the existing one input correction and tools-free terminal answer.
+	const requestedFlow =
+		/^(?:please\s+)?(?:show|draw|map|trace|visualize)\b/i.test(input.text.trim()) &&
+		/\b(?:flow|end.to.end|request.to.result)\b/i.test(input.text);
+	const toolRoundLimit = requestedFlow ? 10 : 6;
 	let modelAttempt = 0;
 	for (let round = 0; round <= toolRoundLimit; round++) {
 		const terminalAnswer = round === toolRoundLimit;
@@ -387,7 +391,7 @@ export async function runGuidedReview(
 		const request = {
 			requestId: `${input.requestId}:review:${modelAttempt++}`,
 			workload: proposalReasoning || profile.workWorkflow ? ("deep" as const) : ("quick" as const),
-			instructions: `${profile.sourceWorkflow ? profile.workflowInstructions : `${workspace || hub ? `${INSTRUCTIONS}\n${WORKSPACE_INSTRUCTIONS}` : INSTRUCTIONS}\n${COPARTNER_INSTRUCTIONS}\n${PROFILE_INSTRUCTIONS}`}${terminalAnswer ? "\nTool budget is exhausted. Answer from actual results only, briefly naming any unfinished part. Do not claim rejected or unacknowledged effects succeeded." : `\nAt most ${toolRoundLimit - round} tool calls remain, plus one final answer.${profile.sourceWorkflow ? "" : " Inspect missing links before proposing a source flow."}`}`,
+			instructions: `${profile.sourceWorkflow ? profile.workflowInstructions : `${workspace || hub ? `${INSTRUCTIONS}\n${WORKSPACE_INSTRUCTIONS}` : INSTRUCTIONS}\n${COPARTNER_INSTRUCTIONS}\n${PROFILE_INSTRUCTIONS}`}${terminalAnswer ? "\nTool budget is exhausted. Answer from actual results only, briefly naming any unfinished part. Do not claim rejected or unacknowledged effects succeeded." : `\nAt most ${toolRoundLimit - round} tool calls remain, plus one final answer.${profile.sourceWorkflow ? "" : " Inspect missing links before creating the requested source flow. Reserve a tool call for create_source_flow and wait for its applied display receipt; a verbal description is not completion of an explicit show-flow request."}`}`,
 			input: modelInput,
 			tools: answerOnly
 				? profile.tools([])
