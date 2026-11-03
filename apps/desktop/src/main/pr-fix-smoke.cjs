@@ -30,7 +30,7 @@ const observer = `(() => {
 		return {sequence:canvas?Number(canvas.dataset.workspaceSequence):null,id:e?.dataset.prFixId??e?.dataset.prFixStatusId??null,
 			path:e?.dataset.prFixPath??'',head:e?.dataset.prFixHead??null,base:e?.dataset.prFixBase??null,visible:visible(e),
 			feedback:e?.querySelector('.pr-fix-original')?.textContent??null,
-			conversation:{sessionId:m?.dataset.sessionId,turnId:m?.dataset.turnId,generation:Number(m?.dataset.generation),phase:exchange?.dataset.phase,answer:exchange?.querySelector('.assistant-message p')?.textContent??''},
+			conversation:{sessionId:m?.dataset.sessionId,turnId:m?.dataset.turnId,generation:Number(m?.dataset.generation),phase:exchange?.dataset.phase,answer:exchange?.querySelector('.assistant-answer')?.getAttribute('data-answer')??''},
 			rows:[...(e?.querySelectorAll('.hub-diff-row')??[])].map(r=>r.lastElementChild.textContent),
 			source:e?.querySelector('[data-source-sha]')?{sha:e.querySelector('[data-source-sha]').dataset.sourceSha,path:e.querySelector('[data-source-sha]').dataset.sourcePath,text:[...e.querySelectorAll('.hub-source-text')].map(r=>r.textContent).join('')}:null};
 	};

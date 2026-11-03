@@ -237,7 +237,7 @@ async function native() {
 	}
 	const ui = () =>
 		js(
-			`({armed:document.querySelector('footer.voice-bar')?.dataset.handsFree,error:document.querySelector('.voice-bar-error')?.textContent||'',dialogs:document.querySelectorAll('dialog').length,messages:[...document.querySelectorAll('article.exchange')].map(e=>({phase:e.dataset.phase,turnId:e.dataset.turnId,question:e.querySelector('.user-message')?.textContent||'',answer:e.querySelector('.assistant-message p')?.textContent||''}))})`
+			`({armed:document.querySelector('footer.voice-bar')?.dataset.handsFree,error:document.querySelector('.voice-bar-error')?.textContent||'',dialogs:document.querySelectorAll('dialog').length,messages:[...document.querySelectorAll('article.exchange')].map(e=>({phase:e.dataset.phase,turnId:e.dataset.turnId,question:e.querySelector('.user-message')?.textContent||'',answer:e.querySelector('.assistant-answer')?.getAttribute('data-answer')||''}))})`
 		);
 	async function rpc(type, path, input) {
 		const encoded =

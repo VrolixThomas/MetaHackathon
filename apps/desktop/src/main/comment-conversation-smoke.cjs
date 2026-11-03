@@ -321,7 +321,7 @@ async function native() {
 			);
 		const turnUI = () =>
 			js(
-				`(() => {const e=[...document.querySelectorAll('.exchange')].at(-1);return e?{turnId:e.dataset.turnId,phase:e.dataset.phase,question:e.querySelector('.user-message p')?.textContent,answer:e.querySelector('.assistant-message p')?.textContent}:null;})()`
+				`(() => {const e=[...document.querySelectorAll('.exchange')].at(-1);return e?{turnId:e.dataset.turnId,phase:e.dataset.phase,question:e.querySelector('.user-message p')?.textContent,answer:e.querySelector('.assistant-answer')?.getAttribute('data-answer')}:null;})()`
 			);
 		const submit = async (text, terminal = "complete") => {
 			const prior = report.ipc.length;

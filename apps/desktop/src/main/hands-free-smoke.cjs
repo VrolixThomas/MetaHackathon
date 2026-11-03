@@ -632,7 +632,7 @@ async function native() {
 		};
 		const ui = () =>
 			js(
-				`(() => ({ armed:document.querySelector('footer.voice-bar')?.dataset.handsFree,phase:document.querySelector('main.conversation-main')?.dataset.conversationState,error:document.querySelector('.voice-bar-error')?.textContent||'',messages:[...document.querySelectorAll('article.exchange')].map(e=>({phase:e.dataset.phase,turnId:e.dataset.turnId,answer:e.querySelector('.assistant-message p')?.textContent||''})) }))()`
+				`(() => ({ armed:document.querySelector('footer.voice-bar')?.dataset.handsFree,phase:document.querySelector('main.conversation-main')?.dataset.conversationState,error:document.querySelector('.voice-bar-error')?.textContent||'',messages:[...document.querySelectorAll('article.exchange')].map(e=>({phase:e.dataset.phase,turnId:e.dataset.turnId,answer:e.querySelector('.assistant-answer')?.getAttribute('data-answer')||''})) }))()`
 			);
 		const config = await rpc("query", "app.config");
 		const initialHub = await rpc("query", "hub.snapshot", {});

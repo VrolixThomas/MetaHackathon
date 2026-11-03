@@ -1,778 +1,744 @@
 {
-  "schemaVersion": 1,
-  "date": "2026-11-03",
-  "auditedCommit": "3881487c97e8d321e8a6e7bdf76a64d0a5e85ebf",
-  "scope": "Read-only feature/story audit. Only JSON authored. No tests, launches, provider operations or dependency changes.",
-  "verdict": "Coherent story available; current end-to-end acceptance unestablished. Fresh task should improve actual MuseFocus architecture; existing companion PRs remain explicitly labeled executable analogues.",
-  "evidenceRules": [
-    "Source and test inventory are not passing execution evidence.",
-    "Historical results retain their own commits/transport limitations.",
-    "Local manifest PR states are November 1 snapshots; root must refresh live.",
-    "User reports two finished MET-77 jobs. Preserve history and ledgers; never claim fresh dispatch."
-  ],
-  "historicalEvidence": {
-    "path": "docs/integration/evidence/demo-rehearsal-status-2026-11-03.json",
-    "sourceCommit": "8db52341a44166ade3592d82fde8326176155a36",
-    "acceptance": "not-achieved",
-    "reportedChecks": [
-      "type-check/lint passed",
-      "338 focused agent/day regressions passed",
-      "controlled native integration/hands-free/slack-clarification passed"
-    ],
-    "blockers": [
-      "ElevenLabs 401 quota_exceeded",
-      "Observed Meta 504"
-    ],
-    "subsets": [
-      "Planning/variants completed using live model and text input",
-      "Coding/history completed",
-      "PR/source-flow/browser assertion passed within failed overall run"
-    ],
-    "limits": [
-      "No complete current-build live speech rehearsal",
-      "GitHub/Linear/Slack writes controlled",
-      "Automated ASR is scripted; synthetic microphone; audible output does not verify physical microphone/live ASR",
-      "Historical source-flow text response took 35.2s; not current latency guarantee"
-    ]
-  },
-  "requirements": [
-    {
-      "id": "briefing",
-      "requirement": "Daily briefing",
-      "status": "source-supported; current live acceptance unverified",
-      "sourceEvidence": [
-        {
-          "path": "apps/desktop/src/renderer/command-center/model.ts",
-          "line": 67,
-          "anchor": "export function priorityItems",
-          "claim": "Actual jobs/reviews/tickets become at most eight cards.",
-          "kind": "source"
-        },
-        {
-          "path": "apps/desktop/src/renderer/command-center/CenterCanvas.tsx",
-          "line": 463,
-          "anchor": "Your priority brief",
-          "claim": "Visible Home brief.",
-          "kind": "source"
-        },
-        {
-          "path": "apps/desktop/src/main/agent/hub-tools.ts",
-          "line": 145,
-          "anchor": "Inspect actual priority counts",
-          "claim": "Conversation separates incoming review, own feedback, jobs and tickets.",
-          "kind": "source"
-        }
-      ],
-      "tests": {
-        "recommendedRootChecks": [
-          "bun run test:executive",
-          "apps/desktop/src/main/agent/hub-tools.test.ts"
-        ],
-        "executedByAudit": false
-      },
-      "missingOrCompositionSeams": [
-        "No scheduled morning-brief orchestration established: demonstrate requested briefing.",
-        "My day is an independent controller; inspect its queue too. Bounded summaries are not all work.",
-        "Home order is decisions, ready, failed; spoken attention orders failures before ready."
-      ],
-      "livePrerequisites": [
-        "Refresh actual connected sources; distinguish missing/stale/empty. Inspect detail before describing requirements.",
-        "Briefing and planning must admit no job."
-      ]
-    },
-    {
-      "id": "clarify-build",
-      "requirement": "Clarify ticket and build in background",
-      "status": "source-supported; current live acceptance unverified",
-      "sourceEvidence": [
-        {
-          "path": "apps/desktop/src/main/agent/hub-tools.ts",
-          "line": 161,
-          "anchor": "Start an independent app-owned coding job",
-          "claim": "Observed ticket/watched repo; no publication.",
-          "kind": "source"
-        },
-        {
-          "path": "apps/desktop/src/main/work/jobs.ts",
-          "line": 597,
-          "anchor": "Preparing an isolated worktree.",
-          "claim": "Isolated app-owned work.",
-          "kind": "source"
-        },
-        {
-          "path": "apps/desktop/src/main/work/jobs.ts",
-          "line": 677,
-          "anchor": "Committing changes and checking the actual commit.",
-          "claim": "Actual finalized-commit checks.",
-          "kind": "source"
-        }
-      ],
-      "tests": {
-        "recommendedRootChecks": [
-          "bun run test:executive",
-          "apps/desktop/src/main/work/jobs.test.ts",
-          "scripts/demo-rehearsal/run.cjs --live --suite=work"
-        ],
-        "executedByAudit": false
-      },
-      "missingOrCompositionSeams": [
-        "Two existing MET-77 completed jobs are history, not fresh dispatch.",
-        "Actual MuseFocus repository needs registered checks and may take longer than companion."
-      ],
-      "livePrerequisites": [
-        "Root creates fresh real ticket and reserves files; Codex-only selection.",
-        "Clarify first, explicitly start, capture new job ID; continue review without polling worker in foreground."
-      ]
-    },
-    {
-      "id": "logical-review",
-      "requirement": "Entry-to-end review",
-      "status": "source-supported; current live acceptance unverified",
-      "sourceEvidence": [
-        {
-          "path": "apps/desktop/src/main/agent/guided-review.ts",
-          "line": 270,
-          "anchor": "An end-to-end behavior or request-to-result flow",
-          "claim": "Full flow differs from changed-file walkthrough.",
-          "kind": "source"
-        },
-        {
-          "path": "apps/desktop/src/main/agent/hub-tools.ts",
-          "line": 157,
-          "anchor": "Read verbatim pinned source",
-          "claim": "Unchanged callers can be inspected at actual pins.",
-          "kind": "source"
-        },
-        {
-          "path": "apps/desktop/src/main/agent/workspace-tools.ts",
-          "line": 90,
-          "anchor": "Create a stitched source-flow",
-          "claim": "Main reads original source; waits for display.",
-          "kind": "source"
-        }
-      ],
-      "tests": {
-        "recommendedRootChecks": [
-          "bun run test:workspace",
-          "bun run test:prepared-reviews",
-          "apps/desktop/src/main/agent/guided-review.test.ts"
-        ],
-        "executedByAudit": false
-      },
-      "missingOrCompositionSeams": [
-        "Read unchanged entry, downstream effects and tests; changed-file order is insufficient.",
-        "Current guided-review prompt permits sections of 1–8 files while older AGENTS says three; root should reconcile. Use two/three steps in cut."
-      ],
-      "livePrerequisites": [
-        "Current full base/head pins and exact ranges; accepted display receipts.",
-        "Manual navigation must not be reclaimed by old narration."
-      ]
-    },
-    {
-      "id": "run-revision",
-      "requirement": "Ask app to run selected revision and show browser",
-      "status": "foreground launch composition gap; URL display source-supported",
-      "sourceEvidence": [
-        {
-          "path": "apps/desktop/src/main/agent/workspace-tools.ts",
-          "line": 94,
-          "anchor": "Open an explicit HTTPS or local HTTP URL",
-          "claim": "Workspace tool opens supplied URL and disclaims verified revision.",
-          "kind": "source"
-        },
-        {
-          "path": "apps/desktop/src/main/agent/browser.ts",
-          "line": 42,
-          "anchor": "Open the current PR's head or base",
-          "claim": "Legacy tool describes runtime-provided pinned preview.",
-          "kind": "source"
-        },
-        {
-          "path": "apps/desktop/src/main/agent/tool-loop.ts",
-          "line": 376,
-          "anchor": "throw new Error(\"Stale preview\")",
-          "claim": "Legacy preview checks revision identity.",
-          "kind": "source"
-        }
-      ],
-      "tests": {
-        "recommendedRootChecks": [
-          "bun run test:local-browser",
-          "bun run test:workspace",
-          "apps/desktop/src/main/runtime/preview-interactive.test.ts"
-        ],
-        "executedByAudit": false
-      },
-      "missingOrCompositionSeams": [
-        "No revision-launch command exposed in audited workspace map. Legacy capability does not prove current foreground reachability; root must trace/compose.",
-        "Required seam: authorized repo/revision -> isolated checkout -> inspected run configuration -> managed process/log/readiness -> bound loopback URL -> native receipt.",
-        "Execution receipt needs SHA/command/run ID/timestamps; page observation remains distinct."
-      ],
-      "livePrerequisites": [
-        "Root tests real app-initiated start/shutdown, failed start, stale head and cancellation.",
-        "Operator-launched preview is honest fallback but does not satisfy app-runs-revision requirement."
-      ]
-    },
-    {
-      "id": "diagram",
-      "requirement": "Source flow and ladder diagram",
-      "status": "source-supported; current live acceptance unverified",
-      "sourceEvidence": [
-        {
-          "path": "apps/desktop/src/main/agent/workspace-tools.ts",
-          "line": 111,
-          "anchor": "Create or update an illustrative visual mock",
-          "claim": "Typed rect/text/line scene, no executable SVG/HTML.",
-          "kind": "source"
-        },
-        {
-          "path": "apps/desktop/src/renderer/workspace/ArtifactCanvas.tsx",
-          "line": 37,
-          "anchor": "viewBox=",
-          "claim": "SVG primitive rendering.",
-          "kind": "source"
-        },
-        {
-          "path": "apps/desktop/src/renderer/workspace/ArtifactCanvas.tsx",
-          "line": 98,
-          "anchor": "Source references",
-          "claim": "Pinned reference navigation.",
-          "kind": "source"
-        }
-      ],
-      "tests": {
-        "recommendedRootChecks": [
-          "bun run test:workspace",
-          "apps/desktop/src/renderer/workspace/artifact.test.tsx",
-          "apps/desktop/src/main/agent/workspace-conversation.test.ts"
-        ],
-        "executedByAudit": false
-      },
-      "missingOrCompositionSeams": [
-        "Stitched source flow is not sequence diagram: pair create_source_flow and create_visual_mock.",
-        "No semantic Mermaid/PlantUML renderer established. Use labeled primitive lifelines. Raster explanation is not execution evidence."
-      ],
-      "livePrerequisites": [
-        "Root generates and checks readable unclipped visual beside original source; confirms actual receipt.",
-        "Below is proposed scene specification, not generated/verified diagram."
-      ]
-    },
-    {
-      "id": "comment",
-      "requirement": "Real PR comment",
-      "status": "source-supported; current live acceptance unverified",
-      "sourceEvidence": [
-        {
-          "path": "apps/desktop/src/main/agent/pr-comment-tools/README.md",
-          "line": 3,
-          "anchor": "ConversationHubPorts.prComments",
-          "claim": "Canonical conversational comment workflow documentation.",
-          "kind": "source"
-        }
-      ],
-      "tests": {
-        "recommendedRootChecks": [
-          "bun run test:pr-work",
-          "bun run test:comment-conversation"
-        ],
-        "executedByAudit": false
-      },
-      "missingOrCompositionSeams": [
-        "Historical writes are controlled receipts, not real GitHub posting."
-      ],
-      "livePrerequisites": [
-        "Current PR1 eligible RIGHT diff lines; exact draft/body/head display, speech drain, distinct confirmation.",
-        "Actual comment ID/URL and durable ledger; no blind retry of unknown send."
-      ]
-    },
-    {
-      "id": "share-fix",
-      "requirement": "Proposed fix shared with author",
-      "status": "source-supported; current live acceptance unverified",
-      "sourceEvidence": [
-        {
-          "path": "apps/desktop/src/main/work/pr-fixes/README.md",
-          "line": 5,
-          "anchor": "There are no publication",
-          "claim": "Candidate is private; no send/publish/author approval.",
-          "kind": "source"
-        },
-        {
-          "path": "apps/desktop/src/main/composition/team-proposal-source.ts",
-          "line": 37,
-          "anchor": "Share an individual inline or general PR comment fix.",
-          "claim": "Aggregate review feedback is not eligible individual-comment source.",
-          "kind": "source"
-        },
-        {
-          "path": "apps/desktop/src/main/composition/team-proposal-source.ts",
-          "line": 31,
-          "anchor": "Inspect and mark the exact local fix reviewed",
-          "claim": "Exact inspected candidate required.",
-          "kind": "source"
-        },
-        {
-          "path": "apps/desktop/src/renderer/team/TeamCard.tsx",
-          "line": 369,
-          "anchor": "Share exact proposal",
-          "claim": "Explicit exact-bundle UI.",
-          "kind": "source"
-        },
-        {
-          "path": "apps/desktop/src/main/team/service.ts",
-          "line": 535,
-          "anchor": "async shareProposal",
-          "claim": "Reconstruct and compare bundle digest.",
-          "kind": "source"
-        },
-        {
-          "path": "apps/desktop/src/main/agent/hub-tools.ts",
-          "line": 1206,
-          "anchor": "Inspect actual feedback on your own PR before starting feedback work.",
-          "kind": "source",
-          "claim": "Foreground candidate admission is currently own-PR feedback scoped."
-        }
-      ],
-      "tests": {
-        "recommendedRootChecks": [
-          "bun run test:pr-fixes",
-          "bun run test:team-workspace",
-          "bun run test:team:db"
-        ],
-        "executedByAudit": false
-      },
-      "missingOrCompositionSeams": [
-        "Foreground start_feedback_work explicitly requires an observed own PR (hub-tools.ts around line 1202). The reviewer cannot assume spoken candidate creation on PR1 (other author). Root must validate an authorized manual Prepare suggested fix route for that real individual comment or compose reviewer-side admission; never bypass current author/account gates. PR2 remains the supported own-feedback spoken example.",
-        "No foreground sharing tool established in inspected maps; use Team UI or root composes exact-bound seam.",
-        "PR2 manifest feedback is CHANGES_REQUESTED review body: do not assume share eligibility. Prefer new PR1 individual comment.",
-        "Organization share does not prove author saw/accepted it or branch changed."
-      ],
-      "livePrerequisites": [
-        "Working optional Supabase sharing/migrations, two actual accounts with current repo access and correct author.",
-        "Inspect Before/After/pins/checks; mark privately reviewed, confirm exact bundle; capture author-side inspection/decision. Application/checks/publication remain separate."
-      ]
-    },
-    {
-      "id": "approval",
-      "requirement": "Follow up and approve with no unexpected changes",
-      "status": "source-supported; current live acceptance unverified",
-      "sourceEvidence": [
-        {
-          "path": "docs/integration/pr-approval-acceptance.md",
-          "line": 16,
-          "anchor": "Later commits must descend",
-          "claim": "Allowed files and full exact contents required for later heads; context/base pinned.",
-          "kind": "source"
-        },
-        {
-          "path": "docs/integration/pr-approval-acceptance.md",
-          "line": 17,
-          "anchor": "Conditions requiring semantic judgment",
-          "claim": "Semantic conditions return to human review.",
-          "kind": "source"
-        },
-        {
-          "path": "apps/desktop/src/main/work/pr-approvals/README.md",
-          "line": 3,
-          "anchor": "confirmation.ts",
-          "claim": "Visible proposal and distinct real ingress consent.",
-          "kind": "source"
-        }
-      ],
-      "tests": {
-        "recommendedRootChecks": [
-          "bun run test:pr-approvals",
-          "apps/desktop/src/main/work/pr-approvals/index.test.ts",
-          "apps/desktop/src/main/work/pr-approvals/github.test.ts"
-        ],
-        "executedByAudit": false
-      },
-      "missingOrCompositionSeams": [
-        "Checks/resolved comments do not prove semantic correctness.",
-        "PR3 check-only example is separate from PR1 comment/fix cycle.",
-        "Local awake monitor only; already-green PR3 may approve immediately on consent."
-      ],
-      "livePrerequisites": [
-        "Inspect complete new PR1 diff; authorize exact expected contents/checks/expiry, or notify-only plus human review.",
-        "Non-author reviewer, fresh context/checks, exact confirmation and real commit-bound review receipt; no merge."
-      ]
-    },
-    {
-      "id": "publish",
-      "requirement": "Inspect completed ticket and send for team review",
-      "status": "source-supported; current live acceptance unverified",
-      "sourceEvidence": [
-        {
-          "path": "apps/desktop/src/main/agent/hub-tools.ts",
-          "line": 167,
-          "anchor": "Publish the inspected ready job",
-          "claim": "Publication distinct from acceptance.",
-          "kind": "source"
-        },
-        {
-          "path": "apps/desktop/src/main/work/jobs.ts",
-          "line": 923,
-          "anchor": "private async publishOnce",
-          "claim": "Current job pins, push and draft creation.",
-          "kind": "source"
-        },
-        {
-          "path": "apps/desktop/src/main/runtime/hub-github.ts",
-          "line": 504,
-          "anchor": "async createDraft",
-          "claim": "Draft creation has no reviewer assignment.",
-          "kind": "source"
-        },
-        {
-          "path": "apps/desktop/src/main/agent/hub-tools.ts",
-          "line": 169,
-          "anchor": "Accept reviewed work ONLY",
-          "claim": "approve_work may complete Linear; not needed for publishing.",
-          "kind": "source"
-        }
-      ],
-      "tests": {
-        "recommendedRootChecks": [
-          "bun run test:executive",
-          "apps/desktop/src/main/work/jobs.test.ts"
-        ],
-        "executedByAudit": false
-      },
-      "missingOrCompositionSeams": [
-        "Draft PR is not reviewer request or team notification. None found in inspected publish path.",
-        "Root must define draft handoff or compose separately authorized ready/reviewer request."
-      ],
-      "livePrerequisites": [
-        "Inspect exact job head/full diff and independent check logs.",
-        "Explicit publication and actual matching PR metadata; separately verify team review request if required."
-      ]
-    },
-    {
-      "id": "slack",
-      "requirement": "Scoped autonomous Slack clarification during review",
-      "status": "source-supported; current live acceptance unverified",
-      "sourceEvidence": [
-        {
-          "path": "apps/desktop/src/main/day/README.md",
-          "line": 136,
-          "anchor": "at most three messages/rounds",
-          "claim": "Bounded original-thread policy separate from execution.",
-          "kind": "source"
-        },
-        {
-          "path": "apps/desktop/src/main/agent/day-tools.ts",
-          "line": 83,
-          "anchor": "Activate an inspected proposed clarification policy",
-          "claim": "Distinct user confirmation of scope/thread/bounds.",
-          "kind": "source"
-        },
-        {
-          "path": "apps/desktop/src/main/services.ts",
-          "line": 42,
-          "anchor": "analyzeClarification",
-          "claim": "Main composes clarification inference.",
-          "kind": "source"
-        }
-      ],
-      "tests": {
-        "recommendedRootChecks": [
-          "bun run test:slack-clarification",
-          "bun run test:day",
-          "apps/desktop/src/main/day/clarification.test.ts",
-          "apps/desktop/src/main/composition/day-clarification.test.ts"
-        ],
-        "executedByAudit": false
-      },
-      "missingOrCompositionSeams": [
-        "Synthetic card cannot authorize Slack sends; historical writes controlled.",
-        "Fresh complete source/membership, bounded original thread and uncertain-send handling remain required."
-      ],
-      "livePrerequisites": [
-        "Real dedicated joined thread and second requester. Clarification only: two messages, two questions each, fifteen minutes.",
-        "Review PR while requester answers; capture actual question receipt and attributed answer. No ownership/execution/final-answer closure from clarification."
-      ]
-    },
-    {
-      "id": "initiative",
-      "requirement": "Proactive real update",
-      "status": "source-supported; current live acceptance unverified",
-      "sourceEvidence": [
-        {
-          "path": "apps/desktop/src/main/work/attention.ts",
-          "line": 71,
-          "anchor": "this.quietMs =",
-          "claim": "2.5s quiet, 20s cooldown, 60s retry defaults.",
-          "kind": "source"
-        },
-        {
-          "path": "apps/desktop/src/main/work/attention.ts",
-          "line": 48,
-          "anchor": "const eligible",
-          "claim": "Hands-free idle/focused/unobscured eligibility.",
-          "kind": "source"
-        },
-        {
-          "path": "apps/desktop/src/main/work/attention.ts",
-          "line": 202,
-          "anchor": "\"work-failed\": 1",
-          "claim": "Failures precede readiness.",
-          "kind": "source"
-        }
-      ],
-      "tests": {
-        "recommendedRootChecks": [
-          "bun run test:attention",
-          "bun run test:hands-free",
-          "apps/desktop/src/main/work/attention.test.ts"
-        ],
-        "executedByAudit": false
-      },
-      "missingOrCompositionSeams": [
-        "No guaranteed worker completion in filming window; no fake notices or reset delivery ledgers.",
-        "Displayed text is not spoken proof."
-      ],
-      "livePrerequisites": [
-        "Actual fresh event, hands-free enabled, app focused; quiet without typing/modal/playback.",
-        "Capture intelligible speech and matching drain/ledger; barge-in retains listening without cancelling worker."
-      ]
-    }
-  ],
-  "freshTicket": {
-    "identifier": null,
-    "status": "Proposal only; root owns external creation",
-    "repository": "Actual registered MuseFocus/MetaHackathon repository, not companion",
-    "title": "Show failed background work before ready work in the Home priority brief",
-    "sourceMismatch": {
-      "home": "apps/desktop/src/renderer/command-center/model.ts: decisions, ready, failed",
-      "speech": "apps/desktop/src/main/work/attention.ts: decision/failure/readiness"
-    },
-    "clarification": "Should failed work come before ready work in Home, just as in spoken attention?",
-    "scope": "Decisions first, failures second, ready third. Preserve other category ordering, eight-card cap, IDs/targets. Renderer model plus focused regression only; no scheduler/contracts/dependencies.",
-    "acceptance": [
-      "Mixed states yield decision > failed > ready.",
-      "One failure stays visible with eight ready jobs under eight-card limit.",
-      "Accepted ready jobs excluded; exact target navigation and other ordering preserved.",
-      "Actual focused checks plus root integrated rendering/navigation."
-    ],
-    "preflight": [
-      "Root verifies gap still exists and no existing task/job implements it.",
-      "Create fresh real ticket; no invented MET number. Reserve renderer model/test files before isolated Codex worker.",
-      "Register actual repo/check commands; do not promise full app build inside three minutes."
-    ],
-    "dispatchPrompt": "Implement this ticket in the registered MuseFocus repository with our agreed order. Keep it local for review, preserve the eight-card cap and targets, run relevant checks, and ask about scope changes."
-  },
-  "companion": {
-    "root": "/Users/Werk/SuperiorSwarm/projects/MuseFocusDemo",
-    "observedLocalHead": "d1cf2882863461d7d04917f632c1bab327fbd0bd",
-    "manifest": "/Users/Werk/SuperiorSwarm/projects/MuseFocusDemo/docs/demo-manifest.json",
-    "runbook": "/Users/Werk/SuperiorSwarm/projects/MuseFocusDemo/docs/demo-runbook.md",
-    "repository": "VrolixThomas/MuseFocusDemo",
-    "baseFromManifest": "b067f9c6e3b2b8940d149a71298f17af311914a1",
-    "prs": [
-      {
-        "number": 1,
-        "title": "Quiet updates",
-        "head": "c626938746db098f5ab0d05b4df66e8af447c711",
-        "author": "thomasaltacc-a11y",
-        "finding": "Decision exemption precedes focus guard; suite misses decision during focus."
-      },
-      {
-        "number": 2,
-        "title": "Slack message identity",
-        "head": "a6e12a71898c869672d046feb0cffe82a3198b30",
-        "author": "VrolixThomas",
-        "finding": "Workspace/channel key omits messageId; preserve thread and URL; test replay/cross-workspace."
-      },
-      {
-        "number": 3,
-        "title": "Source links",
-        "head": "fb820400f82c4eafc88184aff068b0319b28b199",
-        "author": "thomasaltacc-a11y",
-        "purpose": "Separate small check-only approval example."
-      }
-    ],
-    "evidence": "Manifest records expected failing focus/slack reproduction exit 1 on November 1; not rerun here. Normal passing suite does not disprove omitted-case bugs.",
-    "limits": [
-      "Synthetic cards remain visibly labeled; not real Slack or production internals.",
-      "Companion instructions calling MET-77 unstarted are stale against current user-reported history.",
-      "Root refreshes actual heads/state/checks before writes."
-    ]
-  },
-  "scenePlan": {
-    "throughline": "Keep the thread: improve MuseFocus briefing while reviewing quiet updates, Slack source identity and source links.",
-    "threeMinuteCut": [
-      {
-        "seconds": [
-          0,
-          20
-        ],
-        "scene": "Briefing",
-        "say": "Give me a short brief: decisions, failed or ready work, reviews, tickets and Slack requests.",
-        "proof": "Actual sources; MET-77 historical; zero admissions."
-      },
-      {
-        "seconds": [
-          20,
-          45
-        ],
-        "scene": "Fresh architecture task",
-        "say": "Put failures before ready work after decisions on this Home ticket. Implement it locally while we review.",
-        "proof": "Actual ticket/new job admission; no completion claim."
-      },
-      {
-        "seconds": [
-          45,
-          85
-        ],
-        "scene": "PR1 logical review",
-        "say": "Walk me from the update request to its displayed result. Why can a decision interrupt focus?",
-        "proof": "Pinned entry -> policy -> delivery side effect; acknowledged source."
-      },
-      {
-        "seconds": [
-          85,
-          110
-        ],
-        "scene": "Run and illustrate",
-        "say": "Run this PR head locally and show it. Put the source-backed call sequence beside it.",
-        "proof": "App launch receipt if seam closed; otherwise label operator launch and gap. Typed SVG is inference. Earlier same-pin artifact only if labeled."
-      },
-      {
-        "seconds": [
-          110,
-          140
-        ],
-        "scene": "Real comment",
-        "say": "Draft the focus decision bug comment and missing regression. [After exact inspection and speech drain] Post this comment.",
-        "proof": "Exact consent and actual comment receipt; do not edit away consent."
-      },
-      {
-        "seconds": [
-          140,
-          180
-        ],
-        "scene": "Return to work",
-        "say": "Show the completed priority ticket and checks. Publish this inspected job as a draft for review.",
-        "proof": "Actual diff/checks/draft if ready; otherwise show running state and disclose later elapsed-time cut."
-      }
-    ],
-    "timing": "180 seconds is editorial target, not uninterrupted provider/worker completion promise. Full sharing/author application/follow-up approval and Slack exchange require longer coverage; disclose asynchronous waits.",
-    "longRehearsal": [
-      "Preflight current pins/accounts/team/speech/repositories/checks and reservations; retain history.",
-      "Brief hub and My day; discuss ticket without dispatch, then explicitly start fresh Codex job.",
-      "Inspect actual Slack Home-priority question. Propose clarification only: two messages, two questions each, fifteen minutes. Show scope, confirm distinctly, return to PR.",
-      "PR1: inspect UI request, HTTP validation, selector/policy, store mutation, response renderer and missing regression. Create source flow and inferred sequence diagram.",
-      "Ask app to launch selected head, reproduce behavior; record composition gap if unavailable.",
-      "Draft/inspect/confirm real PR1 individual comment; retain ID. Root validates manual reviewer-side candidate admission or composes authorized route: current spoken start_feedback_work is own-PR-only. Do not claim PR1 voice fix works from PR2 evidence.",
-      "PR2: inspect own-feedback identity bug; optional separate fix. Aggregate review body is not automatically shareable.",
-      "Inspect candidate Before/After/checks, mark privately reviewed, confirm exact bundle via Team UI. Real author inspects/decides; application/checks/publication separate.",
-      "Reinspect entire new PR1 diff. Semantic judgment returns to human; exact complete-contents/check policy may authorize bounded approval. Capture actual receipt. PR3 is separate check-only example.",
-      "Capture real Slack question/answer during review; no execution/closure inferred.",
-      "Allow real quiet initiative; barge-in verifies listening/delivery/worker independence.",
-      "Inspect fresh ticket implementation from Hub snapshot through priority model and Home; actual checks/head. Explicit draft publication; separately verify requested reviewer handoff.",
-      "Root negative checks: stale heads/accounts, unknown sends, source drift, expiry/revocation, unrelated changes, manual navigation during narration, modal/browser hiding and exact display receipts."
-    ]
-  },
-  "diagramScenes": {
-    "actualMuseFocus": {
-      "title": "How real work becomes a priority brief",
-      "precondition": "Use actual inspected fresh job or actual repository PR pins; never invent PR to unlock source reads.",
-      "sourceSteps": [
-        "apps/desktop/src/main/work/hub.ts",
-        "apps/desktop/src/shared/contracts/command-center.ts",
-        "apps/desktop/src/renderer/command-center/controller.ts",
-        "apps/desktop/src/renderer/command-center/model.ts",
-        "apps/desktop/src/renderer/command-center/CenterCanvas.tsx"
-      ],
-      "comparisonSource": "apps/desktop/src/main/work/attention.ts",
-      "ladder": {
-        "canvas": "1200x650 typed SVG draft",
-        "lifelines": [
-          "Main Hub",
-          "IPC / renderer controller",
-          "priorityItems",
-          "Home view"
-        ],
-        "messages": [
-          "actual jobs/reviews/tickets snapshot",
-          "project identity-preserving summaries",
-          "order decision > failure > ready; cap eight",
-          "render and select exact target"
-        ],
-        "sideNote": "Spoken attention independently orders decision/failure/readiness; not a direct Home call.",
-        "provenance": "Inspect precise caller/receiver lines first, attach exact CodeLocation references. Arrow order is inference, not execution trace."
-      }
-    },
-    "companionPR1": {
-      "title": "Why a decision gets through focus",
-      "head": "c626938746db098f5ab0d05b4df66e8af447c711",
-      "sourceSteps": [
-        "public/app.mjs: next-update sends focusActive",
-        "src/http/app.mjs: POST /api/attention/next validates boolean",
-        "src/attention/build-update.mjs: choose update",
-        "src/attention/select-update.mjs and src/attention/focus-policy.mjs: decision early return",
-        "src/work/store.mjs: markDelivered",
-        "public/app.mjs: response rendering"
-      ],
-      "ladder": {
-        "lifelines": [
-          "Browser",
-          "HTTP handler",
-          "Selector / policy",
-          "Store"
-        ],
-        "messages": [
-          "POST focusActive=true",
-          "select pending decision",
-          "decision exemption returns allowed",
-          "markDelivered(decision)",
-          "delivered response interrupts UI"
-        ],
-        "highlight": "Focus guard precedes allowed interruptions; preserve pending until eligible.",
-        "caption": "Companion architecture illustration, not production scheduler or execution trace."
-      }
-    }
-  },
-  "rootPrioritySeams": [
-    {
-      "priority": "P0",
-      "seam": "Selected-revision launch in current conversation",
-      "doneWhen": "App launches isolated pinned checkout, actual managed-process receipt, same native URL."
-    },
-    {
-      "priority": "P0",
-      "seam": "Real comment -> eligible candidate -> exact shared bundle -> author",
-      "doneWhen": "Actual comment identity, validated reviewer-side candidate admission or explicit composition, exact bundle, current access, author decision and later head checks."
-    },
-    {
-      "priority": "P1",
-      "seam": "Fresh ticket and exclusive reservation",
-      "doneWhen": "New actual MuseFocus ticket/Codex admission; MET-77 history untouched."
-    },
-    {
-      "priority": "P1",
-      "seam": "Draft versus team review request",
-      "doneWhen": "Define draft handoff or separately authorize/compose reviewer request and capture receipt."
-    },
-    {
-      "priority": "P1",
-      "seam": "Current full voice/native rehearsal",
-      "doneWhen": "Appropriate root controlled tests plus separate live speech/provider workflow; acoustics/live ASR distinguished."
-    }
-  ],
-  "validation": {
-    "performed": [
-      "Read source/docs/local Git metadata",
-      "JSON parsing and source-reference checks",
-      "git diff --check"
-    ],
-    "notPerformed": [
-      "Unit/native tests",
-      "App/server launches",
-      "Live provider operations",
-      "Screenshot/PowerPoint capture",
-      "Dependency changes"
-    ],
-    "delivery": "Only requested JSON; root owns integration/live capture."
-  }
+	"schemaVersion": 1,
+	"date": "2026-11-03",
+	"auditedCommit": "3881487c97e8d321e8a6e7bdf76a64d0a5e85ebf",
+	"scope": "Read-only feature/story audit. Only JSON authored. No tests, launches, provider operations or dependency changes.",
+	"verdict": "Coherent story available; current end-to-end acceptance unestablished. Fresh task should improve actual MuseFocus architecture; existing companion PRs remain explicitly labeled executable analogues.",
+	"evidenceRules": [
+		"Source and test inventory are not passing execution evidence.",
+		"Historical results retain their own commits/transport limitations.",
+		"Local manifest PR states are November 1 snapshots; root must refresh live.",
+		"User reports two finished MET-77 jobs. Preserve history and ledgers; never claim fresh dispatch."
+	],
+	"historicalEvidence": {
+		"path": "docs/integration/evidence/demo-rehearsal-status-2026-11-03.json",
+		"sourceCommit": "8db52341a44166ade3592d82fde8326176155a36",
+		"acceptance": "not-achieved",
+		"reportedChecks": [
+			"type-check/lint passed",
+			"338 focused agent/day regressions passed",
+			"controlled native integration/hands-free/slack-clarification passed"
+		],
+		"blockers": ["ElevenLabs 401 quota_exceeded", "Observed Meta 504"],
+		"subsets": [
+			"Planning/variants completed using live model and text input",
+			"Coding/history completed",
+			"PR/source-flow/browser assertion passed within failed overall run"
+		],
+		"limits": [
+			"No complete current-build live speech rehearsal",
+			"GitHub/Linear/Slack writes controlled",
+			"Automated ASR is scripted; synthetic microphone; audible output does not verify physical microphone/live ASR",
+			"Historical source-flow text response took 35.2s; not current latency guarantee"
+		]
+	},
+	"requirements": [
+		{
+			"id": "briefing",
+			"requirement": "Daily briefing",
+			"status": "source-supported; current live acceptance unverified",
+			"sourceEvidence": [
+				{
+					"path": "apps/desktop/src/renderer/command-center/model.ts",
+					"line": 67,
+					"anchor": "export function priorityItems",
+					"claim": "Actual jobs/reviews/tickets become at most eight cards.",
+					"kind": "source"
+				},
+				{
+					"path": "apps/desktop/src/renderer/command-center/CenterCanvas.tsx",
+					"line": 463,
+					"anchor": "Your priority brief",
+					"claim": "Visible Home brief.",
+					"kind": "source"
+				},
+				{
+					"path": "apps/desktop/src/main/agent/hub-tools.ts",
+					"line": 145,
+					"anchor": "Inspect actual priority counts",
+					"claim": "Conversation separates incoming review, own feedback, jobs and tickets.",
+					"kind": "source"
+				}
+			],
+			"tests": {
+				"recommendedRootChecks": [
+					"bun run test:executive",
+					"apps/desktop/src/main/agent/hub-tools.test.ts"
+				],
+				"executedByAudit": false
+			},
+			"missingOrCompositionSeams": [
+				"No scheduled morning-brief orchestration established: demonstrate requested briefing.",
+				"My day is an independent controller; inspect its queue too. Bounded summaries are not all work.",
+				"Home order is decisions, ready, failed; spoken attention orders failures before ready."
+			],
+			"livePrerequisites": [
+				"Refresh actual connected sources; distinguish missing/stale/empty. Inspect detail before describing requirements.",
+				"Briefing and planning must admit no job."
+			]
+		},
+		{
+			"id": "clarify-build",
+			"requirement": "Clarify ticket and build in background",
+			"status": "source-supported; current live acceptance unverified",
+			"sourceEvidence": [
+				{
+					"path": "apps/desktop/src/main/agent/hub-tools.ts",
+					"line": 161,
+					"anchor": "Start an independent app-owned coding job",
+					"claim": "Observed ticket/watched repo; no publication.",
+					"kind": "source"
+				},
+				{
+					"path": "apps/desktop/src/main/work/jobs.ts",
+					"line": 597,
+					"anchor": "Preparing an isolated worktree.",
+					"claim": "Isolated app-owned work.",
+					"kind": "source"
+				},
+				{
+					"path": "apps/desktop/src/main/work/jobs.ts",
+					"line": 677,
+					"anchor": "Committing changes and checking the actual commit.",
+					"claim": "Actual finalized-commit checks.",
+					"kind": "source"
+				}
+			],
+			"tests": {
+				"recommendedRootChecks": [
+					"bun run test:executive",
+					"apps/desktop/src/main/work/jobs.test.ts",
+					"scripts/demo-rehearsal/run.cjs --live --suite=work"
+				],
+				"executedByAudit": false
+			},
+			"missingOrCompositionSeams": [
+				"Two existing MET-77 completed jobs are history, not fresh dispatch.",
+				"Actual MuseFocus repository needs registered checks and may take longer than companion."
+			],
+			"livePrerequisites": [
+				"Root creates fresh real ticket and reserves files; Codex-only selection.",
+				"Clarify first, explicitly start, capture new job ID; continue review without polling worker in foreground."
+			]
+		},
+		{
+			"id": "logical-review",
+			"requirement": "Entry-to-end review",
+			"status": "source-supported; current live acceptance unverified",
+			"sourceEvidence": [
+				{
+					"path": "apps/desktop/src/main/agent/guided-review.ts",
+					"line": 270,
+					"anchor": "An end-to-end behavior or request-to-result flow",
+					"claim": "Full flow differs from changed-file walkthrough.",
+					"kind": "source"
+				},
+				{
+					"path": "apps/desktop/src/main/agent/hub-tools.ts",
+					"line": 157,
+					"anchor": "Read verbatim pinned source",
+					"claim": "Unchanged callers can be inspected at actual pins.",
+					"kind": "source"
+				},
+				{
+					"path": "apps/desktop/src/main/agent/workspace-tools.ts",
+					"line": 90,
+					"anchor": "Create a stitched source-flow",
+					"claim": "Main reads original source; waits for display.",
+					"kind": "source"
+				}
+			],
+			"tests": {
+				"recommendedRootChecks": [
+					"bun run test:workspace",
+					"bun run test:prepared-reviews",
+					"apps/desktop/src/main/agent/guided-review.test.ts"
+				],
+				"executedByAudit": false
+			},
+			"missingOrCompositionSeams": [
+				"Read unchanged entry, downstream effects and tests; changed-file order is insufficient.",
+				"Current guided-review prompt permits sections of 1–8 files while older AGENTS says three; root should reconcile. Use two/three steps in cut."
+			],
+			"livePrerequisites": [
+				"Current full base/head pins and exact ranges; accepted display receipts.",
+				"Manual navigation must not be reclaimed by old narration."
+			]
+		},
+		{
+			"id": "run-revision",
+			"requirement": "Ask app to run selected revision and show browser",
+			"status": "foreground launch composition gap; URL display source-supported",
+			"sourceEvidence": [
+				{
+					"path": "apps/desktop/src/main/agent/workspace-tools.ts",
+					"line": 94,
+					"anchor": "Open an explicit HTTPS or local HTTP URL",
+					"claim": "Workspace tool opens supplied URL and disclaims verified revision.",
+					"kind": "source"
+				},
+				{
+					"path": "apps/desktop/src/main/agent/browser.ts",
+					"line": 42,
+					"anchor": "Open the current PR's head or base",
+					"claim": "Legacy tool describes runtime-provided pinned preview.",
+					"kind": "source"
+				},
+				{
+					"path": "apps/desktop/src/main/agent/tool-loop.ts",
+					"line": 376,
+					"anchor": "throw new Error(\"Stale preview\")",
+					"claim": "Legacy preview checks revision identity.",
+					"kind": "source"
+				}
+			],
+			"tests": {
+				"recommendedRootChecks": [
+					"bun run test:local-browser",
+					"bun run test:workspace",
+					"apps/desktop/src/main/runtime/preview-interactive.test.ts"
+				],
+				"executedByAudit": false
+			},
+			"missingOrCompositionSeams": [
+				"No revision-launch command exposed in audited workspace map. Legacy capability does not prove current foreground reachability; root must trace/compose.",
+				"Required seam: authorized repo/revision -> isolated checkout -> inspected run configuration -> managed process/log/readiness -> bound loopback URL -> native receipt.",
+				"Execution receipt needs SHA/command/run ID/timestamps; page observation remains distinct."
+			],
+			"livePrerequisites": [
+				"Root tests real app-initiated start/shutdown, failed start, stale head and cancellation.",
+				"Operator-launched preview is honest fallback but does not satisfy app-runs-revision requirement."
+			]
+		},
+		{
+			"id": "diagram",
+			"requirement": "Source flow and ladder diagram",
+			"status": "source-supported; current live acceptance unverified",
+			"sourceEvidence": [
+				{
+					"path": "apps/desktop/src/main/agent/workspace-tools.ts",
+					"line": 111,
+					"anchor": "Create or update an illustrative visual mock",
+					"claim": "Typed rect/text/line scene, no executable SVG/HTML.",
+					"kind": "source"
+				},
+				{
+					"path": "apps/desktop/src/renderer/workspace/ArtifactCanvas.tsx",
+					"line": 37,
+					"anchor": "viewBox=",
+					"claim": "SVG primitive rendering.",
+					"kind": "source"
+				},
+				{
+					"path": "apps/desktop/src/renderer/workspace/ArtifactCanvas.tsx",
+					"line": 98,
+					"anchor": "Source references",
+					"claim": "Pinned reference navigation.",
+					"kind": "source"
+				}
+			],
+			"tests": {
+				"recommendedRootChecks": [
+					"bun run test:workspace",
+					"apps/desktop/src/renderer/workspace/artifact.test.tsx",
+					"apps/desktop/src/main/agent/workspace-conversation.test.ts"
+				],
+				"executedByAudit": false
+			},
+			"missingOrCompositionSeams": [
+				"Stitched source flow is not sequence diagram: pair create_source_flow and create_visual_mock.",
+				"No semantic Mermaid/PlantUML renderer established. Use labeled primitive lifelines. Raster explanation is not execution evidence."
+			],
+			"livePrerequisites": [
+				"Root generates and checks readable unclipped visual beside original source; confirms actual receipt.",
+				"Below is proposed scene specification, not generated/verified diagram."
+			]
+		},
+		{
+			"id": "comment",
+			"requirement": "Real PR comment",
+			"status": "source-supported; current live acceptance unverified",
+			"sourceEvidence": [
+				{
+					"path": "apps/desktop/src/main/agent/pr-comment-tools/README.md",
+					"line": 3,
+					"anchor": "ConversationHubPorts.prComments",
+					"claim": "Canonical conversational comment workflow documentation.",
+					"kind": "source"
+				}
+			],
+			"tests": {
+				"recommendedRootChecks": ["bun run test:pr-work", "bun run test:comment-conversation"],
+				"executedByAudit": false
+			},
+			"missingOrCompositionSeams": [
+				"Historical writes are controlled receipts, not real GitHub posting."
+			],
+			"livePrerequisites": [
+				"Current PR1 eligible RIGHT diff lines; exact draft/body/head display, speech drain, distinct confirmation.",
+				"Actual comment ID/URL and durable ledger; no blind retry of unknown send."
+			]
+		},
+		{
+			"id": "share-fix",
+			"requirement": "Proposed fix shared with author",
+			"status": "source-supported; current live acceptance unverified",
+			"sourceEvidence": [
+				{
+					"path": "apps/desktop/src/main/work/pr-fixes/README.md",
+					"line": 5,
+					"anchor": "There are no publication",
+					"claim": "Candidate is private; no send/publish/author approval.",
+					"kind": "source"
+				},
+				{
+					"path": "apps/desktop/src/main/composition/team-proposal-source.ts",
+					"line": 37,
+					"anchor": "Share an individual inline or general PR comment fix.",
+					"claim": "Aggregate review feedback is not eligible individual-comment source.",
+					"kind": "source"
+				},
+				{
+					"path": "apps/desktop/src/main/composition/team-proposal-source.ts",
+					"line": 31,
+					"anchor": "Inspect and mark the exact local fix reviewed",
+					"claim": "Exact inspected candidate required.",
+					"kind": "source"
+				},
+				{
+					"path": "apps/desktop/src/renderer/team/TeamCard.tsx",
+					"line": 369,
+					"anchor": "Share exact proposal",
+					"claim": "Explicit exact-bundle UI.",
+					"kind": "source"
+				},
+				{
+					"path": "apps/desktop/src/main/team/service.ts",
+					"line": 535,
+					"anchor": "async shareProposal",
+					"claim": "Reconstruct and compare bundle digest.",
+					"kind": "source"
+				},
+				{
+					"path": "apps/desktop/src/main/agent/hub-tools.ts",
+					"line": 1206,
+					"anchor": "Inspect actual feedback on your own PR before starting feedback work.",
+					"kind": "source",
+					"claim": "Foreground candidate admission is currently own-PR feedback scoped."
+				}
+			],
+			"tests": {
+				"recommendedRootChecks": [
+					"bun run test:pr-fixes",
+					"bun run test:team-workspace",
+					"bun run test:team:db"
+				],
+				"executedByAudit": false
+			},
+			"missingOrCompositionSeams": [
+				"Foreground start_feedback_work explicitly requires an observed own PR (hub-tools.ts around line 1202). The reviewer cannot assume spoken candidate creation on PR1 (other author). Root must validate an authorized manual Prepare suggested fix route for that real individual comment or compose reviewer-side admission; never bypass current author/account gates. PR2 remains the supported own-feedback spoken example.",
+				"No foreground sharing tool established in inspected maps; use Team UI or root composes exact-bound seam.",
+				"PR2 manifest feedback is CHANGES_REQUESTED review body: do not assume share eligibility. Prefer new PR1 individual comment.",
+				"Organization share does not prove author saw/accepted it or branch changed."
+			],
+			"livePrerequisites": [
+				"Working optional Supabase sharing/migrations, two actual accounts with current repo access and correct author.",
+				"Inspect Before/After/pins/checks; mark privately reviewed, confirm exact bundle; capture author-side inspection/decision. Application/checks/publication remain separate."
+			]
+		},
+		{
+			"id": "approval",
+			"requirement": "Follow up and approve with no unexpected changes",
+			"status": "source-supported; current live acceptance unverified",
+			"sourceEvidence": [
+				{
+					"path": "docs/integration/pr-approval-acceptance.md",
+					"line": 16,
+					"anchor": "Later commits must descend",
+					"claim": "Allowed files and full exact contents required for later heads; context/base pinned.",
+					"kind": "source"
+				},
+				{
+					"path": "docs/integration/pr-approval-acceptance.md",
+					"line": 17,
+					"anchor": "Conditions requiring semantic judgment",
+					"claim": "Semantic conditions return to human review.",
+					"kind": "source"
+				},
+				{
+					"path": "apps/desktop/src/main/work/pr-approvals/README.md",
+					"line": 3,
+					"anchor": "confirmation.ts",
+					"claim": "Visible proposal and distinct real ingress consent.",
+					"kind": "source"
+				}
+			],
+			"tests": {
+				"recommendedRootChecks": [
+					"bun run test:pr-approvals",
+					"apps/desktop/src/main/work/pr-approvals/index.test.ts",
+					"apps/desktop/src/main/work/pr-approvals/github.test.ts"
+				],
+				"executedByAudit": false
+			},
+			"missingOrCompositionSeams": [
+				"Checks/resolved comments do not prove semantic correctness.",
+				"PR3 check-only example is separate from PR1 comment/fix cycle.",
+				"Local awake monitor only; already-green PR3 may approve immediately on consent."
+			],
+			"livePrerequisites": [
+				"Inspect complete new PR1 diff; authorize exact expected contents/checks/expiry, or notify-only plus human review.",
+				"Non-author reviewer, fresh context/checks, exact confirmation and real commit-bound review receipt; no merge."
+			]
+		},
+		{
+			"id": "publish",
+			"requirement": "Inspect completed ticket and send for team review",
+			"status": "source-supported; current live acceptance unverified",
+			"sourceEvidence": [
+				{
+					"path": "apps/desktop/src/main/agent/hub-tools.ts",
+					"line": 167,
+					"anchor": "Publish the inspected ready job",
+					"claim": "Publication distinct from acceptance.",
+					"kind": "source"
+				},
+				{
+					"path": "apps/desktop/src/main/work/jobs.ts",
+					"line": 923,
+					"anchor": "private async publishOnce",
+					"claim": "Current job pins, push and draft creation.",
+					"kind": "source"
+				},
+				{
+					"path": "apps/desktop/src/main/runtime/hub-github.ts",
+					"line": 504,
+					"anchor": "async createDraft",
+					"claim": "Draft creation has no reviewer assignment.",
+					"kind": "source"
+				},
+				{
+					"path": "apps/desktop/src/main/agent/hub-tools.ts",
+					"line": 169,
+					"anchor": "Accept reviewed work ONLY",
+					"claim": "approve_work may complete Linear; not needed for publishing.",
+					"kind": "source"
+				}
+			],
+			"tests": {
+				"recommendedRootChecks": [
+					"bun run test:executive",
+					"apps/desktop/src/main/work/jobs.test.ts"
+				],
+				"executedByAudit": false
+			},
+			"missingOrCompositionSeams": [
+				"Draft PR is not reviewer request or team notification. None found in inspected publish path.",
+				"Root must define draft handoff or compose separately authorized ready/reviewer request."
+			],
+			"livePrerequisites": [
+				"Inspect exact job head/full diff and independent check logs.",
+				"Explicit publication and actual matching PR metadata; separately verify team review request if required."
+			]
+		},
+		{
+			"id": "slack",
+			"requirement": "Scoped autonomous Slack clarification during review",
+			"status": "source-supported; current live acceptance unverified",
+			"sourceEvidence": [
+				{
+					"path": "apps/desktop/src/main/day/README.md",
+					"line": 136,
+					"anchor": "at most three messages/rounds",
+					"claim": "Bounded original-thread policy separate from execution.",
+					"kind": "source"
+				},
+				{
+					"path": "apps/desktop/src/main/agent/day-tools.ts",
+					"line": 83,
+					"anchor": "Activate an inspected proposed clarification policy",
+					"claim": "Distinct user confirmation of scope/thread/bounds.",
+					"kind": "source"
+				},
+				{
+					"path": "apps/desktop/src/main/services.ts",
+					"line": 42,
+					"anchor": "analyzeClarification",
+					"claim": "Main composes clarification inference.",
+					"kind": "source"
+				}
+			],
+			"tests": {
+				"recommendedRootChecks": [
+					"bun run test:slack-clarification",
+					"bun run test:day",
+					"apps/desktop/src/main/day/clarification.test.ts",
+					"apps/desktop/src/main/composition/day-clarification.test.ts"
+				],
+				"executedByAudit": false
+			},
+			"missingOrCompositionSeams": [
+				"Synthetic card cannot authorize Slack sends; historical writes controlled.",
+				"Fresh complete source/membership, bounded original thread and uncertain-send handling remain required."
+			],
+			"livePrerequisites": [
+				"Real dedicated joined thread and second requester. Clarification only: two messages, two questions each, fifteen minutes.",
+				"Review PR while requester answers; capture actual question receipt and attributed answer. No ownership/execution/final-answer closure from clarification."
+			]
+		},
+		{
+			"id": "initiative",
+			"requirement": "Proactive real update",
+			"status": "source-supported; current live acceptance unverified",
+			"sourceEvidence": [
+				{
+					"path": "apps/desktop/src/main/work/attention.ts",
+					"line": 71,
+					"anchor": "this.quietMs =",
+					"claim": "2.5s quiet, 20s cooldown, 60s retry defaults.",
+					"kind": "source"
+				},
+				{
+					"path": "apps/desktop/src/main/work/attention.ts",
+					"line": 48,
+					"anchor": "const eligible",
+					"claim": "Hands-free idle/focused/unobscured eligibility.",
+					"kind": "source"
+				},
+				{
+					"path": "apps/desktop/src/main/work/attention.ts",
+					"line": 202,
+					"anchor": "\"work-failed\": 1",
+					"claim": "Failures precede readiness.",
+					"kind": "source"
+				}
+			],
+			"tests": {
+				"recommendedRootChecks": [
+					"bun run test:attention",
+					"bun run test:hands-free",
+					"apps/desktop/src/main/work/attention.test.ts"
+				],
+				"executedByAudit": false
+			},
+			"missingOrCompositionSeams": [
+				"No guaranteed worker completion in filming window; no fake notices or reset delivery ledgers.",
+				"Displayed text is not spoken proof."
+			],
+			"livePrerequisites": [
+				"Actual fresh event, hands-free enabled, app focused; quiet without typing/modal/playback.",
+				"Capture intelligible speech and matching drain/ledger; barge-in retains listening without cancelling worker."
+			]
+		}
+	],
+	"freshTicket": {
+		"identifier": null,
+		"status": "Proposal only; root owns external creation",
+		"repository": "Actual registered MuseFocus/MetaHackathon repository, not companion",
+		"title": "Show failed background work before ready work in the Home priority brief",
+		"sourceMismatch": {
+			"home": "apps/desktop/src/renderer/command-center/model.ts: decisions, ready, failed",
+			"speech": "apps/desktop/src/main/work/attention.ts: decision/failure/readiness"
+		},
+		"clarification": "Should failed work come before ready work in Home, just as in spoken attention?",
+		"scope": "Decisions first, failures second, ready third. Preserve other category ordering, eight-card cap, IDs/targets. Renderer model plus focused regression only; no scheduler/contracts/dependencies.",
+		"acceptance": [
+			"Mixed states yield decision > failed > ready.",
+			"One failure stays visible with eight ready jobs under eight-card limit.",
+			"Accepted ready jobs excluded; exact target navigation and other ordering preserved.",
+			"Actual focused checks plus root integrated rendering/navigation."
+		],
+		"preflight": [
+			"Root verifies gap still exists and no existing task/job implements it.",
+			"Create fresh real ticket; no invented MET number. Reserve renderer model/test files before isolated Codex worker.",
+			"Register actual repo/check commands; do not promise full app build inside three minutes."
+		],
+		"dispatchPrompt": "Implement this ticket in the registered MuseFocus repository with our agreed order. Keep it local for review, preserve the eight-card cap and targets, run relevant checks, and ask about scope changes."
+	},
+	"companion": {
+		"root": "/Users/Werk/SuperiorSwarm/projects/MuseFocusDemo",
+		"observedLocalHead": "d1cf2882863461d7d04917f632c1bab327fbd0bd",
+		"manifest": "/Users/Werk/SuperiorSwarm/projects/MuseFocusDemo/docs/demo-manifest.json",
+		"runbook": "/Users/Werk/SuperiorSwarm/projects/MuseFocusDemo/docs/demo-runbook.md",
+		"repository": "VrolixThomas/MuseFocusDemo",
+		"baseFromManifest": "b067f9c6e3b2b8940d149a71298f17af311914a1",
+		"prs": [
+			{
+				"number": 1,
+				"title": "Quiet updates",
+				"head": "c626938746db098f5ab0d05b4df66e8af447c711",
+				"author": "thomasaltacc-a11y",
+				"finding": "Decision exemption precedes focus guard; suite misses decision during focus."
+			},
+			{
+				"number": 2,
+				"title": "Slack message identity",
+				"head": "a6e12a71898c869672d046feb0cffe82a3198b30",
+				"author": "VrolixThomas",
+				"finding": "Workspace/channel key omits messageId; preserve thread and URL; test replay/cross-workspace."
+			},
+			{
+				"number": 3,
+				"title": "Source links",
+				"head": "fb820400f82c4eafc88184aff068b0319b28b199",
+				"author": "thomasaltacc-a11y",
+				"purpose": "Separate small check-only approval example."
+			}
+		],
+		"evidence": "Manifest records expected failing focus/slack reproduction exit 1 on November 1; not rerun here. Normal passing suite does not disprove omitted-case bugs.",
+		"limits": [
+			"Synthetic cards remain visibly labeled; not real Slack or production internals.",
+			"Companion instructions calling MET-77 unstarted are stale against current user-reported history.",
+			"Root refreshes actual heads/state/checks before writes."
+		]
+	},
+	"scenePlan": {
+		"throughline": "Keep the thread: improve MuseFocus briefing while reviewing quiet updates, Slack source identity and source links.",
+		"threeMinuteCut": [
+			{
+				"seconds": [0, 20],
+				"scene": "Briefing",
+				"say": "Give me a short brief: decisions, failed or ready work, reviews, tickets and Slack requests.",
+				"proof": "Actual sources; MET-77 historical; zero admissions."
+			},
+			{
+				"seconds": [20, 45],
+				"scene": "Fresh architecture task",
+				"say": "Put failures before ready work after decisions on this Home ticket. Implement it locally while we review.",
+				"proof": "Actual ticket/new job admission; no completion claim."
+			},
+			{
+				"seconds": [45, 85],
+				"scene": "PR1 logical review",
+				"say": "Walk me from the update request to its displayed result. Why can a decision interrupt focus?",
+				"proof": "Pinned entry -> policy -> delivery side effect; acknowledged source."
+			},
+			{
+				"seconds": [85, 110],
+				"scene": "Run and illustrate",
+				"say": "Run this PR head locally and show it. Put the source-backed call sequence beside it.",
+				"proof": "App launch receipt if seam closed; otherwise label operator launch and gap. Typed SVG is inference. Earlier same-pin artifact only if labeled."
+			},
+			{
+				"seconds": [110, 140],
+				"scene": "Real comment",
+				"say": "Draft the focus decision bug comment and missing regression. [After exact inspection and speech drain] Post this comment.",
+				"proof": "Exact consent and actual comment receipt; do not edit away consent."
+			},
+			{
+				"seconds": [140, 180],
+				"scene": "Return to work",
+				"say": "Show the completed priority ticket and checks. Publish this inspected job as a draft for review.",
+				"proof": "Actual diff/checks/draft if ready; otherwise show running state and disclose later elapsed-time cut."
+			}
+		],
+		"timing": "180 seconds is editorial target, not uninterrupted provider/worker completion promise. Full sharing/author application/follow-up approval and Slack exchange require longer coverage; disclose asynchronous waits.",
+		"longRehearsal": [
+			"Preflight current pins/accounts/team/speech/repositories/checks and reservations; retain history.",
+			"Brief hub and My day; discuss ticket without dispatch, then explicitly start fresh Codex job.",
+			"Inspect actual Slack Home-priority question. Propose clarification only: two messages, two questions each, fifteen minutes. Show scope, confirm distinctly, return to PR.",
+			"PR1: inspect UI request, HTTP validation, selector/policy, store mutation, response renderer and missing regression. Create source flow and inferred sequence diagram.",
+			"Ask app to launch selected head, reproduce behavior; record composition gap if unavailable.",
+			"Draft/inspect/confirm real PR1 individual comment; retain ID. Root validates manual reviewer-side candidate admission or composes authorized route: current spoken start_feedback_work is own-PR-only. Do not claim PR1 voice fix works from PR2 evidence.",
+			"PR2: inspect own-feedback identity bug; optional separate fix. Aggregate review body is not automatically shareable.",
+			"Inspect candidate Before/After/checks, mark privately reviewed, confirm exact bundle via Team UI. Real author inspects/decides; application/checks/publication separate.",
+			"Reinspect entire new PR1 diff. Semantic judgment returns to human; exact complete-contents/check policy may authorize bounded approval. Capture actual receipt. PR3 is separate check-only example.",
+			"Capture real Slack question/answer during review; no execution/closure inferred.",
+			"Allow real quiet initiative; barge-in verifies listening/delivery/worker independence.",
+			"Inspect fresh ticket implementation from Hub snapshot through priority model and Home; actual checks/head. Explicit draft publication; separately verify requested reviewer handoff.",
+			"Root negative checks: stale heads/accounts, unknown sends, source drift, expiry/revocation, unrelated changes, manual navigation during narration, modal/browser hiding and exact display receipts."
+		]
+	},
+	"diagramScenes": {
+		"actualMuseFocus": {
+			"title": "How real work becomes a priority brief",
+			"precondition": "Use actual inspected fresh job or actual repository PR pins; never invent PR to unlock source reads.",
+			"sourceSteps": [
+				"apps/desktop/src/main/work/hub.ts",
+				"apps/desktop/src/shared/contracts/command-center.ts",
+				"apps/desktop/src/renderer/command-center/controller.ts",
+				"apps/desktop/src/renderer/command-center/model.ts",
+				"apps/desktop/src/renderer/command-center/CenterCanvas.tsx"
+			],
+			"comparisonSource": "apps/desktop/src/main/work/attention.ts",
+			"ladder": {
+				"canvas": "1200x650 typed SVG draft",
+				"lifelines": ["Main Hub", "IPC / renderer controller", "priorityItems", "Home view"],
+				"messages": [
+					"actual jobs/reviews/tickets snapshot",
+					"project identity-preserving summaries",
+					"order decision > failure > ready; cap eight",
+					"render and select exact target"
+				],
+				"sideNote": "Spoken attention independently orders decision/failure/readiness; not a direct Home call.",
+				"provenance": "Inspect precise caller/receiver lines first, attach exact CodeLocation references. Arrow order is inference, not execution trace."
+			}
+		},
+		"companionPR1": {
+			"title": "Why a decision gets through focus",
+			"head": "c626938746db098f5ab0d05b4df66e8af447c711",
+			"sourceSteps": [
+				"public/app.mjs: next-update sends focusActive",
+				"src/http/app.mjs: POST /api/attention/next validates boolean",
+				"src/attention/build-update.mjs: choose update",
+				"src/attention/select-update.mjs and src/attention/focus-policy.mjs: decision early return",
+				"src/work/store.mjs: markDelivered",
+				"public/app.mjs: response rendering"
+			],
+			"ladder": {
+				"lifelines": ["Browser", "HTTP handler", "Selector / policy", "Store"],
+				"messages": [
+					"POST focusActive=true",
+					"select pending decision",
+					"decision exemption returns allowed",
+					"markDelivered(decision)",
+					"delivered response interrupts UI"
+				],
+				"highlight": "Focus guard precedes allowed interruptions; preserve pending until eligible.",
+				"caption": "Companion architecture illustration, not production scheduler or execution trace."
+			}
+		}
+	},
+	"rootPrioritySeams": [
+		{
+			"priority": "P0",
+			"seam": "Selected-revision launch in current conversation",
+			"doneWhen": "App launches isolated pinned checkout, actual managed-process receipt, same native URL."
+		},
+		{
+			"priority": "P0",
+			"seam": "Real comment -> eligible candidate -> exact shared bundle -> author",
+			"doneWhen": "Actual comment identity, validated reviewer-side candidate admission or explicit composition, exact bundle, current access, author decision and later head checks."
+		},
+		{
+			"priority": "P1",
+			"seam": "Fresh ticket and exclusive reservation",
+			"doneWhen": "New actual MuseFocus ticket/Codex admission; MET-77 history untouched."
+		},
+		{
+			"priority": "P1",
+			"seam": "Draft versus team review request",
+			"doneWhen": "Define draft handoff or separately authorize/compose reviewer request and capture receipt."
+		},
+		{
+			"priority": "P1",
+			"seam": "Current full voice/native rehearsal",
+			"doneWhen": "Appropriate root controlled tests plus separate live speech/provider workflow; acoustics/live ASR distinguished."
+		}
+	],
+	"validation": {
+		"performed": [
+			"Read source/docs/local Git metadata",
+			"JSON parsing and source-reference checks",
+			"git diff --check"
+		],
+		"notPerformed": [
+			"Unit/native tests",
+			"App/server launches",
+			"Live provider operations",
+			"Screenshot/PowerPoint capture",
+			"Dependency changes"
+		],
+		"delivery": "Only requested JSON; root owns integration/live capture."
+	}
 }

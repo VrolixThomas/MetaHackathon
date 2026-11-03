@@ -1893,3 +1893,32 @@ summary:focus-visible {
 	font-size: 12px;
 	color: #d9b37d;
 }
+.assistant-answer {
+	min-width: 0;
+	overflow-wrap: anywhere;
+}
+.assistant-answer p {
+	margin: 0 0 0.9em;
+}
+.assistant-answer ul,
+.assistant-answer ol {
+	padding-left: 1.3em;
+	margin: 0.7em 0;
+}
+.assistant-answer li {
+	margin: 0.4em 0;
+}
+.assistant-answer code {
+	font-family: var(--mono, monospace);
+	font-size: 0.9em;
+}
+.assistant-answer pre {
+	overflow-x: auto;
+	padding: 12px;
+	background: #191b20;
+	border-radius: 6px;
+}
+.assistant-answer :is(h1, h2, h3, h4) {
+	font-size: 1em;
+	margin: 1em 0 0.5em;
+}

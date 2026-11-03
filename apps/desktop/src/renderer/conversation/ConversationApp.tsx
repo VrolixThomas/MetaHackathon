@@ -25,6 +25,7 @@ import type { PreparedController } from "../prepared/controller";
 import type { SlackBrowseController } from "../slack";
 import { TeamCard, type TeamController, createTeamController } from "../team";
 import { CanvasWorkspace } from "../workspace/CanvasWorkspace";
+import { MarkdownContent } from "../workspace/MarkdownContent";
 import { WorkSplit } from "../workspace/WorkSplit";
 import { WorkspaceDialog } from "../workspace/WorkspaceDialog";
 import type { WorkspaceController } from "../workspace/controller";
@@ -523,7 +524,18 @@ export function ConversationApp({
 													<span className="message-label">
 														<BrandLockup size={16} />
 													</span>
-													<p>{entry.answer}</p>
+													<div className="assistant-answer" data-answer={entry.answer}>
+														<MarkdownContent
+															markdown={entry.answer}
+															onOpenUrl={
+																workspace
+																	? (url) => {
+																			void workspace.command({ kind: "open-browser", url });
+																		}
+																	: undefined
+															}
+														/>
+													</div>
 												</div>
 											)}
 											{entry.phase === "cancelled" && (

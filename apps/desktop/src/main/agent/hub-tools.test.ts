@@ -5833,6 +5833,13 @@ test("ticket question resolution respects explicit no-navigation and ambiguous o
 	assert.equal(explicitWorkspaceNavigation("Explain ticket 77", w.observation), undefined);
 	assert.equal(explicitWorkspaceNavigation("Explain TEST ONLY", w.observation), undefined);
 	assert.equal(explicitWorkspaceNavigation("Explain MET-77", w.observation)?.kind, "ticket");
+	assert.equal(
+		explicitWorkspaceNavigation(
+			"Before we start MET-77, explain the important tradeoff and what decision you need from me.",
+			w.observation
+		)?.kind,
+		"ticket"
+	);
 });
 
 test("natural zoom-and-design question displays its ticket before a single answer request", async () => {

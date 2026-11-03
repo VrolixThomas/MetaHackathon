@@ -203,7 +203,11 @@ function observedQuestionNavigation(text: string, observed?: WorkspaceObservatio
 		(_, kind: string, number: string) =>
 			`${kind} ${["one", "two", "three", "four", "five", "six", "seven", "eight", "nine", "ten"].indexOf(number.toLowerCase()) + 1}`
 	);
-	if (!/^(?:what|why|how|explain|tell me about|discuss|talk me through)\b/i.test(request)) return;
+	const questionLead = request
+		.replace(/^before we (?:start|begin|work on)\s+(?:ticket\s+)?[a-z]+-?\d+,?\s*/i, "")
+		.replace(/^(?:can|could) you\s+/i, "");
+	if (!/^(?:what|why|how|explain|tell me about|discuss|talk me through)\b/i.test(questionLead))
+		return;
 	// Compound execution requests belong to the ordinary gated tool workflow.
 	if (
 		/\b(?:and|then|also)\s+(?:start|implement|publish|post|send|merge|approve|delete|open|show)\b/i.test(

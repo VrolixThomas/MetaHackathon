@@ -1,199 +1,199 @@
 {
-  "schemaVersion": 1,
-  "date": "2026-11-03",
-  "baseCommit": "3881487c97e8d321e8a6e7bdf76a64d0a5e85ebf",
-  "scope": "Source audit of comment → local candidate → shared proposal → author application/publication → conditional approval, plus autonomous Slack clarification. Other demo story stages are root-owned.",
-  "evidenceLevel": "source inspection; no native or real-provider verification",
-  "conclusion": {
-    "supported": "All major service stages exist, including author publication to the original PR and approval of later exact authorized source changes. Do not reduce this story to check-only approval or an unpublished local fix.",
-    "primaryMissingSeam": "No main-owned candidate-to-approval draft operation binds an actual reviewed candidate or shared bundle to exact complete expectedContent. Current draft_pr_delegation accepts model-supplied terms; manual UI accepts full text.",
-    "slack": "Existing per-item, original-thread scope can be confirmed once and send bounded clarification messages autonomously while the user works elsewhere. It is not an unrestricted policy for every incoming request."
-  },
-  "supportedPaths": [
-    {
-      "stage": "Real PR comment",
-      "path": [
-        "main/agent/prepared-comments.ts",
-        "main/agent/pr-comment-tools/index.ts",
-        "main/agent/pr-comment-tools/confirmation.ts"
-      ],
-      "behavior": "Canonical prepared-review draft, exact body/revision/head display, separate actual user confirmation, durable GitHub attempt and receipt. Voice requires drained exact proposal narration. Use an actually ready displayed review and retain actual posted comment ID/URL; a draft is insufficient."
-    },
-    {
-      "stage": "Local proposed fix",
-      "path": [
-        "main/agent/hub-tools.ts:871",
-        "main/work/pr-fixes/index.ts",
-        "renderer/pr-fixes/PRFixView.tsx:117"
-      ],
-      "behavior": "Start against actual individual feedback; inspect Suggested fixes, Before/Proposed after, exact changed files and actual checks; mark exact candidate head reviewed privately. Detail freshly binds source fingerprint and account. Local reviewed marker is prerequisite for export, not author approval."
-    },
-    {
-      "stage": "Share with author",
-      "path": [
-        "main/composition/team-proposal-source.ts:12",
-        "main/team/service.ts:515",
-        "renderer/conversation/ConversationApp.tsx:94",
-        "renderer/team/TeamCard.tsx:320"
-      ],
-      "behavior": "With candidate selected, Settings TeamCard receives candidateId. Preview local proposal, inspect full source/check bundle and explicitly Share exact proposal. Export requires ready reviewed candidate, exact base/current PR head, available UTF-8 source, actual feedback ID/revision/body and complete patch. Optional team login, selected organization/repository and current access are required. This publishes to shared team proposal storage; it is not a GitHub notification or comment."
-    },
-    {
-      "stage": "Author decision and application",
-      "path": [
-        "renderer/team/TeamCard.tsx:390",
-        "main/team/service.ts:558",
-        "main/composition/team.ts:54",
-        "main/runtime/team-proposal-apply.ts"
-      ],
-      "behavior": "Author loads Shared proposals for repository/PR, inspects exact bundle, separately accepts then confirms isolated local application. Composition freshly checks actual PR author/account, current head, accepted decision/user and bundle digest. Runtime verifies before/after bytes, records actual local checks and new applied SHA. The reported reviewer candidate SHA and author applied SHA differ legitimately. Completed work gets actual application job with original feedback and PR."
-    },
-    {
-      "stage": "Publish author fix to original PR",
-      "path": [
-        "main/composition/team.ts:126",
-        "main/work/hub.ts:536",
-        "main/work/jobs.ts:923",
-        "main/work/jobs.ts:1116",
-        "main/runtime/work-job-runtime.ts:425"
-      ],
-      "behavior": "Author opens applied job in Completed work, inspects actual diff/head/checks and explicitly requests Publish. Feedback job routes through publishFeedback to current own PR headBranch, rejects default-branch target and unexpected remote head. Runtime checks finalized clean source, recorded check results and pins expected remote ref with pre-push race protection. No merge is implied. Nonempty check configuration must be demonstrated separately: push rejects failed recorded checks but does not require at least one check."
-    },
-    {
-      "stage": "Follow up and approve changed PR",
-      "path": [
-        "shared/contracts/pr-approval.ts:6",
-        "main/agent/approval-tools.ts:61",
-        "renderer/pr-approvals/ApprovalControl.tsx:249",
-        "main/work/pr-approvals/index.ts:39",
-        "main/work/pr-approvals/github.ts:233"
-      ],
-      "behavior": "PR follow-up supports source conditions with complete expectedContent, named checks and human-only judgment. Draft at actually displayed original ready PR head, inspect exact policy, separately confirm. Main monitor evaluates about every 30 seconds while running/awake. Authorized descendant head with exact replacement files and passing required/current checks may receive head-bound GitHub APPROVE. Check-only terms reject a changed head; judgment terms never auto-approve."
-    }
-  ],
-  "sourcePolicy": {
-    "derivableFromActualCandidate": true,
-    "derivation": "Fresh PRFixService.detail(candidateId) provides exact review.files head content; localFixProposal already exports complete after.text plus source/check digests from the reviewed candidate. Derive one source condition for every changed path from these main-owned bytes, never from clipped tool packets, an LLM rewrite, summary or patch alone. Bind candidate ID/head, original PR head, source feedback and bundle digest in derivation provenance and revalidate before proposal display.",
-    "currentManualRoute": "Reopen original PR review after candidate inspection; PR follow-up → Exact source replacement for every candidate file; enter complete exact final contents plus requested check conditions, expiry and approve action. Review and confirm the resulting policy. This is feasible for a small candidate but copying and checking completeness is manual; there is no candidate import button/tool.",
-    "currentAgentLimitation": "inspect_suggested_fix returns one selected file with source prefixes clipped to 3000 bytes and patch clipped to 6000; it declares truncated:true. read_pinned_source supports further actual source inspection but does not itself construct or authorize an approval policy. Do not use the prefix as a complete file.",
-    "bounds": "At most 10 total conditions, each expectedContent <=30000 characters, total JSON terms <=24000 characters. Existing approval supports modified/added regular UTF-8 files; rejects deletions/renames, binary/NUL, unverifiable/truncated source and changed mode. Unchanged executable mode is permitted; new files must be 100644. A proposal may support more shapes than this approval subset; reject unsupported candidate derivation rather than omit files.",
-    "unexpectedChangesGate": [
-      "Current PR context digest, actor, open state, base SHA, approval permission and descendant ancestry must match.",
-      "Compare inspected head to candidate remote head; every net changed path must be an authorized source path with modified/added status. Comparison at provider 300-file truncation boundary is rejected.",
-      "Read contents at exact new head; verify path, byte size, fatal UTF-8 decoding, Git blob hash and regular-file mode against tree entries. Compare whole expectedContent exactly.",
-      "Read PR again after observations; re-observe all conditions before durable submission and recheck identity/head/context at provider POST preflight. POST includes exact commit_id.",
-      "Expiry, account change and revocation fence submission; uncertain dispatch is not blindly replayed."
-    ],
-    "semanticLimits": [
-      "Feedback fixed means the user explicitly reviewed and authorized these exact final files as satisfying the feedback. Current approval does not independently infer arbitrary semantic equivalence.",
-      "Policy does not query comment-thread resolved state, bind all subsequent comment revisions, or require shared-proposal acceptance. Those are separate service records; no claim that all current feedback is addressed follows from source matching alone.",
-      "Unexpected changes are assessed as net tree changes between inspected and final head, not an audit that every intermediate commit avoided temporary changes.",
-      "If author makes an alternative correct implementation or updates PR context/base, policy needs renewed review instead of silently expanding approval.",
-      "A partial multi-file publication with wrong intermediate contents can enter needs-review; demo should publish the complete accepted candidate atomically."
-    ]
-  },
-  "missingGatesAndSeams": [
-    {
-      "priority": "P0 usability/composition",
-      "gap": "Deterministic candidate-derived approval drafting absent",
-      "leastWork": "Add a main-owned draft-from-reviewed-fix helper and expose one agent operation (and optionally a candidate UI action). Take candidate identity plus action/expiry/requested checks, read canonical detail, enforce full-file-set and bounds, derive source terms directly, then invoke existing PRApprovals.draft and ApprovalConfirmation. Require original PR display/receipt and existing independent confirmation. Preserve human-reviewed feedback mapping; do not auto-confirm."
-    },
-    {
-      "priority": "P0 acceptance",
-      "gap": "Cross-service demo not established by source or isolated test suites",
-      "leastWork": "Root runs integrated author/reviewer path with real isolated Git, then separate authorized live two-account provider story. Capture comment/proposal/decision/application/publication/approval receipts and corresponding heads."
-    },
-    {
-      "priority": "P1 conversational reach",
-      "gap": "Team sharing/accept/apply are available through Settings TeamCard; inspected agent tool registries contain no matching team proposal write tools",
-      "leastWork": "Existing UI can complete practical demo without new provider endpoints. For voice-only full story, root reserves typed tool/confirmation adapters to the same team operations; do not treat a conversational mention as exact share/apply consent."
-    },
-    {
-      "priority": "conditional product requirement",
-      "gap": "No durable linkage in ApprovalPolicy to original feedback revision or proposal acceptance; source conditions alone enforce authorized final tree",
-      "leastWork": "If story requires edited/new feedback or proposal revocation to invalidate approval, add explicit canonical provenance and fresh feedback/decision checks in root-owned contracts/service/provider. Do not claim this exists. For minimal exact-fix story explain source-based approval terms and do not equate them with all-thread resolution."
-    },
-    {
-      "priority": "demo presentation",
-      "gap": "Shared proposal availability is not proactive author delivery",
-      "leastWork": "Have real author open/refresh the actual shared proposal in their own authorized profile. If proactive notification is required, reserve a separately authorized delivery mechanism; do not claim sharing sent a GitHub or Slack message."
-    }
-  ],
-  "reservationRequest": {
-    "status": "Requested for follow-up implementation; no existing files changed",
-    "workerSuggestedFiles": [
-      "apps/desktop/src/main/work/pr-approvals/candidate-policy.ts (new)",
-      "apps/desktop/src/main/work/pr-approvals/candidate-policy.test.ts (new)",
-      "apps/desktop/src/main/agent/approval-tools.ts",
-      "apps/desktop/src/main/agent/approval-tools.test.ts"
-    ],
-    "rootOwnedSeams": [
-      "services.ts supplies fresh canonical fix/detail port",
-      "shared contracts/provenance if persisted candidate/feedback/bundle binding is required",
-      "PRApprovals integration if additional source invalidation needed",
-      "renderer action/presentation integration and combined native harness"
-    ],
-    "condition": "Root must explicitly reserve concrete files before worker patches them; current exclusive output is this JSON."
-  },
-  "slackClarification": {
-    "sources": [
-      "shared/contracts/day.ts:37",
-      "main/agent/day-tools.ts:80",
-      "main/day/service.ts:782",
-      "main/day/service.ts:1189",
-      "main/day/service.ts:1782",
-      "main/day/supervisor.ts:17",
-      "main/composition/day-clarification.ts"
-    ],
-    "authorization": "day_propose_clarification scopes one real Day item/original request/thread/account; user inspects send authority, scope, message limit and duration, then separately confirms unchanged proposal. Limits are 1–3 messages over 5–120 minutes. One confirmation permits question bodies generated later within this scope; exact-body per-send confirmation is not required.",
-    "autonomy": "DaySupervisor cycles independently of foreground turn/window while awake/online. Active clarification analyzes freshly authorized thread, queues bounded question bodies, then fresh read/thread digest and policy checks gate actual send. Subsequent questions require a new/edited requester reply, not own posts or bots. Pending/uncertain sends, duplicate bodies, budget/expiry and escalation prevent uncontrolled repetition.",
-    "boundaries": "No blanket incoming-message authorization, cross-thread outreach, ownership acceptance, execution/publishing/closure authority, or hosted/sleeping-Mac operation. Contradiction/sensitive/expanded scope escalates; model classification is inference and source text never grants authority. Ordinary snapshots expose metadata; inspection reauthorizes stored text. Unknown writes are retained, not blindly resent.",
-    "demo": "Inspect actual incoming Slack item and ask: Clarify the reproduction steps in this original thread, at most two messages over 30 minutes while I review this PR. Inspect canonical proposal and confirm in a later turn. Navigate to PR work; verify first actual posted question receipt, real requester reply and bounded follow-up without another exact-body confirmation. Then inspect summary and source receipts; revoke or let scope expire.",
-    "missingForBroaderStory": "If user intends preauthorization across future requests rather than this one selected thread, that is new policy scope and must be designed/confirmed explicitly. Existing per-thread autonomy already fulfills concurrent clarification for a selected request."
-  },
-  "rootDemoProtocol": [
-    "Use a small real PR with a non-author reviewer who has approval permission and a separate author account, both authorized in the selected team/repository. Register clean local repository and real validation command. Keep reviewer policy active in a separate profile/device from author account changes.",
-    "Reviewer opens ready pinned PR, reviews logical source, drafts and explicitly posts real feedback; save actual GitHub comment receipt/ID/head.",
-    "Start local fix from that actual feedback; wait for ready, inspect complete candidate diff and real check logs, mark exact head reviewed.",
-    "While candidate selected open Settings/Team, preview exact bundle and explicitly share; save proposal ID/digest and candidate/base SHA. Author independently refreshes and sees that same proposal.",
-    "Before author updates head, reviewer returns to original displayed PR and drafts exact-source follow-up for all candidate files plus real required check names and bounded expiry. Inspect/confirm explicit automatic approval. Prefer new deterministic candidate seam; existing manual full-text route is possible for a small candidate.",
-    "Author inspects and accepts exact proposal, confirms local apply, opens actual Completed work job, inspects resulting bytes/diff/checks, then explicitly publishes to the original PR branch. Record applied SHA and remote PR head; they must match, but need not match reviewer candidate SHA.",
-    "Keep reviewer app awake/online; observe policy evaluation against actual new head and eventual GitHub APPROVE receipt for precisely that head, with no merge. Capture approval URL plus durable policy/attempt. A passing test or local reviewed marker is insufficient.",
-    "Perform concurrent scoped Slack protocol above using root-authorized outbound messages and real requester replies. Preserve receipts independently of conversation narration."
-  ],
-  "verificationProtocol": {
-    "nativeRootOnly": [
-      "bun run test:comment-conversation",
-      "bun run test:pr-work",
-      "bun run test:pr-fixes",
-      "bun run test:team-workspace",
-      "bun run test:pr-approvals",
-      "bun run test:slack-clarification"
-    ],
-    "newIntegratedCases": [
-      "Derive complete source policy from a genuinely finalized reviewed candidate; byte-compare all conditions to canonical after contents, including CRLF/BOM/trailing newline. Reject prefix/truncated source, omitted paths, unsupported shapes and bounds overflow.",
-      "Exercise actual reviewer share → different author accept/apply → Completed work publish → same PR new remote head → reviewer source approval. Preserve source comment/bundle linkage in evidence.",
-      "Negative forks: extra file, extra edits in allowed file, changed base/title/body/author, non-descendant head, mode/symlink/rename/delete, comparison truncation, failed/pending/ambiguous checks, stale candidate, edited feedback, account change, revocation/expiry and head movement during preflight. Verify no approval POST where policy does not authorize it.",
-      "Check one confirmed Slack scope sends while PR workspace remains selected; no second manual per-body confirmation; requester-triggered follow-up only; fresh membership/revision, budget, expiry and ambiguous-write handling."
-    ],
-    "realProvider": "Root alone may perform authorized writes. Use two actual identities and record actual GitHub/Slack/team receipts and timestamps. Inspect provider records independently of UI text. Controlled HTTP/native tests do not establish live provider authorization, real two-user sharing, physical voice or sleeping-Mac execution.",
-    "evidenceCapture": "Record commit/build SHA, policy ID/revision/digest, original inspected PR base/head, feedback ID/revision/body digest, candidate source/check digest and SHA, proposal/decision IDs, author application job/applied SHA, published remote head, actual check provider IDs, approval request/receipt URL and Slack scope/message/thread receipts. Root captures screenshots and final presentation."
-  },
-  "validation": {
-    "attempted": [
-      "bun test apps/desktop/src/main/work/pr-approvals/index.test.ts",
-      "bun test apps/desktop/src/main/work/pr-approvals/github.test.ts",
-      "bun test apps/desktop/src/main/composition/team-proposal-source.test.ts",
-      "bun test apps/desktop/src/main/day/clarification.test.ts"
-    ],
-    "result": "All four exited 1 before assertions: Cannot find package zod. Each reported 0 pass, 1 fail, 1 error. No dependency installation or manifest changes performed.",
-    "notRun": [
-      "native/app launches",
-      "live provider reads/writes",
-      "full build/typecheck",
-      "two-account acceptance"
-    ],
-    "artifactChecks": "JSON parsing and git diff whitespace check performed after creation."
-  },
-  "sourcePathConvention": "Paths in supportedPaths/sources are relative to apps/desktop/src unless prefixed otherwise. Line numbers identify audited base locations, not immutable future positions."
+	"schemaVersion": 1,
+	"date": "2026-11-03",
+	"baseCommit": "3881487c97e8d321e8a6e7bdf76a64d0a5e85ebf",
+	"scope": "Source audit of comment → local candidate → shared proposal → author application/publication → conditional approval, plus autonomous Slack clarification. Other demo story stages are root-owned.",
+	"evidenceLevel": "source inspection; no native or real-provider verification",
+	"conclusion": {
+		"supported": "All major service stages exist, including author publication to the original PR and approval of later exact authorized source changes. Do not reduce this story to check-only approval or an unpublished local fix.",
+		"primaryMissingSeam": "No main-owned candidate-to-approval draft operation binds an actual reviewed candidate or shared bundle to exact complete expectedContent. Current draft_pr_delegation accepts model-supplied terms; manual UI accepts full text.",
+		"slack": "Existing per-item, original-thread scope can be confirmed once and send bounded clarification messages autonomously while the user works elsewhere. It is not an unrestricted policy for every incoming request."
+	},
+	"supportedPaths": [
+		{
+			"stage": "Real PR comment",
+			"path": [
+				"main/agent/prepared-comments.ts",
+				"main/agent/pr-comment-tools/index.ts",
+				"main/agent/pr-comment-tools/confirmation.ts"
+			],
+			"behavior": "Canonical prepared-review draft, exact body/revision/head display, separate actual user confirmation, durable GitHub attempt and receipt. Voice requires drained exact proposal narration. Use an actually ready displayed review and retain actual posted comment ID/URL; a draft is insufficient."
+		},
+		{
+			"stage": "Local proposed fix",
+			"path": [
+				"main/agent/hub-tools.ts:871",
+				"main/work/pr-fixes/index.ts",
+				"renderer/pr-fixes/PRFixView.tsx:117"
+			],
+			"behavior": "Start against actual individual feedback; inspect Suggested fixes, Before/Proposed after, exact changed files and actual checks; mark exact candidate head reviewed privately. Detail freshly binds source fingerprint and account. Local reviewed marker is prerequisite for export, not author approval."
+		},
+		{
+			"stage": "Share with author",
+			"path": [
+				"main/composition/team-proposal-source.ts:12",
+				"main/team/service.ts:515",
+				"renderer/conversation/ConversationApp.tsx:94",
+				"renderer/team/TeamCard.tsx:320"
+			],
+			"behavior": "With candidate selected, Settings TeamCard receives candidateId. Preview local proposal, inspect full source/check bundle and explicitly Share exact proposal. Export requires ready reviewed candidate, exact base/current PR head, available UTF-8 source, actual feedback ID/revision/body and complete patch. Optional team login, selected organization/repository and current access are required. This publishes to shared team proposal storage; it is not a GitHub notification or comment."
+		},
+		{
+			"stage": "Author decision and application",
+			"path": [
+				"renderer/team/TeamCard.tsx:390",
+				"main/team/service.ts:558",
+				"main/composition/team.ts:54",
+				"main/runtime/team-proposal-apply.ts"
+			],
+			"behavior": "Author loads Shared proposals for repository/PR, inspects exact bundle, separately accepts then confirms isolated local application. Composition freshly checks actual PR author/account, current head, accepted decision/user and bundle digest. Runtime verifies before/after bytes, records actual local checks and new applied SHA. The reported reviewer candidate SHA and author applied SHA differ legitimately. Completed work gets actual application job with original feedback and PR."
+		},
+		{
+			"stage": "Publish author fix to original PR",
+			"path": [
+				"main/composition/team.ts:126",
+				"main/work/hub.ts:536",
+				"main/work/jobs.ts:923",
+				"main/work/jobs.ts:1116",
+				"main/runtime/work-job-runtime.ts:425"
+			],
+			"behavior": "Author opens applied job in Completed work, inspects actual diff/head/checks and explicitly requests Publish. Feedback job routes through publishFeedback to current own PR headBranch, rejects default-branch target and unexpected remote head. Runtime checks finalized clean source, recorded check results and pins expected remote ref with pre-push race protection. No merge is implied. Nonempty check configuration must be demonstrated separately: push rejects failed recorded checks but does not require at least one check."
+		},
+		{
+			"stage": "Follow up and approve changed PR",
+			"path": [
+				"shared/contracts/pr-approval.ts:6",
+				"main/agent/approval-tools.ts:61",
+				"renderer/pr-approvals/ApprovalControl.tsx:249",
+				"main/work/pr-approvals/index.ts:39",
+				"main/work/pr-approvals/github.ts:233"
+			],
+			"behavior": "PR follow-up supports source conditions with complete expectedContent, named checks and human-only judgment. Draft at actually displayed original ready PR head, inspect exact policy, separately confirm. Main monitor evaluates about every 30 seconds while running/awake. Authorized descendant head with exact replacement files and passing required/current checks may receive head-bound GitHub APPROVE. Check-only terms reject a changed head; judgment terms never auto-approve."
+		}
+	],
+	"sourcePolicy": {
+		"derivableFromActualCandidate": true,
+		"derivation": "Fresh PRFixService.detail(candidateId) provides exact review.files head content; localFixProposal already exports complete after.text plus source/check digests from the reviewed candidate. Derive one source condition for every changed path from these main-owned bytes, never from clipped tool packets, an LLM rewrite, summary or patch alone. Bind candidate ID/head, original PR head, source feedback and bundle digest in derivation provenance and revalidate before proposal display.",
+		"currentManualRoute": "Reopen original PR review after candidate inspection; PR follow-up → Exact source replacement for every candidate file; enter complete exact final contents plus requested check conditions, expiry and approve action. Review and confirm the resulting policy. This is feasible for a small candidate but copying and checking completeness is manual; there is no candidate import button/tool.",
+		"currentAgentLimitation": "inspect_suggested_fix returns one selected file with source prefixes clipped to 3000 bytes and patch clipped to 6000; it declares truncated:true. read_pinned_source supports further actual source inspection but does not itself construct or authorize an approval policy. Do not use the prefix as a complete file.",
+		"bounds": "At most 10 total conditions, each expectedContent <=30000 characters, total JSON terms <=24000 characters. Existing approval supports modified/added regular UTF-8 files; rejects deletions/renames, binary/NUL, unverifiable/truncated source and changed mode. Unchanged executable mode is permitted; new files must be 100644. A proposal may support more shapes than this approval subset; reject unsupported candidate derivation rather than omit files.",
+		"unexpectedChangesGate": [
+			"Current PR context digest, actor, open state, base SHA, approval permission and descendant ancestry must match.",
+			"Compare inspected head to candidate remote head; every net changed path must be an authorized source path with modified/added status. Comparison at provider 300-file truncation boundary is rejected.",
+			"Read contents at exact new head; verify path, byte size, fatal UTF-8 decoding, Git blob hash and regular-file mode against tree entries. Compare whole expectedContent exactly.",
+			"Read PR again after observations; re-observe all conditions before durable submission and recheck identity/head/context at provider POST preflight. POST includes exact commit_id.",
+			"Expiry, account change and revocation fence submission; uncertain dispatch is not blindly replayed."
+		],
+		"semanticLimits": [
+			"Feedback fixed means the user explicitly reviewed and authorized these exact final files as satisfying the feedback. Current approval does not independently infer arbitrary semantic equivalence.",
+			"Policy does not query comment-thread resolved state, bind all subsequent comment revisions, or require shared-proposal acceptance. Those are separate service records; no claim that all current feedback is addressed follows from source matching alone.",
+			"Unexpected changes are assessed as net tree changes between inspected and final head, not an audit that every intermediate commit avoided temporary changes.",
+			"If author makes an alternative correct implementation or updates PR context/base, policy needs renewed review instead of silently expanding approval.",
+			"A partial multi-file publication with wrong intermediate contents can enter needs-review; demo should publish the complete accepted candidate atomically."
+		]
+	},
+	"missingGatesAndSeams": [
+		{
+			"priority": "P0 usability/composition",
+			"gap": "Deterministic candidate-derived approval drafting absent",
+			"leastWork": "Add a main-owned draft-from-reviewed-fix helper and expose one agent operation (and optionally a candidate UI action). Take candidate identity plus action/expiry/requested checks, read canonical detail, enforce full-file-set and bounds, derive source terms directly, then invoke existing PRApprovals.draft and ApprovalConfirmation. Require original PR display/receipt and existing independent confirmation. Preserve human-reviewed feedback mapping; do not auto-confirm."
+		},
+		{
+			"priority": "P0 acceptance",
+			"gap": "Cross-service demo not established by source or isolated test suites",
+			"leastWork": "Root runs integrated author/reviewer path with real isolated Git, then separate authorized live two-account provider story. Capture comment/proposal/decision/application/publication/approval receipts and corresponding heads."
+		},
+		{
+			"priority": "P1 conversational reach",
+			"gap": "Team sharing/accept/apply are available through Settings TeamCard; inspected agent tool registries contain no matching team proposal write tools",
+			"leastWork": "Existing UI can complete practical demo without new provider endpoints. For voice-only full story, root reserves typed tool/confirmation adapters to the same team operations; do not treat a conversational mention as exact share/apply consent."
+		},
+		{
+			"priority": "conditional product requirement",
+			"gap": "No durable linkage in ApprovalPolicy to original feedback revision or proposal acceptance; source conditions alone enforce authorized final tree",
+			"leastWork": "If story requires edited/new feedback or proposal revocation to invalidate approval, add explicit canonical provenance and fresh feedback/decision checks in root-owned contracts/service/provider. Do not claim this exists. For minimal exact-fix story explain source-based approval terms and do not equate them with all-thread resolution."
+		},
+		{
+			"priority": "demo presentation",
+			"gap": "Shared proposal availability is not proactive author delivery",
+			"leastWork": "Have real author open/refresh the actual shared proposal in their own authorized profile. If proactive notification is required, reserve a separately authorized delivery mechanism; do not claim sharing sent a GitHub or Slack message."
+		}
+	],
+	"reservationRequest": {
+		"status": "Requested for follow-up implementation; no existing files changed",
+		"workerSuggestedFiles": [
+			"apps/desktop/src/main/work/pr-approvals/candidate-policy.ts (new)",
+			"apps/desktop/src/main/work/pr-approvals/candidate-policy.test.ts (new)",
+			"apps/desktop/src/main/agent/approval-tools.ts",
+			"apps/desktop/src/main/agent/approval-tools.test.ts"
+		],
+		"rootOwnedSeams": [
+			"services.ts supplies fresh canonical fix/detail port",
+			"shared contracts/provenance if persisted candidate/feedback/bundle binding is required",
+			"PRApprovals integration if additional source invalidation needed",
+			"renderer action/presentation integration and combined native harness"
+		],
+		"condition": "Root must explicitly reserve concrete files before worker patches them; current exclusive output is this JSON."
+	},
+	"slackClarification": {
+		"sources": [
+			"shared/contracts/day.ts:37",
+			"main/agent/day-tools.ts:80",
+			"main/day/service.ts:782",
+			"main/day/service.ts:1189",
+			"main/day/service.ts:1782",
+			"main/day/supervisor.ts:17",
+			"main/composition/day-clarification.ts"
+		],
+		"authorization": "day_propose_clarification scopes one real Day item/original request/thread/account; user inspects send authority, scope, message limit and duration, then separately confirms unchanged proposal. Limits are 1–3 messages over 5–120 minutes. One confirmation permits question bodies generated later within this scope; exact-body per-send confirmation is not required.",
+		"autonomy": "DaySupervisor cycles independently of foreground turn/window while awake/online. Active clarification analyzes freshly authorized thread, queues bounded question bodies, then fresh read/thread digest and policy checks gate actual send. Subsequent questions require a new/edited requester reply, not own posts or bots. Pending/uncertain sends, duplicate bodies, budget/expiry and escalation prevent uncontrolled repetition.",
+		"boundaries": "No blanket incoming-message authorization, cross-thread outreach, ownership acceptance, execution/publishing/closure authority, or hosted/sleeping-Mac operation. Contradiction/sensitive/expanded scope escalates; model classification is inference and source text never grants authority. Ordinary snapshots expose metadata; inspection reauthorizes stored text. Unknown writes are retained, not blindly resent.",
+		"demo": "Inspect actual incoming Slack item and ask: Clarify the reproduction steps in this original thread, at most two messages over 30 minutes while I review this PR. Inspect canonical proposal and confirm in a later turn. Navigate to PR work; verify first actual posted question receipt, real requester reply and bounded follow-up without another exact-body confirmation. Then inspect summary and source receipts; revoke or let scope expire.",
+		"missingForBroaderStory": "If user intends preauthorization across future requests rather than this one selected thread, that is new policy scope and must be designed/confirmed explicitly. Existing per-thread autonomy already fulfills concurrent clarification for a selected request."
+	},
+	"rootDemoProtocol": [
+		"Use a small real PR with a non-author reviewer who has approval permission and a separate author account, both authorized in the selected team/repository. Register clean local repository and real validation command. Keep reviewer policy active in a separate profile/device from author account changes.",
+		"Reviewer opens ready pinned PR, reviews logical source, drafts and explicitly posts real feedback; save actual GitHub comment receipt/ID/head.",
+		"Start local fix from that actual feedback; wait for ready, inspect complete candidate diff and real check logs, mark exact head reviewed.",
+		"While candidate selected open Settings/Team, preview exact bundle and explicitly share; save proposal ID/digest and candidate/base SHA. Author independently refreshes and sees that same proposal.",
+		"Before author updates head, reviewer returns to original displayed PR and drafts exact-source follow-up for all candidate files plus real required check names and bounded expiry. Inspect/confirm explicit automatic approval. Prefer new deterministic candidate seam; existing manual full-text route is possible for a small candidate.",
+		"Author inspects and accepts exact proposal, confirms local apply, opens actual Completed work job, inspects resulting bytes/diff/checks, then explicitly publishes to the original PR branch. Record applied SHA and remote PR head; they must match, but need not match reviewer candidate SHA.",
+		"Keep reviewer app awake/online; observe policy evaluation against actual new head and eventual GitHub APPROVE receipt for precisely that head, with no merge. Capture approval URL plus durable policy/attempt. A passing test or local reviewed marker is insufficient.",
+		"Perform concurrent scoped Slack protocol above using root-authorized outbound messages and real requester replies. Preserve receipts independently of conversation narration."
+	],
+	"verificationProtocol": {
+		"nativeRootOnly": [
+			"bun run test:comment-conversation",
+			"bun run test:pr-work",
+			"bun run test:pr-fixes",
+			"bun run test:team-workspace",
+			"bun run test:pr-approvals",
+			"bun run test:slack-clarification"
+		],
+		"newIntegratedCases": [
+			"Derive complete source policy from a genuinely finalized reviewed candidate; byte-compare all conditions to canonical after contents, including CRLF/BOM/trailing newline. Reject prefix/truncated source, omitted paths, unsupported shapes and bounds overflow.",
+			"Exercise actual reviewer share → different author accept/apply → Completed work publish → same PR new remote head → reviewer source approval. Preserve source comment/bundle linkage in evidence.",
+			"Negative forks: extra file, extra edits in allowed file, changed base/title/body/author, non-descendant head, mode/symlink/rename/delete, comparison truncation, failed/pending/ambiguous checks, stale candidate, edited feedback, account change, revocation/expiry and head movement during preflight. Verify no approval POST where policy does not authorize it.",
+			"Check one confirmed Slack scope sends while PR workspace remains selected; no second manual per-body confirmation; requester-triggered follow-up only; fresh membership/revision, budget, expiry and ambiguous-write handling."
+		],
+		"realProvider": "Root alone may perform authorized writes. Use two actual identities and record actual GitHub/Slack/team receipts and timestamps. Inspect provider records independently of UI text. Controlled HTTP/native tests do not establish live provider authorization, real two-user sharing, physical voice or sleeping-Mac execution.",
+		"evidenceCapture": "Record commit/build SHA, policy ID/revision/digest, original inspected PR base/head, feedback ID/revision/body digest, candidate source/check digest and SHA, proposal/decision IDs, author application job/applied SHA, published remote head, actual check provider IDs, approval request/receipt URL and Slack scope/message/thread receipts. Root captures screenshots and final presentation."
+	},
+	"validation": {
+		"attempted": [
+			"bun test apps/desktop/src/main/work/pr-approvals/index.test.ts",
+			"bun test apps/desktop/src/main/work/pr-approvals/github.test.ts",
+			"bun test apps/desktop/src/main/composition/team-proposal-source.test.ts",
+			"bun test apps/desktop/src/main/day/clarification.test.ts"
+		],
+		"result": "All four exited 1 before assertions: Cannot find package zod. Each reported 0 pass, 1 fail, 1 error. No dependency installation or manifest changes performed.",
+		"notRun": [
+			"native/app launches",
+			"live provider reads/writes",
+			"full build/typecheck",
+			"two-account acceptance"
+		],
+		"artifactChecks": "JSON parsing and git diff whitespace check performed after creation."
+	},
+	"sourcePathConvention": "Paths in supportedPaths/sources are relative to apps/desktop/src unless prefixed otherwise. Line numbers identify audited base locations, not immutable future positions."
 }

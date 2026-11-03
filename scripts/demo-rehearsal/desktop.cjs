@@ -162,7 +162,7 @@ async function rpc(type, name, input = {}) {
 }
 const ui = () =>
 	js(
-		`({voice:document.querySelector('footer.voice-bar')?.dataset.handsFree,phase:document.querySelector('main.conversation-main')?.dataset.conversationState,error:document.querySelector('.voice-bar-error')?.textContent||'',messages:[...document.querySelectorAll('article.exchange')].map(e=>({id:e.dataset.turnId,phase:e.dataset.phase,question:e.querySelector('.user-message p')?.textContent||'',answer:e.querySelector('.assistant-message p')?.textContent||''})),workspaceText:document.querySelector('[aria-label="Workspace canvases"]')?.innerText?.slice(0,20000)||''})`
+		`({voice:document.querySelector('footer.voice-bar')?.dataset.handsFree,phase:document.querySelector('main.conversation-main')?.dataset.conversationState,error:document.querySelector('.voice-bar-error')?.textContent||'',messages:[...document.querySelectorAll('article.exchange')].map(e=>({id:e.dataset.turnId,phase:e.dataset.phase,question:e.querySelector('.user-message p')?.textContent||'',answer:e.querySelector('.assistant-answer')?.getAttribute('data-answer')||''})),workspaceText:document.querySelector('[aria-label="Workspace canvases"]')?.innerText?.slice(0,20000)||''})`
 	);
 function diagnostics() {
 	return [

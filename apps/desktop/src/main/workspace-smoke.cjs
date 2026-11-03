@@ -438,7 +438,7 @@ const uiScript = `(() => {
 	const w=document.querySelector('[aria-label="Workspace canvases"]'), r=document.querySelector('[aria-label="Prepared review"]'), m=document.querySelector('main.conversation-main'), e=[...document.querySelectorAll('article.exchange')].at(-1);
 	return {sequence:Number(w?.dataset.workspaceSequence),primaryId:w?.dataset.primaryCanvas,secondaryId:w?.dataset.secondaryCanvas||null,
 		panes:[...document.querySelectorAll('.canvas-pane')].map(p=>({id:p.dataset.canvasId,kind:p.dataset.canvasKind,revision:Number(p.dataset.canvasRevision),text:p.textContent,svg:!!p.querySelector('svg[role="img"]'),svgTexts:[...p.querySelectorAll('svg text')].map(t=>t.textContent)})),
-		sessionId:m?.dataset.sessionId,turnId:m?.dataset.turnId,generation:Number(m?.dataset.generation),phase:e?.dataset.phase,answer:e?.querySelector('.assistant-message p')?.textContent??'',
+		sessionId:m?.dataset.sessionId,turnId:m?.dataset.turnId,generation:Number(m?.dataset.generation),phase:e?.dataset.phase,answer:e?.querySelector('.assistant-answer')?.getAttribute('data-answer')??'',
 		review:r?{path:r.dataset.reviewPath,reviewId:r.dataset.reviewId,loading:r.dataset.reviewLoading,baseSha:r.dataset.baseSha,headSha:r.dataset.headSha,view:r.dataset.codeView,sequence:Number(r.dataset.screenSequence),source:[...r.querySelectorAll('.source-row code')].map(c=>c.textContent),patch:[...r.querySelectorAll('.patch-row code')].map(c=>c.textContent)}:null,
 		centerSection:document.querySelector('.hub-center')?.dataset.centerSection,conversationVisible:!!document.querySelector('#conversation-panel')?.checkVisibility(),errors:[...document.querySelectorAll('.canvas-error,.review-error')].map(p=>p.textContent)};
 })()`;

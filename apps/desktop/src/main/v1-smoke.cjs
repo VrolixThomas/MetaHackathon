@@ -287,7 +287,7 @@ async function native() {
 		};
 		const snapshot = () =>
 			js(
-				`(() => { const m=document.querySelector('main[data-session-id]'), e=[...document.querySelectorAll('article[data-turn-id]')].at(-1); return {text:document.body.innerText,sessionId:m?.dataset.sessionId,turnId:m?.dataset.turnId,generation:Number(m?.dataset.generation),phase:e?.dataset.phase,question:e?.querySelector('.user-message p')?.textContent,answer:e?.querySelector('.assistant-message p')?.textContent||'',count:document.querySelectorAll('article[data-turn-id]').length}; })()`
+				`(() => { const m=document.querySelector('main[data-session-id]'), e=[...document.querySelectorAll('article[data-turn-id]')].at(-1); return {text:document.body.innerText,sessionId:m?.dataset.sessionId,turnId:m?.dataset.turnId,generation:Number(m?.dataset.generation),phase:e?.dataset.phase,question:e?.querySelector('.user-message p')?.textContent,answer:e?.querySelector('.assistant-answer')?.getAttribute('data-answer')||'',count:document.querySelectorAll('article[data-turn-id]').length}; })()`
 			);
 		const initial = await wait("empty V1", async () => {
 			const s = await snapshot();
