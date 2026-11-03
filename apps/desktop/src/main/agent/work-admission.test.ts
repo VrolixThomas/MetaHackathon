@@ -24,7 +24,7 @@ function client(text: string, output?: MetaItem[]): AgentModelClient {
 	return {
 		async *stream(request) {
 			assert.equal(request.workload, "quick");
-			assert.equal(request.maxOutputTokens, 1024);
+			assert.equal(request.maxOutputTokens, 2048);
 			assert.deepEqual(request.tools, []);
 			yield {
 				type: "completed",
@@ -67,7 +67,13 @@ async function refusal(
 				error instanceof WorkAdmissionError &&
 				error.diagnostic === category &&
 				!error.inspectExisting &&
-				/clarify your choice/.test(error.message)
+				([
+					"scope-unresolved",
+					"pending-answer-evidence-mismatch",
+					"prior-request-evidence-mismatch",
+				].includes(category)
+					? /clarify your choice/.test(error.message)
+					: /couldn’t verify.*haven’t started/.test(error.message))
 		);
 		assert.deepEqual(gate.effects, []);
 		assert.deepEqual(logs, [[`[work-admission] ${JSON.stringify({ version: 1, category })}`]]);
