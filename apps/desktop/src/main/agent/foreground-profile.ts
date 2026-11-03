@@ -72,6 +72,9 @@ function family(name: string): Family {
 export class ForegroundProfile {
 	private readonly expanded = new Set<Family>();
 	private expandable: Family[] = [];
+	private registered: FunctionTool[] = [];
+	private offered: FunctionTool[] = [];
+	private noOpExpansions = 0;
 	private active = new Set<Family>();
 	private selectedReview = false;
 	private selectedId?: string;
@@ -146,14 +149,18 @@ export class ForegroundProfile {
 		return this.active.has(value) || this.expanded.has(value);
 	}
 	tools(available: FunctionTool[], canAnalyze = false): FunctionTool[] {
-		const selected = available.filter(
-			(tool) =>
-				!(this.sourceWorkflow && tool.name === "day_capture_manual") &&
-				(this.legacyUnscoped ||
-					core.has(tool.name) ||
-					this.has(family(tool.name)) ||
-					(this.has("work") && sourceTools.has(tool.name)))
+		// Replace the inventory on every request; a prior service/pane grants no capability.
+		this.registered = available.filter(
+			(tool) => !(this.sourceWorkflow && tool.name === "day_capture_manual")
 		);
+		const selected = this.registered.filter(
+			(tool) =>
+				this.legacyUnscoped ||
+				core.has(tool.name) ||
+				this.has(family(tool.name)) ||
+				(this.has("work") && sourceTools.has(tool.name))
+		);
+		this.offered = selected;
 		// Advertise only families that add actual registered tools to this request.
 		this.expandable = families.filter((value) =>
 			available.some(
@@ -192,12 +199,30 @@ export class ForegroundProfile {
 		];
 	}
 	expand(raw: string) {
-		const value = parseToolArguments(expansion(this.expandable), raw);
-		for (const selected of value.families) this.expanded.add(selected);
+		// The model enum stays missing-only. Execution also recognizes actual offered
+		// families, so a stale expansion request cannot misreport them as unavailable.
+		const recognized = families.filter(
+			(value) =>
+				this.expandable.includes(value) || this.offered.some((tool) => family(tool.name) === value)
+		);
+		const value = parseToolArguments(expansion(recognized), raw);
+		const newlyEnabled = value.families.filter((selected) => this.expandable.includes(selected));
+		if (!newlyEnabled.length && this.noOpExpansions++ >= 1)
+			throw new Error(
+				"These tools are already available. Repeated no-op expansion stopped; use the offered operations."
+			);
+		for (const selected of newlyEnabled) this.expanded.add(selected);
 		this.expandable = this.expandable.filter((selected) => !value.families.includes(selected));
 		return {
-			status: "tools-expanded",
-			newlyEnabled: value.families,
+			status: newlyEnabled.length ? "tools-expanded" : "available",
+			newlyEnabled,
+			availableTools: this.registered
+				.filter(
+					(tool) =>
+						value.families.includes(family(tool.name)) &&
+						(this.offered.includes(tool) || newlyEnabled.includes(family(tool.name)))
+				)
+				.map((tool) => tool.name),
 			nextStep:
 				"Use the now offered tools for the requested operation. Expansion grants no operation authority.",
 			families: [...this.expanded],

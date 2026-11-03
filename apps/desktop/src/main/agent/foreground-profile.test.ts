@@ -190,10 +190,7 @@ test("ordinary navigation, PR questions and unknown compounds start scoped and c
 		assert(profile.tools(workflowTools).some((t) => t.name === "read_pinned_source"));
 		assert(!profile.tools(workflowTools).some((t) => t.name === "confirm_pr_comment"));
 		assert(profile.tools(workflowTools).length <= 8);
-		assert.throws(
-			() => profile.expand(JSON.stringify({ families: ["reviews"] })),
-			WorkspaceArgumentError
-		);
+		assert.equal(profile.expand(JSON.stringify({ families: ["reviews"] })).status, "available");
 	}
 });
 
@@ -233,7 +230,7 @@ function expansionChoices(offered: FunctionTool[]) {
 	return schema?.properties.families.items.enum ?? [];
 }
 
-test("expansion lists only families that add registered tools and rejects no-op or absent families", () => {
+test("expansion advertises missing families but recognizes offered operations and rejects absent families", () => {
 	const profile = new ForegroundProfile();
 	profile.select(observation("home"), false, "Notify me when PR 3 checks pass within an hour");
 	const offered = profile.tools(workflowTools);
@@ -242,7 +239,32 @@ test("expansion lists only families that add registered tools and rejects no-op 
 	assert(!expansionChoices(offered).includes("reviews"));
 	assert(!expansionChoices(offered).includes("browser"));
 	assert(expansionChoices(offered).includes("day"));
-	for (const family of ["approvals", "reviews", "browser"])
+	const noOp = profile.expand(JSON.stringify({ families: ["approvals", "reviews"] }));
+	assert.equal(noOp.status, "available");
+	assert.deepEqual(noOp.newlyEnabled, []);
+	assert.deepEqual(
+		noOp.availableTools,
+		offered
+			.filter(
+				(tool) =>
+					tool.name.includes("pr_delegation") ||
+					[
+						"read_pinned_source",
+						"search_pinned_source",
+						"open_pinned_source",
+						"create_source_flow",
+						"open_review_file",
+					].includes(tool.name)
+			)
+			.map((tool) => tool.name)
+	);
+	assert.match(noOp.authority, /not a user instruction or consent/);
+	assert.deepEqual(profile.tools(workflowTools), offered);
+	assert.throws(
+		() => profile.expand(JSON.stringify({ families: ["approvals"] })),
+		/Repeated no-op expansion stopped/
+	);
+	for (const family of ["browser", "unknown"])
 		assert.throws(
 			() => profile.expand(JSON.stringify({ families: [family] })),
 			WorkspaceArgumentError
@@ -253,6 +275,24 @@ test("expansion lists only families that add registered tools and rejects no-op 
 	const absent = profile.tools(tools);
 	assert(!absent.some((tool) => tool.name === "draft_pr_delegation"));
 	assert(!expansionChoices(absent).includes("approvals"));
+	assert.throws(
+		() => profile.expand(JSON.stringify({ families: ["approvals"] })),
+		WorkspaceArgumentError
+	);
 	profile.select(undefined);
 	assert(!profile.tools(workflowTools).some((tool) => tool.name === "expand_tools"));
+});
+
+test("expansion retains strict argument shapes and never treats an operation name as a family", () => {
+	const profile = new ForegroundProfile();
+	profile.select(observation("home"), false, "Notify me when PR 3 checks pass");
+	profile.tools(workflowTools);
+	for (const args of [
+		{ families: ["approvals"], authority: true },
+		{ families: "approvals" },
+		{ families: ["draft_pr_delegation"] },
+		{ families: [] },
+	])
+		assert.throws(() => profile.expand(JSON.stringify(args)), WorkspaceArgumentError);
+	assert.equal(profile.expand(JSON.stringify({ families: ["approvals"] })).status, "available");
 });

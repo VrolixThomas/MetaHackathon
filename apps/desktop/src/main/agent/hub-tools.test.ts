@@ -4322,6 +4322,8 @@ for (const selected of [false, true]) {
 		"draft",
 		"inspect-empty",
 		"repair",
+		"noop-repair",
+		"repeat-noop",
 		"repeat-invalid",
 		"post-draft-error",
 		"unoffered-day",
@@ -4351,7 +4353,9 @@ for (const selected of [false, true]) {
 					throw new Error("Controlled post-write failure; do not replay");
 				};
 			}
-			const repairs = attempted === "repair" || attempted === "repeat-invalid";
+			const noop = attempted === "noop-repair" || attempted === "repeat-noop";
+			const repairs =
+				attempted === "repair" || attempted === "noop-repair" || attempted === "repeat-invalid";
 			const requests: MetaRequest[] = [];
 			const terms = {
 				action: "notify" as const,
@@ -4388,13 +4392,17 @@ for (const selected of [false, true]) {
 						...(attempted === "inspect-empty"
 							? [[call("inspect_pr_delegations", {}, "inspect-empty")]]
 							: []),
+						...(noop ? [[call("expand_tools", { families: ["approvals"] }, "noop")]] : []),
+						...(attempted === "repeat-noop"
+							? [[call("expand_tools", { families: ["approvals"] }, "repeat-noop")]]
+							: []),
 						[output],
 						...(repairs
 							? [
 									[
 										call(
 											"draft_pr_delegation",
-											{ terms: attempted === "repair" ? terms : invalidTerms },
+											{ terms: attempted !== "repeat-invalid" ? terms : invalidTerms },
 											"correction"
 										),
 									],
@@ -4444,15 +4452,17 @@ for (const selected of [false, true]) {
 				assert(!first.tools?.some((t) => t.name === "write_markdown_explanation"));
 				assert.match(first.instructions, /generic day_capture_manual.*cannot monitor PR checks/);
 				if (repairs) {
-					const correction = required(requests[1]);
-					const receipt = correction.input.find((item) => item["type"] === "function_call_output");
+					const correction = required(requests[1 + Number(noop)]);
+					const receipt = [...correction.input]
+						.reverse()
+						.find((item) => item["type"] === "function_call_output");
 					const rejection = JSON.parse(String(receipt?.["output"]));
 					assert.equal(rejection.status, "rejected-before-execution");
 					assert.match(
 						rejection.message,
 						/terms\.conditions\.0\.appId: invalid_type; expected number/
 					);
-					assert.equal(approvalAccesses, attempted === "repair" ? 1 : 0);
+					assert.equal(approvalAccesses, attempted !== "repeat-invalid" ? 1 : 0);
 				}
 				if (attempted === "inspect-empty") {
 					const receipt = requests[1]?.input.find(
@@ -4468,8 +4478,30 @@ for (const selected of [false, true]) {
 						assert(!JSON.stringify(expansion?.parameters).includes('"approvals"'));
 					}
 				}
-				if (attempted === "draft" || attempted === "repair" || attempted === "inspect-empty") {
-					assert.equal(requests.length, repairs || attempted === "inspect-empty" ? 2 : 1);
+				if (noop) {
+					const receipt = requests[1]?.input.find(
+						(item) => item["type"] === "function_call_output"
+					);
+					const expanded = JSON.parse(String(receipt?.["output"]));
+					assert.equal(expanded.status, "available");
+					assert.deepEqual(expanded.newlyEnabled, []);
+					assert.deepEqual(
+						expanded.availableTools,
+						first.tools
+							?.filter((tool) => tool.name.includes("pr_delegation"))
+							.map((tool) => tool.name)
+					);
+				}
+				if (
+					attempted === "draft" ||
+					attempted === "repair" ||
+					attempted === "noop-repair" ||
+					attempted === "inspect-empty"
+				) {
+					assert.equal(
+						requests.length,
+						(repairs || attempted === "inspect-empty" ? 2 : 1) + Number(noop)
+					);
 					assert.equal(service.poll(identity(turn)).text, "");
 					assert.equal(approval.p.status, "draft");
 					assert.deepEqual(approval.p.terms, terms);
@@ -4477,11 +4509,14 @@ for (const selected of [false, true]) {
 					confirmation.presented(required(confirmation.pending(input.sessionId)));
 					await eventually(() => service.poll(identity(turn)).status !== "running");
 					assert.equal(service.poll(identity(turn)).status, "completed");
-					assert.equal(requests.length, repairs || attempted === "inspect-empty" ? 3 : 2);
+					assert.equal(
+						requests.length,
+						(repairs || attempted === "inspect-empty" ? 3 : 2) + Number(noop)
+					);
 					assert.equal(approval.p.status, "draft");
 				} else {
 					assert.equal(service.poll(identity(turn)).status, "error");
-					assert.equal(requests.length, repairs ? 2 : 1);
+					assert.equal(requests.length, repairs || attempted === "repeat-noop" ? 2 : 1);
 					assert.equal(approvalAccesses, attempted === "post-draft-error" ? 1 : 0);
 					assert.equal(
 						approval.state.approvalPolicies?.length ?? 0,
