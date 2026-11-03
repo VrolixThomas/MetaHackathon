@@ -21,10 +21,31 @@ const decision = z.strictObject({
 	clarification: evidence.nullable().optional(),
 });
 const clarify = "Before I start, could you clarify your choice for the scope we were discussing?";
+export type WorkAdmissionDiagnostic =
+	| "context-limit"
+	| "model-round-failure"
+	| "unexpected-tool"
+	| "json-failure"
+	| "schema-failure"
+	| "intent-discussion"
+	| "intent-unclear"
+	| "scope-unresolved"
+	| "request-evidence-mismatch"
+	| "pending-answer-evidence-mismatch"
+	| "prior-request-evidence-mismatch";
+
+// Fixed categories only: never emit model text, schema issues/paths, request IDs,
+// user/source/brief content, or caught errors (which may contain provider secrets).
+function refuse(category: WorkAdmissionDiagnostic): never {
+	console.warn(`[work-admission] ${JSON.stringify({ version: 1, category })}`);
+	throw new WorkAdmissionError(clarify, false, category);
+}
+
 export class WorkAdmissionError extends Error {
 	constructor(
 		message: string,
-		readonly inspectExisting = false
+		readonly inspectExisting = false,
+		readonly diagnostic?: WorkAdmissionDiagnostic
 	) {
 		super(message);
 	}
@@ -93,8 +114,9 @@ export class WorkAdmission {
 			proposedOperation: operation,
 			observedTarget,
 		});
-		if (Buffer.byteLength(context) > 96000) throw new WorkAdmissionError(clarify);
+		if (Buffer.byteLength(context) > 96000) refuse("context-limit");
 		let parsed: z.infer<typeof decision>;
+		let failure: WorkAdmissionDiagnostic = "model-round-failure";
 		try {
 			const result = await modelRound(
 				client,
@@ -108,40 +130,48 @@ export class WorkAdmission {
 				},
 				signal
 			);
-			if (result.completion.output.some((item) => item["type"] === "function_call"))
+			if (result.completion.output.some((item) => item["type"] === "function_call")) {
+				failure = "unexpected-tool";
 				throw new Error("Unexpected tool");
-			parsed = decision.parse(JSON.parse(result.text));
+			}
+			failure = "json-failure";
+			const json: unknown = JSON.parse(result.text);
+			failure = "schema-failure";
+			parsed = decision.parse(json);
 		} catch {
 			throwIfAborted(signal);
-			throw new WorkAdmissionError(clarify);
+			refuse(failure);
 		}
 		throwIfAborted(signal);
 		const actual = (value: z.infer<typeof evidence> | null) =>
 			value &&
 			users.some((user) => user.generation === value.generation && user.text === value.text);
+		if (parsed.intent === "discussion") refuse("intent-discussion");
+		if (parsed.intent === "unclear") refuse("intent-unclear");
+		if (parsed.scope !== "settled") refuse("scope-unresolved");
+		if (!actual(parsed.request)) refuse("request-evidence-mismatch");
 		if (
-			parsed.intent !== "start" ||
-			parsed.scope !== "settled" ||
-			!actual(parsed.request) ||
-			(this.question &&
-				(!actual(parsed.answer) ||
-					(parsed.answer?.generation ?? 0) <= this.question.generation ||
-					parsed.answer?.generation !== turn.generation)) ||
-			(!this.question &&
-				parsed.request?.generation !== turn.generation &&
-				(!actual(parsed.answer) ||
-					parsed.answer?.generation !== turn.generation ||
-					!parsed.clarification ||
-					!exchanges.some(
-						(entry) =>
-							entry.generation === parsed.clarification?.generation &&
-							entry.assistant === parsed.clarification?.text &&
-							(entry.generation ?? 0) < turn.generation &&
-							(entry.generation ?? 0) >= (parsed.request?.generation ?? turn.generation)
-					)))
-		) {
-			throw new WorkAdmissionError(clarify);
-		}
+			this.question &&
+			(!actual(parsed.answer) ||
+				(parsed.answer?.generation ?? 0) <= this.question.generation ||
+				parsed.answer?.generation !== turn.generation)
+		)
+			refuse("pending-answer-evidence-mismatch");
+		if (
+			!this.question &&
+			parsed.request?.generation !== turn.generation &&
+			(!actual(parsed.answer) ||
+				parsed.answer?.generation !== turn.generation ||
+				!parsed.clarification ||
+				!exchanges.some(
+					(entry) =>
+						entry.generation === parsed.clarification?.generation &&
+						entry.assistant === parsed.clarification?.text &&
+						(entry.generation ?? 0) < turn.generation &&
+						(entry.generation ?? 0) >= (parsed.request?.generation ?? turn.generation)
+				))
+		)
+			refuse("prior-request-evidence-mismatch");
 		return {
 			begin: (requestId: string) => {
 				throwIfAborted(signal);
