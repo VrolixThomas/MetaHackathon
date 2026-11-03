@@ -31,6 +31,7 @@ import {
 	type MetaCompletion,
 	type MetaItem,
 } from "./meta-client";
+import { conditionalPRProposalRequested } from "./pr-proposal-routing";
 import { type CurrentReviewSource, reviewModelInput } from "./review-source";
 import { WORKSPACE_INSTRUCTIONS } from "./workspace-conversation";
 import {
@@ -365,9 +366,27 @@ export async function runGuidedReview(
 			await abortable(Promise.resolve(onText(delta)), signal);
 		};
 		const answerOnly = terminalAnswer || (navigated && !profile.sourceWorkflow);
+		// Spend deeper reasoning on interpreting requested conditional terms only once the
+		// actual ready PR is displayed. Navigation, reads and conceptual questions stay quick.
+		const proposalReasoning =
+			profile.sourceWorkflow &&
+			conditionalPRProposalRequested(input.text) &&
+			!!snapshot.review &&
+			snapshot.screen.mode === "review" &&
+			snapshot.screen.prId === snapshot.review.pr.id &&
+			snapshot.screen.reviewId === snapshot.review.id &&
+			snapshot.screen.baseSha === snapshot.review.pr.baseSha &&
+			snapshot.screen.headSha === snapshot.review.pr.headSha &&
+			(!observation ||
+				observation.workspace.canvases.some(
+					(canvas) =>
+						canvas.kind === "review" &&
+						(canvas.id === observation.workspace.primaryId ||
+							canvas.id === observation.workspace.secondaryId)
+				));
 		const request = {
 			requestId: `${input.requestId}:review:${modelAttempt++}`,
-			workload: "quick" as const,
+			workload: proposalReasoning ? ("deep" as const) : ("quick" as const),
 			instructions: `${profile.sourceWorkflow ? profile.workflowInstructions : `${workspace || hub ? `${INSTRUCTIONS}\n${WORKSPACE_INSTRUCTIONS}` : INSTRUCTIONS}\n${COPARTNER_INSTRUCTIONS}\n${PROFILE_INSTRUCTIONS}`}${terminalAnswer ? "\nTool budget is exhausted. Answer from actual results only, briefly naming any unfinished part. Do not claim rejected or unacknowledged effects succeeded." : `\nAt most ${toolRoundLimit - round} tool calls remain, plus one final answer.${profile.sourceWorkflow ? "" : " Inspect missing links before proposing a source flow."}`}`,
 			input: modelInput,
 			tools: answerOnly
@@ -382,7 +401,7 @@ export async function runGuidedReview(
 						],
 						!!source.file
 					),
-			maxOutputTokens: MAX_OUTPUT_TOKENS,
+			maxOutputTokens: proposalReasoning ? 8192 : MAX_OUTPUT_TOKENS,
 		};
 		// Only the phase with tools disabled may stream. Navigation and its durable receipt
 		// have already completed; every delta is still fenced against a changed screen.
@@ -414,7 +433,7 @@ export async function runGuidedReview(
 				{
 					...request,
 					requestId: `${request.requestId}:retry`,
-					maxOutputTokens: RECOVERY_OUTPUT_TOKENS,
+					maxOutputTokens: Math.max(request.maxOutputTokens, RECOVERY_OUTPUT_TOKENS),
 				},
 				signal,
 				streamText
