@@ -51,6 +51,20 @@ export function ticketDialogueMode(
 	context: unknown
 ): "tools" | "navigate-discussion" | "answer" {
 	const parsed = ticketContext.safeParse(context);
+	// Current main-owned admission history already answers this narrow status question.
+	// This removes tools only; missing or ambiguous context stays on the normal path.
+	if (
+		parsed.success &&
+		parsed.data.ticket.id === parsed.data.target.id &&
+		parsed.data.target.displayed &&
+		/^(?:did you (?:just |already )?start|have you (?:just |already )?started) (?:this|that|the) (?:work|job|ticket)[?!.]?$/i.test(
+			text.trim()
+		) &&
+		z
+			.object({ priorJobs: z.array(z.unknown()), sessionAdmissions: z.array(z.unknown()) })
+			.safeParse(context).success
+	)
+		return "answer";
 	if (
 		!parsed.success ||
 		operation.test(text) ||

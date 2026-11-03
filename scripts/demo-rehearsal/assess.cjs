@@ -10,6 +10,8 @@ const commonIds = new Set([
 	"scope-rationale",
 	"scope-failure",
 	"scope-continue",
+	"existing-work-choice",
+	"existing-work-chronology",
 	"variant-recommendation",
 	"variant-choice",
 	"variant-downside",

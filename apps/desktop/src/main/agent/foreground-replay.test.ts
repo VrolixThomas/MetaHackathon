@@ -579,3 +579,28 @@ test("quality corpus preserves distinct mechanisms and alternate topics as evide
 	assert([...descriptions].some((value) => /Earlier download URLs/.test(value)));
 	assert(reports.every((report) => report.firstPCM === null && report.reads.mutations === 0));
 });
+
+test("actual chronology followup gets current historical work without tools or new admission", async () => {
+	const h = createForegroundReplay(
+		{
+			async *stream(request) {
+				assert.equal(request.workload, "conversation");
+				assert.deepEqual(request.tools, []);
+				assert.deepEqual(packet(request).currentContext.sessionAdmissions, []);
+				assert.equal(
+					packet(request).currentContext.priorJobs[0].admission.origin,
+					"existing-work-not-admitted-in-this-session"
+				);
+				yield terminal(answer("Controlled chronology from existing work."));
+			},
+		},
+		{ selected: true }
+	);
+	try {
+		const turn = h.start("Did you just start that work?");
+		assert.equal((await h.settle(turn)).result.status, "completed");
+		assert.equal(h.reads.mutations, 0);
+	} finally {
+		await h.service.dispose();
+	}
+});

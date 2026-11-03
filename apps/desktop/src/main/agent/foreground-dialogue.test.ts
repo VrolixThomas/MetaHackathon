@@ -264,3 +264,14 @@ test("a clear discussion-only preference does not need an earlier assistant ques
 		"tools"
 	);
 });
+
+test("simple chronology uses supplied current receipts, never implied start authority", () => {
+	const receipts = { ...context(), priorJobs: [], sessionAdmissions: [] };
+	assert.equal(ticketDialogueMode("Did you just start that work?", [], receipts), "answer");
+	assert.equal(ticketDialogueMode("Have you already started the job?", [], receipts), "answer");
+	assert.equal(ticketDialogueMode("Did you just start that work?", [], context()), "tools");
+	assert.equal(
+		ticketDialogueMode("Did you just start that work? Cancel it.", [], receipts),
+		"tools"
+	);
+});

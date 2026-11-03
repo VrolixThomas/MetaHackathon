@@ -84,7 +84,12 @@ async function full(d) {
 			ready.checks.every((c) => c.exitCode === 0 && c.commitSha === ready.headSha),
 		"Actual coding checks must pass on its candidate head"
 	);
-	report.completedJob = ready;
+	const afterReview = await rpc("query", "hub.job", { id: ready.id });
+	assert.equal(afterReview.headSha, ready.headSha, "Review must not revise the job");
+	assert.equal(afterReview.state, "ready");
+	assert(!afterReview.reviewedAt, "Inspection is not acceptance of completed work");
+	assert.equal(afterReview.pullRequest, null, "Review must not publish a PR");
+	report.completedJob = afterReview;
 	const beforeRestart = (await rpc("query", "hub.snapshot")).jobs.map((j) => ({
 		id: j.id,
 		headSha: j.headSha,
@@ -392,7 +397,12 @@ async function reviewFix(d) {
 			primary.fixSource?.headSha === candidate.headSha,
 		"Actual candidate Before/After must be acknowledged before review claims"
 	);
-	assert.equal(candidate.publication, "not-published");
+	assert.equal(report.completedFix.fix.publication, "not-published");
+	assert.equal(
+		report.completedFix.fix.headSha,
+		candidate.headSha,
+		"Inspection must retain the candidate head"
+	);
 	report.assertions.push({
 		name: "Actual suggested fix child, checks and pinned candidate display",
 		passed: true,
