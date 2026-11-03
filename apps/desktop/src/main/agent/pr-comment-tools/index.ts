@@ -94,6 +94,15 @@ function requireDraft(observation: PRCommentObservation, id?: string, revision?:
 export class ConversationPRCommentTools {
 	private latest?: PRCommentObservation;
 	private sequence = 0;
+	private displayedDraft = false;
+	get foregroundHandoff() {
+		return this.displayedDraft
+			? {
+					acknowledgement:
+						"The exact comment is ready in the review dialog. Confirm it there when you are ready to post.",
+				}
+			: undefined;
+	}
 	constructor(
 		private readonly ports: ConversationPRCommentPorts,
 		private readonly turn: ConversationTurnInput,
@@ -177,9 +186,11 @@ export class ConversationPRCommentTools {
 		if (fresh.reviewId !== observation.reviewId || !sameCommentDraft(requireDraft(fresh), draft))
 			throw new Error("The comment changed during presentation. Review it again.");
 		this.latest = fresh;
+		this.displayedDraft = true;
 		return { ...fresh, displayed: true, posted: false, confirmationRequired: true };
 	}
 	async execute(name: string, rawArguments: string): Promise<unknown> {
+		this.displayedDraft = false;
 		if (!this.has(name)) throw new Error("That PR comment operation is unavailable.");
 		const key = name as keyof typeof schemas;
 		const args = schemas[key].parse(JSON.parse(rawArguments));

@@ -358,7 +358,12 @@ export class ConversationHubTools {
 		return this.approvals?.confirmationContext();
 	}
 	get foregroundHandoff() {
-		return this.day?.foregroundHandoff ?? this.approvals?.handoff ?? this.feedbackHandoff;
+		return (
+			this.day?.foregroundHandoff ??
+			this.approvals?.handoff ??
+			this.prComments?.foregroundHandoff ??
+			this.feedbackHandoff
+		);
 	}
 	private sequence = 0;
 	private readonly turnReferenceAt = new Date().toISOString();

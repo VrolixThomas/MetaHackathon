@@ -221,3 +221,20 @@ test("new proposal and intervening actual user turn retire old approval", () => 
 	gate.invalidate(turn.sessionId);
 	assert.equal(gate.takeConfirmation(next, draft), null);
 });
+
+test("exact displayed comment ends the foreground proposal without another model round", async () => {
+	const h = harness();
+	assert.equal(h.tools.foregroundHandoff, undefined);
+	await h.tools.execute("inspect_pr_comment", "{}");
+	assert.equal(h.tools.foregroundHandoff, undefined);
+	await h.tools.execute("create_pr_comment_draft", JSON.stringify({ body: draft.body }));
+	assert.match(h.tools.foregroundHandoff?.acknowledgement ?? "", /ready in the review dialog/);
+	assert.equal(h.posts(), 0);
+	const ignored = harness();
+	await ignored.tools.execute("inspect_pr_comment", "{}");
+	ignored.ignore();
+	await assert.rejects(
+		ignored.tools.execute("create_pr_comment_draft", JSON.stringify({ body: draft.body }))
+	);
+	assert.equal(ignored.tools.foregroundHandoff, undefined);
+});
