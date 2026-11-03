@@ -89,14 +89,16 @@ export class ForegroundProfile {
 	private noOpExpansions = 0;
 	private turnRequestId?: string;
 	beginTurn(requestId: string) {
-		if (this.turnRequestId !== requestId) this.noOpExpansions = 0;
+		if (this.turnRequestId !== requestId) {
+			this.noOpExpansions = 0;
+			this.expanded.clear();
+		}
 		this.turnRequestId = requestId;
 	}
 	private active = new Set<Family>();
 	private selectedReview = false;
 	private selectedId?: string;
 	private section?: string;
-	private focusKey?: string;
 	private workflowSelected = false;
 	private candidateSelected = false;
 	get workflowInstructions() {
@@ -121,15 +123,6 @@ export class ForegroundProfile {
 		const canvas = observation?.workspace.canvases.find(
 			(canvas) => canvas.id === observation.workspace.primaryId
 		);
-		const focusKey = JSON.stringify([
-			canvas?.id,
-			canvas?.kind,
-			canvas?.kind === "center" ? canvas.selectedId : undefined,
-			selectedReview ? observation?.workspace.review.prId : undefined,
-			selectedReview ? observation?.workspace.review.path : undefined,
-		]);
-		if (this.focusKey !== undefined && this.focusKey !== focusKey) this.expanded.clear();
-		this.focusKey = focusKey;
 		this.selectedId = canvas?.kind === "center" ? canvas.selectedId : undefined;
 		this.section = canvas?.kind === "center" ? canvas.section : undefined;
 		if (canvas?.kind === "center") {
@@ -154,14 +147,17 @@ export class ForegroundProfile {
 				/^(?:how|why|where|explain|trace|show(?: me)?)\b/i.test(userText.trim()) &&
 				/\b(?:code|source|flow|implementation)\b/i.test(userText) &&
 				!/\b(?:set|configure|draft|activate|enable)\b/i.test(userText);
+			const explicitConfirmation =
+				/^(?:yes[, ]+)?(?:please )?confirm (?:this|the) delegation[.!]?$/i.test(userText.trim());
 			const conditionalPR =
-				!sourceOnly &&
-				prContext &&
-				(/\bdelegation\b/i.test(userText) ||
-					(/\b(?:notify|notification|watch|monitor|approve|approval)\b/i.test(userText) &&
-						/\b(?:if|when|once|only|after|until|checks?|succeeds?|passes?|expir\w*|within|hour|minutes?)\b/i.test(
-							userText
-						)));
+				explicitConfirmation ||
+				(!sourceOnly &&
+					prContext &&
+					(/\bdelegation\b/i.test(userText) ||
+						(/\b(?:notify|notification|watch|monitor|approve|approval)\b/i.test(userText) &&
+							/\b(?:if|when|once|only|after|until|checks?|succeeds?|passes?|expir\w*|within|hour|minutes?)\b/i.test(
+								userText
+							))));
 			const slackClarification =
 				!sourceOnly &&
 				(/\bslack\b/i.test(userText) || this.section === "slack" || this.section === "day") &&

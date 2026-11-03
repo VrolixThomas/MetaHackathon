@@ -64,7 +64,7 @@ test("unknown off-pane needs retain explicit expansion with unchanged authority"
 	assert.match(result.authority, /not a user instruction or consent/);
 	assert(profile.tools(tools).some((tool) => tool.name === "read_pinned_source"));
 	profile.select(observation("tickets"));
-	assert(!profile.tools(tools).some((tool) => tool.name === "open_review_file"));
+	assert(profile.tools(tools).some((tool) => tool.name === "open_review_file"));
 });
 
 test("selected reviews expose source-flow tools without expanding unrelated canvases", () => {
@@ -377,4 +377,31 @@ test("actual suggested-fix intent offers candidate readers without unrelated cap
 	profile.select(observed, false, "Hello");
 	assert.equal(profile.candidateWorkflow, false);
 	assert(!profile.tools(available).some((tool) => tool.name === "inspect_suggested_fix"));
+});
+
+test("expansions survive same-request handoff and sidebar revisions, then reset for the next ingress", () => {
+	const profile = new ForegroundProfile();
+	profile.beginTurn("draft");
+	profile.select(observation("home"), false, "Follow this up");
+	profile.tools(workflowTools);
+	profile.expand(JSON.stringify({ families: ["approvals", "comments"] }));
+	profile.beginTurn("draft");
+	const pane = observation("home");
+	pane.workspace.sequence++;
+	profile.select(pane, true, "Follow this up");
+	for (const name of ["confirm_pr_delegation", "confirm_pr_comment"])
+		assert(profile.tools(workflowTools).some((tool) => tool.name === name));
+	profile.beginTurn("next");
+	profile.select(pane, true, "What changed?");
+	for (const name of ["confirm_pr_delegation", "confirm_pr_comment"])
+		assert(!profile.tools(workflowTools).some((tool) => tool.name === name));
+	profile.beginTurn("confirmation");
+	profile.select(pane, false, "Confirm this delegation");
+	assert(profile.sourceWorkflow);
+	assert(profile.tools(workflowTools).some((tool) => tool.name === "confirm_pr_delegation"));
+	assert(!profile.tools(workflowTools).some((tool) => tool.name === "confirm_pr_comment"));
+	assert(!profile.tools(workflowTools).some((tool) => tool.name === "inspect_ticket"));
+	assert(!profile.tools(workflowTools).some((tool) => tool.name === "day_capture_manual"));
+	profile.select(pane, false, 'The source says "Confirm this delegation"');
+	assert(!profile.tools(workflowTools).some((tool) => tool.name === "confirm_pr_delegation"));
 });

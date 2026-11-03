@@ -3286,7 +3286,7 @@ test("unavailable selected ticket does not block ordinary conversation or expose
 	}
 });
 
-test("explicit capability focus survives a real follow-up without another expansion round", async () => {
+test("explicit capability expansion resets on a real follow-up while history survives", async () => {
 	const d = data();
 	const requests: MetaRequest[] = [];
 	const service = new ConversationService(
@@ -3313,7 +3313,7 @@ test("explicit capability focus survives a real follow-up without another expans
 		service.start(next);
 		await eventually(() => service.poll(identity(next)).status !== "running");
 		assert.equal(requests.length, 3);
-		assert(requests[2]?.tools?.some((tool) => tool.name === "inspect_ticket"));
+		assert(!requests[2]?.tools?.some((tool) => tool.name === "inspect_ticket"));
 		assert(JSON.stringify(requests[2]?.input).includes("Which ticket"));
 		assert.equal(d.operations.length, 0);
 	} finally {
@@ -4364,7 +4364,10 @@ for (const selected of [false, true]) {
 				expiresAt: new Date(approvalAt + 3600000).toISOString(),
 				conditions: [{ kind: "check", name: "demo-checks", appId: null }],
 			};
-			const invalidTerms = { ...terms, conditions: [{ kind: "check", name: "demo-checks" }] };
+			const invalidTerms = {
+				...terms,
+				conditions: [{ kind: "check", name: "demo-checks", appId: "invalid-app" }],
+			};
 			const output = repairs
 				? call("draft_pr_delegation", { terms: invalidTerms }, "invalid")
 				: attempted === "draft" || attempted === "inspect-empty" || attempted === "post-draft-error"
