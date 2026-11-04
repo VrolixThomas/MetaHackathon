@@ -1,5 +1,21 @@
 # Changelog
 
+## v0.1.4 (2026-11-05)
+
+### What's New
+
+Moving between files in a pull request review is now near-instant. Opening a review loads every changed file in the background, so Next, Back and j/k switch files from memory instead of waiting on GitHub for each step. A pull request that changes while you review is still detected and refreshed.
+
+### Changes
+
+- Prefetch every pinned review file when a review opens and serve manual and agent file navigation, source reads and progress saves from verified in-memory state; inbox polling and first source fetches still retire a moved PR head (MET-8; `b835269`, `c48866e`).
+- Find website downloads in the renamed MuseFocus repository (`9d25f3a`).
+- Prefill the default voice ID and document the voice sidecar; refresh the README and move the full guide to `docs/` (`848a2bd`, `53f9d5e`, `0347c45`).
+
+### Validation limits
+
+This release targets macOS Apple Silicon. Controlled native review tests measured warm file switches of roughly 50–120 ms without GitHub or model calls; this does not prove live provider latency, physical microphone/speaker behavior or installed-app update compatibility. Provider credentials and OAuth registrations remain user-supplied.
+
 ## v0.1.3 (2026-11-04)
 
 ### What's New
