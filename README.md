@@ -7,12 +7,13 @@
 <p align="center">
   <b>A voice-first command center for engineers: review PRs, triage tickets and run coding jobs by talking.</b><br>
   <a href="https://musefocus.app/"><b>⬇ Download for macOS at musefocus.app</b></a>
+  · <a href="https://musefocus.app/">Website</a>
   · <a href="#quick-start">Run locally</a>
   · <a href="docs/user-guide.md">User guide</a>
   · <a href="https://github.com/VrolixThomas/MuseFocus/releases/latest">Latest release</a>
 </p>
 
-> **Meta Hackathon 2026.** Built from scratch during the event window (first commit 2026-10-26).
+> **Website: [musefocus.app](https://musefocus.app/)** · **Meta Hackathon 2026.** Built from scratch during the event window (first commit 2026-10-26).
 > Runtime models: **Muse Spark 1.3**, **Muse Wonder 1.0**, **Muse Image 1.0** and **Muse Voice
 > Transcribe 1.0** through the Meta Model API. Bonus category targeted: **Best Agentic Use-Case**.
 
@@ -216,7 +217,7 @@ samples, not a population benchmark. Methods and limits are recorded next to eac
 | [`services/voice`](services/voice/README.md) | Python voice sidecar (Pipecat, WebRTC) |
 | [`services/team`](services/team) | Optional Supabase sharing API (Edge function source) |
 | [`supabase`](supabase) | Ordered migrations with row-level security |
-| [`apps/website`](apps/website/README.md) | musefocus.app website (Next.js) |
+| [`apps/website`](apps/website/README.md) | Source of the [musefocus.app](https://musefocus.app/) website (Next.js) |
 | [`docs/user-guide.md`](docs/user-guide.md) | Full feature and configuration guide |
 | [`docs/integration`](docs/integration) | Acceptance reports, evidence and setup guides |
 
