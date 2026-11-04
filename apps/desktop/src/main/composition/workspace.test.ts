@@ -1058,3 +1058,44 @@ it("workspace preparation uses one operation-scoped review/navigation lookup whe
 	await h.apply(next);
 	assert.equal(preparations, 2);
 });
+
+it("manual file browsing uses the local navigation seam while agent navigation keeps the fresh seam", async (t) => {
+	const h = harness(t);
+	const original = h.ports.getReviews;
+	let localCalls = 0;
+	let freshCalls = 0;
+	h.ports.getReviews = () => ({
+		...original(),
+		prepareLocalNavigation: async (id, command, signal) => {
+			localCalls++;
+			return {
+				review: clone(h.state.review),
+				navigation: await original().navigate(id, command, signal),
+			};
+		},
+		prepareNavigation: async (id, command, signal) => {
+			freshCalls++;
+			return {
+				review: clone(h.state.review),
+				navigation: await original().navigate(id, command, signal),
+			};
+		},
+	});
+	await h.apply(await h.prepare({ kind: "show-review", prId: h.state.review.pr.id }, "open"));
+	assert.equal(freshCalls, 1);
+	await h.apply(await h.prepare({ kind: "navigate-review", direction: "next" }, "manual-next"));
+	assert.equal(localCalls, 1);
+	assert.equal(freshCalls, 1);
+	const pending = h.coordinator.execute(
+		{ kind: "navigate-review", direction: "previous" },
+		{ sessionId: "session", requestId: "agent-previous", turnId: "turn", generation: 1 },
+		new AbortController().signal,
+		(action) => {
+			assert.equal(action.kind, "workspace-canvas");
+			if (action.kind === "workspace-canvas") void h.apply(action);
+		}
+	);
+	await pending;
+	assert.equal(localCalls, 1);
+	assert.equal(freshCalls, 2);
+});

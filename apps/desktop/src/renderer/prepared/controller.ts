@@ -52,6 +52,26 @@ export function createPreparedController(api: PreparedApi, sessionId: string, po
 	let workspaceNavigation: { operation: number; navigation: ReviewNavigation } | undefined;
 	let inboxRead = 0;
 	let progressQueue: Promise<unknown> = Promise.resolve();
+	let prefetchedPlan: string | undefined;
+	function prefetch(plan: PreparedReview, currentPath: string) {
+		if (prefetchedPlan === plan.id) return;
+		prefetchedPlan = plan.id;
+		const paths = plan.files.filter((file) => file.path !== currentPath).slice(0, 40);
+		// Two bounded background reads warm main's exact-entry source cache. Never
+		// install prefetched bytes or publish a display receipt for unseen files.
+		for (let worker = 0; worker < 2; worker++)
+			void (async () => {
+				while (paths.length && samePlan(plan)) {
+					const file = paths.shift();
+					if (!file) return;
+					try {
+						await api.file({ prId: plan.pr.id, reviewId: plan.id, path: file.path });
+					} catch {
+						/* A user navigation reports its own source failure. */
+					}
+				}
+			})();
+	}
 	const deliveries = new Map<string, Promise<"applied" | "ignored">>();
 	const currentScreen = (): ReviewScreen => {
 		const state = store.getState();
@@ -203,6 +223,7 @@ export function createPreparedController(api: PreparedApi, sessionId: string, po
 			reviewError: "",
 		});
 		screen(planScreen(plan, file.path));
+		prefetch(plan, file.path);
 	}
 	async function showPath(path: string) {
 		const state = store.getState();

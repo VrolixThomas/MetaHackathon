@@ -95,6 +95,22 @@ export class ReviewCoordinator {
 	private localPath: string | null = null;
 	private entries = new Map<string, Entry>();
 	private screens = new Map<string, ReviewScreen>();
+	// Immutable bytes belong to this exact connection entry and preparation. They are
+	// historical source, never fresh head/access evidence for a write or agent action.
+	private fileCache = new WeakMap<
+		Entry,
+		{ review: PreparedReview; files: Map<string, ReviewFile>; bytes: number }
+	>();
+	private cachedFile(entry: Entry, review: PreparedReview, path: string) {
+		const cache = this.fileCache.get(entry);
+		return cache?.review === review ? cache.files.get(path) : undefined;
+	}
+	private localReady(prId: string, signal: AbortSignal) {
+		const entry = this.entry(prId);
+		this.current(entry, signal);
+		if (entry.status !== "ready" || !entry.prepared) fail("Reopen the current prepared review.");
+		return { entry, review: entry.prepared };
+	}
 	private lifetime = new AbortController();
 	private connection = new AbortController();
 	private candidate?: AbortController;
@@ -766,11 +782,25 @@ export class ReviewCoordinator {
 			fail("File content does not match the prepared revision. Refresh the review.");
 		await this.revalidate(entry, signal);
 		this.current(entry, signal);
+		let cache = this.fileCache.get(entry);
+		if (cache?.review !== review) {
+			cache = { review, files: new Map(), bytes: 0 };
+			this.fileCache.set(entry, cache);
+		}
+		const bytes = Buffer.byteLength(JSON.stringify(result));
+		if (!cache.files.has(path) && cache.bytes + bytes <= 24 * 1024 * 1024) {
+			cache.files.set(path, clone(result));
+			cache.bytes += bytes;
+		}
 		return result;
 	}
 	file(raw: z.infer<typeof ReviewFileRequestSchema>, caller?: AbortSignal): Promise<ReviewFile> {
 		return this.request(async (signal) => {
 			const input = ReviewFileRequestSchema.parse(raw);
+			const local = this.localReady(input.prId, signal);
+			this.assertPath(local.review, input.reviewId, input.path);
+			const cached = this.cachedFile(local.entry, local.review, input.path);
+			if (cached) return clone(cached);
 			const { entry, review } = await this.ready(input.prId, signal);
 			this.assertPath(review, input.reviewId, input.path);
 			return this.readFile(entry, review, input.path, signal);
@@ -826,7 +856,11 @@ export class ReviewCoordinator {
 	progress(raw: z.infer<typeof ReviewProgressInputSchema>): Promise<ReviewProgress> {
 		return this.request(async (signal) => {
 			const input = ReviewProgressInputSchema.parse(raw);
-			const { entry, review } = await this.ready(input.prId, signal);
+			const local = this.localReady(input.prId, signal);
+			const { entry, review } =
+				input.path && this.cachedFile(local.entry, local.review, input.path)
+					? local
+					: await this.ready(input.prId, signal);
 			this.assertPath(review, input.reviewId, input.path);
 			return this.commitProgress(entry, review, input.path, input.paused, signal);
 		});
@@ -842,6 +876,18 @@ export class ReviewCoordinator {
 		return this.request(async (signal) => {
 			const input = NavigateSchema.parse(raw);
 			const { entry, review } = await this.ready(prId, signal);
+			const navigation = await this.navigation(entry, review, input, signal);
+			this.current(entry, signal);
+			return { review: clone(review), navigation };
+		}, caller);
+	}
+	/** Manual browsing of an already opened immutable revision, not fresh tool authority. */
+	prepareLocalNavigation(prId: string, raw: z.infer<typeof NavigateSchema>, caller: AbortSignal) {
+		return this.request(async (signal) => {
+			const input = NavigateSchema.parse(raw);
+			const { entry, review } = this.localReady(prId, signal);
+			// Highlight validation still uses the authoritative source path.
+			if (input.line) return this.prepareNavigation(prId, raw, signal);
 			const navigation = await this.navigation(entry, review, input, signal);
 			this.current(entry, signal);
 			return { review: clone(review), navigation };

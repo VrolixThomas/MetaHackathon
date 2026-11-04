@@ -64,7 +64,7 @@ export type WorkspaceReviewPort = Pick<
 	ReviewCoordinator,
 	"getScreen" | "inbox" | "getReady" | "navigate"
 > &
-	Partial<Pick<ReviewCoordinator, "prepareNavigation">>;
+	Partial<Pick<ReviewCoordinator, "prepareNavigation" | "prepareLocalNavigation">>;
 export interface WorkspaceBrowserPort {
 	open(url: string, signal?: AbortSignal): Promise<LocalBrowserState>;
 	observe(signal?: AbortSignal): Promise<WorkspaceBrowserObservation | null>;
@@ -146,6 +146,7 @@ export function validateReviewNavigation(
 	);
 }
 interface Pending {
+	manual: boolean;
 	turn: TurnIdentity & { requestId: string };
 	controller: AbortController;
 	signal: AbortSignal;
@@ -316,6 +317,7 @@ export class WorkspaceCoordinator {
 		void settled.catch(() => {});
 		const aborted = () => this.reject(session, pending, "Workspace action was cancelled.");
 		const pending: Pending = {
+			manual,
 			turn,
 			controller,
 			signal,
@@ -604,7 +606,10 @@ export class WorkspaceCoordinator {
 							}
 						: { direction: "resume" as const };
 				const reviews = this.ports.getReviews();
-				const prepareNavigation = reviews.prepareNavigation?.bind(reviews);
+				const prepareNavigation =
+					pending.manual && command.kind === "navigate-review"
+						? (reviews.prepareLocalNavigation ?? reviews.prepareNavigation)?.bind(reviews)
+						: reviews.prepareNavigation?.bind(reviews);
 				const prepared = prepareNavigation
 					? await invoke(() => prepareNavigation(prId, direction, signal))
 					: {

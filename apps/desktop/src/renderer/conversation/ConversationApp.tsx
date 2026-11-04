@@ -301,8 +301,10 @@ export function ConversationApp({
 					if (
 						!adoptingComment.current &&
 						((previous.open && !next.open) ||
-							previous.body !== next.body ||
-							previous.line !== next.line)
+							(previous.open &&
+								next.open &&
+								previous.context === next.context &&
+								(previous.body !== next.body || previous.line !== next.line)))
 					) {
 						void apiCall("mutation", "prComments.invalidate", {
 							sessionId: controller.sessionId,

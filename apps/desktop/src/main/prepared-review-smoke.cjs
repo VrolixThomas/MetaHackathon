@@ -618,6 +618,40 @@ async function native() {
 			const state = await readUI();
 			return state.path === order[0] && state.loading === "false";
 		});
+		// Manual navigation must remain usable without any GitHub/model round trip
+		// once the immutable revision is loaded. Agent navigation below stays fresh.
+		for (const path of order)
+			await rpc("query", "reviews.file", { prId, reviewId: ready.prepared.id, path });
+		const browseHTTP = report.http.length;
+		const browseModels = report.model.length;
+		report.manualFileSwitchMs = [];
+		for (const [label, path] of [
+			["Next", order[1]],
+			["Next", order[2]],
+			["Back", order[1]],
+			["Back", order[0]],
+		]) {
+			const started = performance.now();
+			await js(
+				`[...document.querySelectorAll('.prepared-workspace .review-navigation button')].find(b=>b.textContent.trim()===${JSON.stringify(label)} && !b.disabled).click()`
+			);
+			await wait(`manual pinned file ${path}`, async () => {
+				const state = await readUI();
+				return (
+					state.path === path &&
+					state.loading === "false" &&
+					state.progress === path &&
+					(await js(
+						`[...document.querySelectorAll('.prepared-workspace .review-navigation button')].some(b=>['Next','Back'].includes(b.textContent.trim()) && !b.disabled)`
+					))
+				);
+			});
+			const elapsed = performance.now() - started;
+			report.manualFileSwitchMs.push(Math.round(elapsed));
+			assert.ok(elapsed < 750, `Warm manual file navigation took ${elapsed}ms`);
+		}
+		assert.equal(report.http.length, browseHTTP, "Manual file switching must not call GitHub");
+		assert.equal(report.model.length, browseModels, "Manual file switching must not call a model");
 		await openOption("conversation-toggle");
 		for (const step of steps) {
 			const prior = await readUI();
@@ -631,6 +665,10 @@ async function native() {
 			const ui = await wait("settled tour reply", async () => {
 				const state = await readUI();
 				if (state.phase === "error") {
+					report.failedUI = await readUI();
+					report.failedWorkspaceError = await js(
+						`document.querySelector(".workspace-error, .canvas-error")?.textContent`
+					);
 					report.failedTurn = await rpc("query", "conversation.poll", {
 						sessionId: state.sessionId,
 						turnId: state.turnId,

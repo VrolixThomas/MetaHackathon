@@ -1277,3 +1277,63 @@ describe("operation-scoped navigation preparation", () => {
 		await assert.rejects(operation, /cancel/);
 	});
 });
+
+describe("local pinned review browsing", () => {
+	it("switches warmed files and saves position without a GitHub round trip, while agent navigation stays fresh", async (t) => {
+		const { coordinator, ports } = harness(t);
+		await coordinator.connect({ repository: repo });
+		await ready(coordinator);
+		const plan = (await coordinator.get(pr().id)).prepared;
+		assert.ok(plan);
+		const request = { prId: pr().id, reviewId: plan.id, path: "src/second.ts" };
+		const first = await coordinator.file(request);
+		first.head.content = "caller mutation";
+		let remoteCalls = 0;
+		ports.readPR = async () => {
+			remoteCalls++;
+			throw Error("network unavailable");
+		};
+		ports.readFile = async () => {
+			throw Error("source should already be cached");
+		};
+		const nav = await coordinator.prepareLocalNavigation(pr().id, { path: request.path }, signal());
+		assert.equal(nav.navigation.path, request.path);
+		assert.notEqual((await coordinator.file(request)).head.content, "caller mutation");
+		await coordinator.progress({ ...request, paused: false });
+		assert.equal(remoteCalls, 0);
+		await assert.rejects(coordinator.prepareNavigation(pr().id, {}, signal()));
+		assert.equal(remoteCalls, 1);
+	});
+	it("cached bytes cannot survive disconnect or satisfy a cancelled caller", async (t) => {
+		const { coordinator } = harness(t);
+		await coordinator.connect({ repository: repo });
+		await ready(coordinator);
+		const plan = (await coordinator.get(pr().id)).prepared;
+		assert.ok(plan);
+		const request = { prId: pr().id, reviewId: plan.id, path: "src/first.ts" };
+		await coordinator.file(request);
+		const cancelled = new AbortController();
+		cancelled.abort();
+		await assert.rejects(coordinator.file(request, cancelled.signal));
+		await coordinator.disconnect();
+		await assert.rejects(coordinator.file(request));
+		await assert.rejects(coordinator.prepareLocalNavigation(pr().id, {}, signal()));
+	});
+});
+
+it("a refreshed PR head retires warmed bytes and rejects old local navigation", async (t) => {
+	const { coordinator, state } = harness(t);
+	await coordinator.connect({ repository: repo });
+	await ready(coordinator);
+	const plan = (await coordinator.get(pr().id)).prepared;
+	assert.ok(plan);
+	const request = { prId: pr().id, reviewId: plan.id, path: "src/first.ts" };
+	await coordinator.file(request);
+	state.open = [pr(1, nextHead)];
+	state.current.set(pr().id, pr(1, nextHead));
+	await coordinator.refresh();
+	await assert.rejects(coordinator.file(request));
+	const next = await ready(coordinator);
+	assert.equal(next.pr.headSha, nextHead);
+	assert.notEqual(next.id, plan.id);
+});
