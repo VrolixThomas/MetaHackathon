@@ -1,5 +1,26 @@
 # Changelog
 
+## v0.1.3 (2026-11-04)
+
+### What's New
+
+Keep listening and discussing work while browsing files, tickets and pull requests. MuseFocus now opens uniquely identified discussion targets, presents implementation changes in a dedicated review view, and can launch an explicitly requested local preview of a pinned revision. Bounded standing Slack clarification rules and named GitHub review requests extend the follow-up workflow with explicit consent and durable delivery records.
+
+### Changes
+
+- Preserve grounded replies during manual browsing; fence stale navigation, handle spoken Stop quietly, and add Command/Control-period to interrupt a reply (MET-8; `0db0a65`, `0c62865`, `d19f8fa`).
+- Open observed ticket/PR discussion targets and streamline receipt-backed file navigation and grounded explanations (MET-8/MET-51; `01f4715`, `8944883`, `a34e175`, `5804138`).
+- Add implementation review navigation, loading skeletons, j/k diff navigation, readable planning briefs and explanations from actual selected diffs (MET-8; `34966e6`, `3881487`, `cfe6cda`, `45cd2c8`).
+- Compose explicitly requested pinned local previews, private fixes for incoming review comments, exact reviewed-fix sharing and bounded complete-source approval policies (MET-8; `0aef7c6`, `9b303bf`, `ccc0069`, `7dcfd5a`, `c89b580`).
+- Add named GitHub reviewer requests and source-bound standing Slack clarification with atomic budgets, revocation, expiry and genuine voice consent gates (MET-8/MET-76; `9b6f812`, `406d9ca`, `4963a7e`, `a33b651`, `ad05c11`).
+- Bootstrap pinned worker dependencies on coding/resume, retain ignored build output, fairly pace Slack reads and normalize shared proposal timestamps (MET-8; `ce359c7`, `a35f4cd`, `a59521c`, `a0894e2`).
+
+- Keep open review dialogs visible when the primary workspace switches away from code; hide toolbar buttons without hiding their dialogs (MET-8; `eb379dc`).
+
+### Validation limits
+
+This release targets macOS Apple Silicon. Controlled native tests and recorded development timing samples do not prove live provider consent, physical microphone/speaker behavior, a general end-to-end latency improvement or installed-app update compatibility. Local previews require a compatible self-contained npm start command; dependencies are not installed by the preview bridge. Provider credentials and OAuth registrations remain user-supplied.
+
 ## v0.1.2 (2026-11-02)
 
 ### What's New
