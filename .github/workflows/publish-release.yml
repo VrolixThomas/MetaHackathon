@@ -1,0 +1,84 @@
+name: Publish MuseFocus release
+
+# Publishes an already signed/notarized release candidate without moving its bytes through a
+# local machine. Requires the successful macos-release run for the exact tagged commit.
+on:
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Existing release tag (vX.Y.Z)
+        required: true
+      run_id:
+        description: Successful macos-release.yml run ID for that tag
+        required: true
+
+permissions:
+  contents: write
+  actions: read
+
+concurrency:
+  group: publish-release-${{ inputs.tag }}
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      GH_TOKEN: ${{ github.token }}
+      REPO: ${{ github.repository }}
+      TAG: ${{ inputs.tag }}
+      RUN_ID: ${{ inputs.run_id }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.tag }}
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22.12.0
+      - name: Require the exact successful signed build
+        run: |
+          [[ "$TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]] || { echo "Stable vX.Y.Z tag required"; exit 1; }
+          [[ "$RUN_ID" =~ ^[0-9]+$ ]] || { echo "Numeric run ID required"; exit 1; }
+          sha=$(git rev-parse "refs/tags/$TAG^{commit}")
+          run=$(gh run view "$RUN_ID" --repo "$REPO" --json headSha,conclusion,workflowName,headBranch \
+            --jq '[.headSha,.conclusion,.workflowName,.headBranch]|@tsv')
+          IFS=$'\t' read -r run_sha conclusion workflow branch <<<"$run"
+          [ "$run_sha" = "$sha" ] || { echo "Run $RUN_ID built $run_sha, tag is $sha"; exit 1; }
+          [ "$conclusion" = success ] || { echo "Run conclusion: $conclusion"; exit 1; }
+          [ "$workflow" = "MuseFocus signed macOS release candidate" ] || { echo "Wrong workflow: $workflow"; exit 1; }
+          [ "$branch" = "$TAG" ] || { echo "Run was not the $TAG tag build ($branch)"; exit 1; }
+          if gh release view "$TAG" --repo "$REPO" >/dev/null 2>&1; then echo "Release $TAG already exists"; exit 1; fi
+          echo "RELEASE_SHA=$sha" >> "$GITHUB_ENV"
+      - name: Download and validate the signed candidate
+        run: |
+          gh run download "$RUN_ID" --repo "$REPO" --name "musefocus-signed-macos-arm64-$RELEASE_SHA" --dir candidate
+          dist=$(dirname "$(find candidate -name latest-mac.yml -print -quit)")
+          version="${TAG#v}"
+          node -e 'const m = require("./apps/desktop/packaging/refresh-update-info.cjs").validateUpdateInfo(process.argv[1]); if (m.version !== process.argv[2]) throw new Error("Release version mismatch"); console.log("Verified update hashes for", m.version)' "$dist" "$version"
+          for f in "MuseFocus-$version-arm64.dmg" "MuseFocus-$version-arm64.zip" latest-mac.yml; do
+            [ -f "$dist/$f" ] || { echo "Missing $f"; exit 1; }
+          done
+          echo "RELEASE_DIST=$dist" >> "$GITHUB_ENV"
+      - name: Stage draft and verify uploaded bytes
+        run: |
+          version="${TAG#v}"
+          awk -v h="## $TAG " 'index($0,h)==1{f=1;next} /^## v/{if(f)exit} f' CHANGELOG.md > notes.md
+          [ -s notes.md ] || { echo "No CHANGELOG section for $TAG"; exit 1; }
+          printf '\nSource: `%s` · Signed build: %s/%s/actions/runs/%s\n' "$RELEASE_SHA" "$GITHUB_SERVER_URL" "$REPO" "$RUN_ID" >> notes.md
+          gh release create "$TAG" --repo "$REPO" --verify-tag --draft --title "MuseFocus $TAG" --notes-file notes.md \
+            "$RELEASE_DIST/MuseFocus-$version-arm64.dmg" "$RELEASE_DIST/MuseFocus-$version-arm64.zip" \
+            "$RELEASE_DIST/latest-mac.yml" "$RELEASE_DIST"/*.blockmap
+          mkdir verify
+          gh release download "$TAG" --repo "$REPO" --dir verify
+          for f in "$RELEASE_DIST"/*.dmg "$RELEASE_DIST"/*.zip "$RELEASE_DIST"/*.blockmap "$RELEASE_DIST/latest-mac.yml"; do
+            cmp "$f" "verify/$(basename "$f")" || { echo "Uploaded bytes differ: $f"; exit 1; }
+          done
+          node -e 'const m = require("./apps/desktop/packaging/refresh-update-info.cjs").validateUpdateInfo(process.argv[1]); if (m.version !== process.argv[2]) throw new Error("Release version mismatch")' verify "$version"
+      - name: Publish as Latest
+        run: |
+          gh release edit "$TAG" --repo "$REPO" --draft=false --prerelease=false --latest
+          latest=$(gh api "repos/$REPO/releases/latest" --jq .tag_name)
+          [ "$latest" = "$TAG" ] || { echo "Latest is $latest"; exit 1; }
+          curl -fsSL "$GITHUB_SERVER_URL/$REPO/releases/latest/download/latest-mac.yml" | grep -q "^version: ${TAG#v}$"
+          echo "Published $TAG as Latest"
