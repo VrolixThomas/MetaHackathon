@@ -106,12 +106,13 @@ bun install --frozen-lockfile     # also rebuilds SQLite for Electron
 cp .env.example .env
 ```
 
-Fill in the required values. Everything else in [`.env.example`](.env.example) is optional.
+Fill in the two required keys. The voice ID is prefilled with the MuseFocus default voice.
+Everything else in [`.env.example`](.env.example) is optional.
 
 ```dotenv
 MODEL_API_KEY=          # Meta Model API: conversation, coding, transcription, images
 ELEVENLABS_API_KEY=     # spoken replies
-ELEVENLABS_VOICE_ID=    # any ElevenLabs voice ID
+ELEVENLABS_VOICE_ID=cjVigY5qzO86Huf0OWal   # prefilled; change to any voice your ElevenLabs account can use
 ```
 
 `.env` is Git-ignored. Keys stay in the main process and never reach the renderer.
@@ -119,11 +120,16 @@ Never commit real keys. To use another file, set `METAHACKATHON_ENV_FILE=/path/t
 
 ### 3. Set up the voice sidecar
 
+Speech runs in a small local Python process ([Pipecat](https://github.com/pipecat-ai/pipecat)).
+It streams your microphone to Meta speech-to-text, plays ElevenLabs replies over local WebRTC,
+and handles interruptions. The downloadable app bundles it; from source, create its environment once:
+
 ```sh
 python3.13 -m venv services/voice/.venv
 services/voice/.venv/bin/python -m pip install -r services/voice/requirements.lock
-services/voice/.venv/bin/python services/voice/sidecar.py --self-test
 ```
+
+Without it, typed conversation still works.
 
 ### 4. Build and run
 
