@@ -36,6 +36,11 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 22.12.0
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: 1.3.9
+      - name: Install pinned validator dependencies
+        run: bun install --frozen-lockfile --ignore-scripts
       - name: Require the exact successful signed build
         run: |
           [[ "$TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]] || { echo "Stable vX.Y.Z tag required"; exit 1; }
