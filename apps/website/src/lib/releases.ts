@@ -1,4 +1,4 @@
-export const REPOSITORY_URL = "https://github.com/VrolixThomas/MetaHackathon";
+export const REPOSITORY_URL = "https://github.com/VrolixThomas/MuseFocus";
 export const RELEASES_URL = `${REPOSITORY_URL}/releases`;
 
 export type ReleaseDownload = {

@@ -83,3 +83,26 @@ test("missing releases and GitHub failures have honest, usable fallbacks", async
 	assert(!html.includes("/releases/latest"));
 	assert(!html.includes(".dmg"));
 });
+
+// GitHub returns canonical asset URLs after a repository rename, even when the
+// API lookup follows a redirect from the former repository name.
+test("canonical MuseFocus release installers remain downloadable after the repository rename", () => {
+	const result = parseRelease({
+		tag_name: "v0.1.3",
+		draft: false,
+		prerelease: false,
+		assets: [
+			{
+				name: "MuseFocus-0.1.3-arm64.dmg",
+				state: "uploaded",
+				size: 259594917,
+				browser_download_url:
+					"https://github.com/VrolixThomas/MuseFocus/releases/download/v0.1.3/MuseFocus-0.1.3-arm64.dmg",
+			},
+		],
+	});
+	assert.equal(result.status, "ready");
+	if (result.status !== "ready") return;
+	assert.equal(result.downloads.length, 1);
+	assert.match(renderToStaticMarkup(<Downloads release={result} />), /Download for Apple Silicon/);
+});

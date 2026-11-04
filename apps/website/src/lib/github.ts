@@ -3,7 +3,7 @@ import { type ReleaseState, parseRelease } from "./releases";
 export async function getLatestRelease(): Promise<ReleaseState> {
 	try {
 		const response = await fetch(
-			"https://api.github.com/repos/VrolixThomas/MetaHackathon/releases/latest",
+			"https://api.github.com/repos/VrolixThomas/MuseFocus/releases/latest",
 			{
 				headers: { Accept: "application/vnd.github+json" },
 				next: { revalidate: 300 },
