@@ -1,359 +1,220 @@
-# MuseFocus — voice command center
+<p align="center">
+  <img src="apps/website/public/brand/pull-forward.png" alt="MuseFocus logo" width="96">
+</p>
 
-Talk with MuseFocus about your requested reviews, feedback on your own PRs, and assigned Linear tickets.
-The Home brief and left sidebar show your real work. MuseFocus can run independent coding jobs while
-you review, ask about product decisions, and bring completed work back for review. Voice is available
-everywhere; text is optional. Startup contains no sample repositories, tickets or scripted answers.
+<h1 align="center">MuseFocus</h1>
 
-## Run
+<p align="center">
+  <b>A voice-first command center for engineers: review PRs, triage tickets and run coding jobs by talking.</b><br>
+  <a href="https://musefocus.app/"><b>⬇ Download for macOS at musefocus.app</b></a>
+  · <a href="#quick-start">Run locally</a>
+  · <a href="docs/user-guide.md">User guide</a>
+  · <a href="https://github.com/VrolixThomas/MuseFocus/releases/latest">Latest release</a>
+</p>
 
-Use the integrated application from `hack/integration`:
+> **Meta Hackathon 2026.** Built from scratch during the event window (first commit 2026-10-26).
+> Runtime models: **Muse Spark 1.3**, **Muse Wonder 1.0**, **Muse Image 1.0** and **Muse Voice
+> Transcribe 1.0** through the Meta Model API. Bonus category targeted: **Best Agentic Use-Case**.
+
+**More than a one-prompt wrapper.** MuseFocus is a native Electron desktop app with a multi-tool
+agent loop (about 70 typed tools). The agent operates a real workspace: code diffs pinned to
+exact commits, a persistent native browser, documents and diagrams. It only describes something
+after the app confirms that thing is actually on screen. Speech runs in a local WebRTC sidecar
+with barge-in. Background coding jobs run in isolated Git worktrees and execute real checks.
+PR reviews are prepared ahead of time and cached in SQLite. Nothing is posted to GitHub, approved
+or sent to Slack without exact, explicit confirmation.
+
+<table>
+  <tr>
+    <td width="50%"><img src="apps/website/public/captures/review.jpg" alt="Prepared PR review with source diff and reading order"><br><sub><b>Review.</b> Pinned source diff with an inferred reading order, walked through by voice.</sub></td>
+    <td width="50%"><img src="apps/website/public/captures/fix.jpg" alt="Proposed fix with diff and real local test and build results"><br><sub><b>Fix.</b> Proposed change plus actual local test/build results from an isolated worktree.</sub></td>
+  </tr>
+  <tr>
+    <td width="50%"><img src="apps/website/public/captures/planning.jpg" alt="Saved product decision raised by a background coding job"><br><sub><b>Decide.</b> Background jobs turn product questions into saved decisions you answer by voice.</sub></td>
+    <td width="50%"><img src="apps/website/public/captures/slack.jpg" alt="My day overview with Slack follow-ups"><br><sub><b>My day.</b> Slack requests, Linear tickets and review queues in one prioritized brief.</sub></td>
+  </tr>
+</table>
+<sub>Real native-window captures of the desktop app, using prepared demo data (see <a href="apps/website/public/captures/README.md">capture notes</a>).</sub>
+
+---
+
+## The problem
+
+Engineers lose their day to context switching between GitHub, Linear, Slack and their editor.
+Each review means reconstructing intent from a diff. Each ticket means a new branch and a cold
+start. Most AI tools add one more chat window to switch to.
+
+## What MuseFocus does
+
+- **Talk, don't click.** Press **Start conversation** once and speak. A short pause ends your
+  turn, and speaking over a reply interrupts it. Typing is optional.
+- **Guided PR reviews.** Requested reviews are prepared in the background into a reading order with
+  explanations. Say *"Walk me through this review"* and MuseFocus opens each file, then narrates it.
+- **Real background work.** *"Start work on MET-123 in owner/repo"* runs a coding job in its own
+  app-owned worktree, runs your repository's real checks and returns a diff for review. Your
+  checkout stays untouched.
+- **One workspace.** Code, a persistent native browser (desktop or phone viewport), documents,
+  SVG mockups and Muse Image renders share split panes that the agent drives.
+- **Your actual day.** Incoming reviews, feedback on your own PRs, assigned Linear tickets and
+  Slack requests feed one Home brief. Optional proactive spoken updates wait until you are idle.
+- **Consent is explicit.** Comments, approvals and Slack replies need confirmation bound to the
+  exact text and commit. A changed head or edited draft invalidates that confirmation.
+
+## How it uses Meta AI
+
+| Model (Meta Model API) | Where it runs |
+| --- | --- |
+| `muse-spark-1.3` | Foreground conversation, tool calling, review preparation, quick coding steps |
+| `muse-wonder-1.0` (high reasoning) | New background coding jobs |
+| `muse-voice-transcribe-1.0` | Streaming speech-to-text in the local voice sidecar |
+| `muse-image-1.0` | Raster image canvases |
+
+All four share one `MODEL_API_KEY`. ElevenLabs provides text-to-speech output. There are no
+alternate model providers and no fallback keys.
+
+---
+
+## Download
+
+Get the signed macOS app at **[musefocus.app](https://musefocus.app/)** or from
+[GitHub Releases](https://github.com/VrolixThomas/MuseFocus/releases/latest). On first launch,
+open **Settings → Configuration** and add your keys (see [Configure](#2-configure-env)).
+
+## Quick start
+
+### Prerequisites
+
+| Tool | Version |
+| --- | --- |
+| macOS | Apple Silicon (the voice sidecar lock is resolved for macOS arm64) |
+| [Node.js](https://nodejs.org) | 22.12 or newer |
+| [Bun](https://bun.sh) | 1.3.9 or newer |
+| Python | 3.13 (for the voice sidecar) |
+| Keys | Meta Model API key; ElevenLabs API key and voice ID for spoken replies |
+
+### 1. Install
 
 ```sh
-cd /Users/Werk/Documents/Repositories/MetaHackathon-worktrees/integration
-bun run build
-bun run --filter @metahackathon/desktop preview
+git clone https://github.com/VrolixThomas/MuseFocus.git
+cd MuseFocus
+bun install --frozen-lockfile     # also rebuilds SQLite for Electron
 ```
 
-On another checkout, install Node 22.12+ and Bun 1.3.9+, then run
-`bun install --frozen-lockfile`. Installation rebuilds SQLite for Electron.
-
-## Website
-
-The MuseFocus website is a **Next.js App Router / React / TypeScript / Tailwind / Motion**
-workspace in [`apps/website`](apps/website/README.md), using the same resolved framework
-versions as SuperiorSwarm. Run it independently of the desktop app:
+### 2. Configure `.env`
 
 ```sh
-bun install --frozen-lockfile --ignore-scripts
-bun run website:dev
+cp .env.example .env
 ```
 
-Open `http://localhost:3000`. For production, run `bun run website:build`, then
-`bun run website:start`. The old files in `apps/site` and the design studies remain
-archived references. The Next app is the current website source.
-
-## Configure
-
-Development worktrees reuse `.env` in the main repository checkout when that file exists.
-On this machine that is `/Users/Werk/Documents/Repositories/MetaHackathon/.env`.
-Otherwise the app uses its checkout-root `.env`; copy `.env.example` if needed.
-`METAHACKATHON_ENV_FILE` explicitly selects another file. Git never transfers local credentials.
+Fill in the required values. Everything else in [`.env.example`](.env.example) is optional.
 
 ```dotenv
-MODEL_API_KEY=
-ELEVENLABS_API_KEY=
-ELEVENLABS_VOICE_ID=
-GITHUB_TOKEN=
-LINEAR_API_KEY=
-GITHUB_OAUTH_CLIENT_ID=
-GITHUB_OAUTH_CLIENT_SECRET=
-LINEAR_OAUTH_CLIENT_ID=
-LINEAR_OAUTH_CLIENT_SECRET=
+MODEL_API_KEY=          # Meta Model API: conversation, coding, transcription, images
+ELEVENLABS_API_KEY=     # spoken replies
+ELEVENLABS_VOICE_ID=    # any ElevenLabs voice ID
 ```
 
-Configuration shows the active path and whether values are present. **Open configuration**
-opens the file in an editor; **Reload** applies changes. Keys are never returned to the renderer.
-The file is Git-ignored and app writes use owner-only permissions. Existing saved settings
-migrate once into `.env`; explicit file values win and the previous encrypted store is retained.
-`META_API_KEY` and `GH_TOKEN` are accepted aliases when their canonical keys are absent.
+`.env` is Git-ignored. Keys stay in the main process and never reach the renderer.
+Never commit real keys. To use another file, set `METAHACKATHON_ENV_FILE=/path/to/.env`.
 
-Speech also needs the local Python environment:
+### 3. Set up the voice sidecar
 
 ```sh
 python3.13 -m venv services/voice/.venv
 services/voice/.venv/bin/python -m pip install -r services/voice/requirements.lock
+services/voice/.venv/bin/python services/voice/sidecar.py --self-test
 ```
 
-That environment is already installed in the integration checkout on this machine.
-Voice prepares automatically once Meta, ElevenLabs and a voice ID are configured.
-`METAHACKATHON_VOICE_PYTHON` can select an existing Python executable.
-
-## Talk
-
-Wait for **Voice ready**, then click **Start conversation** once. Speak normally; a short pause
-ends your utterance, MuseFocus replies, and the microphone stays ready for your next question. Speaking
-over a reply interrupts it. **Stop response** stops the current answer while keeping listening on.
-**End conversation** or **Command–Shift–Space** turns the microphone off; the shortcut also starts
-it when off. **Escape** dismisses an open workspace dialog first, otherwise ends the conversation.
-No PR selection or button-holding is required.
-
-The session uses one microphone stream. Speech detection and a bounded pre-roll buffer run locally;
-utterances are sent through the existing speech/model providers. Source navigation can interrupt a
-reply without ending the microphone session. Stop, error and app shutdown release capture.
-While listening, MuseFocus prepares one bounded speech connection before the next utterance. It expires
-after 20 seconds and falls back to the ordinary connection path. To disable this optimization for a
-diagnostic build, set `VITE_MUSE_VOICE_PRECONNECT=0` when building.
-
-Configuration reports microphone permission from the running app's process. Use **Request
-microphone access** if needed. macOS permission can be attributed to the development launcher;
-check the app's status before changing unrelated system settings.
-
-## Real GitHub context
-
-Open **More → Settings** or **Manage connections**, then **Sign in with GitHub** to authorize
-in your system browser. Register the app once using the [OAuth setup guide](docs/integration/oauth-setup.md).
-The app saves the resulting account tokens encrypted in its private user-data directory.
-For development, `GITHUB_TOKEN` and **Other connection methods → Import GitHub CLI sign-in**
-remain available. Use the sidebar **+** or **Home → Manage connections**
-to add `owner/repository` or choose a local clone. Multiple repositories stay connected together.
-Incoming requested reviews and your own PR feedback appear separately.
-The icon rail selects a sidebar list. Browsing another list leaves your open review, browser or
-document in place; selecting a specific item opens it. Recent canvases are available from Home.
-There is no sample PR fallback. Ordinary conversation works without GitHub or a selected PR.
-Cached ready reviews still require GitHub access to verify their current revisions before opening.
-If GitHub is unconfigured, the workspace offers **Connect GitHub** directly.
-
-## Tickets and background work
-
-Choose **Sign in with Linear** in Settings or Manage connections, authorize your workspace in the
-browser, then select teams or projects. A personal `LINEAR_API_KEY` in `.env` is also supported.
-MuseFocus fetches tickets assigned to your Linear user; selected team and
-project scopes form a union. With no selected scopes, all of your assigned active tickets are shown.
-
-Say **“What needs my attention?”**, **“Start work on MET-123 in owner/repo”**, or open a ticket and
-start work. By default, coding uses the Meta model configured by `MODEL_API_KEY`. You can instead
-choose **Settings → Background coding → Muse Code subscription**, save the selection, open the
-official CLI sign-in and refresh status. Install the official `muse` CLI separately; its account must
-have an active subscription and available allowance. The app uses the vendor's signed-in session,
-never copies its credentials into `.env`, and never falls back to API billing automatically.
-`CODING_PROVIDER=meta-api|muse-code` and optional absolute `MUSE_CODE_PATH` persist this device's
-selection in `.env`. New jobs use it; existing jobs retain their pinned provider. Foreground
-conversation and speech still use the configured API/voice providers.
-
-The app does not require SuperiorSwarm, Claude, or Codex to be installed.
-Each job has a separate app-owned Git copy/worktree and child process.
-The original clone's branch, index and dirty files stay intact. Product questions and departures from
-repository conventions become saved decisions; answer by voice or in the job view. Ordinary changes
-and actual check results come back for review.
-
-Closing the app pauses active processes and saves checkpoints. Reopening resumes work interrupted
-by shutdown; explicitly paused jobs stay paused. Foreground speech interruption never cancels a
-background job. **Activity queue** holds decisions, completed outcomes and failures. MuseFocus can initiate a short spoken update while hands-free listening is on and the app is focused.
-It defers during speech, replies, dialogs and recent interaction, preserves the current review/panes,
-and keeps listening when you interrupt an update. The queue remains available manually.
-
-Completed work includes its actual diff, source, commit and command logs. Ask for a revision to keep
-working in the same job. **Accept reviewed work** binds acceptance to the inspected head and completes
-the linked Linear ticket. **Publish draft PR** pushes the app-owned branch and creates or updates a
-real draft; this does not accept or merge it. Supported direct feedback suggestions may be applied
-to your own PR branch after actual successful checks and a separate inferred assessment. Product
-ambiguity asks for a decision. Disable automatic suggestions in **Manage connections** if desired.
-
-For an inspected PR, **PR follow-up** can monitor explicit conditions and either notify you or
-submit a GitHub approval after you confirm the exact delegation. Source changes must match the
-authorized complete file contents; conditions requiring judgment return to you. Notification-only
-policies also support your own PRs and repositories you can only read. Approval requires the
-appropriate permission, a different PR author, fresh checks and an unexpired policy. Monitoring
-runs locally while the app and Mac are awake; uncertain submissions retain their identity without
-automatic retries. It never merges the PR.
-
-The default API worker runs with your OS permissions. The Muse Code worker requires the vendor's
-sandboxed human-review permission profile and a restricted coding toolset; unsupported configurations
-block execution. Approval requests become saved decisions rather than automatic approvals.
-Declared JavaScript package
-checks and standard package managers are supported. Detected custom commit hooks stop the commit;
-the repository convention must be resolved rather than silently bypassed. No checks are invented for repositories
-without configured validation commands.
-
-Coding runs on this Mac. SQLite and local private files hold prepared review plans and proposed
-fixes; published comments and branches are shared through GitHub. The optional shared organization
-backend uses Supabase DB/Auth and a sharing API. Analysis remains desktop-initiated through MuseFocus;
-there are no remote preparation workers. See [team setup](docs/integration/team-setup.md).
-
-## My day and Slack
-
-**My day** holds personal follow-ups, accepted requests, missing-context questions and reviewable
-outcomes. You can add a real item yourself without connecting a provider. Incoming Slack requests
-remain pending until accepted; a source-bound explicit promise from your own account can count as
-acceptance. MuseFocus can prepare isolated work while acceptance is pending, but execution waits for it.
-Questions are covered with you when you open the item. Source-backed work closes only after a
-confirmed answer in the original thread; personal items use an explicit **I have answered this**.
-
-For a Slack-backed item, **Delegate clarification** lets Muse ask a bounded set of questions in
-the original thread after you authorize its scope and duration. Pause or revoke it from the item.
-It does not accept the task or start coding. **Inspect current clarification** checks current source
-access before showing thread evidence, delivery receipts and the inferred brief. Missing context,
-scope changes and uncertain sends return to you for judgment.
-
-In **Settings → Slack**, choose **Sign in with Slack** and approve in your browser. The one-time app
-registration uses [this manifest](docs/integration/slack-app-manifest.json), enables PKCE, and registers
-`http://localhost:43187/oauth/slack/callback`. Configure `SLACK_OAUTH_CLIENT_ID` in the active `.env`.
-See the [login setup guide](docs/integration/oauth-setup.md). MuseFocus saves and refreshes the user grant
-in its OS-encrypted account store; no client secret or hosted callback is required.
-
-The optional **Developer connection methods** disclosure can instead import a manual user token:
-
-```dotenv
-SLACK_USER_TOKEN=
-SLACK_APP_ID=
-# Optional Socket Mode token for events; it does not grant user access.
-SLACK_APP_TOKEN=
-```
-
-After connecting, MuseFocus automatically follows all active channels and DMs you belong to, discovers
-new memberships, and stops following conversations you leave. Settings → Conversations and exclusions
-lets you mute individual conversations. Polling is bounded; edits/deletions can have gaps. DM/private-channel knowledge stays private;
-company knowledge uses public channels, with fresh source access checked before retrieval. This
-increment runs locally while the Mac is awake and checkpoints through sleep/offline. A shared hosted
-company brain and cross-employee transport are not yet available. Slack login preserves existing
-GitHub/Linear accounts. Replacing a Slack account clears its foreground context and private queue.
-
-Open **Slack** in the left sidebar to browse channels and DMs. Select a conversation to read its
-actual messages, load older pages, refresh, or open a thread. The reader is read-only; confirmed
-replies remain in the work-item flow. Ask MuseFocus to show a Slack conversation or explain a thread;
-it reads the same provider data and waits for the requested canvas to display before narrating it.
-No background history polling runs from the reader itself.
-
-For a verified internal customer-built registration only, `SLACK_INTERNAL_APP=1` selects conservative
-Tier 3 pacing. Leave it unset for commercial distribution; server Retry-After always wins.
-
-## Review comments and suggested fixes
-
-With a prepared PR open, use **j / k** to move through its reading order. Typing, dialogs and menus
-keep their own keys. **Add PR comment** opens a draft: review its exact wording and optional head-side
-line, then explicitly confirm posting. Editing the body or changing the source invalidates consent.
-You can also ask MuseFocus to draft or edit a comment. It opens the same composer and reads the exact
-proposal aloud in voice mode. In a separate turn, say **“Post this comment”** to confirm. Drafting
-alone never posts; a changed target or interrupted proposal needs another confirmation.
-
-Under **Own PR feedback**, choose **Prepare suggested fix**, or ask MuseFocus to prepare the inspected
-feedback. MuseFocus works in a separate app-owned checkout. Open **Suggested fixes** to inspect the original
-comment, explanation, changed files, syntax-highlighted diff, **Before**, **Proposed after**, and actual
-check results. Previous/Next file uses the same acknowledged navigation as MuseFocus. Source line controls
-open the exact candidate revision.
-
-**Mark fix reviewed** records the local candidate revision you inspected. This workflow leaves the
-candidate local; publication and merging are separate operations. Failed checks, missing checks,
-clarification requests and interrupted work remain visible. Uncertain interrupted executions are
-retained rather than silently rerun. No product sample PRs or fix results are loaded at startup.
-
-See [PR work acceptance](docs/integration/pr-work-acceptance.md) for controlled-native test scope.
-
-## Prepared reviews
-
-Add repositories through the sidebar and choose a PR from **Incoming reviews** or **Own PR feedback**. The top-left selector remains available for direct local review access. MuseFocus fetches
-open PRs and prepares a reading order, explanations and suggested comments in the background.
-Preparation is inferred from the PR description and available patches; it is not execution
-proof or a claim about the author's intent. Partial source coverage is labeled.
-
-Select a ready PR and say **“Walk me through this review”**. MuseFocus takes the initiative through
-a logical section of consecutive files in the prepared reading order, then pauses for a question or **“Continue”**.
-Each file stays on screen until its spoken explanation finishes. Speaking interrupts the walkthrough
-while keeping the microphone available. You can also say **“Next file”**, **“Show me
-`path/to/file`”**, **“Pause the review”**, or **“Resume”**. MuseFocus opens the pinned source before
-narrating. Changes, Before and After views use the PR's actual base/head commits. When those
-commits exist in the selected local clone, reads use Git objects without changing your branch,
-index or working files. Missing local commits use GitHub's pinned content API.
-Changes, Before and After include locally bundled syntax highlighting for common languages;
-unknown file types remain exact plain text. Highlighting preserves source line identity.
-
-The repository connection, prepared plans and visited-file progress live in SQLite in the app's
-user-data directory. A 60-second refresh runs while the app is open; changed PR revisions invalidate
-old plans. **Refresh** checks now, and failed preparation can be explicitly retried. No fixture
-fallback is used. Suggested comments remain unposted; the current review flow does not submit them.
-The optional team service shares immutable findings per PR/context/version. Select a connected
-team repository in Settings to reuse current shared findings. A cache miss prepares locally through
-the Muse API and optionally publishes that result to Supabase; unavailable sharing never blocks
-local preparation. SQLite retains local reviews. No hosted preparation worker or GitHub App is
-required. See [team setup](docs/integration/team-setup.md).
-
-If preparation is still running, its status is shown before opening. Failed preparation has an
-explicit retry action. A ready review in any watched repository can be opened by MuseFocus.
-
-## Canvases and browser
-
-Ask MuseFocus to **“Create an explanation document”**, **“Make a checkout mockup beside it”**,
-**“Show me the code”**, or **“Open https://example.com”**. It manages code, document, visual and
-browser canvases in the same conversation, chooses the primary/secondary panes, and waits for
-each change to display before describing it. Tabs and **Split panes** remain available manually.
-Documents, visual drafts and source flows are saved privately in app storage; **Recent** reopens closed artifacts.
-Ask **“Show the whole payment flow”** to create one continuous source artifact from exact pinned
-excerpts, including unchanged files. Source text and locations remain exact; ordering and explanations
-are labeled inference. Local repository search is available when the pinned commit exists locally.
-
-The browser is an actual persistent native page. Give an explicit HTTPS address or a running
-local HTTP URL. MuseFocus observes the page you see and can click, type, scroll, navigate, and change
-desktop/phone viewport. Desktop follows the available pane size; Phone keeps a centered fixed
-viewport. Tabs use actual page titles, with navigation/address/viewport in one compact row.
-Optional conversation opens on the left of the canvases. You can interact normally too. Drag the divider or use its arrow keys
-to resize a split. **More → Open website** opens an address manually. Voice stays available;
-**More → Conversation and typing** reveals text only when needed.
-
-Generated documents and SVG mockups are labeled drafts. Real raster generation uses Muse Image
-(`muse-image-1.0`) with the existing `MODEL_API_KEY`; no separate image key is needed. Ask MuseFocus to
-generate an image. PNG/JPEG artifacts
-are validated and saved privately; the workspace waits for actual decoding before acknowledging
-display. Closed images reopen through Recent without generation. Image access or generation errors
-leave the rest of the workspace available. Browser pages
-carry unverified revision provenance. Opening a URL does not start a development server or prove
-which PR revision is running. GitHub comments still require explicit confirmation before posting;
-the prepared-review suggested comments remain unposted.
-
-## Distribution configuration
-
-The release application is **MuseFocus** (`app.musefocus.desktop`). The existing data directory and
-encryption identity are retained to preserve installed configuration and review history.
-A packaged app uses `~/Library/Application Support/MetaHackathon/.env`. A user-provided `.env`
-placed alongside the `.app`, or provided in its resources before packaging, seeds that file on
-first startup. Existing installed configuration is preserved. `METAHACKATHON_ENV_FILE` can
-explicitly select a different local file. No real credentials are committed to this repository.
-Developer ID signing, notarization and signed updates remain separate release checks. The
-[Apple setup checklist](apps/desktop/packaging/README.md#operator-checklist) accepts the same
-certificate/notarization secret names as SuperiorSwarm. The planned `musefocus.app` domain is not
-configured as a callback, update feed or download host.
-
-## Validation
+### 4. Build and run
 
 ```sh
-bun run type-check
-bun run lint
+bun run build
+bun run --filter @metahackathon/desktop preview
+```
+
+Wait for **Voice ready**, click **Start conversation** and say *"What can you do?"*. Grant
+microphone access when macOS asks. The app starts empty, with no sample data and no sign-in
+required. Ordinary conversation works without GitHub, Linear or Slack.
+
+### 5. Optional connections
+
+| Connect | How |
+| --- | --- |
+| GitHub | **Settings → Sign in with GitHub**, or set `GITHUB_TOKEN`, or **Import GitHub CLI sign-in**. Then add `owner/repo` with the sidebar **+**. |
+| Linear | **Sign in with Linear**, or set `LINEAR_API_KEY` for your assigned tickets. |
+| Slack | **Settings → Slack → Sign in with Slack** (PKCE). Uses the [app manifest](docs/integration/slack-app-manifest.json). |
+| Shared team findings | Optional Supabase backend. See [team setup](docs/integration/team-setup.md). |
+
+OAuth app registration and callback URLs are covered in the [OAuth setup guide](docs/integration/oauth-setup.md).
+
+## Run without API keys
+
+The test suites replace model, GitHub and Linear responses with controlled transports. They still
+drive the real built Electron UI, IPC, SQLite and Git:
+
+```sh
+bun run type-check && bun run lint
 bun run test:unit
 bun run test:contracts
-bun run test:integration
-bun run test:hands-free
-bun run test:prepared-reviews
-bun run test:local-browser
-bun run test:workspace
-bun run test:executive
-bun run test:attention
-bun run test:oauth
-bun test apps/desktop/src/shared apps/desktop/src/main apps/desktop/src/renderer
+bun run build
+bun run test:integration    # empty startup, conversation, history, cancellation (simulated model)
+bun run test:workspace      # native canvases, same-page browser ops, three-file review receipts
+bun run test:pr-fixes       # real coding child process, real Git and validation command
 services/voice/.venv/bin/python -m unittest discover -s services/voice/tests
 ```
 
-The native V1 check uses an isolated `.env` and user-data directory, an actual built Electron
-renderer/IPC bridge, and a simulated model. It verifies empty startup, conversation without a
-PR, follow-up history, cancellation and cleanup. It does not record a microphone or use saved
-credentials. Its report is `apps/desktop/out/v1-smoke-report.json`.
+More native suites are listed in [`package.json`](package.json), for example `test:executive`,
+`test:attention`, `test:pr-work` and `test:day`. They do not record a microphone or call live providers.
 
-The prepared-review native check creates a temporary Git repository with dirty work preserved,
-uses controlled GitHub/model responses, and checks source, action acknowledgements and SQLite
-persistence through the real Electron UI/IPC. The local-browser check serves an owned loopback
-website and exercises native browser navigation and lifecycle. Neither records a microphone.
+## Measured results
 
-Legacy scenario modules and fixtures remain available for tests and later work,
-but are excluded from the current renderer startup graph. The earlier browser-demo acceptance
-report in `docs/integration/acceptance.md` is historical, not the current product flow.
-Ownership and shared interface rules are recorded in [AGENTS.md](AGENTS.md) and Linear MET-8.
-See [V1 acceptance](docs/integration/v1-acceptance.md) for the verified live voice round trip,
-real GitHub connection, test results and current screenshot.
+Live speech providers (Meta ASR and ElevenLabs TTS) ran in the native app with a known spoken phrase
+and a controlled model. Source: [`voice-preconnect-2026-10-31.json`](docs/integration/evidence/voice-preconnect-2026-10-31.json).
 
-Implementation sequence: [product plan](docs/integration/product-plan.md).
-Agent control and observation: [navigation investigation](docs/integration/agent-navigation-plan.md).
+| Speech end → first reply audio | Run 1 | Run 2 |
+| --- | --- | --- |
+| Cold speech connection | 4,367 ms | 4,054 ms |
+| Prepared connection (shipped default) | 1,616 ms | 1,679 ms |
 
-Latest validation and screenshots: [review workspace acceptance](docs/integration/review-workspace-acceptance.md).
+Four ordinary live `muse-spark-1.3` answers completed in 1,095–1,542 ms
+([voice latency deep dive](docs/integration/voice-latency-deep-dive.md)). These are small matched
+samples, not a population benchmark. Methods and limits are recorded next to each result.
 
-Current hands-free behavior and validation: [conversation polish acceptance](docs/integration/conversation-polish-acceptance.md).
+## Architecture
 
-Current canvas and proactive review validation: [multi-canvas acceptance](docs/integration/multi-canvas-acceptance.md).
+```text
+┌──────────────── Electron renderer (React) ────────────────┐
+│ conversation · sidebar/Home · code/browser/doc/image panes │
+└───────────────▲─────────── tRPC over IPC ─────────────────┘
+                │  Zod contracts (apps/desktop/src/shared/contracts)
+┌───────────────┴──────────── Electron main ─────────────────────────────┐
+│ agent/      Muse tool loop, walkthroughs, coding worker                 │
+│ workspace   coordinator: effects acknowledged only after display        │
+│ work/       background jobs in app-owned Git worktrees, PR fixes        │
+│ runtime/    GitHub, Linear, Git helpers   slack/ day/ knowledge/        │
+│ db/         SQLite: prepared reviews, jobs, decisions, delivery ledger  │
+└──────▲─────────────────────────────────────────────▲──────────────────┘
+       │ local WebRTC                                │ HTTPS
+┌──────┴──────────────────┐            ┌─────────────┴──────────────┐
+│ services/voice (Python)  │            │ Meta Model API · GitHub ·  │
+│ Pipecat: Meta STT,       │            │ Linear · Slack · optional  │
+│ ElevenLabs TTS, barge-in │            │ Supabase team sharing      │
+└─────────────────────────┘            └────────────────────────────┘
+```
 
-Browser layout and sizing follow-up: [browser pane acceptance](docs/integration/browser-pane-acceptance.md).
+## Repository
 
-Executive center acceptance and live GitHub screenshots: [executive center acceptance](docs/integration/executive-center-acceptance.md).
+| Path | Contents |
+| --- | --- |
+| [`apps/desktop`](apps/desktop) | Electron app: main process, renderer, shared contracts, packaging |
+| [`services/voice`](services/voice/README.md) | Python voice sidecar (Pipecat, WebRTC) |
+| [`services/team`](services/team) | Optional Supabase sharing API (Edge function source) |
+| [`supabase`](supabase) | Ordered migrations with row-level security |
+| [`apps/website`](apps/website/README.md) | musefocus.app website (Next.js) |
+| [`docs/user-guide.md`](docs/user-guide.md) | Full feature and configuration guide |
+| [`docs/integration`](docs/integration) | Acceptance reports, evidence and setup guides |
 
-Proactive supervision and voice latency evidence: [attention acceptance](docs/integration/attention-acceptance.md).
+## Built with
 
-Sidebar stability and GitHub/Linear login: [sidebar and OAuth acceptance](docs/integration/sidebar-oauth-acceptance.md).
-
-Current latency diagnosis and measured provider stages: [voice latency deep dive](docs/integration/voice-latency-deep-dive.md).
+Electron · React · TypeScript · Bun · Turborepo · tRPC · Zod · SQLite · Python · Pipecat · WebRTC ·
+Meta Model API (Muse) · ElevenLabs · Supabase · Next.js
