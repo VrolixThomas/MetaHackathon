@@ -1866,7 +1866,7 @@ summary:focus-visible {
 	align-items: center;
 	gap: 12px;
 }
-.review-toolbar[hidden] {
+.review-toolbar[data-review-visible="false"] > button {
 	display: none;
 }
 .slack-connect-inline {

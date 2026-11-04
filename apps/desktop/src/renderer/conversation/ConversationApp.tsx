@@ -378,7 +378,7 @@ export function ConversationApp({
 					)}
 					<span aria-hidden="true">⌄</span>
 				</button>
-				<div className="review-toolbar" hidden={!reviewVisible}>
+				<div className="review-toolbar" data-review-visible={reviewVisible}>
 					{apiCall && (
 						<ApprovalControl
 							key={`approvals-${prCommentEpoch}`}
