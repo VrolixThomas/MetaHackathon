@@ -192,7 +192,7 @@ async function snapshotHarness(t: TestContext) {
 }
 
 describe("operation-scoped review context", () => {
-	it("production coordinator reduces first guided-request head reads from four to two, without reusing freshness", async (t) => {
+	it("guided requests reuse prefetched sources while snapshot reads keep live head checks", async (t) => {
 		const h = await snapshotHarness(t);
 		const order: string[] = [];
 		h.ports.readPR = async () => {
@@ -201,12 +201,11 @@ describe("operation-scoped review context", () => {
 		};
 		h.ports.readFile = async (input) => {
 			order.push("readFile");
-			assert.deepEqual(input, {
-				prId: h.review.pr.id,
-				baseSha: base,
-				headSha: head,
-				path: h.screen.path,
-			});
+			assert.deepEqual(
+				{ ...input, path: undefined },
+				{ prId: h.review.pr.id, baseSha: base, headSha: head, path: undefined }
+			);
+			assert(h.review.files.some((entry) => entry.path === input.path));
 			return file(input);
 		};
 		const ports: ConversationReviewPorts = {
@@ -256,7 +255,14 @@ describe("operation-scoped review context", () => {
 				}
 			);
 		await run();
-		assert.deepEqual(order, ["readPR", "readPR", "readPR", "readFile", "readPR", "model"]);
+		// Navigation reads use verified local state; opening the file prefetches the whole plan.
+		assert.deepEqual(order.slice(0, 3), ["readPR", "readPR", "readFile"]);
+		assert(order.includes("model"));
+		await until(
+			() =>
+				order.filter((step) => step === "readFile").length === h.review.files.length &&
+				order.filter((step) => step === "readPR").length === 2 + h.review.files.length
+		);
 		ports.readSnapshot = (request, active) => h.coordinator.readSnapshot(request, active);
 		for (let attempt = 0; attempt < 2; attempt++) {
 			order.length = 0;
@@ -897,7 +903,7 @@ describe("prepared review durable publication", () => {
 });
 
 describe("review revision and shutdown fences", () => {
-	it("caller cancellation reaches an in-flight pinned read without publishing late content", async (t) => {
+	it("caller cancellation rejects without publishing late content; the shared pinned read continues", async (t) => {
 		const waiting = deferred<ReviewFile>();
 		let reading: AbortSignal | undefined;
 		const { coordinator } = harness(t, {
@@ -917,9 +923,11 @@ describe("review revision and shutdown fences", () => {
 		await until(() => Boolean(reading));
 		controller.abort();
 		await rejected;
-		assert.equal(reading?.aborted, true);
+		assert.equal(reading?.aborted, false);
 		waiting.resolve(file({ prId: pr().id, baseSha: base, headSha: head, path: "src/first.ts" }));
 		await tick();
+		await coordinator.dispose();
+		assert.equal(reading?.aborted, true);
 	});
 	it("shutdown during resumed cache persistence never starts polling or new preparation", async (t) => {
 		const saving = deferred<void>();
@@ -1236,7 +1244,7 @@ describe("review navigation, actual progress and canonical screens", () => {
 });
 
 describe("operation-scoped navigation preparation", () => {
-	it("returns matching review/navigation with exactly one live check per operation", async (t) => {
+	it("prepares navigation from verified local state; refresh still retires a moved head", async (t) => {
 		const h = harness(t);
 		await h.coordinator.connect({ repository: repo });
 		await ready(h.coordinator);
@@ -1250,36 +1258,70 @@ describe("operation-scoped navigation preparation", () => {
 			{ path: "src/second.ts" },
 			signal()
 		);
-		assert.equal(reads, 1);
 		assert.equal(result.navigation.reviewId, result.review.id);
 		assert.equal(result.navigation.path, "src/second.ts");
 		await h.coordinator.prepareNavigation(pr().id, {}, signal());
-		assert.equal(reads, 2);
+		h.state.open = [pr(1, nextHead)];
 		h.state.current.set(pr().id, pr(1, nextHead));
-		h.ports.readPR = async () => pr(1, nextHead);
-		await assert.rejects(h.coordinator.prepareNavigation(pr().id, {}, signal()), /changed/);
+		h.ports.readPR = async () => {
+			reads++;
+			return pr(1, nextHead);
+		};
+		await h.coordinator.refresh();
+		await assert.rejects(
+			h.coordinator.prepareNavigation(pr().id, {}, signal()),
+			/prepared|changed/
+		);
 	});
-	it("rejects cancellation while the shared check is pending", async (t) => {
+	it("prefetches every pinned file once and serves navigation reads from memory", async (t) => {
+		const h = harness(t);
+		await h.coordinator.connect({ repository: repo });
+		const review = await ready(h.coordinator);
+		let reads = 0;
+		h.ports.readPR = async (id) => {
+			reads++;
+			return structuredClone(h.state.current.get(id) as PullRequest);
+		};
+		await h.coordinator.prepareNavigation(pr().id, {}, signal());
+		for (const entry of review.files)
+			await h.coordinator.file({ prId: pr().id, reviewId: review.id, path: entry.path }, signal());
+		const fetched = h.state.files.length;
+		assert.equal(fetched, review.files.length);
+		const prReads = reads;
+		for (const entry of review.files) {
+			const loaded = await h.coordinator.file(
+				{ prId: pr().id, reviewId: review.id, path: entry.path },
+				signal()
+			);
+			assert.equal(loaded.path, entry.path);
+			loaded.head.content = "caller copy";
+			await h.coordinator.progress({
+				prId: pr().id,
+				reviewId: review.id,
+				path: entry.path,
+				paused: false,
+			});
+		}
+		assert.equal(h.state.files.length, fetched);
+		assert.equal(reads, prReads);
+		const again = await h.coordinator.file(
+			{ prId: pr().id, reviewId: review.id, path: review.files[0]?.path as string },
+			signal()
+		);
+		assert.notEqual(again.head.content, "caller copy");
+	});
+	it("rejects a cancelled caller", async (t) => {
 		const h = harness(t);
 		await h.coordinator.connect({ repository: repo });
 		await ready(h.coordinator);
-		const pending = deferred<PullRequest>();
-		let started = false;
-		h.ports.readPR = async () => {
-			started = true;
-			return pending.promise;
-		};
 		const abort = new AbortController();
-		const operation = h.coordinator.prepareNavigation(pr().id, {}, abort.signal);
-		await until(() => started);
 		abort.abort();
-		pending.resolve(pr());
-		await assert.rejects(operation, /cancel/);
+		await assert.rejects(h.coordinator.prepareNavigation(pr().id, {}, abort.signal), /cancel/);
 	});
 });
 
 describe("local pinned review browsing", () => {
-	it("switches warmed files and saves position without a GitHub round trip, while agent navigation stays fresh", async (t) => {
+	it("switches warmed files and saves position without a GitHub round trip, including agent navigation", async (t) => {
 		const { coordinator, ports } = harness(t);
 		await coordinator.connect({ repository: repo });
 		await ready(coordinator);
@@ -1300,9 +1342,8 @@ describe("local pinned review browsing", () => {
 		assert.equal(nav.navigation.path, request.path);
 		assert.notEqual((await coordinator.file(request)).head.content, "caller mutation");
 		await coordinator.progress({ ...request, paused: false });
+		await coordinator.prepareNavigation(pr().id, {}, signal());
 		assert.equal(remoteCalls, 0);
-		await assert.rejects(coordinator.prepareNavigation(pr().id, {}, signal()));
-		assert.equal(remoteCalls, 1);
 	});
 	it("cached bytes cannot survive disconnect or satisfy a cancelled caller", async (t) => {
 		const { coordinator } = harness(t);

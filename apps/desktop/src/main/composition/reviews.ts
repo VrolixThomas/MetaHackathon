@@ -75,6 +75,13 @@ export interface ReviewCoordinatorPorts {
 	pollIntervalMs?: number;
 }
 type Entry = ReviewDetail & { abort: AbortController };
+/** SHA-pinned sources for one prepared plan; dropped with its entry on any revision/connection change. */
+type SourceCache = {
+	review: PreparedReview;
+	files: Map<string, Promise<ReviewFile>>;
+	prefetching: boolean;
+};
+const PREFETCH_CONCURRENCY = 4;
 type Receipt = z.infer<typeof ConversationActionReceiptSchema>;
 class ReviewError extends Error {}
 const samePR = (a: PullRequest, b: PullRequest) =>
@@ -94,23 +101,8 @@ export class ReviewCoordinator {
 	private repository: string | null = null;
 	private localPath: string | null = null;
 	private entries = new Map<string, Entry>();
+	private sources = new WeakMap<Entry, SourceCache>();
 	private screens = new Map<string, ReviewScreen>();
-	// Immutable bytes belong to this exact connection entry and preparation. They are
-	// historical source, never fresh head/access evidence for a write or agent action.
-	private fileCache = new WeakMap<
-		Entry,
-		{ review: PreparedReview; files: Map<string, ReviewFile>; bytes: number }
-	>();
-	private cachedFile(entry: Entry, review: PreparedReview, path: string) {
-		const cache = this.fileCache.get(entry);
-		return cache?.review === review ? cache.files.get(path) : undefined;
-	}
-	private localReady(prId: string, signal: AbortSignal) {
-		const entry = this.entry(prId);
-		this.current(entry, signal);
-		if (entry.status !== "ready" || !entry.prepared) fail("Reopen the current prepared review.");
-		return { entry, review: entry.prepared };
-	}
 	private lifetime = new AbortController();
 	private connection = new AbortController();
 	private candidate?: AbortController;
@@ -782,28 +774,93 @@ export class ReviewCoordinator {
 			fail("File content does not match the prepared revision. Refresh the review.");
 		await this.revalidate(entry, signal);
 		this.current(entry, signal);
-		let cache = this.fileCache.get(entry);
-		if (cache?.review !== review) {
-			cache = { review, files: new Map(), bytes: 0 };
-			this.fileCache.set(entry, cache);
-		}
-		const bytes = Buffer.byteLength(JSON.stringify(result));
-		if (!cache.files.has(path) && cache.bytes + bytes <= 24 * 1024 * 1024) {
-			cache.files.set(path, clone(result));
-			cache.bytes += bytes;
-		}
 		return result;
+	}
+	/**
+	 * Manual navigation reads verified local state. Head changes are still detected by inbox
+	 * polling and by every first source fetch (pre/post revision checks), which replace the entry.
+	 */
+	private readyLocal(prId: string, signal: AbortSignal) {
+		const entry = this.entry(prId);
+		this.current(entry, signal);
+		if (entry.status !== "ready" || !entry.prepared)
+			fail(entry.error ?? "Review is still being prepared. Open it when the inbox shows ready.");
+		return { entry, review: entry.prepared };
+	}
+	private sourceCache(entry: Entry, review: PreparedReview) {
+		let cache = this.sources.get(entry);
+		if (!cache || cache.review !== review) {
+			cache = { review, files: new Map(), prefetching: false };
+			this.sources.set(entry, cache);
+		}
+		return cache;
+	}
+	/** One shared verified read per pinned file; failures are never cached. */
+	private sharedFile(entry: Entry, review: PreparedReview, path: string) {
+		const cache = this.sourceCache(entry, review);
+		let read = cache.files.get(path);
+		if (!read) {
+			const pending = this.readFile(entry, review, path, this.lifetime.signal);
+			read = pending;
+			cache.files.set(path, pending);
+			void pending.catch(() => {
+				if (cache.files.get(path) === pending) cache.files.delete(path);
+			});
+		}
+		return read;
+	}
+	private async cachedFile(
+		entry: Entry,
+		review: PreparedReview,
+		path: string,
+		signal: AbortSignal
+	): Promise<ReviewFile> {
+		this.assertPath(review, review.id, path);
+		const read = this.sharedFile(entry, review, path);
+		const file = await new Promise<ReviewFile>((resolve, reject) => {
+			const abort = () => reject(new ReviewError("Review operation was cancelled."));
+			if (signal.aborted) return abort();
+			signal.addEventListener("abort", abort, { once: true });
+			read.then(resolve, reject).finally(() => signal.removeEventListener("abort", abort));
+		});
+		this.current(entry, signal);
+		if (entry.prepared !== review) fail("Prepared review changed. Reopen it.");
+		return clone(file);
+	}
+	/** Load every file of an opened plan in the background so navigation is served from memory. */
+	private prefetch(entry: Entry, review: PreparedReview) {
+		const cache = this.sourceCache(entry, review);
+		if (cache.prefetching) return;
+		cache.prefetching = true;
+		const paths = review.files.map((file) => file.path);
+		let next = 0;
+		const worker = async () => {
+			while (next < paths.length) {
+				const path = paths[next++] as string;
+				if (this.entries.get(entry.pr.id) !== entry || entry.abort.signal.aborted) return;
+				try {
+					await this.sharedFile(entry, review, path);
+				} catch {
+					// A failed or changed read stops prefetching; explicit navigation retries.
+					cache.prefetching = false;
+					return;
+				}
+			}
+		};
+		void this.track(
+			Promise.all(
+				Array.from({ length: Math.min(PREFETCH_CONCURRENCY, paths.length) }, worker)
+			).then(() => {})
+		);
 	}
 	file(raw: z.infer<typeof ReviewFileRequestSchema>, caller?: AbortSignal): Promise<ReviewFile> {
 		return this.request(async (signal) => {
 			const input = ReviewFileRequestSchema.parse(raw);
-			const local = this.localReady(input.prId, signal);
-			this.assertPath(local.review, input.reviewId, input.path);
-			const cached = this.cachedFile(local.entry, local.review, input.path);
-			if (cached) return clone(cached);
-			const { entry, review } = await this.ready(input.prId, signal);
+			const { entry, review } = this.readyLocal(input.prId, signal);
 			this.assertPath(review, input.reviewId, input.path);
-			return this.readFile(entry, review, input.path, signal);
+			const file = this.cachedFile(entry, review, input.path, signal);
+			this.prefetch(entry, review);
+			return file;
 		}, caller);
 	}
 	private progressValue(
@@ -856,16 +913,12 @@ export class ReviewCoordinator {
 	progress(raw: z.infer<typeof ReviewProgressInputSchema>): Promise<ReviewProgress> {
 		return this.request(async (signal) => {
 			const input = ReviewProgressInputSchema.parse(raw);
-			const local = this.localReady(input.prId, signal);
-			const { entry, review } =
-				input.path && this.cachedFile(local.entry, local.review, input.path)
-					? local
-					: await this.ready(input.prId, signal);
+			const { entry, review } = this.readyLocal(input.prId, signal);
 			this.assertPath(review, input.reviewId, input.path);
 			return this.commitProgress(entry, review, input.path, input.paused, signal);
 		});
 	}
-	/** One live authorization/revision check for workspace preparation and target selection.
+	/** Workspace preparation and target selection from verified local state; starts source prefetch.
 	 * Main-only seam: callers must still validate the displayed/durable receipt separately.
 	 */
 	prepareNavigation(
@@ -875,23 +928,16 @@ export class ReviewCoordinator {
 	): Promise<{ review: PreparedReview; navigation: ReviewNavigation }> {
 		return this.request(async (signal) => {
 			const input = NavigateSchema.parse(raw);
-			const { entry, review } = await this.ready(prId, signal);
+			const { entry, review } = this.readyLocal(prId, signal);
 			const navigation = await this.navigation(entry, review, input, signal);
 			this.current(entry, signal);
+			this.prefetch(entry, review);
 			return { review: clone(review), navigation };
 		}, caller);
 	}
-	/** Manual browsing of an already opened immutable revision, not fresh tool authority. */
+	/** Manual browsing of an already opened immutable revision; same local path as prepareNavigation. */
 	prepareLocalNavigation(prId: string, raw: z.infer<typeof NavigateSchema>, caller: AbortSignal) {
-		return this.request(async (signal) => {
-			const input = NavigateSchema.parse(raw);
-			const { entry, review } = this.localReady(prId, signal);
-			// Highlight validation still uses the authoritative source path.
-			if (input.line) return this.prepareNavigation(prId, raw, signal);
-			const navigation = await this.navigation(entry, review, input, signal);
-			this.current(entry, signal);
-			return { review: clone(review), navigation };
-		}, caller);
+		return this.prepareNavigation(prId, raw, caller);
 	}
 	navigate(
 		prId: string,
@@ -919,7 +965,7 @@ export class ReviewCoordinator {
 		let highlight: ReviewNavigation["highlight"];
 		if (input.line) {
 			const side = input.side ?? "head";
-			const file = await this.readFile(entry, review, path, signal);
+			const file = await this.cachedFile(entry, review, path, signal);
 			const source = file[side];
 			const lines = source.content
 				? source.content.split("\n").length - (source.content.endsWith("\n") ? 1 : 0)

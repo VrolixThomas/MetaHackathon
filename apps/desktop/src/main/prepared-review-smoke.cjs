@@ -631,10 +631,11 @@ async function native() {
 			["Back", order[1]],
 			["Back", order[0]],
 		]) {
+			// The previous display receipt may still be settling; a user sees the control enabled first.
+			const enabled = `[...document.querySelectorAll('.prepared-workspace .review-navigation button')].find(b=>b.textContent.trim()===${JSON.stringify(label)} && !b.disabled)`;
+			await wait(`enabled ${label}`, async () => Boolean(await js(`Boolean(${enabled})`)));
 			const started = performance.now();
-			await js(
-				`[...document.querySelectorAll('.prepared-workspace .review-navigation button')].find(b=>b.textContent.trim()===${JSON.stringify(label)} && !b.disabled).click()`
-			);
+			await js(`${enabled}.click()`);
 			await wait(`manual pinned file ${path}`, async () => {
 				const state = await readUI();
 				return (
