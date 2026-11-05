@@ -6,16 +6,23 @@
 
 <p align="center">
   <b>A voice-first command center for engineers: review PRs, triage tickets and run coding jobs by talking.</b><br>
-  <a href="https://musefocus.app/"><b>⬇ Download for macOS at musefocus.app</b></a>
+  <a href="https://youtu.be/DE0sIj17NbY"><b>▶ Watch the 3-minute demo</b></a>
+  · <a href="https://musefocus.app/"><b>⬇ Download for macOS</b></a>
   · <a href="https://musefocus.app/">Website</a>
   · <a href="#quick-start">Run locally</a>
   · <a href="docs/user-guide.md">User guide</a>
   · <a href="https://github.com/VrolixThomas/MuseFocus/releases/latest">Latest release</a>
 </p>
 
+<p align="center">
+  <a href="https://youtu.be/DE0sIj17NbY"><img src="https://img.youtube.com/vi/DE0sIj17NbY/maxresdefault.jpg" alt="Watch the MuseFocus demo video" width="720"></a><br>
+  <sub><b>Demo video (under 3 minutes):</b> <a href="https://youtu.be/DE0sIj17NbY">youtu.be/DE0sIj17NbY</a></sub>
+</p>
+
 > **Website: [musefocus.app](https://musefocus.app/)** · **Meta Hackathon 2026.** Built from scratch during the event window (first commit 2026-10-26).
 > Runtime models: **Muse Spark 1.3**, **Muse Wonder 1.0**, **Muse Image 1.0** and **Muse Voice
-> Transcribe 1.0** through the Meta Model API. Bonus category targeted: **Best Agentic Use-Case**.
+> Transcribe 1.0** through the Meta Model API. Bonus categories targeted: **Best Agentic Use-Case**
+> and **Best Creative Build**.
 
 **More than a one-prompt wrapper.** MuseFocus is a native Electron desktop app with a multi-tool
 agent loop (about 70 typed tools). The agent operates a real workspace: code diffs pinned to
@@ -41,9 +48,15 @@ or sent to Slack without exact, explicit confirmation.
 
 ## The problem
 
-Engineers lose their day to context switching between GitHub, Linear, Slack and their editor.
-Each review means reconstructing intent from a diff. Each ticket means a new branch and a cold
-start. Most AI tools add one more chat window to switch to.
+With AI, engineers can run more work in parallel than ever: coding agents on several tickets,
+pull requests from teammates, questions arriving on Slack. Starting work is easy; keeping track of
+it is not. It gets hard to remember what is in the pipeline, what is waiting on you and what is
+actually urgent. Things slip, and context switching between GitHub, Linear, Slack and the editor
+eats the focus AI was supposed to free up. Most AI tools add one more chat window to switch to.
+
+MuseFocus brings that work back into focus. Muse keeps track of everything in flight, tells you
+what needs you now, brings back the relevant code and real check results, and lets you decide by
+voice while the rest keeps moving. **Keep your focus. Muse keeps the thread.**
 
 ## What MuseFocus does
 
@@ -65,13 +78,16 @@ start. Most AI tools add one more chat window to switch to.
 
 | Model (Meta Model API) | Where it runs |
 | --- | --- |
-| `muse-spark-1.3` | Foreground conversation, tool calling, review preparation, quick coding steps |
-| `muse-wonder-1.0` (high reasoning) | New background coding jobs |
+| `muse-spark-1.3` | Quick work: foreground conversation and tool calling, My day/Slack intake, proactive updates, quick coding steps |
+| `muse-wonder-1.0` (high reasoning) | Deep work: review preparation ahead of time, guided-review and scope analysis, hard questions about the current context, background coding jobs |
 | `muse-voice-transcribe-1.0` | Streaming speech-to-text in the local voice sidecar |
-| `muse-image-1.0` | Raster image canvases |
+| `muse-image-1.0` | `generate_raster_image` tool: images and generated architecture/ladder diagrams in persistent canvases |
 
-All four share one `MODEL_API_KEY`. ElevenLabs provides text-to-speech output. There are no
-alternate model providers and no fallback keys.
+Routing is explicit (`apps/desktop/src/main/agent/models.ts`): quick workloads go to Spark, deep
+workloads to Wonder. All four share one `MODEL_API_KEY`. Background coding jobs can instead run on
+your own Muse subscription through the Muse Code SDK (`CODING_PROVIDER=muse-code`); each job pins
+its provider before it starts and never silently falls back to API billing. ElevenLabs provides
+text-to-speech output. There are no alternate model providers and no fallback keys.
 
 ---
 
@@ -108,7 +124,8 @@ cp .env.example .env
 ```
 
 Fill in the two required keys. The voice ID is prefilled with the MuseFocus default voice.
-Everything else in [`.env.example`](.env.example) is optional.
+Everything else in [`.env.example`](.env.example) is optional, including
+`CODING_PROVIDER=muse-code` to run coding jobs on your own Muse subscription instead of the API key.
 
 ```dotenv
 MODEL_API_KEY=          # Meta Model API: conversation, coding, transcription, images
