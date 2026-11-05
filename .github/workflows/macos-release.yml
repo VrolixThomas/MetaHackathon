@@ -51,6 +51,13 @@ jobs:
           services/voice/.venv/bin/python services/voice/scripts/freeze.py
       - name: Build desktop
         run: bun run --cwd apps/desktop build
+        env:
+          # Public OAuth sign-in for the downloaded app; a local .env still takes precedence.
+          MUSE_GITHUB_OAUTH_CLIENT_ID: ${{ secrets.MUSE_GITHUB_OAUTH_CLIENT_ID }}
+          MUSE_GITHUB_OAUTH_CLIENT_SECRET: ${{ secrets.MUSE_GITHUB_OAUTH_CLIENT_SECRET }}
+          MUSE_LINEAR_OAUTH_CLIENT_ID: ${{ secrets.MUSE_LINEAR_OAUTH_CLIENT_ID }}
+          MUSE_LINEAR_OAUTH_CLIENT_SECRET: ${{ secrets.MUSE_LINEAR_OAUTH_CLIENT_SECRET }}
+          MUSE_SLACK_OAUTH_CLIENT_ID: ${{ secrets.MUSE_SLACK_OAUTH_CLIENT_ID }}
       - name: Sign and notarize Apple Silicon app
         working-directory: apps/desktop
         run: bun x --no-install electron-builder --mac dmg zip --arm64 --publish never

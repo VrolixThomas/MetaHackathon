@@ -57,9 +57,15 @@ to a token from `.env`. Long-lived GitHub tokens without an expiry are also supp
 remote grant; revoke that in GitHub or Linear settings when needed. Existing `GITHUB_TOKEN` and
 `LINEAR_API_KEY` are development alternatives, with OAuth taking precedence once connected.
 
-This local POC reads registration credentials from `.env`. For wider distribution, GitHub's
-client secret should be exchanged through an app-owned backend rather than bundled into a public
-desktop binary. That deployment service is not part of the local connection flow.
+Release builds embed the project's own registrations so the downloaded app can sign in without a
+local `.env`. CI passes the `release` environment secrets `MUSE_GITHUB_OAUTH_CLIENT_ID`,
+`MUSE_GITHUB_OAUTH_CLIENT_SECRET`, `MUSE_LINEAR_OAUTH_CLIENT_ID`, `MUSE_LINEAR_OAUTH_CLIENT_SECRET`
+(optional) and `MUSE_SLACK_OAUTH_CLIENT_ID` to the build, and electron-vite `define` bakes them into
+the main process (`src/main/oauth/builtin.ts`). Values are never committed. A registration in the
+local `.env` always takes precedence, and its ID/secret pair is never mixed with built-in values.
+Like any desktop OAuth client, a shipped GitHub client secret can be extracted from the binary; the
+fixed loopback callback, `state` check and PKCE limit what it allows. Linear (public app) and Slack
+(public distribution) must allow other workspaces for people outside the registering team.
 
 Implementation: `src/shared/contracts/oauth.ts`, `src/main/oauth/`, `src/renderer/oauth/`,
 `src/main/services.ts` and root router composition under `apps/desktop/`.

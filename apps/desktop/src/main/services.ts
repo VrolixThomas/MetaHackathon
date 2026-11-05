@@ -63,6 +63,7 @@ import {
 } from "./images";
 import { type KnowledgeService, chatSourceId, sourceFromChatMessage } from "./knowledge";
 import { FactSchema } from "./knowledge/types";
+import { resolveOAuthClient } from "./oauth/builtin";
 import { OAuthService } from "./oauth/service";
 import { type BrowserPage, BrowserService, type BrowserServiceOptions } from "./runtime/browser";
 import type { CredentialAccess, SecretEncryption } from "./runtime/credentials";
@@ -1319,7 +1320,8 @@ export function initializeOAuth(
 		directory: join(userDataPath, "oauth"),
 		encryption,
 		openExternal,
-		getClient: (provider) => getConfiguration().oauthClient(provider),
+		getClient: (provider) =>
+			resolveOAuthClient(provider, () => getConfiguration().oauthClient(provider)),
 		getManualToken: (provider) =>
 			provider === "github"
 				? getConfiguration().get("github")
