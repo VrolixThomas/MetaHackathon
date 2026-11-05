@@ -242,3 +242,7 @@ samples, not a population benchmark. Methods and limits are recorded next to eac
 
 Electron · React · TypeScript · Bun · Turborepo · tRPC · Zod · SQLite · Python · Pipecat · WebRTC ·
 Meta Model API (Muse) · ElevenLabs · Supabase · Next.js
+
+## License
+
+[MIT](LICENSE)
