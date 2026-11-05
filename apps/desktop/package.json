@@ -1,7 +1,7 @@
 {
 	"name": "@metahackathon/desktop",
 	"productName": "MuseFocus",
-	"version": "0.1.4",
+	"version": "0.1.5",
 	"description": "MuseFocus voice-first developer workspace",
 	"main": "./out/main/index.js",
 	"type": "module",

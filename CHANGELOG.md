@@ -1,5 +1,21 @@
 # Changelog
 
+## v0.1.5 (2026-11-05)
+
+### What's New
+
+Sign in with GitHub, Linear and Slack now works in the downloaded app without editing a configuration file. Release builds include the MuseFocus OAuth app registrations, so clicking **Sign in** opens the browser approval straight away. Your own registrations in `.env` still take precedence.
+
+### Changes
+
+- Embed the project's GitHub, Linear and Slack OAuth registrations in release builds from CI secrets; a local registration always wins and is never mixed with the built-in pair (`7778534`).
+- Add the MIT license (`daa9951`).
+- Link the demo video and align the README model table with the actual Spark/Wonder routing (`ce41c2f`).
+
+### Validation limits
+
+This release targets macOS Apple Silicon. `test:oauth` exercises the real loopback callback, encryption and refresh against controlled provider responses; it does not authorize a live account. Linear and Slack sign-in for other workspaces also depends on those apps allowing public distribution.
+
 ## v0.1.4 (2026-11-05)
 
 ### What's New
